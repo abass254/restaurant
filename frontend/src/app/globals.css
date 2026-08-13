@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+@import "../styles/tokens.css";
+@import "../styles/motion.css";
+@import "../styles/landing-ufanisi.css";
+@import "../styles/landing-shared.css";
+@import "../styles/process-showcase.css";
+@import "../styles/legal.css";
+@import "../styles/auth.css";
+@import "../styles/cookie-consent.css";
+@import "../styles/swal.css";
+@import "../styles/session-timeout.css";
+@import "../styles/onboarding.css";

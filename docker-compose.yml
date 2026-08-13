@@ -1,0 +1,104 @@
+# DukAI Merchants — Docker Compose stack.
+#
+#   frontend (Next.js)  -> http://localhost:7070   (public)
+#   backend  (FastAPI)  -> http://localhost:7071   (exposed for debugging)
+#   db       (MySQL 8)  -> 127.0.0.1:3306          (loopback only)
+#
+# The browser only talks to the frontend on :7070; Next.js server-side
+# rewrites proxy /api, /auth, /sanctum, /webhooks, /mpesa and /uploads to the
+# backend container at http://backend:7071 over the internal docker network.
+#
+# Quickstart:
+#
+#   cp .env.example .env                  # edit Meta credentials etc.
+#   docker compose up -d --build
+#   docker compose exec backend sh -c 'for f in migrations/*.py; do python "$f"; done'
+#
+# Frontend + backend share the single repo-root `.env`.
+
+name: dukai_merchant
+
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-dukai}
+      MYSQL_USER: ${DB_USERNAME:-dukai}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-dukai}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+    command:
+      - --default-authentication-plugin=caching_sha2_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      # Loopback-only so host tooling (mysql client, TablePlus, etc.) can
+      # connect without exposing the DB to the network. Published on 3307
+      # to avoid clashing with a system MySQL on the default 3306.
+      - "127.0.0.1:3307:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  backend:
+    build:
+      context: ./backend
+    image: dukai-merchant-backend:latest
+    restart: unless-stopped
+    # All secrets + public URLs come from `.env`. The `environment:` block
+    # below only sets values tied to the docker network itself.
+    env_file:
+      - .env
+    environment:
+      APP_ENV: production
+      APP_PORT: "7071"
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: "3306"
+    volumes:
+      - backend_uploads:/app/uploads
+    ports:
+      - "127.0.0.1:7071:7071"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7071/up"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        BACKEND_URL: http://backend:7071
+    image: dukai-merchant-frontend:latest
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "7070"
+      # Server-side proxy target for Next.js rewrites. The browser never sees
+      # this — it only talks to the frontend on :7070.
+      BACKEND_URL: http://backend:7071
+    ports:
+      - "7070:7070"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7070/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  mysql_data:
+  backend_uploads:

@@ -1,0 +1,271 @@
+/* Merchant app (Next.js dashboard) */
+.app-shell {
+  min-height: 100vh;
+  background: var(--cream-50);
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px;
+  background: var(--white);
+  border-bottom: 1px solid var(--cream-200);
+}
+
+.app-nav-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-nav-links a,
+.app-nav-links button {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cream-700);
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.app-nav-links a.active,
+.app-nav-links a:hover {
+  color: var(--terra-700);
+}
+
+.app-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.settings-page .settings-block {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--color-border);
+}
+
+.settings-page .settings-block h2 {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  color: var(--color-text);
+  margin-bottom: 16px;
+}
+
+.settings-dl {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-dl div {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.settings-dl dt {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.settings-dl dd {
+  color: var(--color-text);
+}
+
+.settings-connected {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: var(--color-primary-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.settings-form {
+  margin-top: 16px;
+  max-width: 480px;
+}
+
+.settings-banner {
+  padding: 12px 16px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.settings-banner--success {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}
+
+.app-panel {
+  background: var(--white);
+  border: 1px solid var(--cream-200);
+  border-radius: 16px;
+  padding: 24px;
+}
+
+.app-title {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  color: var(--terra-900);
+  margin-bottom: 8px;
+}
+
+.app-lead {
+  color: var(--cream-700);
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
+
+.app-muted { color: var(--cream-600); }
+.app-error { color: #b42318; margin: 12px 0; }
+
+.app-checklist,
+.app-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px;
+}
+
+.app-checklist li,
+.app-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--cream-200);
+}
+
+.app-checklist li.done strong { color: var(--terra-700); }
+.app-checklist li.pending strong { color: var(--cream-700); }
+
+.app-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.inbox-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+  min-height: calc(100vh - 120px);
+}
+
+.inbox-sidebar,
+.inbox-thread {
+  background: var(--white);
+  border: 1px solid var(--cream-200);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.inbox-sidebar-head {
+  padding: 16px;
+  border-bottom: 1px solid var(--cream-200);
+}
+
+.inbox-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.inbox-list button {
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border: none;
+  border-bottom: 1px solid var(--cream-100);
+  background: transparent;
+  cursor: pointer;
+}
+
+.inbox-list button.active,
+.inbox-list button:hover {
+  background: var(--cream-100);
+}
+
+.inbox-list span {
+  display: block;
+  font-size: 12px;
+  color: var(--cream-600);
+}
+
+.inbox-thread {
+  display: flex;
+  flex-direction: column;
+}
+
+.inbox-messages {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.inbox-message {
+  max-width: 75%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--cream-100);
+}
+
+.inbox-message.outbound {
+  align-self: flex-end;
+  background: var(--terra-100);
+}
+
+.inbox-message time {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--cream-600);
+}
+
+.inbox-reply {
+  padding: 16px;
+  border-top: 1px solid var(--cream-200);
+  display: grid;
+  gap: 12px;
+}
+
+.inbox-reply textarea {
+  width: 100%;
+  border: 1px solid var(--cream-300);
+  border-radius: 12px;
+  padding: 12px;
+  font: inherit;
+  resize: vertical;
+}
+
+@media (max-width: 900px) {
+  .inbox-layout { grid-template-columns: 1fr; }
+}
+
+.landing-logo {
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--color-nav-logo);
+  letter-spacing: 0.04em;
+  transition: color 0.35s var(--ease-out);
+}
+
+.landing-logo .ai { color: var(--color-nav-logo-accent); }

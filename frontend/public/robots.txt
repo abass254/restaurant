@@ -1,0 +1,7 @@
+# Meta's Instagram Graph API fetches media with this crawler. A robots.txt must
+# exist and allow it, or publishing fails with "Only photo or video…".
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: *
+Allow: /

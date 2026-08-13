@@ -1,0 +1,86 @@
+.page {
+  min-height: 100vh;
+  padding: 2rem;
+  background: #f6f7fb;
+  color: #141823;
+}
+
+.header {
+  max-width: 760px;
+  margin: 0 auto 1.5rem;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.header p {
+  margin: 0.5rem 0 1rem;
+  color: #50576b;
+}
+
+.backLink {
+  color: #0f62fe;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.grid {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #e3e7f0;
+  border-radius: 12px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.preview {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #e7ebf5;
+  background: #f2f4fa;
+}
+
+.name {
+  margin: 0;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.path {
+  margin: 0;
+  color: #687089;
+  font-size: 0.9rem;
+  word-break: break-word;
+}
+
+.downloadBtn {
+  margin-top: auto;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 8px;
+  background: #141823;
+  color: #ffffff;
+  text-decoration: none;
+  font-weight: 600;
+  padding: 0.6rem 0.85rem;
+}
+
+.empty {
+  max-width: 1200px;
+  margin: 0 auto;
+  color: #687089;
+}

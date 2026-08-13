@@ -1,0 +1,2085 @@
+/* Orders + Point of Sale
+   --------------------------------------------------------------
+   Everything here lives under `.fb-app` so it inherits dashboard
+   tokens/colours and never bleeds into landing pages.
+*/
+
+/* === POS ===================================================
+   Dense, restrained, "panel-style" layout. Spacing rhythm is
+   4 / 8 / 12; type scale tops out at 1rem. Brown is reserved
+   for prices, active states, and the primary CTA — everything
+   else stays in the neutral app palette so the data dominates.
+*/
+
+.fb-app .pos-panel {
+  padding: 0;
+  background: var(--app-bg);
+}
+
+.fb-app .pos-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(300px, 28%, 360px);
+  gap: 12px;
+  padding: 12px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .fb-app .pos-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.fb-app .pos-catalog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fb-app .pos-catalog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.fb-app .pos-catalog__tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.fb-app .pos-quick-qty {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border-light);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.fb-app .pos-quick-qty__label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--app-text-secondary);
+}
+
+.fb-app .pos-quick-qty input {
+  width: 40px;
+  border: 0;
+  background: transparent;
+  outline: none;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--app-text);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+}
+
+.fb-app .pos-quick-qty input::-webkit-outer-spin-button,
+.fb-app .pos-quick-qty input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.fb-app .pos-quick-qty__presets {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border-light);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.fb-app .pos-quick-qty__preset {
+  min-width: 28px;
+  height: 26px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.fb-app .pos-quick-qty__preset:hover {
+  background: var(--app-surface-hover);
+  color: var(--app-text);
+}
+
+.fb-app .pos-quick-qty__preset.is-active {
+  background: var(--brown-800);
+  color: var(--cream-50);
+}
+
+html[data-theme="dark"] .fb-app .pos-quick-qty__preset.is-active {
+  background: var(--brown-300);
+  color: var(--brown-950);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .pos-quick-qty__preset.is-active {
+    background: var(--brown-300);
+    color: var(--brown-950);
+  }
+}
+
+.fb-app .pos-title {
+  margin: 0;
+  font-family: var(--app-font);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--app-text);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fb-app .pos-title__icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--cream-100);
+  color: var(--brown-700);
+  font-size: 0.75rem;
+}
+
+html[data-theme="dark"] .fb-app .pos-title__icon {
+  background: rgba(160, 107, 72, 0.18);
+  color: var(--cream-200);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .pos-title__icon {
+    background: rgba(160, 107, 72, 0.18);
+    color: var(--cream-200);
+  }
+}
+
+.fb-app .pos-search {
+  flex: 1;
+  max-width: 320px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border-light);
+  border-radius: 8px;
+  padding: 0 10px;
+  height: 32px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.fb-app .pos-search:focus-within {
+  border-color: var(--brown-400);
+  box-shadow: 0 0 0 3px rgba(133, 85, 56, 0.12);
+}
+
+.fb-app .pos-search__icon {
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+  margin-right: 8px;
+}
+
+.fb-app .pos-search input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  outline: none;
+  font-size: 0.8125rem;
+  color: var(--app-text);
+  min-width: 0;
+}
+
+.fb-app .pos-search input::placeholder {
+  color: var(--app-text-secondary);
+}
+
+.fb-app .pos-search__clear {
+  border: 0;
+  background: transparent;
+  color: var(--app-text-secondary);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.fb-app .pos-search__clear:hover {
+  background: var(--app-surface-hover);
+  color: var(--app-text);
+}
+
+.fb-app .pos-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.fb-app .pos-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid var(--app-border-light);
+  background: var(--app-surface);
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.fb-app .pos-chip:hover {
+  background: var(--app-surface-hover);
+  color: var(--app-text);
+}
+
+.fb-app .pos-chip.is-active {
+  background: var(--brown-800);
+  color: var(--cream-50);
+  border-color: var(--brown-800);
+}
+
+html[data-theme="dark"] .fb-app .pos-chip.is-active {
+  background: var(--brown-300);
+  border-color: var(--brown-300);
+  color: var(--brown-950);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .pos-chip.is-active {
+    background: var(--brown-300);
+    border-color: var(--brown-300);
+    color: var(--brown-950);
+  }
+}
+
+/* Catalog cards — horizontal layout
+ * [thumb 56×56] [name / category / price] [+ button or qty badge]
+ * One card per row at narrow widths, two columns above ~720px.
+ */
+
+.fb-app .pos-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+}
+
+.fb-app .pos-card {
+  position: relative;
+  background: var(--app-surface);
+  border: none;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--app-shadow-soft);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.fb-app .pos-card:hover {
+  box-shadow: var(--app-shadow);
+  transform: translateY(-1px);
+}
+
+.fb-app .pos-card.is-in-cart {
+  background: var(--cream-50);
+  box-shadow:
+    var(--app-shadow-soft),
+    0 0 0 2px var(--brown-500);
+}
+
+.fb-app .pos-card.is-in-cart::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--brown-700);
+}
+
+html[data-theme="dark"] .fb-app .pos-card.is-in-cart {
+  background: rgba(160, 107, 72, 0.08);
+  box-shadow:
+    var(--app-shadow-soft),
+    0 0 0 2px var(--brown-400);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .pos-card.is-in-cart {
+    background: rgba(160, 107, 72, 0.08);
+    box-shadow:
+      var(--app-shadow-soft),
+      0 0 0 2px var(--brown-400);
+  }
+}
+
+.fb-app .pos-card.is-disabled {
+  opacity: 0.55;
+}
+
+.fb-app .pos-card__hit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0;
+  align-items: center;
+  width: 100%;
+}
+
+.fb-app .pos-card__main {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 8px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  min-width: 0;
+}
+
+.fb-app .pos-card__main:disabled {
+  cursor: not-allowed;
+}
+
+.fb-app .pos-card__main:focus-visible {
+  outline: 2px solid var(--brown-400);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
+.fb-app .pos-card__thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--cream-100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+html[data-theme="dark"] .fb-app .pos-card__thumb {
+  background: rgba(160, 107, 72, 0.14);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .pos-card__thumb {
+    background: rgba(160, 107, 72, 0.14);
+  }
+}
+
+.fb-app .pos-card__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fb-app .pos-card__thumb-fallback {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--brown-600);
+  font-family: var(--app-font);
+}
+
+html[data-theme="dark"] .fb-app .pos-card__thumb-fallback {
+  color: var(--cream-300);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .pos-card__thumb-fallback {
+    color: var(--cream-300);
+  }
+}
+
+.fb-app .pos-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.fb-app .pos-card__name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--app-text);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.fb-app .pos-card__subtitle {
+  font-size: 0.6875rem;
+  color: var(--app-text-secondary);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fb-app .pos-card__price {
+  margin-top: 2px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fb-app .pos-card__price-amount {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--brown-700);
+  letter-spacing: -0.005em;
+}
+
+html[data-theme="dark"] .fb-app .pos-card__price-amount {
+  color: var(--brown-300);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .pos-card__price-amount {
+    color: var(--brown-300);
+  }
+}
+
+.fb-app .pos-card__price-unit {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--app-text-secondary);
+}
+
+.fb-app .pos-card__price-unset {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--app-danger);
+}
+
+.fb-app .pos-card__action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding-right: 8px;
+}
+
+.fb-app .pos-card__add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 0;
+  font-variant-numeric: tabular-nums;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+  background: var(--app-surface-hover);
+  color: var(--brown-700);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.fb-app .pos-card__add:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+html[data-theme="dark"] .fb-app .pos-card__add {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--cream-300);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .pos-card__add {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--cream-300);
+  }
+}
+
+.fb-app .pos-card:hover .pos-card__add:not(:disabled) {
+  background: var(--brown-800);
+  color: var(--cream-50);
+}
+
+.fb-app .pos-card__qty {
+  display: inline-flex;
+  align-items: center;
+  background: var(--app-surface-hover);
+  border-radius: 999px;
+  padding: 1px;
+}
+
+.fb-app .pos-card__qty button {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: var(--brown-700);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.625rem;
+  transition: background 0.1s;
+}
+
+.fb-app .pos-card__qty button:hover:not(:disabled) {
+  background: var(--app-surface);
+}
+
+.fb-app .pos-card__qty button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+html[data-theme="dark"] .fb-app .pos-card__qty button {
+  color: var(--cream-300);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .pos-card__qty button {
+    color: var(--cream-300);
+  }
+}
+
+.fb-app .pos-card__qty input {
+  width: 32px;
+  height: 26px;
+  text-align: center;
+  border: 0;
+  background: transparent;
+  color: var(--app-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+}
+
+.fb-app .pos-card__qty input::-webkit-outer-spin-button,
+.fb-app .pos-card__qty input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.fb-app .pos-card__qty input:focus {
+  outline: none;
+}
+
+.fb-app .pos-card__main:active:not(:disabled) ~ .pos-card__action .pos-card__add,
+.fb-app .pos-card__qty button:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.fb-app .pos-card--skeleton {
+  cursor: default;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.fb-app .pos-card--skeleton .pos-card__hit {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 8px;
+}
+
+.fb-app .pos-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 32px 16px;
+  background: var(--app-surface);
+  border-radius: 10px;
+  border: 1px dashed var(--app-border-light);
+  color: var(--app-text-secondary);
+  text-align: center;
+}
+
+.fb-app .pos-empty > i {
+  font-size: 1.5rem;
+  color: var(--brown-300);
+}
+
+.fb-app .pos-empty h3 {
+  margin: 0;
+  color: var(--app-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.fb-app .pos-empty p {
+  margin: 0;
+  max-width: 38ch;
+  font-size: 0.8125rem;
+}
+
+/* === Cart panel ============================================ */
+
+.fb-app .pos-cart {
+  position: sticky;
+  top: calc(var(--app-topbar-height) + 12px);
+  display: flex;
+  flex-direction: column;
+  background: var(--app-surface);
+  border: none;
+  border-radius: 12px;
+  box-shadow: var(--app-shadow);
+  max-height: calc(100vh - var(--app-topbar-height) - 24px);
+  overflow: hidden;
+}
+
+@media (max-width: 960px) {
+  .fb-app .pos-cart {
+    position: static;
+    max-height: none;
+  }
+}
+
+.fb-app .pos-cart__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--app-border-light);
+}
+
+.fb-app .pos-cart__head h2 {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--app-text);
+  font-family: var(--app-font);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fb-app .pos-cart__head h2 > i {
+  color: var(--brown-600);
+}
+
+html[data-theme="dark"] .fb-app .pos-cart__head h2 > i {
+  color: var(--brown-300);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .pos-cart__head h2 > i {
+    color: var(--brown-300);
+  }
+}
+
+.fb-app .pos-cart__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--app-surface-hover);
+  color: var(--app-text-secondary);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.fb-app .pos-cart__reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--app-text-secondary);
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: background 0.12s, color 0.12s;
+}
+
+.fb-app .pos-cart__reset:hover {
+  background: var(--app-surface-hover);
+  color: var(--app-text);
+}
+
+.fb-app .pos-cart__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.fb-app .pos-cart__row {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.fb-app .pos-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--app-text-secondary);
+  letter-spacing: 0.02em;
+}
+
+/* Channel + fulfillment pickers ----------------------------- */
+
+.fb-app .pos-pickers {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px;
+  background: var(--app-surface-hover);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.fb-app .pos-pickers--two {
+  grid-template-columns: 1fr 1fr;
+}
+
+.fb-app .pos-picker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  min-width: 0;
+}
+
+.fb-app .pos-picker i {
+  font-size: 0.8125rem;
+}
+
+.fb-app .pos-picker:hover {
+  color: var(--app-text);
+}
+
+.fb-app .pos-picker.is-active {
+  background: var(--app-surface);
+  color: var(--brown-700);
+  box-shadow: var(--app-shadow-soft);
+}
+
+html[data-theme="dark"] .fb-app .pos-picker.is-active {
+  background: var(--brown-700);
+  color: var(--cream-50);
+  box-shadow: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .pos-picker.is-active {
+    background: var(--brown-700);
+    color: var(--cream-50);
+  }
+}
+
+.fb-app .pos-picker--wide span {
+  font-size: 0.75rem;
+}
+
+/* Customer + delivery + money fields ------------------------ */
+
+.fb-app .pos-fields {
+  display: grid;
+  gap: 6px;
+}
+
+.fb-app .pos-fields--customer {
+  grid-template-columns: 1.4fr 1fr;
+}
+
+.fb-app .pos-fields--delivery {
+  grid-template-columns: 1fr;
+}
+
+.fb-app .pos-fields input,
+.fb-app .pos-fields textarea,
+.fb-app .pos-cart select.pos-payment-select,
+.fb-app .pos-money-input input {
+  border: 1px solid var(--app-border-light);
+  border-radius: 8px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 6px 10px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  height: 32px;
+}
+
+.fb-app .pos-fields textarea {
+  resize: vertical;
+  min-height: 52px;
+  height: auto;
+}
+
+.fb-app .pos-fields input:focus,
+.fb-app .pos-fields textarea:focus,
+.fb-app .pos-cart select.pos-payment-select:focus,
+.fb-app .pos-money-input input:focus {
+  border-color: var(--brown-400);
+  box-shadow: 0 0 0 3px rgba(133, 85, 56, 0.12);
+}
+
+.fb-app .pos-fields input::placeholder,
+.fb-app .pos-fields textarea::placeholder,
+.fb-app .pos-money-input input::placeholder {
+  color: var(--app-text-secondary);
+}
+
+.fb-app .pos-input--required {
+  border-color: var(--brown-400) !important;
+  box-shadow: 0 0 0 2px rgba(133, 85, 56, 0.08);
+}
+
+.fb-app .pos-input--required::placeholder {
+  color: var(--brown-700);
+  font-weight: 500;
+}
+
+html[data-theme="dark"] .fb-app .pos-input--required::placeholder {
+  color: var(--brown-300);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .pos-input--required::placeholder {
+    color: var(--brown-300);
+  }
+}
+
+.fb-app .pos-fields input:disabled,
+.fb-app .pos-money-input input:disabled {
+  background: var(--app-surface-hover);
+  color: var(--app-text-secondary);
+  cursor: not-allowed;
+}
+
+/* Line items ------------------------------------------------- */
+
+.fb-app .pos-cart__lines-wrap {
+  margin-top: 2px;
+}
+
+.fb-app .pos-cart__lines {
+  background: var(--app-surface-hover);
+  border-radius: 8px;
+  padding: 2px;
+  min-height: 64px;
+  max-height: 32vh;
+  overflow-y: auto;
+}
+
+html[data-theme="dark"] .fb-app .pos-cart__lines {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .pos-cart__lines {
+    background: rgba(255, 255, 255, 0.03);
+  }
+}
+
+.fb-app .pos-cart__lines ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fb-app .pos-cart__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 18px 12px;
+  text-align: center;
+  color: var(--app-text-secondary);
+}
+
+.fb-app .pos-cart__empty > i {
+  font-size: 1.125rem;
+  color: var(--brown-300);
+}
+
+.fb-app .pos-cart__empty p {
+  margin: 0;
+  font-size: 0.75rem;
+  max-width: 28ch;
+}
+
+.fb-app .pos-line {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 6px;
+  background: var(--app-surface);
+  border-radius: 6px;
+  transition: background 0.12s;
+}
+
+.fb-app .pos-line__thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--cream-100);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: var(--brown-600);
+}
+
+html[data-theme="dark"] .fb-app .pos-line__thumb {
+  background: rgba(160, 107, 72, 0.18);
+  color: var(--cream-300);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .pos-line__thumb {
+    background: rgba(160, 107, 72, 0.18);
+    color: var(--cream-300);
+  }
+}
+
+.fb-app .pos-line__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fb-app .pos-line__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fb-app .pos-line__main strong {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--app-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fb-app .pos-line__main span {
+  font-size: 0.6875rem;
+  color: var(--app-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.fb-app .pos-line__price-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.fb-app .pos-line__price-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--app-text-secondary);
+}
+
+.fb-app .pos-line__price-edit input {
+  width: 72px;
+  padding: 2px 6px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.fb-app .pos-line__price-edit input:focus {
+  outline: 2px solid color-mix(in srgb, var(--app-primary) 35%, transparent);
+  border-color: var(--app-primary);
+}
+
+.fb-app .pos-line__qty {
+  display: inline-flex;
+  align-items: center;
+  background: var(--app-surface-hover);
+  border-radius: 999px;
+  padding: 1px;
+}
+
+.fb-app .pos-line__qty button {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: var(--brown-700);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.625rem;
+  transition: background 0.1s;
+}
+
+.fb-app .pos-line__qty button:hover {
+  background: var(--app-surface);
+}
+
+html[data-theme="dark"] .fb-app .pos-line__qty button {
+  color: var(--cream-300);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .pos-line__qty button {
+    color: var(--cream-300);
+  }
+}
+
+.fb-app .pos-line__qty input {
+  width: 28px;
+  height: 20px;
+  text-align: center;
+  border: 0;
+  background: transparent;
+  color: var(--app-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+}
+
+.fb-app .pos-line__qty input::-webkit-outer-spin-button,
+.fb-app .pos-line__qty input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.fb-app .pos-line__qty input:focus {
+  outline: none;
+}
+
+.fb-app .pos-line__total {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 70px;
+  justify-content: flex-end;
+}
+
+.fb-app .pos-line__total strong {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--app-text);
+}
+
+.fb-app .pos-line__remove {
+  border: 0;
+  background: transparent;
+  color: var(--app-text-secondary);
+  cursor: pointer;
+  font-size: 0.625rem;
+  padding: 0;
+  opacity: 0;
+  transition: color 0.12s, opacity 0.12s;
+}
+
+.fb-app .pos-line:hover .pos-line__remove {
+  opacity: 0.8;
+}
+
+.fb-app .pos-line__remove:hover {
+  color: var(--app-danger);
+  opacity: 1 !important;
+}
+
+/* Footer + totals + CTA -------------------------------------- */
+
+.fb-app .pos-cart__footer {
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--app-border-light);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--app-surface);
+}
+
+.fb-app .pos-money-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.1fr;
+  gap: 6px;
+}
+
+.fb-app .pos-money-input {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.fb-app .pos-money-input__prefix {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--app-text-secondary);
+  pointer-events: none;
+}
+
+.fb-app .pos-money-input input {
+  padding-left: 60px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.fb-app .pos-totals {
+  margin: 4px 0 0;
+  padding-top: 8px;
+  border-top: 1px dashed var(--app-border-light);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.fb-app .pos-totals > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  color: var(--app-text-secondary);
+}
+
+.fb-app .pos-totals dt,
+.fb-app .pos-totals dd {
+  margin: 0;
+}
+
+.fb-app .pos-totals__discount dd {
+  color: var(--app-success);
+}
+
+.fb-app .pos-totals__grand {
+  padding-top: 6px;
+  margin-top: 2px;
+  border-top: 1px solid var(--app-border-light);
+  font-size: 0.875rem;
+  color: var(--app-text);
+  font-weight: 700;
+}
+
+.fb-app .pos-totals__grand dd {
+  font-size: 1rem;
+  color: var(--brown-800);
+  letter-spacing: -0.005em;
+}
+
+html[data-theme="dark"] .fb-app .pos-totals__grand dd {
+  color: var(--brown-200);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .pos-totals__grand dd {
+    color: var(--brown-200);
+  }
+}
+
+.fb-app .pos-place {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(
+    135deg,
+    var(--brown-800) 0%,
+    var(--brown-600) 60%,
+    var(--brown-500) 100%
+  );
+  color: var(--cream-50);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(26, 16, 12, 0.18);
+  transition: transform 0.1s, box-shadow 0.15s, filter 0.15s, opacity 0.15s;
+  height: 38px;
+}
+
+.fb-app .pos-place:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(26, 16, 12, 0.25);
+  filter: brightness(1.04);
+}
+
+.fb-app .pos-place:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.fb-app .pos-place:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  filter: grayscale(0.5);
+  box-shadow: none;
+}
+
+.fb-app .pos-place__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fb-app .pos-place__total {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
+  padding-left: 10px;
+  border-left: 1px solid rgba(250, 248, 244, 0.25);
+}
+
+.fb-app .pos-autoprint-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 0.75rem;
+  color: var(--app-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.fb-app .pos-autoprint-toggle input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--brown-700);
+  cursor: pointer;
+}
+
+/* === Orders list ===========================================
+ * Structural layout (panel/header/toolbar/table/empty) is shared
+ * with the Payments and Inventory pages via the `inventory-*`
+ * class system. The rules below cover orders-only extensions:
+ * filters, In progress/Closed group headings, status & meta pills,
+ * customer cell, and the link variant used inside the table.
+ * ============================================================ */
+
+.fb-app .orders-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fb-app .orders-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.75rem;
+  color: var(--app-text-secondary);
+}
+
+.fb-app .orders-filter select {
+  height: 32px;
+  border: 1px solid var(--app-border-light);
+  border-radius: 8px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  padding: 0 8px;
+  font-size: 0.8125rem;
+}
+
+.fb-app .orders-page-nav {
+  margin: 0 0 0.8rem;
+  padding: 0 16px;
+}
+
+.fb-app .orders-analytics-page {
+  width: 100%;
+}
+
+.fb-app .orders-analytics-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin: 0 16px 0.8rem;
+}
+
+.fb-app .orders-analytics-tile {
+  border: 1px solid var(--app-border-light);
+  border-radius: 14px;
+  background: var(--app-surface);
+  padding: 0.95rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.fb-app .orders-analytics-tile > span {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--app-text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.fb-app .orders-analytics-tile > strong {
+  font-size: 1.2rem;
+  color: var(--app-text);
+}
+
+.fb-app .orders-analytics-tile > small {
+  font-size: 0.75rem;
+  color: var(--app-text-secondary);
+}
+
+.fb-app .orders-analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin: 0 16px;
+}
+
+.fb-app .orders-analytics-card {
+  border: 1px solid var(--app-border-light);
+  border-radius: 14px;
+  background: var(--app-surface);
+  padding: 1rem;
+}
+
+.fb-app .orders-analytics-card h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.fb-app .orders-analytics-card p {
+  margin: 0.2rem 0 0.8rem;
+  font-size: 0.8rem;
+  color: var(--app-text-secondary);
+}
+
+.fb-app .orders-analytics-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.fb-app .orders-analytics-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  font-size: 0.85rem;
+}
+
+.fb-app .orders-analytics-list li strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.fb-app .orders-analytics-pairs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+}
+
+.fb-app .orders-analytics-pairs > div {
+  border: 1px solid var(--app-border-light);
+  border-radius: 10px;
+  background: var(--app-bg);
+  padding: 0.7rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.fb-app .orders-analytics-pairs span {
+  font-size: 0.75rem;
+  color: var(--app-text-secondary);
+}
+
+.fb-app .orders-analytics-pairs strong {
+  font-size: 1.05rem;
+}
+
+@media (max-width: 1050px) {
+  .fb-app .orders-analytics-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .fb-app .orders-analytics-summary,
+  .fb-app .orders-analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fb-app .orders-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fb-app .orders-group__title {
+  margin: 0;
+  padding: 0 16px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--app-text);
+}
+
+.fb-app .orders-table td {
+  vertical-align: middle;
+}
+
+.fb-app .orders-link {
+  color: var(--app-primary);
+  text-decoration: none;
+}
+
+.fb-app .orders-link:hover {
+  text-decoration: underline;
+}
+
+.fb-app .orders-customer {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.fb-app .orders-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--app-surface-hover);
+  border: 1px solid var(--app-border-light);
+  font-size: 0.75rem;
+  color: var(--app-text-secondary);
+  white-space: nowrap;
+}
+
+.fb-app .orders-status-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.fb-app .orders-status-pill--lg {
+  font-size: 0.8125rem;
+  padding: 4px 12px;
+  margin-left: 10px;
+  vertical-align: middle;
+}
+
+.fb-app .orders-status-pill--info {
+  background: rgba(24, 119, 242, 0.14);
+  color: var(--app-primary, #1877f2);
+}
+
+.fb-app .orders-status-pill--ok {
+  background: rgba(34, 197, 94, 0.14);
+  color: #15803d;
+}
+
+.fb-app .orders-status-pill--warn {
+  background: rgba(214, 145, 30, 0.18);
+  color: #b45309;
+}
+
+.fb-app .orders-status-pill--muted {
+  background: rgba(148, 163, 184, 0.18);
+  color: #475569;
+}
+
+html[data-theme="dark"] .fb-app .orders-status-pill--info {
+  background: rgba(96, 165, 250, 0.18);
+  color: #93c5fd;
+}
+
+html[data-theme="dark"] .fb-app .orders-status-pill--ok {
+  background: rgba(69, 189, 98, 0.18);
+  color: #6fdc8c;
+}
+
+html[data-theme="dark"] .fb-app .orders-status-pill--warn {
+  background: rgba(234, 179, 8, 0.2);
+  color: #fcd34d;
+}
+
+html[data-theme="dark"] .fb-app .orders-status-pill--muted {
+  background: rgba(176, 179, 184, 0.16);
+  color: var(--app-text-secondary);
+}
+
+/* === Order detail ========================================== */
+
+.fb-app .orders-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.fb-app .orders-detail__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 16px 0;
+  flex-wrap: wrap;
+}
+
+.fb-app .orders-detail__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  color: var(--app-text-secondary);
+  text-decoration: none;
+}
+
+.fb-app .orders-detail__back:hover {
+  color: var(--app-text);
+}
+
+.fb-app .orders-detail__head .app-title {
+  padding: 0;
+  margin: 4px 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fb-app .orders-detail__head .app-lead {
+  padding: 0;
+  margin: 0;
+}
+
+.fb-app .orders-detail__head-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.fb-app .orders-detail__transitions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.fb-app .orders-detail__transitions--secondary {
+  margin-top: 4px;
+}
+
+.fb-app .orders-workflow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  list-style: none;
+  margin: 0 16px 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border-light);
+}
+
+.fb-app .orders-workflow__step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  color: var(--app-text-secondary);
+  background: var(--app-bg);
+}
+
+.fb-app .orders-workflow__step--done {
+  color: var(--app-text);
+  background: color-mix(in srgb, var(--brown-500, #a06b48) 12%, var(--app-bg));
+}
+
+.fb-app .orders-workflow__step--current {
+  color: var(--app-text);
+  font-weight: 700;
+  background: color-mix(in srgb, var(--brown-500, #a06b48) 22%, var(--app-bg));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brown-500, #a06b48) 35%, transparent);
+}
+
+.fb-app .orders-workflow__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.45;
+}
+
+.fb-app .orders-workflow__step--current .orders-workflow__dot,
+.fb-app .orders-workflow__step--done .orders-workflow__dot {
+  opacity: 1;
+}
+
+.fb-app .orders-danger {
+  color: var(--app-danger);
+}
+
+.fb-app .orders-detail__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: 16px;
+  padding: 0 16px 16px;
+}
+
+@media (max-width: 960px) {
+  .fb-app .orders-detail__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.fb-app .orders-detail__main,
+.fb-app .orders-detail__side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.fb-app .orders-detail__card {
+  background: var(--app-surface);
+  border: none;
+  border-radius: 12px;
+  padding: var(--space-card);
+  box-shadow: var(--app-shadow-soft);
+}
+
+.fb-app .orders-detail__card h3 {
+  margin: 0 0 10px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--app-text);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fb-app .orders-detail__card h3 > i {
+  color: var(--brown-600);
+  font-size: 0.875rem;
+}
+
+html[data-theme="dark"] .fb-app .orders-detail__card h3 > i {
+  color: var(--brown-300);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .orders-detail__card h3 > i {
+    color: var(--brown-300);
+  }
+}
+
+.fb-app .orders-detail__hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--app-text-secondary);
+}
+
+/* --- M-PESA payment status pill --- */
+
+.fb-app .orders-mpesa-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.fb-app .orders-mpesa-pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.fb-app .orders-mpesa-pill--success {
+  background: rgba(34, 134, 58, 0.12);
+  color: var(--app-success);
+  border-color: rgba(34, 134, 58, 0.25);
+}
+
+.fb-app .orders-mpesa-pill--pending {
+  background: rgba(177, 119, 17, 0.12);
+  color: #b17711;
+  border-color: rgba(177, 119, 17, 0.3);
+  animation: orders-mpesa-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes orders-mpesa-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.fb-app .orders-mpesa-pill--cancelled,
+.fb-app .orders-mpesa-pill--failed {
+  background: rgba(180, 50, 50, 0.1);
+  color: var(--app-danger);
+  border-color: rgba(180, 50, 50, 0.25);
+}
+
+/* --- Detail-page action buttons --- */
+
+.fb-app .orders-action-btn {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border: 1px solid var(--app-border-light);
+  background: var(--app-surface);
+  color: var(--app-text);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s;
+}
+
+.fb-app .orders-action-btn:hover:not(:disabled) {
+  background: var(--app-surface-hover);
+}
+
+.fb-app .orders-action-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.fb-app .orders-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.fb-app .orders-action-btn--primary {
+  background: var(--brown-800);
+  border-color: var(--brown-800);
+  color: var(--cream-50);
+}
+
+.fb-app .orders-action-btn--primary:hover:not(:disabled) {
+  background: var(--brown-700);
+  border-color: var(--brown-700);
+}
+
+html[data-theme="dark"] .fb-app .orders-action-btn--primary {
+  background: var(--brown-500);
+  border-color: var(--brown-500);
+  color: var(--brown-950);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .orders-action-btn--primary {
+    background: var(--brown-500);
+    border-color: var(--brown-500);
+    color: var(--brown-950);
+  }
+}
+
+.fb-app .orders-detail__items {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.fb-app .orders-detail__items th,
+.fb-app .orders-detail__items td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--app-border-light);
+  vertical-align: top;
+}
+
+.fb-app .orders-detail__items th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--app-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fb-app .orders-detail__items th:nth-child(2),
+.fb-app .orders-detail__items td:nth-child(2),
+.fb-app .orders-detail__items th:nth-child(3),
+.fb-app .orders-detail__items td:nth-child(3),
+.fb-app .orders-detail__items th:nth-child(4),
+.fb-app .orders-detail__items td:nth-child(4) {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.fb-app .orders-detail__items tfoot td {
+  border-bottom: 0;
+}
+
+.fb-app .orders-detail__items-grand td {
+  border-top: 1px solid var(--app-border-light);
+  font-size: 1rem;
+}
+
+.fb-app .orders-detail__defs {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 12px;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.fb-app .orders-detail__defs dt {
+  font-weight: 500;
+  color: var(--app-text-secondary);
+}
+
+.fb-app .orders-detail__defs dd {
+  margin: 0;
+  color: var(--app-text);
+  word-break: break-word;
+}
+
+.fb-app .orders-detail__mpesa-item .orders-detail__mpesa-edit-row {
+  margin-bottom: 2px;
+}
+
+.fb-app .orders-detail__mpesa-item .orders-detail__mpesa-edit-row:first-child {
+  grid-column: 1 / span 2;
+}
+
+.fb-app .orders-detail__mpesa-edit-btn {
+  margin-left: auto;
+}
+
+.fb-app .orders-timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+}
+
+.fb-app .orders-timeline::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: var(--app-border-light);
+}
+
+.fb-app .orders-timeline li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  position: relative;
+}
+
+.fb-app .orders-timeline__dot {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  border-radius: 50%;
+  background: var(--app-primary);
+  border: 3px solid var(--app-surface);
+  box-shadow: 0 0 0 1px var(--app-border-light);
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.fb-app .orders-timeline__body {
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.fb-app .orders-timeline__time {
+  font-size: 0.75rem;
+  margin-top: 2px;
+}
+
+.fb-app .orders-confirm-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fb-app .orders-confirm-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  color: var(--app-text-secondary);
+}
+
+.fb-app .orders-confirm-list li.is-done {
+  color: var(--app-text);
+  font-weight: 600;
+}
+
+.fb-app .orders-confirm-list li.is-pending i {
+  color: var(--app-text-secondary);
+}
+
+.fb-app .orders-confirm-list li.is-done i {
+  color: var(--app-success, #15803d);
+}
+
+.fb-app .orders-receipt-print {
+  display: none;
+}
+
+.fb-app .orders-receipt-print__head {
+  margin-bottom: 12px;
+}
+
+.fb-app .orders-receipt-print__head h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.fb-app .orders-receipt-print__head p {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  color: var(--app-text-secondary);
+}
+
+.fb-app .orders-receipt-print__meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  margin: 0 0 14px;
+  font-size: 0.85rem;
+}
+
+.fb-app .orders-receipt-print__meta dt {
+  color: var(--app-text-secondary);
+  margin: 0;
+}
+
+.fb-app .orders-receipt-print__meta dd {
+  margin: 2px 0 0;
+  color: var(--app-text);
+  font-weight: 600;
+}
+
+.fb-app .orders-receipt-print__items {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.fb-app .orders-receipt-print__items th,
+.fb-app .orders-receipt-print__items td {
+  padding: 6px 4px;
+  border-bottom: 1px solid #ddd;
+}
+
+.fb-app .orders-receipt-print__items th:nth-child(n + 2),
+.fb-app .orders-receipt-print__items td:nth-child(n + 2) {
+  text-align: right;
+}
+
+.fb-app .orders-receipt-print__grand td {
+  font-weight: 700;
+  border-top: 1px solid #111;
+}
+
+@media print {
+  .fb-app .orders-detail > :not(.orders-receipt-print) {
+    display: none !important;
+  }
+
+  .fb-app .orders-receipt-print {
+    display: block;
+    color: #111;
+    background: #fff;
+    border: 0;
+    margin: 0;
+    padding: 0 4mm;
+  }
+}

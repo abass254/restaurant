@@ -1,0 +1,69 @@
+from fastapi import APIRouter
+
+from app.api.v1 import (
+    admin,
+    ai_agent,
+    auth,
+    auto_reply,
+    channels,
+    conversation_starters,
+    feeds,
+    google_maps,
+    integrations,
+    inventory,
+    kra,
+    mapbox,
+    messages,
+    messaging_settings,
+    mpesa,
+    nav_counts,
+    notifications,
+    onboarding,
+    order_payment,
+    orders,
+    platform,
+    products,
+    registration,
+    rider_deliveries,
+    riders,
+    settings,
+    staff,
+    store_status,
+    storefront,
+    tickets,
+    meta,
+)
+
+router = APIRouter(prefix="/api/v1")
+
+router.include_router(registration.router)
+router.include_router(auth.router)
+router.include_router(settings.router)
+router.include_router(channels.router)
+router.include_router(onboarding.router)
+router.include_router(messages.router)
+router.include_router(nav_counts.router)
+router.include_router(notifications.router)
+router.include_router(tickets.router)
+router.include_router(conversation_starters.router)
+router.include_router(feeds.router)
+router.include_router(auto_reply.router)
+router.include_router(mpesa.router)
+router.include_router(kra.router)
+router.include_router(google_maps.router)
+router.include_router(ai_agent.router)
+router.include_router(mapbox.router)
+router.include_router(messaging_settings.router)
+router.include_router(platform.router)
+router.include_router(products.router)
+router.include_router(inventory.router)
+router.include_router(orders.router)
+router.include_router(order_payment.router)
+router.include_router(integrations.router)
+router.include_router(riders.router)
+router.include_router(rider_deliveries.router)
+router.include_router(store_status.router)
+router.include_router(storefront.router)
+router.include_router(staff.router)
+router.include_router(admin.router)
+router.include_router(meta.router)

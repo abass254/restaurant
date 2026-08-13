@@ -1,0 +1,77 @@
+{
+  "expo": {
+    "name": "DukAI Rider",
+    "slug": "rider-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "dukai-rider",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#3D4732",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#3D4732"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow DukAI Rider to access your photos for your profile picture.",
+          "cameraPermission": "Allow DukAI Rider to use the camera for your profile picture."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow DukAI Rider to scan product barcodes during pickup and delivery.",
+          "microphonePermission": "Allow DukAI Rider to access the microphone if needed for the camera.",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
+        }
+      ],
+      "expo-audio",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#3D4732",
+          "sounds": [
+            "./assets/sounds/offer.wav",
+            "./assets/sounds/milestone.wav",
+            "./assets/sounds/success.wav"
+          ],
+          "defaultChannel": "offers"
+        }
+      ]
+    ],
+    "notification": {
+      "icon": "./assets/images/icon.png",
+      "color": "#3D4732",
+      "iosDisplayInForeground": true
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

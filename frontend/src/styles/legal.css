@@ -1,0 +1,697 @@
+/* Privacy policy — landing-ufanisi brand */
+.landing-ufanisi.legal-ufanisi {
+  min-height: 100vh;
+  background: var(--uf-bg-light);
+  /* Parent .landing-ufanisi sets overflow-x: hidden, which forces overflow-y: auto
+     and breaks position: sticky for the table of contents. */
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
+.landing-ufanisi .legal-nav {
+  position: sticky;
+  top: 0;
+}
+
+.landing-ufanisi .legal-nav__links {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.landing-ufanisi .legal-nav__links a {
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: var(--uf-text-dark);
+  transition: color 0.2s;
+}
+
+.landing-ufanisi .legal-nav__links a:hover {
+  color: var(--uf-primary);
+}
+
+/* Hero */
+.landing-ufanisi .legal-hero {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2rem;
+  align-items: center;
+  padding: clamp(3rem, 8vw, 5rem) 5% clamp(2.5rem, 5vw, 4rem);
+  background: linear-gradient(135deg, var(--uf-primary-dark) 0%, var(--uf-primary) 50%, #8c3e1a 100%);
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+}
+
+.landing-ufanisi .legal-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 50% 60% at 100% 0%, rgba(200, 184, 152, 0.2), transparent 55%),
+    radial-gradient(ellipse 40% 50% at 0% 100%, rgba(255, 255, 255, 0.06), transparent 50%);
+  pointer-events: none;
+}
+
+.landing-ufanisi .legal-hero__inner {
+  position: relative;
+  z-index: 1;
+  max-width: 640px;
+}
+
+.landing-ufanisi .legal-hero .section-tag {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--uf-secondary);
+  border: 1px solid rgba(200, 184, 152, 0.35);
+}
+
+.landing-ufanisi .legal-hero h1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 800;
+  line-height: 1.1;
+  margin: 0.75rem 0;
+  color: #fff;
+}
+
+.landing-ufanisi .legal-hero > .legal-hero__inner > p {
+  font-size: 1.05rem;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.88);
+  max-width: 520px;
+}
+
+.landing-ufanisi .legal-hero__date {
+  margin-top: 1rem !important;
+  font-size: 0.85rem !important;
+  color: var(--uf-secondary) !important;
+  font-weight: 600;
+}
+
+.landing-ufanisi .legal-hero__visual {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.landing-ufanisi .legal-shield {
+  width: 120px;
+  height: 120px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 2px solid rgba(200, 184, 152, 0.4);
+  border-radius: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+  color: var(--uf-secondary);
+  animation: legal-shield-pulse 3s ease-in-out infinite;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes legal-shield-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 24px 48px rgba(200, 184, 152, 0.25);
+  }
+}
+
+/* Body layout */
+.landing-ufanisi .legal-body {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 3rem;
+  width: 100%;
+  padding: 3rem 5% 4rem;
+}
+
+.landing-ufanisi .legal-toc {
+  position: sticky;
+  top: 100px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+}
+
+.landing-ufanisi .legal-toc__title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--uf-primary);
+  margin-bottom: 1rem;
+}
+
+.landing-ufanisi .legal-toc ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.landing-ufanisi .legal-toc a {
+  display: block;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+  color: var(--uf-text-light);
+  border-radius: 8px;
+  border-left: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.landing-ufanisi .legal-toc a:hover {
+  color: var(--uf-primary);
+  background: rgba(107, 46, 20, 0.06);
+  border-left-color: var(--uf-primary);
+}
+
+.landing-ufanisi .legal-content-wrap {
+  min-width: 0;
+}
+
+.landing-ufanisi .legal-body--solo {
+  grid-template-columns: 1fr;
+}
+
+.landing-ufanisi .legal-content-wrap--solo {
+  width: 100%;
+}
+
+.landing-ufanisi .legal-content {
+  background: var(--uf-card-bg);
+  border: 1px solid var(--uf-card-border);
+  border-radius: 24px;
+  padding: clamp(1.75rem, 4vw, 2.75rem);
+  box-shadow: var(--uf-card-shadow);
+  font-size: 1rem;
+  line-height: 1.75;
+  color: var(--uf-text-dark);
+}
+
+.landing-ufanisi .legal-lead {
+  font-size: 1.05rem;
+  color: var(--uf-text-light);
+  padding-bottom: 1.5rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(200, 184, 152, 0.4);
+}
+
+.landing-ufanisi .legal-content > p {
+  margin-bottom: 1rem;
+  color: var(--uf-text-dark);
+}
+
+.landing-ufanisi .legal-content h2 {
+  font-size: clamp(1.25rem, 2.5vw, 1.5rem);
+  font-weight: 700;
+  color: var(--uf-primary-dark);
+  margin: 2.5rem 0 0.75rem;
+  padding-top: 0.5rem;
+  scroll-margin-top: 100px;
+}
+
+.landing-ufanisi .legal-content h2:first-of-type {
+  margin-top: 0;
+}
+
+.landing-ufanisi .legal-content h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--uf-primary);
+  margin: 1.25rem 0 0.5rem;
+}
+
+.landing-ufanisi .legal-content ul {
+  margin: 0 0 1rem 1.25rem;
+  padding: 0;
+}
+
+.landing-ufanisi .legal-content ol {
+  margin: 0 0 1rem 1.25rem;
+  padding: 0 0 0 1.25rem;
+}
+
+.landing-ufanisi .legal-content li {
+  margin-bottom: 0.5rem;
+  color: var(--uf-text-dark);
+}
+
+.landing-ufanisi .legal-content li::marker {
+  color: var(--uf-primary);
+}
+
+.landing-ufanisi .legal-content a {
+  color: var(--uf-primary);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.2s;
+}
+
+.landing-ufanisi .legal-content a:hover {
+  color: var(--uf-primary-light);
+}
+
+.landing-ufanisi .legal-content strong {
+  color: var(--uf-primary-dark);
+}
+
+/* Footer */
+.landing-ufanisi .legal-site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 2rem 5%;
+  background: var(--uf-brand-dark);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
+}
+
+.landing-ufanisi .legal-site-footer__links {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.landing-ufanisi .legal-site-footer a {
+  color: var(--uf-secondary);
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.landing-ufanisi .legal-site-footer a:hover {
+  color: #fff;
+}
+
+@media (max-width: 900px) {
+  .landing-ufanisi .legal-hero {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .landing-ufanisi .legal-hero > .legal-hero__inner > p {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .landing-ufanisi .legal-hero__visual {
+    display: none;
+  }
+
+  .landing-ufanisi .legal-body {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .landing-ufanisi .legal-toc {
+    position: static;
+    background: var(--uf-card-bg);
+    border: 1px solid var(--uf-card-border);
+    border-radius: 16px;
+    padding: 1rem 1.25rem;
+  }
+
+  .landing-ufanisi .legal-toc ul {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .landing-ufanisi .legal-toc a {
+    border-left: none;
+    background: var(--uf-bg-light);
+    padding: 0.35rem 0.65rem;
+    font-size: 0.78rem;
+  }
+
+  .landing-ufanisi .legal-site-footer {
+    flex-direction: column;
+    text-align: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-ufanisi .legal-shield {
+    animation: none;
+  }
+}
+
+/* How it works page */
+.landing-ufanisi .how-it-works-hero {
+  background: linear-gradient(135deg, #51230f 0%, var(--uf-primary-dark) 40%, var(--uf-primary) 100%);
+}
+
+.landing-ufanisi .how-flow {
+  display: grid;
+  gap: 1rem;
+}
+
+.landing-ufanisi .how-step {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1rem;
+  align-items: start;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(107, 46, 20, 0.15);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fff 0%, #fff9f5 100%);
+}
+
+.landing-ufanisi .how-step__index {
+  min-width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--uf-primary-dark);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.landing-ufanisi .how-step__content h2 {
+  margin: 0;
+  padding-top: 0;
+  font-size: clamp(1.05rem, 2.2vw, 1.2rem);
+  color: var(--uf-primary-dark);
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.landing-ufanisi .how-step__content h2 i {
+  color: var(--uf-primary);
+  font-size: 0.95rem;
+}
+
+.landing-ufanisi .how-step__content p {
+  margin: 0.45rem 0 0;
+  color: var(--uf-text-light);
+}
+
+.landing-ufanisi .how-outcomes {
+  margin-top: 1.75rem;
+  padding: 1rem 1.1rem;
+  border-radius: 14px;
+  background: rgba(107, 46, 20, 0.06);
+  border: 1px solid rgba(107, 46, 20, 0.12);
+}
+
+.landing-ufanisi .how-outcomes h2 {
+  margin: 0 0 0.75rem;
+  padding-top: 0;
+}
+
+.landing-ufanisi .how-cta-note {
+  margin: 0.75rem 0 0;
+  color: var(--uf-primary-dark);
+  font-weight: 500;
+}
+
+.landing-ufanisi .how-before-after {
+  margin-top: 1.6rem;
+}
+
+.landing-ufanisi .how-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.landing-ufanisi .how-compare-card {
+  border: 1px solid rgba(107, 46, 20, 0.14);
+  border-radius: 14px;
+  background: #fff;
+  padding: 0.9rem 1rem;
+}
+
+.landing-ufanisi .how-compare-card h3 {
+  margin: 0 0 0.7rem;
+}
+
+.landing-ufanisi .how-compare-row {
+  border-left: 3px solid #b28978;
+  background: #fcf8f5;
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+}
+
+.landing-ufanisi .how-compare-row + .how-compare-row {
+  margin-top: 0.5rem;
+}
+
+.landing-ufanisi .how-compare-row.is-after {
+  border-left-color: var(--uf-primary);
+  background: #f6efea;
+}
+
+.landing-ufanisi .how-compare-label {
+  margin: 0 0 0.22rem;
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+  color: var(--uf-primary-dark);
+  text-transform: uppercase;
+}
+
+.landing-ufanisi .how-compare-row p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.landing-ufanisi .how-embed {
+  margin-top: 1.75rem;
+}
+
+.landing-ufanisi .how-embed > h2 {
+  margin: 0 0 0.4rem;
+  padding-top: 0;
+}
+
+.landing-ufanisi .how-embed > p {
+  margin: 0 0 0.9rem;
+  color: var(--uf-text-light);
+}
+
+.landing-ufanisi .how-embed-frame {
+  border: 1px solid rgba(107, 46, 20, 0.16);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.landing-ufanisi .how-embed-frame iframe {
+  width: 100%;
+  min-height: 620px;
+  border: 0;
+  display: block;
+}
+
+@media (max-width: 700px) {
+  .landing-ufanisi .how-step {
+    grid-template-columns: 1fr;
+    gap: 0.7rem;
+  }
+
+  .landing-ufanisi .how-step__index {
+    width: 40px;
+    height: 40px;
+  }
+
+  .landing-ufanisi .how-compare-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-ufanisi .how-embed-frame iframe {
+    min-height: 420px;
+  }
+}
+
+@media print {
+  .landing-ufanisi .legal-nav,
+  .landing-ufanisi .legal-site-footer {
+    display: none !important;
+  }
+
+  .landing-ufanisi .legal-hero {
+    padding: 1.5rem 0 1rem !important;
+    color: #111 !important;
+    background: #fff !important;
+  }
+
+  .landing-ufanisi .legal-hero::before,
+  .landing-ufanisi .legal-hero__visual {
+    display: none !important;
+  }
+
+  .landing-ufanisi .legal-hero h1,
+  .landing-ufanisi .legal-hero > .legal-hero__inner > p,
+  .landing-ufanisi .legal-hero__date {
+    color: #111 !important;
+  }
+
+  .landing-ufanisi .legal-body {
+    padding: 0 !important;
+  }
+
+  .landing-ufanisi .legal-content {
+    border: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+  }
+
+  .landing-ufanisi .how-step,
+  .landing-ufanisi .how-outcomes,
+  .landing-ufanisi .how-compare-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    background: #fff !important;
+  }
+
+  .landing-ufanisi .how-embed {
+    display: none !important;
+  }
+}
+
+/* —— PWA install / download page —— */
+.landing-ufanisi .install-page {
+  padding-top: 2.5rem;
+  padding-bottom: 3rem;
+}
+
+.landing-ufanisi .install-pwa {
+  max-width: 32rem;
+  margin: 0 auto;
+  text-align: center;
+  padding: 2rem 1.5rem 2.5rem;
+  border-radius: 1.25rem;
+  background: var(--uf-surface, #fff);
+  border: 1px solid color-mix(in srgb, var(--uf-ink, #1a1410) 10%, transparent);
+  box-shadow: 0 12px 40px color-mix(in srgb, var(--uf-ink, #1a1410) 8%, transparent);
+}
+
+.landing-ufanisi .install-pwa__icon {
+  width: 5.5rem;
+  height: 5.5rem;
+  margin: 0 auto 1.25rem;
+  border-radius: 1.25rem;
+  overflow: hidden;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--uf-ink, #1a1410) 18%, transparent);
+}
+
+.landing-ufanisi .install-pwa__icon img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.landing-ufanisi .install-pwa h1 {
+  font-size: clamp(1.5rem, 4vw, 1.85rem);
+  margin: 0 0 0.65rem;
+  letter-spacing: -0.02em;
+}
+
+.landing-ufanisi .install-pwa__lead {
+  margin: 0 0 1.5rem;
+  color: color-mix(in srgb, var(--uf-ink, #1a1410) 72%, transparent);
+  line-height: 1.55;
+  font-size: 0.98rem;
+}
+
+.landing-ufanisi .install-pwa__primary {
+  width: 100%;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.landing-ufanisi .install-pwa__primary i {
+  font-size: 0.95rem;
+}
+
+.landing-ufanisi .install-pwa__steps {
+  text-align: left;
+  margin: 0 0 1.25rem;
+  padding: 1rem 1.1rem;
+  border-radius: 0.85rem;
+  background: color-mix(in srgb, var(--uf-accent, #c45c26) 8%, transparent);
+}
+
+.landing-ufanisi .install-pwa__steps h2 {
+  font-size: 1rem;
+  margin: 0 0 0.65rem;
+}
+
+.landing-ufanisi .install-pwa__steps ol {
+  margin: 0;
+  padding-left: 1.2rem;
+  line-height: 1.55;
+  color: color-mix(in srgb, var(--uf-ink, #1a1410) 78%, transparent);
+}
+
+.landing-ufanisi .install-pwa__steps li + li {
+  margin-top: 0.4rem;
+}
+
+.landing-ufanisi .install-pwa__status {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  text-align: left;
+  margin: 0 0 1.25rem;
+  padding: 0.9rem 1rem;
+  border-radius: 0.85rem;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.landing-ufanisi .install-pwa__status--ok {
+  background: color-mix(in srgb, #1a7f4b 12%, transparent);
+  color: #145c37;
+}
+
+.landing-ufanisi .install-pwa__status i {
+  margin-top: 0.15rem;
+}
+
+.landing-ufanisi .install-pwa__hint {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: color-mix(in srgb, var(--uf-ink, #1a1410) 70%, transparent);
+}
+
+.landing-ufanisi .install-pwa__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+}
+
+.landing-ufanisi .install-pwa__actions .cta-btn {
+  gap: 0.4rem;
+}
+
+.landing-ufanisi .install-pwa__share {
+  margin: 0;
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--uf-ink, #1a1410) 60%, transparent);
+}
+
+.landing-ufanisi .install-pwa__share code {
+  font-size: 0.9em;
+  padding: 0.12em 0.4em;
+  border-radius: 0.35em;
+  background: color-mix(in srgb, var(--uf-ink, #1a1410) 6%, transparent);
+}

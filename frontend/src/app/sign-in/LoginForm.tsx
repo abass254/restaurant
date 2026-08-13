@@ -1,0 +1,423 @@
+"use client";
+
+import Link from "next/link";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { AuthSubmitButton } from "@/components/auth/AuthSubmitButton";
+import { apiFetch, ApiError, resetCsrfCookie } from "@/lib/api";
+import { apiRoutes } from "@/lib/config";
+import { loginFormAction, verifyLoginCodeAction } from "./actions";
+import PasswordField from "./PasswordField";
+
+type Mode = "otp" | "password";
+type OtpStep = "request" | "verify";
+
+type OtpRequestResult = {
+  message: string;
+  expires_in_seconds: number;
+  login_code: string | null;
+  phone_masked: string | null;
+  email_masked: string | null;
+  channel: "email" | "phone" | string;
+  code_sent: boolean;
+  identifier?: string;
+};
+
+type Props = {
+  statusMessage?: string | null;
+  statusOk?: boolean;
+  nextPath?: string | null;
+};
+
+const OTP_LENGTH = 4;
+
+export default function LoginForm({
+  statusMessage,
+  statusOk = false,
+  nextPath = null,
+}: Props) {
+  const [mode, setMode] = useState<Mode>("otp");
+  const [otpStep, setOtpStep] = useState<OtpStep>("request");
+  const [identifier, setIdentifier] = useState("");
+  const [digits, setDigits] = useState<string[]>(Array(OTP_LENGTH).fill(""));
+  const [busy, setBusy] = useState(false);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [error, setError] = useState<string | null>(
+    statusOk ? null : statusMessage ?? null,
+  );
+  const [info, setInfo] = useState<string | null>(
+    statusOk ? statusMessage ?? null : null,
+  );
+  const [devCode, setDevCode] = useState<string | null>(null);
+  const [maskedTarget, setMaskedTarget] = useState<string | null>(null);
+  const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ google: boolean }>(apiRoutes.signupOptions)
+      .then((opts) => {
+        if (!cancelled) setGoogleEnabled(Boolean(opts.google));
+      })
+      .catch(() => {
+        if (!cancelled) setGoogleEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!statusMessage) return;
+    if (statusOk) {
+      setInfo(statusMessage);
+      setError(null);
+    } else {
+      setError(statusMessage);
+    }
+  }, [statusMessage, statusOk]);
+
+  const code = useMemo(() => digits.join(""), [digits]);
+  const googleNext = nextPath || "/dashboard";
+
+  function switchToPassword() {
+    setMode("password");
+    setOtpStep("request");
+    setError(null);
+    setInfo(null);
+    setDevCode(null);
+  }
+
+  function switchToOtp() {
+    setMode("otp");
+    setOtpStep("request");
+    setError(null);
+    setInfo(null);
+    setDevCode(null);
+    setDigits(Array(OTP_LENGTH).fill(""));
+  }
+
+  async function requestCode(e?: FormEvent) {
+    e?.preventDefault();
+    const value = identifier.trim();
+    if (!value) {
+      setError("Enter your email or phone number to continue.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setInfo(null);
+    setDevCode(null);
+    try {
+      resetCsrfCookie();
+      const res = await apiFetch<OtpRequestResult>(apiRoutes.requestLoginCode, {
+        method: "POST",
+        body: JSON.stringify({ identifier: value }),
+      });
+      setMaskedTarget(res.email_masked || res.phone_masked || value);
+      setInfo(res.message);
+      if (res.login_code) {
+        setDevCode(res.login_code);
+      }
+      setOtpStep("verify");
+      setDigits(Array(OTP_LENGTH).fill(""));
+      setTimeout(() => inputsRef.current[0]?.focus(), 50);
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Could not send a login code. Please try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verifyCode(e?: FormEvent) {
+    e?.preventDefault();
+    if (code.length !== OTP_LENGTH) {
+      setError("Enter the 4-digit code.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.set("identifier", identifier.trim());
+      formData.set("code", code);
+      if (nextPath) formData.set("next", nextPath);
+      const result = await verifyLoginCodeAction(formData);
+      if (result && result.ok === false) {
+        setError(result.message);
+      }
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Could not verify the code. Please try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function onDigitChange(index: number, value: string) {
+    const clean = value.replace(/\D/g, "").slice(-1);
+    const next = [...digits];
+    next[index] = clean;
+    setDigits(next);
+    if (clean && index < OTP_LENGTH - 1) {
+      inputsRef.current[index + 1]?.focus();
+    }
+  }
+
+  function onDigitKeyDown(index: number, key: string) {
+    if (key === "Backspace" && !digits[index] && index > 0) {
+      inputsRef.current[index - 1]?.focus();
+    }
+  }
+
+  function onDigitPaste(text: string) {
+    const chars = text.replace(/\D/g, "").slice(0, OTP_LENGTH).split("");
+    if (!chars.length) return;
+    const next = Array(OTP_LENGTH).fill("");
+    chars.forEach((ch, i) => {
+      next[i] = ch;
+    });
+    setDigits(next);
+    const focusAt = Math.min(chars.length, OTP_LENGTH - 1);
+    inputsRef.current[focusAt]?.focus();
+  }
+
+  if (mode === "otp" && otpStep === "verify") {
+    return (
+      <AuthShell>
+        <div className="auth-otp">
+          <button
+            type="button"
+            className="auth-split__back"
+            onClick={() => {
+              setOtpStep("request");
+              setDigits(Array(OTP_LENGTH).fill(""));
+              setError(null);
+              setDevCode(null);
+            }}
+            aria-label="Back"
+          >
+            ←
+          </button>
+          <h1 className="auth-split__title">Sign in to your dashboard</h1>
+          <p className="auth-split__subtitle">
+            Enter 4 Digit Code sent to
+            <br />
+            <strong>{maskedTarget || identifier}</strong>
+          </p>
+
+          <form className="auth-otp__form" onSubmit={(e) => void verifyCode(e)}>
+            <div className="auth-otp-grid" role="group" aria-label="One-time code">
+              {digits.map((digit, index) => (
+                <input
+                  key={index}
+                  ref={(el) => {
+                    inputsRef.current[index] = el;
+                  }}
+                  className="auth-otp-input"
+                  inputMode="numeric"
+                  autoComplete={index === 0 ? "one-time-code" : "off"}
+                  maxLength={1}
+                  value={digit}
+                  onChange={(e) => onDigitChange(index, e.target.value)}
+                  onKeyDown={(e) => onDigitKeyDown(index, e.key)}
+                  onPaste={(e) => {
+                    e.preventDefault();
+                    onDigitPaste(e.clipboardData.getData("text"));
+                  }}
+                  aria-label={`Digit ${index + 1}`}
+                />
+              ))}
+            </div>
+
+            {error ? (
+              <p role="alert" className="auth-otp__error">
+                {error}
+              </p>
+            ) : null}
+            {devCode ? (
+              <p className="auth-otp__hint">
+                Code: <strong>{devCode}</strong>
+              </p>
+            ) : null}
+
+            <button
+              type="submit"
+              className="auth-split__btn"
+              disabled={busy || code.length !== OTP_LENGTH}
+              aria-busy={busy}
+            >
+              {busy ? "Verifying…" : "Verify"}
+            </button>
+          </form>
+
+          <button
+            type="button"
+            className="auth-otp__resend"
+            onClick={() => void requestCode()}
+            disabled={busy}
+          >
+            Resend Code
+          </button>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  if (mode === "password") {
+    return (
+      <AuthShell>
+        <h1 className="auth-split__title">Sign in to your dashboard</h1>
+        <p className="auth-split__subtitle">
+          Enter your email address and password to continue
+        </p>
+
+        {error ? (
+          <p
+            role="alert"
+            className={`auth-split__alert ${
+              statusOk ? "auth-split__alert--ok" : "auth-split__alert--error"
+            }`}
+          >
+            {error}
+          </p>
+        ) : null}
+
+        {googleEnabled ? (
+          <>
+            <a
+              href={apiRoutes.googleAuth(googleNext)}
+              className="auth-split__google"
+              data-no-nav-loading
+            >
+              <i className="fab fa-google" aria-hidden="true" />
+              Continue with Google
+            </a>
+            <p className="auth-split__divider">
+              <span>or</span>
+            </p>
+          </>
+        ) : null}
+
+        <form className="auth-split__form" action={loginFormAction}>
+          {nextPath ? <input type="hidden" name="next" value={nextPath} /> : null}
+          <div className="auth-split__field">
+            <label htmlFor="login-email" className="sr-only">
+              Email
+            </label>
+            <input
+              id="login-email"
+              name="email"
+              type="email"
+              required
+              autoComplete="email"
+              inputMode="email"
+              placeholder="Email"
+              className="auth-split__input"
+              defaultValue={identifier.includes("@") ? identifier : ""}
+            />
+          </div>
+
+          <PasswordField label={null} placeholder="Password" />
+
+          <AuthSubmitButton className="auth-split__btn">Sign In</AuthSubmitButton>
+        </form>
+
+        <Link href="/forgot-password" className="auth-split__link auth-split__link--end">
+          Forgot password?
+        </Link>
+
+        <p className="auth-split__footer">
+          <button
+            type="button"
+            onClick={switchToOtp}
+            style={{
+              border: "none",
+              background: "transparent",
+              color: "var(--auth-accent, #1877f2)",
+              font: "inherit",
+              fontWeight: 650,
+              cursor: "pointer",
+              padding: 0,
+            }}
+          >
+            Use OTP instead
+          </button>
+        </p>
+
+        <p className="auth-split__footer">
+          Don&apos;t have an account yet? <Link href="/signup">Register Now.</Link>
+        </p>
+      </AuthShell>
+    );
+  }
+
+  return (
+    <AuthShell>
+      <h1 className="auth-split__title">Sign in to your dashboard</h1>
+      <p className="auth-split__subtitle">
+        Enter your Email address or Mobile Number to continue
+      </p>
+
+      {error ? (
+        <p role="alert" className="auth-split__alert auth-split__alert--error">
+          {error}
+        </p>
+      ) : null}
+      {info && !error ? (
+        <p className="auth-split__alert auth-split__alert--ok">{info}</p>
+      ) : null}
+
+      <form className="auth-split__form" onSubmit={(e) => void requestCode(e)}>
+        <div className="auth-split__field">
+          <label htmlFor="login-identifier" className="sr-only">
+            Email or phone
+          </label>
+          <input
+            id="login-identifier"
+            type="text"
+            required
+            autoComplete="username"
+            placeholder="Email/Phone Number"
+            className="auth-split__input"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+          />
+        </div>
+
+        <button
+          type="submit"
+          className="auth-split__btn"
+          disabled={busy}
+          aria-busy={busy}
+        >
+          {busy ? "Sending…" : "Sign In"}
+        </button>
+      </form>
+
+      <button
+        type="button"
+        className="auth-split__link auth-split__link--end"
+        onClick={switchToPassword}
+        style={{
+          border: "none",
+          background: "transparent",
+          cursor: "pointer",
+          font: "inherit",
+        }}
+      >
+        Use password instead
+      </button>
+
+      <p className="auth-split__footer">
+        Don&apos;t have an account yet? <Link href="/signup">Register Now.</Link>
+      </p>
+    </AuthShell>
+  );
+}

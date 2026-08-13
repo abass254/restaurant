@@ -1,0 +1,62 @@
+{
+  "info": {
+    "name": "DukAI Delivery Orders API",
+    "description": "Create delivery orders with a merchant API key.\n\n1. Create a key (logged into dashboard): POST /api/v1/integrations/api-keys\n2. Use X-Api-Key or Authorization: Bearer with the duk_live_… secret.\n3. POST /api/v1/integrations/delivery-orders",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://uat.dukai.app"
+    },
+    {
+      "key": "apiKey",
+      "value": "duk_live_REPLACE_ME"
+    }
+  ],
+  "item": [
+    {
+      "name": "Create delivery order",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Api-Key",
+            "value": "{{apiKey}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"customer_name\": \"Jane Doe\",\n  \"customer_phone\": \"+254712345678\",\n  \"delivery_address\": \"Westlands, Nairobi\",\n  \"delivery_notes\": \"Call on arrival\",\n  \"delivery_fee\": 150,\n  \"payment_method\": \"cash\",\n  \"external_order_id\": \"your-system-id-001\",\n  \"items\": [\n    {\n      \"product_name\": \"Chapati meal\",\n      \"quantity\": 2,\n      \"unit_price\": 250\n    }\n  ]\n}\n"
+        },
+        "url": "{{baseUrl}}/api/v1/integrations/delivery-orders",
+        "description": "Creates a delivery order for the shop that owns the API key. Use external_order_id for idempotency."
+      }
+    },
+    {
+      "name": "Create delivery order (Bearer)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{apiKey}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"customer_name\": \"Jane Doe\",\n  \"customer_phone\": \"+254712345678\",\n  \"delivery_address\": \"Westlands, Nairobi\",\n  \"delivery_fee\": 150,\n  \"items\": [\n    {\n      \"product_name\": \"Chapati meal\",\n      \"quantity\": 1,\n      \"unit_price\": 250\n    }\n  ]\n}\n"
+        },
+        "url": "{{baseUrl}}/api/v1/integrations/delivery-orders"
+      }
+    }
+  ]
+}

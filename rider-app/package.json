@@ -1,0 +1,50 @@
+{
+  "name": "rider-app",
+  "main": "expo-router/entry",
+  "version": "1.0.0",
+  "dependencies": {
+    "@expo-google-fonts/dm-sans": "^0.4.2",
+    "@expo-google-fonts/playfair-display": "^0.4.2",
+    "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
+    "@expo/vector-icons": "^15.1.1",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "~57.0.4",
+    "expo-audio": "~57.0.0",
+    "expo-camera": "~57.0.2",
+    "expo-constants": "~57.0.3",
+    "expo-font": "~57.0.0",
+    "expo-haptics": "~57.0.0",
+    "expo-image-picker": "~57.0.2",
+    "expo-linking": "~57.0.2",
+    "expo-notifications": "~57.0.3",
+    "expo-router": "~57.0.4",
+    "expo-secure-store": "^57.0.1",
+    "expo-splash-screen": "~57.0.2",
+    "expo-status-bar": "~57.0.0",
+    "expo-symbols": "~57.0.0",
+    "expo-web-browser": "~57.0.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.0",
+    "react-native-gesture-handler": "~2.32.0",
+    "react-native-maps": "1.27.2",
+    "react-native-reanimated": "4.5.0",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "4.25.2",
+    "react-native-web": "~0.21.0",
+    "react-native-webview": "13.16.1",
+    "react-native-worklets": "0.10.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "start:metro": "EXPO_PACKAGER_PROXY_URL=https://metro.dukai.app REACT_NATIVE_PACKAGER_HOSTNAME=metro.dukai.app expo start --port 8081 --lan",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "private": true
+}

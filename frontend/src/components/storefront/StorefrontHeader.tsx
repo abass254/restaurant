@@ -1,0 +1,21 @@
+import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+
+type StorefrontHeaderProps = {
+  tag: string;
+};
+
+export function StorefrontHeader({ tag }: StorefrontHeaderProps) {
+  return (
+    <header className="sf-header">
+      <div className="sf-brand-lockup" aria-label="DukAI">
+        <DukAiLogoMark
+          size={44}
+          className="sf-brand-lockup__mark"
+          color="var(--app-text)"
+          accentColor="var(--brown-500, #a06b48)"
+        />
+      </div>
+      <span className="sf-header__tag">{tag}</span>
+    </header>
+  );
+}

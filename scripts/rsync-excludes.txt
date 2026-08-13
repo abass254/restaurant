@@ -1,0 +1,16 @@
+.git/
+.cursor/
+.idea/
+.vscode/
+.DS_Store
+node_modules/
+backend/.venv/
+backend/__pycache__/
+backend/.pytest_cache/
+backend/.mypy_cache/
+frontend/.next/
+vendor/
+public/build/
+public/hot
+.phpunit.result.cache
+*.log
