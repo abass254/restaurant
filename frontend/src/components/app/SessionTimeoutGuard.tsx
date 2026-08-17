@@ -217,7 +217,7 @@ export function SessionTimeoutGuard({
             onClick={() => void performLogout()}
             disabled={isRefreshing}
           >
-            Log out now
+            {reason === "unauthorized" ? "Sign in again" : "Log out now"}
           </button>
         </div>
       </div>

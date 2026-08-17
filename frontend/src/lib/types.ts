@@ -868,14 +868,26 @@ export type MerchantMpesaConfig = {
   id: string;
   account_id: string;
   shortcode: string;
-  shortcode_type: "paybill" | "till" | "pochi";
+  shortcode_type: "paybill" | "till" | "pochi" | "phone";
   account_number: string | null;
   is_configured: boolean;
 };
 
 export type MerchantMpesaConfigResponse = {
   config: MerchantMpesaConfig | null;
+  suggested_phone?: string | null;
   dev_sample_data?: boolean;
+};
+
+export type MerchantMpesaVerifyResponse = {
+  organization_name: string | null;
+  lookup_source: "mpesa" | "manual";
+  shortcode: string;
+  shortcode_type: MerchantMpesaConfig["shortcode_type"];
+  account_number: string | null;
+  destination_label: string;
+  verification_token: string;
+  prompt: string;
 };
 
 export type KraIntegrationType = "vscu" | "oscu" | "device";

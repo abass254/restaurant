@@ -9,20 +9,20 @@ const STEPS = {
     {
       key: "client",
       icon: "fa-user",
-      title: "Client",
-      detail: "Pays via STK push on their phone",
+      title: "Customer",
+      detail: "Pays on their phone via M-PESA",
     },
     {
       key: "hub",
       icon: "fa-building-columns",
       title: "DukAI",
-      detail: "Money lands on the hub Paybill first",
+      detail: "We collect the payment for you",
     },
     {
       key: "merchant",
       icon: "fa-store",
       title: "Your store",
-      detail: "DukAI pays out to your Till, Paybill, or Pochi",
+      detail: "Sent to your Till, Paybill, Pochi, or phone",
     },
   ],
   admin: [
@@ -42,13 +42,13 @@ const STEPS = {
       key: "merchant",
       icon: "fa-store",
       title: "Merchant",
-      detail: "B2B payout to their Till, Paybill, or Pochi",
+      detail: "Automatic payout to their Till, Paybill, Pochi, or M-PESA phone",
     },
   ],
 } as const;
 
 const FORMULA = {
-  merchant: ["Client", "DukAI", "Your store"] as const,
+  merchant: ["Customer", "DukAI", "Your store"] as const,
   admin: ["Client", "DukAI", "Merchant"] as const,
 };
 
@@ -57,8 +57,13 @@ export function MpesaMoneyFlow({ audience = "merchant", className }: MpesaMoneyF
   const formula = FORMULA[audience];
   const rootClass = ["mpesa-money-flow", className].filter(Boolean).join(" ");
 
+  const ariaLabel =
+    audience === "admin"
+      ? "Money flow: Client to DukAI to Merchant"
+      : "How money moves from the customer to your store";
+
   return (
-    <div className={rootClass} role="group" aria-label="Money flow: Client to DukAI to Merchant">
+    <div className={rootClass} role="group" aria-label={ariaLabel}>
       <p className="mpesa-money-flow__formula">
         {formula.map((label, index) => (
           <span key={label} className="mpesa-money-flow__formula-part">

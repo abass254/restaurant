@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { apiFetch, ApiError } from "@/lib/api";
 import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
+import { MPESA_MAX_KES, MPESA_MIN_PAYOUT_KES } from "@/lib/mpesa-limits";
 import { usePlatformRuntime } from "@/lib/platform-runtime";
 import type { AdminMerchantsResponse, AdminMerchantSummary } from "@/lib/types";
 import { MpesaMoneyFlow } from "./MpesaMoneyFlow";
@@ -29,12 +30,13 @@ const SANDBOX_TEST_MSISDN = "254708374149";
 export function PaymentSimulationSection() {
   const { mode: runtimeMode } = usePlatformRuntime();
   const isDev = runtimeMode === "dev";
+  const minKes = isDev ? 1 : MPESA_MIN_PAYOUT_KES;
 
   const [merchants, setMerchants] = useState<AdminMerchantSummary[]>([]);
   const [merchantsLoading, setMerchantsLoading] = useState(true);
   const [accountId, setAccountId] = useState("");
   const [phone, setPhone] = useState(SANDBOX_TEST_MSISDN);
-  const [amount, setAmount] = useState("1");
+  const [amount, setAmount] = useState(String(minKes));
   const [mode, setMode] = useState<SimulateMode>("live");
   const [sending, setSending] = useState(false);
   const [lastResult, setLastResult] = useState<SimulatePaymentResponse | null>(null);
@@ -73,8 +75,11 @@ export function PaymentSimulationSection() {
       return;
     }
     const parsedAmount = Number.parseInt(amount, 10);
-    if (!Number.isFinite(parsedAmount) || parsedAmount < 1) {
-      await showError("Invalid amount", "Amount must be at least 1 KES.");
+    if (!Number.isFinite(parsedAmount) || parsedAmount < minKes) {
+      await showError(
+        "Invalid amount",
+        `Amount must be at least KES ${minKes}. Safaricom declines smaller amounts.`,
+      );
       return;
     }
 
@@ -161,8 +166,8 @@ export function PaymentSimulationSection() {
               <span>Amount (KES)</span>
               <input
                 type="number"
-                min={1}
-                max={150000}
+                min={minKes}
+                max={MPESA_MAX_KES}
                 step={1}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}

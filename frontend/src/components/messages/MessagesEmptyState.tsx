@@ -25,7 +25,7 @@ const FALLBACK_CHANNELS: Channel[] = [
     label: "Facebook",
     tagline: "Page inbox & Messenger conversations.",
     icon: "fa-brands fa-facebook",
-    color: "#1877f2",
+    color: "#e85d04",
     supports_oauth: false,
     supports_messaging: false,
     status_text: "Manual link only — live messaging coming soon.",

@@ -13,6 +13,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { apiFetch } from "@/lib/api";
 import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
+import { MPESA_MAX_KES, MPESA_MIN_PAYOUT_KES } from "@/lib/mpesa-limits";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { Skeleton } from "@/components/app/Skeleton";
 import { MotionModal } from "@/components/app/MotionModal";
@@ -80,6 +81,10 @@ function formatPayoutTypeLabel(type: string | null | undefined): string {
     case "buygoods":
     case "buy_goods":
       return "Till";
+    case "phone":
+    case "b2c":
+    case "msisdn":
+      return "Phone";
     case "paybill":
       return "Paybill";
     default:
@@ -544,11 +549,11 @@ function RequestPaymentModal({
             <input
               type="number"
               required
-              min={1}
-              max={300000}
+              min={MPESA_MIN_PAYOUT_KES}
+              max={MPESA_MAX_KES}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              placeholder="1"
+              placeholder={String(MPESA_MIN_PAYOUT_KES)}
             />
           </label>
           {config?.account_number ? (

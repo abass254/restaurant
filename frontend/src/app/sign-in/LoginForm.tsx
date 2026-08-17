@@ -27,14 +27,31 @@ type Props = {
   statusMessage?: string | null;
   statusOk?: boolean;
   nextPath?: string | null;
+  embedded?: boolean;
+  signInPath?: string;
 };
 
 const OTP_LENGTH = 4;
+
+function LoginFrame({
+  embedded,
+  children,
+}: {
+  embedded?: boolean;
+  children: React.ReactNode;
+}) {
+  if (embedded) {
+    return <div className="trans-chap-signin">{children}</div>;
+  }
+  return <AuthShell>{children}</AuthShell>;
+}
 
 export default function LoginForm({
   statusMessage,
   statusOk = false,
   nextPath = null,
+  embedded = false,
+  signInPath,
 }: Props) {
   const [mode, setMode] = useState<Mode>("otp");
   const [otpStep, setOtpStep] = useState<OtpStep>("request");
@@ -190,7 +207,7 @@ export default function LoginForm({
 
   if (mode === "otp" && otpStep === "verify") {
     return (
-      <AuthShell>
+      <LoginFrame embedded={embedded}>
         <div className="auth-otp">
           <button
             type="button"
@@ -205,7 +222,9 @@ export default function LoginForm({
           >
             ←
           </button>
-          <h1 className="auth-split__title">Sign in to your dashboard</h1>
+          {embedded ? null : (
+            <h1 className="auth-split__title">Sign in to your dashboard</h1>
+          )}
           <p className="auth-split__subtitle">
             Enter 4 Digit Code sent to
             <br />
@@ -266,14 +285,16 @@ export default function LoginForm({
             Resend Code
           </button>
         </div>
-      </AuthShell>
+      </LoginFrame>
     );
   }
 
   if (mode === "password") {
     return (
-      <AuthShell>
-        <h1 className="auth-split__title">Sign in to your dashboard</h1>
+      <LoginFrame embedded={embedded}>
+        {embedded ? null : (
+          <h1 className="auth-split__title">Sign in to your dashboard</h1>
+        )}
         <p className="auth-split__subtitle">
           Enter your email address and password to continue
         </p>
@@ -307,6 +328,7 @@ export default function LoginForm({
 
         <form className="auth-split__form" action={loginFormAction}>
           {nextPath ? <input type="hidden" name="next" value={nextPath} /> : null}
+          {signInPath ? <input type="hidden" name="from" value={signInPath} /> : null}
           <div className="auth-split__field">
             <label htmlFor="login-email" className="sr-only">
               Email
@@ -340,7 +362,7 @@ export default function LoginForm({
             style={{
               border: "none",
               background: "transparent",
-              color: "var(--auth-accent, #1877f2)",
+              color: "var(--auth-accent, #e85d04)",
               font: "inherit",
               fontWeight: 650,
               cursor: "pointer",
@@ -351,16 +373,20 @@ export default function LoginForm({
           </button>
         </p>
 
-        <p className="auth-split__footer">
-          Don&apos;t have an account yet? <Link href="/signup">Register Now.</Link>
-        </p>
-      </AuthShell>
+        {embedded ? null : (
+          <p className="auth-split__footer">
+            Don&apos;t have an account yet? <Link href="/signup">Register Now.</Link>
+          </p>
+        )}
+      </LoginFrame>
     );
   }
 
   return (
-    <AuthShell>
-      <h1 className="auth-split__title">Sign in to your dashboard</h1>
+    <LoginFrame embedded={embedded}>
+      {embedded ? null : (
+        <h1 className="auth-split__title">Sign in to your dashboard</h1>
+      )}
       <p className="auth-split__subtitle">
         Enter your Email address or Mobile Number to continue
       </p>
@@ -415,9 +441,11 @@ export default function LoginForm({
         Use password instead
       </button>
 
-      <p className="auth-split__footer">
-        Don&apos;t have an account yet? <Link href="/signup">Register Now.</Link>
-      </p>
-    </AuthShell>
+      {embedded ? null : (
+        <p className="auth-split__footer">
+          Don&apos;t have an account yet? <Link href="/signup">Register Now.</Link>
+        </p>
+      )}
+    </LoginFrame>
   );
 }

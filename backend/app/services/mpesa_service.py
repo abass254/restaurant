@@ -9,7 +9,8 @@ from __future__ import annotations
 import base64
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
+from dataclasses import dataclass
 
 # Safaricom validates the Timestamp field against East Africa Time (UTC+3).
 # Sending a UTC timestamp here makes the request look 3 hours stale and
@@ -51,6 +52,12 @@ def normalize_msisdn(raw: str) -> str:
         if len(digits) == 9:
             return "254" + digits
     return digits
+
+
+def is_kenya_msisdn(raw: str) -> bool:
+    """True when ``raw`` normalizes to a 12-digit Kenyan M-PESA MSISDN (2547/2541)."""
+    msisdn = normalize_msisdn(raw)
+    return msisdn.startswith("254") and len(msisdn) == 12 and msisdn[3] in {"7", "1"}
 
 
 def use_mpesa_sandbox(db: Session) -> bool:
@@ -218,16 +225,21 @@ def stk_push(
             if not merchant_profile:
                 raise MpesaApiError(
                     "M-PESA is not configured for this shop. "
-                    "Add your transaction account and payout details in Settings.",
+                    "Add payout details under Store basics.",
                 )
             transaction_account = _merchant_transaction_account(merchant_profile)
-            if not transaction_account:
+            dest_type = (merchant_profile.shortcode_type or "").lower()
+            if dest_type == "paybill" and not transaction_account:
                 raise MpesaApiError(
-                    "Your M-PESA transaction account is missing. "
-                    "Add it in Settings under M-PESA Business Number.",
+                    "Your Paybill account number is missing. "
+                    "Add it under Store basics → Payment terms.",
                 )
             _require_hub_collection_config(config)
-            stk_account_reference = transaction_account
+            stk_account_reference = (
+                transaction_account
+                or account_reference[:12]
+                or config.account_reference_prefix[:12]
+            )
         else:
             stk_account_reference = (
                 account_reference[:12] or config.account_reference_prefix[:12]
@@ -241,8 +253,16 @@ def stk_push(
         raise MpesaApiError(
             f"Invalid phone number: '{phone_number}'. Use 2547XXXXXXXX format.",
         )
-    if amount < 1:
-        raise MpesaApiError("Amount must be at least 1 KES.")
+    dest_type = (
+        merchant_profile.shortcode_type if merchant_profile else None
+    )
+    from app.support.mpesa_amounts import min_collection_kes, require_min_amount
+
+    require_min_amount(
+        int(amount),
+        min_collection_kes(dest_type, sandbox=sandbox),
+        label="Payment",
+    )
     if not config.callback_url:
         raise MpesaApiError(
             "Callback URL is required. Set it in Settings before sending requests.",
@@ -545,6 +565,14 @@ def _sync_linked_bookings_on_success(db: Session, txn: MpesaTransaction) -> list
         booking.deposit_mpesa_txn_id = txn.id
         booking_svc.confirm_booking_deposit(db, booking)
         updated.append(booking.id)
+        try:
+            from app.services.booking_notification_service import notify_booking_confirmed
+
+            notify_booking_confirmed(db, booking)
+        except Exception:
+            logger.exception(
+                "Booking confirmation email failed for booking=%s", booking.id
+            )
     return updated
 
 # Last Daraja OAuth test result (env-based config has no DB row to persist to).
@@ -595,6 +623,16 @@ def simulate_successful_collection(
         raise MpesaApiError("Amount must be at least 1 KES.")
 
     profile = get_merchant_profile(db, account_id)
+    from app.support.mpesa_amounts import min_collection_kes, require_min_amount
+
+    require_min_amount(
+        int(amount),
+        min_collection_kes(
+            profile.shortcode_type if profile else None,
+            sandbox=use_mpesa_sandbox(db),
+        ),
+        label="Payment",
+    )
     account_reference = _merchant_transaction_account(profile) or "SIMULATE"
     msisdn = normalize_msisdn(phone_number)
     if not msisdn.startswith("254") or len(msisdn) != 12:
@@ -628,3 +666,151 @@ def simulate_successful_collection(
     db.add(txn)
     db.flush()
     return txn
+
+
+def _hakikisha_identifier_types(shortcode_type: str) -> tuple[str, ...]:
+    kind = (shortcode_type or "").lower()
+    if kind in {"till", "buygoods", "buy_goods"}:
+        return ("2",)
+    if kind in {"pochi", "pochi_la_biashara", "phone", "b2c", "msisdn"}:
+        return ("1", "2")
+    return ("4",)
+
+
+def _hakikisha_success_name(body: dict[str, Any]) -> str | None:
+    name = str(body.get("OrganizationName") or "").strip()
+    if not name:
+        return None
+    code = str(body.get("ResponseCode") or "").strip()
+    message = str(body.get("ResponseMessage") or "").strip().lower()
+    if message == "success" or code in {"0", "4000"}:
+        return name
+    return None
+
+
+def _sandbox_lookup_name(shortcode: str, shortcode_type: str) -> str:
+    kind = (shortcode_type or "").lower()
+    if kind in {"pochi", "pochi_la_biashara"}:
+        return "Sandbox Pochi wallet"
+    if kind in {"phone", "b2c", "msisdn"}:
+        return "Sandbox M-PESA customer"
+    if kind in {"till", "buygoods", "buy_goods"}:
+        return f"Sandbox Till {shortcode}"
+    return f"Sandbox Paybill {shortcode}"
+
+
+def _daraja_error_text(body: dict[str, Any], response: httpx.Response) -> str:
+    fault = body.get("fault") if isinstance(body.get("fault"), dict) else {}
+    return (
+        str(body.get("errorMessage") or "").strip()
+        or str(body.get("DetailedMessage") or "").strip()
+        or str(body.get("ResponseMessage") or "").strip()
+        or str(fault.get("faultstring") or "").strip()
+        or (response.text or "").strip()[:300]
+    )
+
+
+def _is_missing_api_product(message: str) -> bool:
+    lower = (message or "").lower()
+    return "no apiproduct match" in lower or "invalid api call as no apiproduct" in lower
+
+
+@dataclass(frozen=True)
+class DestinationLookup:
+    source: Literal["mpesa", "manual"]
+    name: str | None = None
+
+
+def lookup_destination_name(
+    db: Session,
+    *,
+    shortcode: str,
+    shortcode_type: str,
+) -> DestinationLookup:
+    """Look up the M-PESA registered name for a Paybill, Till, Pochi, or phone.
+
+    Uses Daraja Query Organization Info (Hakikisha). That product is optional on
+    a Daraja app — if it is not subscribed we fall back to a manual confirm step
+    instead of blocking save.
+    """
+    config = resolve_mpesa_config(db)
+    sandbox = use_mpesa_sandbox(db)
+    last_error = "Could not look up this destination on M-PESA."
+
+    try:
+        token = fetch_access_token(config)
+        url = f"{config.base_url().rstrip('/')}/sfcverify/v1/query/info"
+        for identifier_type in _hakikisha_identifier_types(shortcode_type):
+            payload = {
+                "IdentifierType": identifier_type,
+                "Identifier": shortcode,
+            }
+            with httpx.Client(timeout=30) as client:
+                response = client.post(
+                    url,
+                    json=payload,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json",
+                    },
+                )
+            body: dict[str, Any] = {}
+            try:
+                parsed = response.json()
+                if isinstance(parsed, dict):
+                    body = parsed
+            except Exception:
+                body = {}
+            name = _hakikisha_success_name(body)
+            if name:
+                return DestinationLookup(source="mpesa", name=name)
+            last_error = _daraja_error_text(body, response) or last_error
+            logger.info(
+                "M-PESA destination lookup miss type=%s id=%s status=%s body=%s",
+                identifier_type,
+                shortcode,
+                response.status_code,
+                body or response.text[:400],
+            )
+            if _is_missing_api_product(last_error):
+                logger.warning(
+                    "Daraja app is missing Query Organization Info (Hakikisha); "
+                    "using manual destination confirmation."
+                )
+                break
+    except MpesaConfigurationMissing:
+        if sandbox:
+            return DestinationLookup(
+                source="mpesa",
+                name=_sandbox_lookup_name(shortcode, shortcode_type),
+            )
+        raise
+    except MpesaApiError:
+        if sandbox:
+            return DestinationLookup(
+                source="mpesa",
+                name=_sandbox_lookup_name(shortcode, shortcode_type),
+            )
+        raise
+    except httpx.HTTPError as exc:
+        logger.warning("M-PESA destination lookup network error: %s", exc)
+        if sandbox:
+            return DestinationLookup(
+                source="mpesa",
+                name=_sandbox_lookup_name(shortcode, shortcode_type),
+            )
+        raise MpesaApiError(
+            "Could not reach M-PESA to look up this destination. Try again."
+        ) from exc
+
+    if sandbox:
+        return DestinationLookup(
+            source="mpesa",
+            name=_sandbox_lookup_name(shortcode, shortcode_type),
+        )
+    if _is_missing_api_product(last_error):
+        return DestinationLookup(source="manual")
+    raise MpesaApiError(
+        last_error
+        or "M-PESA did not recognise this destination. Check the number and try again."
+    )

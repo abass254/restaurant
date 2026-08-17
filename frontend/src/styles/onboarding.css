@@ -51,12 +51,12 @@
   gap: 0.75rem;
   padding: 0.9rem 1rem;
   border-radius: 12px;
-  background: rgba(24, 119, 242, 0.08);
-  color: var(--auth-ink, #0d1b2a);
+  background: rgba(232, 93, 4, 0.08);
+  color: var(--auth-ink, #1a100c);
 }
 
 .auth-split--setup .settings-muted {
-  color: var(--auth-muted, #475569);
+  color: var(--auth-muted, #5e5749);
   font-size: 0.92rem;
 }
 

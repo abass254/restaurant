@@ -8,6 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
+from app.core.mpesa_verify_tokens import (
+    MpesaVerifyTokenInvalid,
+    mint_mpesa_verify_token,
+    read_mpesa_verify_token,
+)
 from app.core.session import require_user, validate_csrf
 from app.support.merchant_permissions import (
     active_account_id,
@@ -24,13 +29,17 @@ from app.services.mpesa_service import (
     MpesaConfigurationMissing,
     resolve_mpesa_config,
 )
-from app.services.platform_runtime import get_runtime_mode, is_dev_runtime
+from app.services.platform_runtime import get_runtime_mode
 from app.support.daraja_sandbox import (
     build_daraja_production_config,
     build_daraja_sandbox_config,
     daraja_env_configured,
 )
-from app.support.mpesa_dev_samples import dev_merchant_config, dev_transactions
+from app.support.mpesa_merchant_copy import (
+    merchant_safe_collection_desc,
+    merchant_safe_payout_desc,
+    merchant_safe_stk_error,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/mpesa", tags=["mpesa"])
@@ -60,6 +69,13 @@ def _mask(value: str | None, keep: int = 4) -> str | None:
     if len(value) <= keep:
         return "*" * len(value)
     return ("*" * (len(value) - keep)) + value[-keep:]
+
+
+def _suggested_merchant_phone(user: User) -> str | None:
+    raw = (user.phone or "").strip()
+    if raw and mpesa_service.is_kenya_msisdn(raw):
+        return mpesa_service.normalize_msisdn(raw)
+    return None
 
 
 def _active_env_config(db: Session):
@@ -124,24 +140,25 @@ class MpesaConfigOut(BaseModel):
 
 class MerchantMpesaConfigPayload(BaseModel):
     shortcode: str = Field(min_length=3, max_length=20)
-    shortcode_type: Literal["paybill", "till", "pochi"] = "paybill"
-    account_number: str = Field(min_length=1, max_length=50)
+    shortcode_type: Literal["paybill", "till", "pochi", "phone"] = "paybill"
+    account_number: str = ""
 
     @model_validator(mode="after")
     def normalize_settlement_fields(self) -> "MerchantMpesaConfigPayload":
-        if not (self.account_number or "").strip():
-            raise ValueError("Transaction account is required.")
-        self.account_number = self.account_number.strip()
-
         raw = (self.shortcode or "").strip()
-        if self.shortcode_type == "pochi":
-            msisdn = mpesa_service.normalize_msisdn(raw)
-            if not msisdn.startswith("254") or len(msisdn) != 12:
+        if self.shortcode_type in {"pochi", "phone"}:
+            if not mpesa_service.is_kenya_msisdn(raw):
+                label = (
+                    "Pochi la Biashara"
+                    if self.shortcode_type == "pochi"
+                    else "M-PESA phone"
+                )
                 raise ValueError(
-                    "Pochi la Biashara requires a valid M-PESA phone number "
+                    f"{label} requires a valid Kenyan M-PESA number "
                     "(07XXXXXXXX or 2547XXXXXXXX).",
                 )
-            self.shortcode = msisdn
+            self.shortcode = mpesa_service.normalize_msisdn(raw)
+            self.account_number = ""
         else:
             digits = "".join(ch for ch in raw if ch.isdigit())
             if len(digits) < 5 or len(digits) > 12:
@@ -149,7 +166,18 @@ class MerchantMpesaConfigPayload(BaseModel):
                     "Enter a valid Till or Paybill number (5–12 digits).",
                 )
             self.shortcode = digits
+            if self.shortcode_type == "paybill":
+                account = (self.account_number or "").strip()
+                if not account:
+                    raise ValueError("Paybill account number is required.")
+                self.account_number = account[:12]
+            else:
+                self.account_number = ""
         return self
+
+
+class MerchantMpesaConfigSavePayload(MerchantMpesaConfigPayload):
+    verification_token: str = Field(min_length=8, max_length=500)
 
 
 class MerchantMpesaConfigOut(BaseModel):
@@ -212,6 +240,11 @@ class MpesaTransactionOut(BaseModel):
     payout_receipt_number: str | None = None
     payout_result_desc: str | None = None
     payout_completed_at: datetime | None = None
+    order_id: str | None = None
+    booking_id: str | None = None
+    source: Literal["booking", "order", "manual"] = "manual"
+    booking_customer_name: str | None = None
+    booking_starts_at: datetime | None = None
 
     @classmethod
     def from_model(
@@ -219,12 +252,22 @@ class MpesaTransactionOut(BaseModel):
         txn: MpesaTransaction,
         *,
         merchant_profile: MerchantMpesaProfile | None = None,
+        booking_customer_name: str | None = None,
+        booking_starts_at: datetime | None = None,
     ) -> "MpesaTransactionOut":
         payout_shortcode = txn.payout_shortcode
         payout_shortcode_type = txn.payout_shortcode_type
         if not payout_shortcode and merchant_profile:
             payout_shortcode = merchant_profile.shortcode
             payout_shortcode_type = merchant_profile.shortcode_type
+        booking_id = getattr(txn, "booking_id", None)
+        order_id = getattr(txn, "order_id", None)
+        if booking_id:
+            source: Literal["booking", "order", "manual"] = "booking"
+        elif order_id:
+            source = "order"
+        else:
+            source = "manual"
         return cls(
             id=txn.id,
             phone_number=txn.phone_number,
@@ -233,15 +276,15 @@ class MpesaTransactionOut(BaseModel):
             transaction_desc=txn.transaction_desc,
             status=txn.status,
             result_code=txn.result_code,
-            result_desc=txn.result_desc,
+            result_desc=merchant_safe_collection_desc(
+                txn.status, txn.result_code, txn.result_desc
+            ),
             mpesa_receipt_number=txn.mpesa_receipt_number,
-            merchant_request_id=txn.merchant_request_id,
-            checkout_request_id=txn.checkout_request_id,
+            merchant_request_id=None,
+            checkout_request_id=None,
             completed_at=txn.completed_at,
             created_at=txn.created_at,
-            transaction_account=(
-                merchant_profile.account_number if merchant_profile else None
-            ),
+            transaction_account=None,
             payout_destination_shortcode=payout_shortcode,
             payout_destination_type=payout_shortcode_type,
             payout_status=txn.payout_status,
@@ -249,8 +292,15 @@ class MpesaTransactionOut(BaseModel):
             payout_shortcode_type=txn.payout_shortcode_type,
             payout_amount=txn.payout_amount,
             payout_receipt_number=txn.payout_receipt_number,
-            payout_result_desc=txn.payout_result_desc,
+            payout_result_desc=merchant_safe_payout_desc(
+                txn.payout_status, txn.payout_result_desc
+            ),
             payout_completed_at=txn.payout_completed_at,
+            order_id=order_id,
+            booking_id=booking_id,
+            source=source,
+            booking_customer_name=booking_customer_name,
+            booking_starts_at=booking_starts_at,
         )
 
 
@@ -262,7 +312,22 @@ def _serialize_transaction(
     profile = (
         mpesa_service.get_merchant_profile(db, account_id) if account_id else None
     )
-    return MpesaTransactionOut.from_model(txn, merchant_profile=profile)
+    booking_customer_name = None
+    booking_starts_at = None
+    booking_id = getattr(txn, "booking_id", None)
+    if booking_id:
+        from app.models import Booking
+
+        booking = db.get(Booking, booking_id)
+        if booking:
+            booking_customer_name = booking.customer_name
+            booking_starts_at = booking.starts_at
+    return MpesaTransactionOut.from_model(
+        txn,
+        merchant_profile=profile,
+        booking_customer_name=booking_customer_name,
+        booking_starts_at=booking_starts_at,
+    )
 
 
 @router.get("/config")
@@ -373,12 +438,18 @@ def trigger_stk_push(
             account_id=account_id,
         )
     except MpesaConfigurationMissing as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=merchant_safe_stk_error(str(exc)),
+        ) from exc
     except MpesaApiError as exc:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail=merchant_safe_stk_error(str(exc)),
+        ) from exc
 
     return {
-        "message": "STK push sent. Ask the customer to check their phone.",
+        "message": "Prompt sent. Ask the customer to check their phone.",
         "transaction": _serialize_transaction(db, txn),
     }
 
@@ -398,18 +469,18 @@ def list_transactions(
         .filter(
             MpesaTransaction.account_id == active_account_id(user),
         )
-        .order_by(MpesaTransaction.id.desc())
+        .order_by(
+            MpesaTransaction.created_at.is_(None),
+            MpesaTransaction.created_at.desc(),
+            MpesaTransaction.id.desc(),
+        )
         .limit(limit)
         .all()
     )
     transactions = [_serialize_transaction(db, t) for t in rows]
-    if is_dev_runtime(db) and not transactions:
-        transactions = [
-            MpesaTransactionOut.model_validate(row) for row in dev_transactions()
-        ]
     return {
         "transactions": transactions,
-        "dev_sample_data": bool(is_dev_runtime(db) and not rows),
+        "dev_sample_data": False,
     }
 
 
@@ -469,18 +540,44 @@ def show_merchant_business_config(
     account_id = active_account_id(user)
     config = mpesa_service.get_merchant_profile(db, account_id)
     out = MerchantMpesaConfigOut.from_model(config)
-    if out is None and is_dev_runtime(db):
-        out = MerchantMpesaConfigOut.model_validate(
-            dev_merchant_config(str(account_id or "")),
-        )
     return {
         "config": out,
-        "dev_sample_data": bool(out is not None and config is None and is_dev_runtime(db)),
+        "suggested_phone": _suggested_merchant_phone(user),
+        "dev_sample_data": False,
     }
 
 
-@router.put("/business-config")
-def upsert_merchant_business_config(
+def _format_destination_label(shortcode: str, shortcode_type: str) -> str:
+    if shortcode_type in {"pochi", "phone"} and len(shortcode) == 12:
+        return f"+{shortcode[:3]} {shortcode[3:6]} {shortcode[6:9]} {shortcode[9:]}"
+    return shortcode
+
+
+def _destination_prompt(
+    *,
+    source: str,
+    name: str | None,
+    shortcode: str,
+    shortcode_type: str,
+    account_number: str,
+    destination_label: str,
+) -> str:
+    if source == "mpesa" and name:
+        return f"Is this {name}?"
+    if shortcode_type == "paybill":
+        account = (account_number or "").strip()
+        if account:
+            return f"Is this your Paybill {destination_label}, account {account}?"
+        return f"Is this your Paybill {destination_label}?"
+    if shortcode_type == "till":
+        return f"Is this your Till {destination_label}?"
+    if shortcode_type == "pochi":
+        return f"Is this your Pochi number {destination_label}?"
+    return f"Is this your M-PESA number {destination_label}?"
+
+
+@router.post("/business-config/verify")
+def verify_merchant_business_config(
     payload: MerchantMpesaConfigPayload,
     request: Request,
     db: Session = Depends(get_db),
@@ -493,6 +590,78 @@ def upsert_merchant_business_config(
     _require_merchant(user)
 
     account_id = active_account_id(user)
+    try:
+        lookup = mpesa_service.lookup_destination_name(
+            db,
+            shortcode=payload.shortcode,
+            shortcode_type=payload.shortcode_type,
+        )
+    except mpesa_service.MpesaConfigurationMissing as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except mpesa_service.MpesaApiError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    destination_label = _format_destination_label(
+        payload.shortcode,
+        payload.shortcode_type,
+    )
+    organization_name = lookup.name or destination_label
+    prompt = _destination_prompt(
+        source=lookup.source,
+        name=lookup.name,
+        shortcode=payload.shortcode,
+        shortcode_type=payload.shortcode_type,
+        account_number=payload.account_number,
+        destination_label=destination_label,
+    )
+    token = mint_mpesa_verify_token(
+        account_id=account_id,
+        shortcode=payload.shortcode,
+        shortcode_type=payload.shortcode_type,
+        account_number=payload.account_number,
+        organization_name=organization_name,
+    )
+    return {
+        "organization_name": lookup.name,
+        "lookup_source": lookup.source,
+        "shortcode": payload.shortcode,
+        "shortcode_type": payload.shortcode_type,
+        "account_number": payload.account_number or None,
+        "destination_label": destination_label,
+        "verification_token": token,
+        "prompt": prompt,
+    }
+
+
+@router.put("/business-config")
+def upsert_merchant_business_config(
+    payload: MerchantMpesaConfigSavePayload,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    validate_csrf(request, session)
+    user = require_user(db, session)
+    assert_merchant_section_access(user, "settings")
+    require_merchant_admin(user)
+    _require_merchant(user)
+
+    account_id = active_account_id(user)
+    try:
+        verified = read_mpesa_verify_token(payload.verification_token)
+    except MpesaVerifyTokenInvalid as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if (
+        str(verified.get("aid") or "") != str(account_id)
+        or str(verified.get("sc") or "") != payload.shortcode
+        or str(verified.get("st") or "") != payload.shortcode_type
+        or str(verified.get("an") or "") != (payload.account_number or "")
+    ):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Looked-up details do not match. Look up the destination again.",
+        )
+
     config = mpesa_service.get_merchant_profile(db, account_id)
     now = datetime.utcnow()
     if config is None:
@@ -504,7 +673,7 @@ def upsert_merchant_business_config(
 
     config.shortcode = payload.shortcode.strip()
     config.shortcode_type = payload.shortcode_type
-    config.account_number = payload.account_number.strip()
+    config.account_number = payload.account_number.strip() or None
     config.updated_by_user_id = user.id
     config.updated_at = now
 
@@ -514,4 +683,5 @@ def upsert_merchant_business_config(
     return {
         "message": "Merchant M-PESA settlement settings saved.",
         "config": MerchantMpesaConfigOut.from_model(config),
+        "suggested_phone": _suggested_merchant_phone(user),
     }

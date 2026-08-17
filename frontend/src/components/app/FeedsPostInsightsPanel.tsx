@@ -8,11 +8,11 @@ const CHART_COLORS = [
   "#e1306c",
   "#f77737",
   "#833ab4",
-  "#5851db",
+  "#e85d04",
   "#10b981",
-  "#0ea5e9",
+  "#fb923c",
   "#f59e0b",
-  "#6366f1",
+  "#e879a0",
 ];
 
 const NON_CHARTABLE_METRICS = new Set([

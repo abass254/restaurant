@@ -798,7 +798,7 @@ def public_deposit_stk(
         }
 
     phone = (payload.phone_number or booking.customer_phone or "").strip()
-    amount = max(1, int(round(float(deposit))))
+    amount = int(round(float(deposit)))
     try:
         txn = mpesa_service.stk_push(
             db,

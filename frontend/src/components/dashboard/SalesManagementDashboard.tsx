@@ -32,14 +32,14 @@ const POLL_MS = 30_000;
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
-const ACCENT_KEYS = ["amber", "teal", "indigo", "blue"] as const;
+const ACCENT_KEYS = ["amber", "teal", "indigo", "peach"] as const;
 type AccentKey = (typeof ACCENT_KEYS)[number];
 
 type ChartColors = {
   primary: string;
   teal: string;
   amber: string;
-  blue: string;
+  peach: string;
   indigo: string;
   border: string;
   muted: string;
@@ -47,11 +47,11 @@ type ChartColors = {
 };
 
 const FALLBACK_CHART_COLORS: ChartColors = {
-  primary: "#1877f2",
+  primary: "#e85d04",
   teal: "#7ec8b8",
   amber: "#f5c77a",
-  blue: "#6eb3ff",
-  indigo: "#a5b4fc",
+  peach: "#fb923c",
+  indigo: "#e879a0",
   border: "#e8eaef",
   muted: "#6b7280",
   surface: "#ffffff",
@@ -66,7 +66,7 @@ function readChartColors(): ChartColors {
     primary: pick("--app-primary", FALLBACK_CHART_COLORS.primary),
     teal: pick("--app-accent-teal", FALLBACK_CHART_COLORS.teal),
     amber: pick("--app-accent-amber", FALLBACK_CHART_COLORS.amber),
-    blue: pick("--app-accent-blue", FALLBACK_CHART_COLORS.blue),
+    peach: pick("--app-accent-peach", FALLBACK_CHART_COLORS.peach),
     indigo: pick("--app-accent-indigo", FALLBACK_CHART_COLORS.indigo),
     border: pick("--app-border", FALLBACK_CHART_COLORS.border),
     muted: pick("--app-text-secondary", FALLBACK_CHART_COLORS.muted),
@@ -299,7 +299,7 @@ export function SalesManagementDashboard() {
       {
         key: "customers",
         icon: "fa-user-plus",
-        accent: "blue" as AccentKey,
+        accent: "peach" as AccentKey,
         label: "New customers",
         value: todayCustomers.toLocaleString(),
         delta: formatDelta(pctChange(todayCustomers, yesterdayCustomers)),

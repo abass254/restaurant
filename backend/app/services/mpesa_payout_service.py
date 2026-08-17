@@ -1,7 +1,9 @@
 """
-M-PESA B2B merchant payouts after hub paybill collection.
+M-PESA merchant payouts after hub paybill collection.
 
+B2B / Pochi debit Working (MMF). B2C to a merchant phone debits Utility.
 Reference: https://developer.safaricom.co.ke/APIs/B2B
+           https://developer.safaricom.co.ke/APIs/B2CPayment
 """
 
 from __future__ import annotations
@@ -21,7 +23,9 @@ from app.services.mpesa_service import (
     fetch_access_token,
     get_merchant_profile,
     resolve_mpesa_config,
+    use_mpesa_sandbox,
 )
+from app.support.mpesa_amounts import min_payout_kes, require_min_amount
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +39,10 @@ PAYOUT_FAILED = "failed"
 PHASE_UTILITY_TO_WORKING = "utility_to_working"
 PHASE_MERCHANT_PAYOUT = "merchant_payout"
 UTILITY_TO_WORKING_COMMAND = "BusinessTransferFromUtilityToMMF"
+B2C_COMMAND_ID = "BusinessPayment"
+MISSING_DESTINATION_REASON = (
+    "Merchant payout Till, Paybill, Pochi, or M-PESA phone is not configured."
+)
 
 
 def _now_utc() -> datetime:
@@ -53,19 +61,46 @@ def _b2b_command_id(shortcode_type: str) -> str:
 def _receiver_identifier_type(shortcode_type: str) -> str:
     """Safaricom RecieverIdentifierType: 1=MSISDN, 2=Till, 4=Organization shortcode."""
     kind = (shortcode_type or "").lower()
-    if kind in {"pochi", "pochi_la_biashara"}:
+    if kind in {"pochi", "pochi_la_biashara", "phone", "b2c", "msisdn"}:
         return "1"
-    # Till and Paybill both use organization shortcode style (4) with their
-    # respective CommandIDs (BusinessBuyGoods / BusinessPayBill).
+    if kind in {"till", "buygoods", "buy_goods"}:
+        return "2"
     return "4"
+
+
+def _coerce_result_code(result_code: Any) -> int | None:
+    """Daraja ResultCode is usually 0/1/21; some failures are strings like SFC_IC0003."""
+    if result_code is None or result_code == "":
+        return None
+    if isinstance(result_code, bool):
+        return int(result_code)
+    if isinstance(result_code, int):
+        return result_code
+    text = str(result_code).strip()
+    if text.isdigit() or (text.startswith("-") and text[1:].isdigit()):
+        return int(text)
+    return None
+
+
+def _result_code_token(result_code: Any) -> str:
+    if result_code is None:
+        return ""
+    return str(result_code).strip()
 
 
 def _is_pochi_destination(shortcode_type: str) -> bool:
     return (shortcode_type or "").lower() in {"pochi", "pochi_la_biashara"}
 
 
+def _is_b2c_destination(shortcode_type: str) -> bool:
+    """Merchant collector is a personal M-PESA phone (Daraja B2C BusinessPayment)."""
+    return (shortcode_type or "").lower() in {"phone", "b2c", "msisdn"}
+
+
 def _payout_request_url(config: Any, shortcode_type: str) -> str:
     base = config.base_url().rstrip("/")
+    if _is_b2c_destination(shortcode_type):
+        return f"{base}/mpesa/b2c/v1/paymentrequest"
     if _is_pochi_destination(shortcode_type):
         return f"{base}/mpesa/b2pochi/v1/paymentrequest"
     return f"{base}/mpesa/b2b/v1/paymentrequest"
@@ -92,6 +127,21 @@ def _build_payout_payload(
             "InitiatorName": initiator,
             "SecurityCredential": security_credential,
             "CommandID": "BusinessPayToPochi",
+            "Amount": str(int(amount)),
+            "PartyA": sender_shortcode,
+            "PartyB": payout_shortcode,
+            "Remarks": remarks[:100],
+            "QueueTimeOutURL": timeout_url,
+            "ResultURL": result_url,
+            "Occassion": occasion[:100],
+        }
+
+    if _is_b2c_destination(payout_shortcode_type):
+        return {
+            "OriginatorConversationID": originator_id,
+            "InitiatorName": initiator,
+            "SecurityCredential": security_credential,
+            "CommandID": B2C_COMMAND_ID,
             "Amount": str(int(amount)),
             "PartyA": sender_shortcode,
             "PartyB": payout_shortcode,
@@ -168,8 +218,12 @@ def _merge_payout_callback(
     return merged
 
 
-def _b2b_urls(settings: Settings | None = None) -> tuple[str, str]:
-    """Public Result/Timeout URLs for B2B — prefer the STK callback host (e.g. ngrok)."""
+def _payout_callback_urls(
+    kind: str = "b2b",
+    settings: Settings | None = None,
+) -> tuple[str, str]:
+    """Public Result/Timeout URLs — prefer the STK callback host (e.g. ngrok)."""
+    path = "b2c" if kind == "b2c" else "b2b"
     cfg = settings or get_settings()
     callback = (cfg.mpesa_callback_url or "").strip()
     if callback:
@@ -178,12 +232,20 @@ def _b2b_urls(settings: Settings | None = None) -> tuple[str, str]:
         parsed = urlparse(callback)
         if parsed.scheme and parsed.netloc:
             base = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
-            return f"{base}/mpesa/b2b/result", f"{base}/mpesa/b2b/timeout"
+            return f"{base}/mpesa/{path}/result", f"{base}/mpesa/{path}/timeout"
     base = cfg.app_url.rstrip("/")
     return (
-        f"{base}/mpesa/b2b/result",
-        f"{base}/mpesa/b2b/timeout",
+        f"{base}/mpesa/{path}/result",
+        f"{base}/mpesa/{path}/timeout",
     )
+
+
+def _b2b_urls(settings: Settings | None = None) -> tuple[str, str]:
+    return _payout_callback_urls("b2b", settings)
+
+
+def _b2c_urls(settings: Settings | None = None) -> tuple[str, str]:
+    return _payout_callback_urls("b2c", settings)
 
 
 def _resolve_b2b_credentials(config: Any) -> tuple[str, str] | None:
@@ -202,10 +264,11 @@ def _resolve_b2b_credentials(config: Any) -> tuple[str, str] | None:
 
 
 def _auto_payout_enabled(config: Any) -> bool:
+    """Env flags control automatic Client → DukAI → Merchant payouts."""
     settings = get_settings()
     if getattr(config, "is_sandbox", lambda: False)():
         return bool(settings.mpesa_sandbox_b2b_auto_payout)
-    return bool(getattr(config, "b2b_auto_payout", False))
+    return bool(settings.mpesa_b2b_auto_payout)
 
 
 def _utility_to_working_enabled() -> bool:
@@ -219,6 +282,13 @@ def resolve_collection_account_id(db: Session, txn: MpesaTransaction) -> str | N
         order = db.query(Order).filter(Order.id == txn.order_id).first()
         if order and order.account_id:
             return order.account_id
+    booking_id = getattr(txn, "booking_id", None)
+    if booking_id:
+        from app.models import Booking
+
+        booking = db.query(Booking).filter(Booking.id == booking_id).first()
+        if booking and booking.account_id:
+            return booking.account_id
     if txn.initiated_by_user_id:
         membership = (
             db.query(UserMembership)
@@ -264,7 +334,7 @@ def create_admin_merchant_payout(
     initiated_by_user_id: str | None = None,
     remarks: str = "Admin merchant payout",
 ) -> MpesaTransaction:
-    """Pay a merchant from the hub Paybill via B2B (no client STK collection)."""
+    """Pay a merchant from the hub Paybill via B2B, Pochi, or B2C (no client STK collection)."""
     from app.services.mpesa_service import (
         MpesaApiError,
         get_merchant_profile,
@@ -278,9 +348,13 @@ def create_admin_merchant_payout(
     profile = get_merchant_profile(db, account_id)
     destination = merchant_payout_destination(profile)
     if not destination:
-        raise MpesaApiError(
-            "Merchant payout Till, Paybill, or Pochi is not configured.",
-        )
+        raise MpesaApiError(MISSING_DESTINATION_REASON)
+
+    require_min_amount(
+        int(amount),
+        min_payout_kes(destination[1], sandbox=use_mpesa_sandbox(db)),
+        label="Payout",
+    )
 
     config = resolve_mpesa_config(db)
     if not _resolve_b2b_credentials(config):
@@ -327,7 +401,7 @@ def queue_payout_for_collection(
     *,
     force: bool = False,
 ) -> MpesaTransaction | None:
-    """Send a B2B payout to the merchant after a successful STK collection."""
+    """Send a merchant payout after a successful STK collection (B2B, Pochi, or B2C)."""
     if collection_txn.status != "success":
         return None
     # Never re-pay a completed payout, even when force=True.
@@ -351,7 +425,7 @@ def queue_payout_for_collection(
     if not destination:
         _mark_payout_skipped(
             collection_txn,
-            reason="Merchant payout Till, Paybill, or Pochi is not configured.",
+            reason=MISSING_DESTINATION_REASON,
         )
         db.flush()
         return collection_txn
@@ -360,6 +434,22 @@ def queue_payout_for_collection(
     collection_txn.payout_shortcode = payout_shortcode
     collection_txn.payout_shortcode_type = payout_shortcode_type
     collection_txn.payout_amount = int(collection_txn.amount)
+
+    min_kes = min_payout_kes(
+        payout_shortcode_type,
+        sandbox=use_mpesa_sandbox(db),
+    )
+    if int(collection_txn.payout_amount) < min_kes:
+        _mark_payout_skipped(
+            collection_txn,
+            reason=(
+                f"KES {int(collection_txn.payout_amount)} is below Safaricom's "
+                f"KES {min_kes} minimum for this payout type."
+            ),
+            destination=destination,
+        )
+        db.flush()
+        return collection_txn
 
     try:
         config = resolve_mpesa_config(db)
@@ -393,9 +483,9 @@ def queue_payout_for_collection(
         db.flush()
         return collection_txn
 
-    # Collections often land in Utility; B2B merchant payouts debit Working.
-    # Sweep Utility → Working first (when enabled), then send to the merchant.
-    if _utility_to_working_enabled():
+    # Collections land in Utility. B2B/Pochi debit Working, so sweep first.
+    # B2C to a merchant phone debits Utility — skip the sweep.
+    if _utility_to_working_enabled() and not _is_b2c_destination(payout_shortcode_type):
         return _start_utility_to_working_sweep(
             db,
             collection_txn,
@@ -530,7 +620,7 @@ def _submit_merchant_payout(
     config: Any | None = None,
     creds: tuple[str, str] | None = None,
 ) -> MpesaTransaction:
-    """Send DukAI hub → merchant B2B/Pochi after Utility→Working (or skip)."""
+    """Send DukAI hub → merchant B2B, Pochi, or B2C after Utility→Working (or skip)."""
     if config is None:
         config = resolve_mpesa_config(db)
     if creds is None:
@@ -555,16 +645,37 @@ def _submit_merchant_payout(
         db.flush()
         return collection_txn
 
+    payout_amount = int(collection_txn.payout_amount or collection_txn.amount)
+    min_kes = min_payout_kes(
+        payout_shortcode_type,
+        sandbox=use_mpesa_sandbox(db),
+    )
+    if payout_amount < min_kes:
+        collection_txn.payout_status = PAYOUT_SKIPPED
+        collection_txn.payout_result_desc = (
+            f"KES {payout_amount} is below Safaricom's KES {min_kes} "
+            "minimum for this payout type."
+        )[:500]
+        collection_txn.payout_completed_at = _now_utc().replace(tzinfo=None)
+        collection_txn.updated_at = _now_utc().replace(tzinfo=None)
+        db.flush()
+        return collection_txn
+
     originator_id = uuid.uuid4().hex[:20].upper()
-    result_url, timeout_url = _b2b_urls()
+    result_url, timeout_url = (
+        _b2c_urls() if _is_b2c_destination(payout_shortcode_type) else _b2b_urls()
+    )
+
+    if _is_b2c_destination(payout_shortcode_type):
+        pending_desc = "B2C payout request sent."
+    elif _is_pochi_destination(payout_shortcode_type):
+        pending_desc = "Pochi payout request sent."
+    else:
+        pending_desc = "B2B payout request sent."
 
     collection_txn.payout_status = PAYOUT_PENDING
     collection_txn.payout_originator_conversation_id = originator_id
-    collection_txn.payout_result_desc = (
-        "Pochi payout request sent."
-        if _is_pochi_destination(payout_shortcode_type)
-        else "B2B payout request sent."
-    )
+    collection_txn.payout_result_desc = pending_desc
     collection_txn.payout_completed_at = None
     collection_txn.updated_at = _now_utc().replace(tzinfo=None)
     db.flush()
@@ -642,7 +753,7 @@ def release_collection_to_merchant(
     *,
     transaction_id: str,
 ) -> MpesaTransaction:
-    """Admin: send a received Client → DukAI collection to the merchant (B2B)."""
+    """Admin: send a received Client → DukAI collection to the merchant."""
     from app.services.mpesa_service import MpesaApiError
 
     txn = db.query(MpesaTransaction).filter(MpesaTransaction.id == transaction_id).first()
@@ -830,6 +941,62 @@ def _result_desc(result: dict[str, Any]) -> str:
     return base_desc
 
 
+def _rewrite_payout_limit_desc(desc: str, dest_type: str) -> str:
+    """Turn Safaricom org-portal limit copy into an actionable DukAI message."""
+    lower = (desc or "").lower()
+    if not any(
+        token in lower
+        for token in (
+            "limit rule",
+            "minimum business payment",
+            "minimum transaction amount",
+            "less than the minimum",
+        )
+    ):
+        return desc
+    from app.support.mpesa_amounts import min_payout_kes
+
+    min_kes = min_payout_kes(dest_type, sandbox=False)
+    if _is_b2c_destination(dest_type):
+        return (
+            f"Safaricom blocked this phone payout: Business Payment to Customer "
+            f"is below the org minimum (usually KES {min_kes}+). Send at least "
+            f"KES {min_kes}, or on the M-PESA org portal lower the limit rule "
+            "'Minimum Business Payment To Customer'."
+        )
+    return (
+        f"Safaricom blocked this payout under a minimum amount rule. "
+        f"Send at least KES {min_kes}."
+    )
+
+
+def _rewrite_invalid_receiver_desc(
+    desc: str,
+    *,
+    dest_type: str,
+    shortcode: str,
+    result_code: Any,
+) -> str:
+    token = _result_code_token(result_code).upper()
+    lower = (desc or "").lower()
+    if token != "SFC_IC0003" and "receiver party is invalid" not in lower:
+        return desc
+    kind = (dest_type or "").lower()
+    dest = (shortcode or "").strip() or "this destination"
+    if kind in {"till", "buygoods", "buy_goods"}:
+        return (
+            f"Safaricom rejected till {dest} (SFC_IC0003). "
+            "Use the Lipa Na M-PESA Buy Goods till shown to customers, "
+            "not a store number or Paybill."
+        )
+    if kind in {"paybill", "shortcode"}:
+        return (
+            f"Safaricom rejected Paybill {dest} (SFC_IC0003). "
+            "Confirm the Paybill is active."
+        )
+    return desc or "Safaricom rejected the payout receiver (SFC_IC0003)."
+
+
 def apply_b2b_result(db: Session, payload: dict[str, Any]) -> MpesaTransaction | None:
     """Persist a Safaricom B2B ResultURL callback (sweep or merchant payout)."""
     result = payload.get("Result") or {}
@@ -839,19 +1006,21 @@ def apply_b2b_result(db: Session, payload: dict[str, Any]) -> MpesaTransaction |
 
     phase = _payout_phase(txn) or PHASE_MERCHANT_PAYOUT
     result_code = result.get("ResultCode")
+    code = _coerce_result_code(result_code)
     base_desc = _result_desc(result)
 
     if phase == PHASE_UTILITY_TO_WORKING:
         sweep_meta = {
             **((txn.payout_callback_payload or {}).get("utility_to_working") or {}),
             "result_callback": payload,
-            "result_code": int(result_code) if result_code is not None else None,
+            "result_code": code,
+            "result_code_raw": result_code,
             "result_desc": base_desc[:500] or None,
         }
         _merge_payout_callback(txn, utility_to_working=sweep_meta)
         txn.updated_at = _now_utc().replace(tzinfo=None)
 
-        if result_code == 0:
+        if code == 0:
             txn.payout_result_desc = (
                 "Utility → Working succeeded. Sending to merchant…"
             )[:500]
@@ -866,8 +1035,8 @@ def apply_b2b_result(db: Session, payload: dict[str, Any]) -> MpesaTransaction |
             return txn
 
         # Sweep failed — if Utility is empty, Working may already hold funds.
-        insufficient = result_code == 1 or "insufficient" in base_desc.lower()
-        not_allowed = result_code == 21 or "not allowed" in base_desc.lower()
+        insufficient = code == 1 or "insufficient" in base_desc.lower()
+        not_allowed = code == 21 or "not allowed" in base_desc.lower()
         if insufficient:
             txn.payout_result_desc = (
                 f"Utility → Working skipped ({base_desc or 'insufficient'}). "
@@ -884,7 +1053,7 @@ def apply_b2b_result(db: Session, payload: dict[str, Any]) -> MpesaTransaction |
             return txn
 
         txn.payout_status = PAYOUT_FAILED
-        txn.payout_result_code = int(result_code) if result_code is not None else None
+        txn.payout_result_code = code
         if not_allowed:
             initiator = (get_settings().mpesa_b2b_initiator or "your API operator").strip()
             txn.payout_result_desc = (
@@ -904,13 +1073,38 @@ def apply_b2b_result(db: Session, payload: dict[str, Any]) -> MpesaTransaction |
         return txn
 
     # Merchant payout result.
-    txn.payout_result_code = int(result_code) if result_code is not None else None
-    if result_code == 1 or "insufficient" in base_desc.lower():
+    txn.payout_result_code = code
+    dest_type = txn.payout_shortcode_type or ""
+    not_allowed = code == 21 or "not allowed" in base_desc.lower()
+    base_desc = _rewrite_payout_limit_desc(base_desc, dest_type)
+    base_desc = _rewrite_invalid_receiver_desc(
+        base_desc,
+        dest_type=dest_type,
+        shortcode=txn.payout_shortcode or "",
+        result_code=result_code,
+    )
+    if code is None and _result_code_token(result_code):
+        token = _result_code_token(result_code)
+        if token.upper() not in (base_desc or "").upper():
+            base_desc = f"{base_desc} ({token})".strip() if base_desc else token
+    if code == 1 or "insufficient" in base_desc.lower():
+        if _is_b2c_destination(dest_type):
+            base_desc = (
+                f"{base_desc} "
+                "B2C debits the Utility account. Confirm Utility has funds on the M-PESA org portal."
+            ).strip()
+        else:
+            base_desc = (
+                f"{base_desc} "
+                "B2B debits the Working account. Auto Utility→Working may have failed — "
+                "check both balances on the M-PESA org portal."
+            ).strip()
+    elif not_allowed and _is_b2c_destination(dest_type):
+        initiator = (get_settings().mpesa_b2b_initiator or "your API operator").strip()
         base_desc = (
-            f"{base_desc} "
-            "B2B debits the Working account. Auto Utility→Working may have failed — "
-            "check both balances on the M-PESA org portal."
-        ).strip()
+            "B2C blocked: initiator is not allowed to send BusinessPayment to a phone. "
+            f"On the M-PESA org portal, enable B2C for initiator {initiator}."
+        )
     txn.payout_result_desc = base_desc[:500] or None
     _merge_payout_callback(
         txn,
@@ -922,7 +1116,7 @@ def apply_b2b_result(db: Session, payload: dict[str, Any]) -> MpesaTransaction |
     )
     txn.updated_at = _now_utc().replace(tzinfo=None)
 
-    if result_code == 0:
+    if code == 0:
         txn.payout_status = PAYOUT_SUCCESS
         txn.payout_receipt_number = (
             result.get("TransactionID")
@@ -971,7 +1165,7 @@ def apply_b2b_timeout(db: Session, payload: dict[str, Any]) -> MpesaTransaction 
 
     txn.payout_status = PAYOUT_FAILED
     txn.payout_result_desc = (
-        result.get("ResultDesc") or "B2B payout timed out before Safaricom returned a result."
+        result.get("ResultDesc") or "Merchant payout timed out before Safaricom returned a result."
     )[:500]
     _merge_payout_callback(txn, timeout_callback=payload)
     txn.payout_completed_at = _now_utc().replace(tzinfo=None)

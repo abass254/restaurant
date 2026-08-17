@@ -118,7 +118,15 @@ class Settings(BaseSettings):
     mpesa_b2b_auto_payout: bool = False
     # Before merchant B2B, sweep Utility → Working via BusinessTransferFromUtilityToMMF.
     # Requires the B2B initiator to be allowed Intra Account transfers on the org portal.
+    # Set MPESA_B2B_UTILITY_TO_WORKING=false to pay from Working without the sweep.
+    # B2C phone payouts skip this sweep (they debit Utility). Same initiator needs the B2C role.
     mpesa_b2b_utility_to_working: bool = True
+    # Production org rails (B2C/B2B/Pochi) typically reject under KES 10.
+    mpesa_min_stk_amount: int = 1
+    mpesa_min_b2c_amount: int = 10
+    mpesa_min_b2b_amount: int = 10
+    mpesa_min_sandbox_amount: int = 1
+    mpesa_max_amount: int = 150000
 
     # --- AI image generation ------------------------------------------------
     # Master switch. When false, the generate endpoint returns a friendly 503

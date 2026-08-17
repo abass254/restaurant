@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
@@ -12,22 +12,9 @@ import type {
   MpesaConfigResponse,
 } from "@/lib/types";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
+import { MerchantPayoutForm } from "./MerchantPayoutForm";
 import { MpesaMoneyFlow } from "./MpesaMoneyFlow";
 import { Skeleton } from "./Skeleton";
-
-type MerchantFormState = {
-  shortcode: string;
-  shortcode_type: MerchantPayoutType;
-  account_number: string;
-};
-
-type MerchantPayoutType = "paybill" | "till" | "pochi";
-
-const EMPTY_MERCHANT_FORM: MerchantFormState = {
-  shortcode: "",
-  shortcode_type: "paybill",
-  account_number: "",
-};
 
 type MpesaSettingsSectionProps = {
   mode?: "merchant" | "admin";
@@ -42,76 +29,18 @@ export function MpesaSettingsSection({ mode = "merchant" }: MpesaSettingsSection
 
 function MerchantMpesaSettingsSection() {
   const [config, setConfig] = useState<MerchantMpesaConfig | null>(null);
+  const [suggestedPhone, setSuggestedPhone] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState<MerchantFormState>(EMPTY_MERCHANT_FORM);
 
   useEffect(() => {
     void apiFetch<MerchantMpesaConfigResponse>(apiRoutes.mpesaBusinessConfig)
       .then((data) => {
         setConfig(data.config);
-        if (data.config) {
-          setForm({
-            shortcode: data.config.shortcode,
-            shortcode_type: (
-              ["paybill", "till", "pochi"] as const
-            ).includes(data.config.shortcode_type as MerchantPayoutType)
-              ? (data.config.shortcode_type as MerchantPayoutType)
-              : "paybill",
-            account_number: data.config.account_number ?? "",
-          });
-        }
+        setSuggestedPhone(data.suggested_phone ?? null);
       })
       .catch(() => setConfig(null))
       .finally(() => setLoaded(true));
   }, []);
-
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    try {
-      const data = await apiFetch<MerchantMpesaConfigResponse>(apiRoutes.mpesaBusinessConfig, {
-        method: "PUT",
-        body: JSON.stringify({
-          shortcode: form.shortcode,
-          shortcode_type: form.shortcode_type,
-          account_number: form.account_number,
-        }),
-      });
-      setConfig(data.config);
-      await toastSuccess("M-PESA settlement details saved");
-    } catch (err) {
-      await showError("Could not save", extractErrorMessage(err));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const destinationMeta: Record<
-    MerchantPayoutType,
-    { label: string; hint: string; field: string; placeholder: string }
-  > = {
-    pochi: {
-      label: "Pochi la Biashara",
-      hint: "Funds go to the phone number linked to your Pochi wallet.",
-      field: "Pochi phone number",
-      placeholder: "07XXXXXXXX or 2547XXXXXXXX",
-    },
-    till: {
-      label: "Till / Buy Goods",
-      hint: "Funds go to your Lipa Na M-PESA Till number.",
-      field: "Till number",
-      placeholder: "e.g. 5575731",
-    },
-    paybill: {
-      label: "Paybill",
-      hint: "Funds go to your business Paybill shortcode.",
-      field: "Paybill number",
-      placeholder: "e.g. 123456",
-    },
-  };
-
-  const activeDestination = destinationMeta[form.shortcode_type];
 
   if (!loaded) {
     return (
@@ -148,83 +77,24 @@ function MerchantMpesaSettingsSection() {
       </header>
       <div className="settings-card__body">
         <p className="settings-muted settings-card__lead">
-          Money always moves Client → DukAI → your store. Customers pay the DukAI hub first; once
-          confirmed, DukAI pays the same amount out to the destination below.
+          Money moves from the customer, through DukAI, to your store. Once the
+          customer pays, we send the same amount to the destination below.
         </p>
 
         <MpesaMoneyFlow audience="merchant" />
 
-        <form className="settings-form settings-form--compact" onSubmit={(e) => void handleSubmit(e)}>
-          <fieldset className="settings-field" disabled={saving}>
-            <span>Where should DukAI send your payout?</span>
-            {(Object.keys(destinationMeta) as MerchantPayoutType[]).map((type) => (
-              <label key={type} className="settings-field settings-field--checkbox">
-                <input
-                  type="radio"
-                  name="merchant-payout-type"
-                  checked={form.shortcode_type === type}
-                  onChange={() =>
-                    setForm((prev) => ({
-                      ...prev,
-                      shortcode_type: type,
-                    }))
-                  }
-                />
-                <span>
-                  <strong>{destinationMeta[type].label}</strong>
-                  <em className="settings-muted"> — {destinationMeta[type].hint}</em>
-                </span>
-              </label>
-            ))}
-          </fieldset>
-
-          <label className="settings-field">
-            <span>{activeDestination.field}</span>
-            <input
-              type="text"
-              required
-              value={form.shortcode}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  shortcode: e.target.value.trim(),
-                }))
-              }
-              placeholder={activeDestination.placeholder}
-              inputMode={form.shortcode_type === "pochi" ? "tel" : "numeric"}
-              autoComplete="off"
-            />
-          </label>
-
-          <label className="settings-field">
-            <span>Transaction account</span>
-            <input
-              type="text"
-              required
-              value={form.account_number}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  account_number: e.target.value.trim(),
-                }))
-              }
-              placeholder="e.g. SHOP001"
-              maxLength={12}
-              autoComplete="off"
-            />
-          </label>
-          <p className="settings-card__hint">
-            <i className="fa-solid fa-circle-info" aria-hidden="true" />
-            Used as the M-PESA account reference when customers pay, so you can match deposits to
-            this shop.
-          </p>
-
-          <div className="settings-actions">
-            <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
-              {saving ? "Saving…" : "Save settlement details"}
-            </button>
-          </div>
-        </form>
+        <MerchantPayoutForm
+          key={config?.id ?? "empty"}
+          initial={config}
+          suggestedPhone={suggestedPhone}
+          layout="radios"
+          submitLabel="Yes, save"
+          successMessage="M-PESA settlement details saved"
+          onSaved={(nextConfig, nextPhone) => {
+            setConfig(nextConfig);
+            setSuggestedPhone(nextPhone);
+          }}
+        />
       </div>
     </article>
   );
@@ -414,7 +284,7 @@ function AdminMpesaSettingsSection() {
             <i className="fa-solid fa-bolt" aria-hidden="true" />
             {testing ? "Testing…" : "Test connection"}
           </button>
-          <Link href="/tools/payments" className="btn btn-ghost btn-sm">
+          <Link href="/settings" className="btn btn-ghost btn-sm">
             <i className="fa-solid fa-paper-plane" aria-hidden="true" />
             Send payment request
           </Link>

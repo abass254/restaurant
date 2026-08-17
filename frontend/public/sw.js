@@ -1,6 +1,6 @@
 /* DukAI Merchant Station service worker — cache shell + show push/local alerts. */
 
-const CACHE = "dukai-station-v5";
+const CACHE = "dukai-station-v8";
 const PRECACHE = [
   "/",
   "/m",
@@ -9,9 +9,14 @@ const PRECACHE = [
   "/r/install",
   "/station",
   "/install",
+  "/trans-chap",
+  "/trans-chap/install",
+  "/trans-chap/sign-in",
   "/manifest.webmanifest",
   "/rider-manifest.webmanifest",
+  "/trans-chap-manifest.webmanifest",
   "/icons/icon-192.png",
+  "/icons/trans-chap-192.png",
   "/icons/badge-96.png",
 ];
 
@@ -46,7 +51,7 @@ self.addEventListener("fetch", (event) => {
     fetch(req)
       .then((res) => {
         const copy = res.clone();
-        if (res.ok && (url.pathname === "/m" || url.pathname.startsWith("/station") || url.pathname.startsWith("/r"))) {
+        if (res.ok && (url.pathname === "/m" || url.pathname.startsWith("/station") || url.pathname.startsWith("/r") || url.pathname.startsWith("/trans-chap"))) {
           void caches.open(CACHE).then((cache) => cache.put(req, copy));
         }
         return res;
@@ -60,6 +65,10 @@ self.addEventListener("fetch", (event) => {
         }
         if (url.pathname.startsWith("/r")) {
           const shell = await caches.match("/r/home");
+          if (shell) return shell;
+        }
+        if (url.pathname.startsWith("/trans-chap")) {
+          const shell = await caches.match("/trans-chap");
           if (shell) return shell;
         }
         return Response.error();

@@ -59,7 +59,7 @@ export function AppTopBar({
 
         <Link href="/dashboard" className="fb-topbar__logo" aria-label="DukAI home">
           <span className="fb-topbar__logo-text">duk</span>
-          <DukAiLogoMark size={36} color="#0d1b2a" accentColor="#1877f2" />
+          <DukAiLogoMark size={36} color="#1a100c" accentColor="#e85d04" />
           <span className="fb-topbar__logo-text">
             ai<span className="fb-topbar__tm">™</span>
           </span>

@@ -1,25 +1,25 @@
-/* ── Split-screen auth (DukAI navy + merchant blue) ── */
+/* ── Split-screen auth (warm dark + rich orange) ── */
 
 .auth-split {
   /* Sign-in / setup stay light even when OS/app dark theme is on */
   color-scheme: light;
-  --auth-ink: #0d1b2a;
-  --auth-muted: #475569;
-  --auth-soft: #94a3b8;
+  --auth-ink: #1a100c;
+  --auth-muted: #5e5749;
+  --auth-soft: #9a9180;
   --auth-fill: #f4f4f4;
-  --auth-accent: #1877f2;
-  --auth-cream: #8b9bb4;
-  --auth-primary: #1a1c2c;
-  --auth-primary-dark: #0d1b2a;
-  --auth-primary-mid: #243656;
-  --auth-gradient: linear-gradient(90deg, #0d1b2a 0%, #1a2744 55%, #1877f2 100%);
-  --auth-hero-gradient: linear-gradient(180deg, #070d16 0%, #0d1b2a 40%, #152238 75%, #1e3a5f 100%);
+  --auth-accent: #e85d04;
+  --auth-cream: #c4926e;
+  --auth-primary: #1a100c;
+  --auth-primary-dark: #1a100c;
+  --auth-primary-mid: #4a2818;
+  --auth-gradient: linear-gradient(90deg, #1a100c 0%, #9a3412 55%, #e85d04 100%);
+  --auth-hero-gradient: linear-gradient(180deg, #120c0a 0%, #1a100c 40%, #3d1a0c 75%, #7c2d12 100%);
   /* Beat global tokens that track prefers-color-scheme / dark theme */
   --color-bg: #ffffff;
   --color-bg-muted: var(--auth-fill);
-  --color-bg-accent: #f8fafc;
-  --color-border: #e2e8f0;
-  --color-border-strong: #cbd5e1;
+  --color-bg-accent: #faf8f4;
+  --color-border: #e8e2d8;
+  --color-border-strong: #d4ccc0;
   --color-text: var(--auth-ink);
   --color-text-muted: var(--auth-muted);
   --color-text-subtle: var(--auth-soft);
@@ -53,7 +53,7 @@
   inset: 0;
   z-index: 1;
   background:
-    radial-gradient(circle at 18% 18%, rgba(24, 119, 242, 0.22), transparent 40%),
+    radial-gradient(circle at 18% 18%, rgba(232, 93, 4, 0.22), transparent 40%),
     radial-gradient(circle at 82% 72%, rgba(255, 255, 255, 0.1), transparent 42%);
   pointer-events: none;
 }
@@ -254,7 +254,7 @@
   outline: none;
   background-color: #efefef !important;
   border-color: transparent !important;
-  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.16);
+  box-shadow: 0 0 0 3px rgba(232, 93, 4, 0.16);
 }
 
 .auth-split__input-wrap {
@@ -309,7 +309,7 @@
 
 .auth-split__toggle:hover {
   color: var(--auth-primary);
-  background: rgba(24, 119, 242, 0.08);
+  background: rgba(232, 93, 4, 0.08);
 }
 
 .auth-split__row {
@@ -519,7 +519,7 @@
   outline: none;
   border-color: var(--auth-primary) !important;
   background-color: #fff !important;
-  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.16);
+  box-shadow: 0 0 0 3px rgba(232, 93, 4, 0.16);
 }
 
 .auth-otp .auth-split__btn {
@@ -764,7 +764,7 @@
 }
 
 .auth-split--setup .ob-actions .btn-primary:disabled {
-  background: #94a3b8;
+  background: #c4b8a8;
   box-shadow: none;
   opacity: 1;
   cursor: not-allowed;
@@ -799,7 +799,7 @@
 .auth-split--setup .loc-picker__control input:focus {
   outline: none;
   background: #efefef;
-  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.16);
+  box-shadow: 0 0 0 3px rgba(232, 93, 4, 0.16);
 }
 
 .auth-split--setup .loc-picker__control input:-webkit-autofill,
@@ -832,7 +832,7 @@
 
 .auth-split--setup .loc-picker__map {
   background: #eef2f7;
-  box-shadow: inset 0 0 0 1px rgba(24, 119, 242, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(232, 93, 4, 0.08);
 }
 
 .auth-split--setup .ob-card--welcome {
@@ -863,8 +863,8 @@
   gap: 0.9rem;
   padding: 0.95rem 1rem;
   border-radius: 16px;
-  background: rgba(24, 119, 242, 0.06);
-  border: 1px solid rgba(24, 119, 242, 0.10);
+  background: rgba(232, 93, 4, 0.06);
+  border: 1px solid rgba(232, 93, 4, 0.10);
 }
 
 .auth-split--setup .ob-welcome__icon {
@@ -1002,7 +1002,7 @@
 .auth-split--setup .ob-hours-row input[type="time"]:focus {
   border-color: var(--auth-accent) !important;
   background-color: #fff !important;
-  box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.16);
+  box-shadow: 0 0 0 3px rgba(232, 93, 4, 0.16);
 }
 
 .auth-split--setup .ob-svc-row__input:disabled {
@@ -1024,7 +1024,7 @@
 }
 
 .auth-split--setup .ob-svc-row__remove:hover:not(:disabled) {
-  background: rgba(24, 119, 242, 0.10);
+  background: rgba(232, 93, 4, 0.10);
   color: var(--auth-primary-dark);
 }
 

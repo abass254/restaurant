@@ -83,6 +83,48 @@ async def mpesa_b2b_timeout(request: Request, db=Depends(get_db)):
     return {"ResultCode": 0, "ResultDesc": "Accepted"}
 
 
+@router.post("/mpesa/b2c/result")
+async def mpesa_b2c_result(request: Request, db=Depends(get_db)):
+    payload: dict[str, Any]
+    try:
+        payload = await request.json()
+    except Exception:
+        body = (await request.body()).decode("utf-8", errors="ignore")
+        logger.warning("M-PESA B2C result non-JSON body: %s", body[:500])
+        return {"ResultCode": 0, "ResultDesc": "Accepted"}
+
+    logger.info("M-PESA B2C result received: %s", payload)
+    try:
+        from app.services import mpesa_payout_service
+
+        mpesa_payout_service.apply_b2b_result(db, payload)
+    except Exception:
+        logger.exception("Failed to apply M-PESA B2C result")
+
+    return {"ResultCode": 0, "ResultDesc": "Accepted"}
+
+
+@router.post("/mpesa/b2c/timeout")
+async def mpesa_b2c_timeout(request: Request, db=Depends(get_db)):
+    payload: dict[str, Any]
+    try:
+        payload = await request.json()
+    except Exception:
+        body = (await request.body()).decode("utf-8", errors="ignore")
+        logger.warning("M-PESA B2C timeout non-JSON body: %s", body[:500])
+        return {"ResultCode": 0, "ResultDesc": "Accepted"}
+
+    logger.info("M-PESA B2C timeout received: %s", payload)
+    try:
+        from app.services import mpesa_payout_service
+
+        mpesa_payout_service.apply_b2b_timeout(db, payload)
+    except Exception:
+        logger.exception("Failed to apply M-PESA B2C timeout")
+
+    return {"ResultCode": 0, "ResultDesc": "Accepted"}
+
+
 @router.post("/mpesa/balance/result")
 async def mpesa_balance_result(request: Request, db=Depends(get_db)):
     payload: dict[str, Any]

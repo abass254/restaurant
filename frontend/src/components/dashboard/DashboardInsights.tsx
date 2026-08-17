@@ -126,7 +126,7 @@ export function DashboardInsights({
         <MotionList as="div" className="soft-achievements" staggerChildren={0.06}>
           <AchievementCard
             icon="fa-boxes-stacked"
-            tone="blue"
+            tone="peach"
             label="Products"
             value={inv.total}
             loading={inventoryLoading}
@@ -194,7 +194,7 @@ export function DashboardInsights({
             <p className="dashboard-insights__sub">Jump to your most-used tools</p>
           </header>
           <div className="soft-action-cards">
-            <Link href="/tickets" className="soft-action-card soft-action-card--blue">
+            <Link href="/tickets" className="soft-action-card soft-action-card--peach">
               <span className="soft-action-card__tag">Support</span>
               <h3 className="soft-action-card__title">Tickets inbox</h3>
               <p className="soft-action-card__meta">Reply to customer messages</p>
@@ -321,7 +321,7 @@ function CatalogColumn({
               <span>Active</span>
               <div className="soft-metric__bar">
                 <div
-                  className="soft-metric__bar-fill soft-metric__bar-fill--blue"
+                  className="soft-metric__bar-fill soft-metric__bar-fill--peach"
                   style={{ width: `${activePct}%` }}
                 />
               </div>
@@ -392,7 +392,7 @@ function RingChart({
         cy="80"
         r={r}
         fill="none"
-        stroke="var(--app-accent-blue)"
+        stroke="var(--app-accent-peach)"
         strokeWidth="12"
         strokeDasharray={`${primary} ${c}`}
         strokeDashoffset={-secondary}
@@ -414,7 +414,7 @@ function AchievementCard({
   btnLabel,
 }: {
   icon: string;
-  tone: "blue" | "teal" | "amber" | "indigo";
+  tone: "peach" | "teal" | "amber" | "indigo";
   label: string;
   value: number;
   loading: boolean;

@@ -65,7 +65,9 @@ def _require_shop(user: User) -> int:
 def _auth_inventory_user(db: Session, session: dict, *, pos_read_ok: bool = False) -> User:
     user = require_user(db, session)
     if pos_read_ok:
-        assert_merchant_section_any_access(user, "inventory", "pos", "services")
+        assert_merchant_section_any_access(
+            user, "inventory", "pos", "services", "dashboard",
+        )
     else:
         assert_merchant_section_any_access(user, "inventory", "services")
     return user

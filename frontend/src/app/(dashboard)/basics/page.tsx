@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { BusinessLocationSection } from "@/components/app/BusinessLocationSection";
+import { PaymentTermsSection } from "@/components/app/PaymentTermsSection";
 import { useAuthRefresh, useAuthUser } from "@/components/app/AuthProvider";
 import { apiFetch } from "@/lib/api";
 import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
@@ -105,8 +106,8 @@ export default function BasicsPage() {
         <div>
           <h1 className="settings-shell__title">Basics</h1>
           <p className="settings-shell__lead">
-            Update your store name, category, logo, and location. Delivery and
-            customer-facing pages use these details.
+            Update your store name, category, logo, location, and how DukAI
+            pays you. Delivery and customer-facing pages use these details.
           </p>
         </div>
       </header>
@@ -251,6 +252,8 @@ export default function BasicsPage() {
             )}
           </div>
         </article>
+
+        <PaymentTermsSection />
       </div>
     </section>
   );

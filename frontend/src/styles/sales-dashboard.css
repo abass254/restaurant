@@ -413,8 +413,8 @@
   background: var(--app-accent-teal);
 }
 
-.fb-app .smd-popularity__fill--blue {
-  background: var(--app-accent-blue);
+.fb-app .smd-popularity__fill--peach {
+  background: var(--app-accent-peach);
 }
 
 .fb-app .smd-popularity__fill--indigo {
@@ -445,10 +445,10 @@
   border-color: color-mix(in srgb, var(--app-accent-teal) 35%, transparent);
 }
 
-.fb-app .smd-pill--blue {
-  color: var(--app-accent-blue);
-  background: var(--app-accent-blue-soft);
-  border-color: color-mix(in srgb, var(--app-accent-blue) 35%, transparent);
+.fb-app .smd-pill--peach {
+  color: var(--app-accent-peach);
+  background: var(--app-accent-peach-soft);
+  border-color: color-mix(in srgb, var(--app-accent-peach) 35%, transparent);
 }
 
 .fb-app .smd-pill--indigo {
@@ -567,8 +567,8 @@
   color: var(--app-accent-teal);
 }
 
-.fb-app .smd-quick-link--blue i {
-  color: var(--app-accent-blue);
+.fb-app .smd-quick-link--peach i {
+  color: var(--app-accent-peach);
 }
 
 .fb-app .smd-quick-link--indigo i {

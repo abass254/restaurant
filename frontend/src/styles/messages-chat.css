@@ -12,10 +12,10 @@
 }
 
 .chat-app {
-  --chat-unread-bg: #e7f3ff;
+  --chat-unread-bg: #ffedd5;
   --chat-unread-bg-hover: #d4e9ff;
   --chat-unread-bg-active: #c5e1ff;
-  --chat-unread-accent: #1877f2;
+  --chat-unread-accent: #e85d04;
 
   display: flex;
   height: calc(100vh - var(--app-topbar-height));
@@ -30,7 +30,7 @@ html[data-theme="dark"] .chat-app {
   --chat-unread-bg: rgba(45, 136, 255, 0.2);
   --chat-unread-bg-hover: rgba(45, 136, 255, 0.28);
   --chat-unread-bg-active: rgba(45, 136, 255, 0.34);
-  --chat-unread-accent: #2d88ff;
+  --chat-unread-accent: #f97316;
 }
 
 /* ── Conversation list ── */
@@ -913,8 +913,8 @@ html[data-theme="dark"] .chat-app {
   font-size: 0.875rem;
   line-height: 1.45;
   color: var(--app-text-secondary);
-  background: color-mix(in srgb, var(--app-accent, #3b82f6) 12%, var(--app-bg));
-  border: 1px solid color-mix(in srgb, var(--app-accent, #3b82f6) 28%, var(--app-border-light));
+  background: color-mix(in srgb, var(--app-accent, #e85d04) 12%, var(--app-bg));
+  border: 1px solid color-mix(in srgb, var(--app-accent, #e85d04) 28%, var(--app-border-light));
 }
 
 .chat-composer__form {
@@ -929,7 +929,7 @@ html[data-theme="dark"] .chat-app {
 
 .chat-composer__form:focus-within {
   border-color: var(--app-primary);
-  box-shadow: 0 0 0 2px rgba(24, 119, 242, 0.15);
+  box-shadow: 0 0 0 2px rgba(232, 93, 4, 0.15);
 }
 
 .chat-composer__input {
@@ -1423,8 +1423,8 @@ html:not([data-theme="dark"]) .chat-main {
 }
 
 .chat-ticket-action--reopen {
-  color: #2563eb;
-  border-color: rgba(37, 99, 235, 0.35);
+  color: #e85d04;
+  border-color: rgba(232, 93, 4, 0.35);
 }
 
 .chat-ticket-action:disabled {
@@ -1628,8 +1628,8 @@ html:not([data-theme="dark"]) .chat-main {
 }
 
 .bot-sandbox__chip:hover:not(:disabled) {
-  border-color: var(--app-accent, #1877f2);
-  color: var(--app-accent, #1877f2);
+  border-color: var(--app-accent, #e85d04);
+  color: var(--app-accent, #e85d04);
 }
 
 .bot-sandbox__chip:disabled {
@@ -1644,7 +1644,7 @@ html:not([data-theme="dark"]) .chat-main {
 }
 
 .bot-sandbox__links a {
-  color: var(--app-accent, #1877f2);
+  color: var(--app-accent, #e85d04);
 }
 
 .bot-sandbox__messages {
@@ -1825,7 +1825,7 @@ html:not([data-theme="dark"]) .chat-main {
 }
 
 .inv-conversation-preview__footer a {
-  color: var(--app-link, #1877f2);
+  color: var(--app-link, #e85d04);
   font-weight: 600;
   text-decoration: none;
 }
@@ -1922,7 +1922,7 @@ html:not([data-theme="dark"]) .chat-main {
   border-radius: 8px;
   font-size: 0.8125rem;
   line-height: 1.45;
-  background: rgba(24, 119, 242, 0.08);
+  background: rgba(232, 93, 4, 0.08);
   color: var(--app-text, #050505);
 }
 
@@ -1939,7 +1939,7 @@ html:not([data-theme="dark"]) .chat-main {
   gap: 0.5rem;
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--app-link, #1877f2);
+  color: var(--app-link, #e85d04);
   text-decoration: none;
   padding: 0.35rem 0;
 }

@@ -132,6 +132,7 @@ export const apiRoutes = {
   autoReply: `${apiUrl}/api/v1/auto-reply`,
   mpesaConfig: `${apiUrl}/api/v1/mpesa/config`,
   mpesaBusinessConfig: `${apiUrl}/api/v1/mpesa/business-config`,
+  mpesaBusinessConfigVerify: `${apiUrl}/api/v1/mpesa/business-config/verify`,
   kraBusinessConfig: `${apiUrl}/api/v1/kra/business-config`,
   mpesaTest: `${apiUrl}/api/v1/mpesa/test`,
   mpesaStkPush: `${apiUrl}/api/v1/mpesa/stk-push`,

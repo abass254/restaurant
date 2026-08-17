@@ -1377,7 +1377,7 @@ def simulate_payment(
             status.HTTP_400_BAD_REQUEST,
             detail=(
                 f"{account.business_name} has no payout destination configured. "
-                "Add a Pochi la Biashara phone, Till, or Paybill in merchant M-PESA settings first."
+                "Add a Pochi la Biashara phone, M-PESA phone, Till, or Paybill in merchant M-PESA settings first."
             ),
         )
 
@@ -1478,7 +1478,7 @@ def merchant_payout(
             status.HTTP_400_BAD_REQUEST,
             detail=(
                 f"{account.business_name} has no payout destination configured. "
-                "Add a Till, Paybill, or Pochi in merchant M-PESA settings first."
+                "Add a Till, Paybill, Pochi, or M-PESA phone in merchant M-PESA settings first."
             ),
         )
 

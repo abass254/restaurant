@@ -901,10 +901,10 @@ html[data-theme="dark"] .waitlist-modal__submit {
   margin: 0 auto 1rem;
 
   border-radius: 50%;
-  background: rgba(59, 130, 246, 0.12);
+  background: rgba(232, 93, 4, 0.12);
 
   font-size: 1.5rem;
-  color: #2563eb;
+  color: #e85d04;
 }
 
 .waitlist-modal__eyebrow {

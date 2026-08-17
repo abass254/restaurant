@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { apiFetch, ApiError } from "@/lib/api";
 import { confirmAction, extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
+import { MPESA_MAX_KES, MPESA_MIN_PAYOUT_KES } from "@/lib/mpesa-limits";
 import type { AdminMerchantsResponse, AdminMerchantSummary } from "@/lib/types";
 
 type MerchantPayoutResponse = {
@@ -22,6 +23,10 @@ function formatDestinationType(type: string | null | undefined): string {
     case "pochi":
     case "pochi_la_biashara":
       return "Pochi";
+    case "phone":
+    case "b2c":
+    case "msisdn":
+      return "Phone";
     case "till":
     case "buygoods":
     case "buy_goods":
@@ -37,7 +42,7 @@ export function MerchantPayoutSection() {
   const [merchants, setMerchants] = useState<AdminMerchantSummary[]>([]);
   const [merchantsLoading, setMerchantsLoading] = useState(true);
   const [accountId, setAccountId] = useState("");
-  const [amount, setAmount] = useState("1");
+  const [amount, setAmount] = useState(String(MPESA_MIN_PAYOUT_KES));
   const [remarks, setRemarks] = useState("");
   const [sending, setSending] = useState(false);
   const [lastResult, setLastResult] = useState<MerchantPayoutResponse | null>(null);
@@ -70,8 +75,11 @@ export function MerchantPayoutSection() {
       return;
     }
     const parsedAmount = Number.parseInt(amount, 10);
-    if (!Number.isFinite(parsedAmount) || parsedAmount < 1) {
-      await showError("Invalid amount", "Amount must be at least 1 KES.");
+    if (!Number.isFinite(parsedAmount) || parsedAmount < MPESA_MIN_PAYOUT_KES) {
+      await showError(
+        "Invalid amount",
+        `Amount must be at least KES ${MPESA_MIN_PAYOUT_KES}. Safaricom declines smaller payouts.`,
+      );
       return;
     }
 
@@ -139,7 +147,7 @@ export function MerchantPayoutSection() {
             </span>
             <div className="mpesa-money-flow__copy">
               <strong>Merchant</strong>
-              <span>Till, Paybill, or Pochi from their settlement settings</span>
+              <span>Till, Paybill, Pochi, or M-PESA phone from their settlement settings</span>
             </div>
           </li>
         </ol>
@@ -173,8 +181,8 @@ export function MerchantPayoutSection() {
               <span>Amount (KES)</span>
               <input
                 type="number"
-                min={1}
-                max={150000}
+                min={MPESA_MIN_PAYOUT_KES}
+                max={MPESA_MAX_KES}
                 step={1}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}

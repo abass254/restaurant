@@ -51,8 +51,18 @@ async function fetchCsrf(): Promise<{ cookieHeader: string; xsrf: string }> {
   return { cookieHeader, xsrf };
 }
 
-function loginErrorRedirect(message: string): never {
-  redirect(`/sign-in?error=${encodeURIComponent(message)}`);
+function loginErrorRedirect(
+  message: string,
+  opts?: { nextPath?: string | null; fromPath?: string | null },
+): never {
+  const fromPath =
+    opts?.fromPath === "/trans-chap/sign-in" ? "/trans-chap/sign-in" : "/sign-in";
+  const params = new URLSearchParams();
+  params.set("error", message);
+  if (opts?.nextPath) {
+    params.set("next", opts.nextPath);
+  }
+  redirect(`${fromPath}?${params.toString()}`);
 }
 
 export async function verifyLoginCodeAction(formData: FormData): Promise<{
@@ -137,9 +147,11 @@ export async function loginFormAction(formData: FormData): Promise<void> {
   const nextRaw = String(formData.get("next") ?? "").trim();
   const nextPath =
     nextRaw.startsWith("/") && !nextRaw.startsWith("//") ? nextRaw : null;
+  const fromRaw = String(formData.get("from") ?? "").trim();
+  const fromPath = fromRaw === "/trans-chap/sign-in" ? fromRaw : null;
 
   if (!email || !password) {
-    loginErrorRedirect("Email and password are required.");
+    loginErrorRedirect("Email and password are required.", { nextPath, fromPath });
   }
 
   try {
@@ -167,11 +179,17 @@ export async function loginFormAction(formData: FormData): Promise<void> {
       | null;
 
     if (!res.ok) {
-      loginErrorRedirect(body?.message ?? `Login failed (HTTP ${res.status}).`);
+      loginErrorRedirect(body?.message ?? `Login failed (HTTP ${res.status}).`, {
+        nextPath,
+        fromPath,
+      });
     }
 
     if (!body) {
-      loginErrorRedirect("Login failed: empty response from server.");
+      loginErrorRedirect("Login failed: empty response from server.", {
+        nextPath,
+        fromPath,
+      });
     }
 
     if (body.require_change_password) {
@@ -193,6 +211,7 @@ export async function loginFormAction(formData: FormData): Promise<void> {
         : err instanceof Error
           ? err.message
           : `Cannot reach backend at ${backendUrl}`,
+      { nextPath, fromPath },
     );
   }
 }

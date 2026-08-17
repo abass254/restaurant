@@ -96,7 +96,7 @@ def _require_shop(user: User) -> int:
 def _auth_orders_user(db: Session, session: dict, *, pos_ok: bool = False) -> User:
     user = require_user(db, session)
     if pos_ok:
-        assert_merchant_section_any_access(user, "orders", "pos")
+        assert_merchant_section_any_access(user, "orders", "pos", "dashboard")
     else:
         assert_merchant_section_access(user, "orders")
     return user
@@ -273,7 +273,7 @@ def list_orders(
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
 ):
-    user = _auth_orders_user(db, session)
+    user = _auth_orders_user(db, session, pos_ok=True)
     account_id = _require_shop(user)
 
     query = (
@@ -848,10 +848,27 @@ def _trigger_mpesa_for_order(
     On failure: returns an error result without raising so the caller
     can keep the order at its current status.
     """
-    if order.total is None or float(order.total) < 1:
+    if order.total is None:
         return {
             "status": "skipped",
-            "message": "Order total is below M-PESA's minimum of KES 1.",
+            "message": "Order total is missing.",
+        }
+
+    profile = (
+        mpesa_service.get_merchant_profile(db, order.account_id)
+        if order.account_id
+        else None
+    )
+    from app.support.mpesa_amounts import min_collection_kes
+
+    min_kes = min_collection_kes(
+        profile.shortcode_type if profile else None,
+        sandbox=mpesa_service.use_mpesa_sandbox(db),
+    )
+    if float(order.total) < min_kes:
+        return {
+            "status": "skipped",
+            "message": f"Order total is below M-PESA's minimum of KES {min_kes}.",
         }
 
     amount = int(round(float(order.total)))

@@ -95,11 +95,13 @@ function formatDest(type: string | null | undefined, code: string | null | undef
   const label =
     kind === "pochi" || kind === "pochi_la_biashara"
       ? "Pochi"
-      : kind === "till" || kind === "buygoods" || kind === "buy_goods"
-        ? "Till"
-        : kind === "paybill"
-          ? "Paybill"
-          : "Destination";
+      : kind === "phone" || kind === "b2c" || kind === "msisdn"
+        ? "Phone"
+        : kind === "till" || kind === "buygoods" || kind === "buy_goods"
+          ? "Till"
+          : kind === "paybill"
+            ? "Paybill"
+            : "Destination";
   return `${label} ${code}`;
 }
 

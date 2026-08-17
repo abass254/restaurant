@@ -292,7 +292,7 @@ export default function AdminMpesaTransactionsPage() {
           <span className="admin-chip">{receivedCount} at DukAI</span>
           <span className="admin-chip">{awaitingCount} ready to send</span>
           <span className="admin-chip">{payoutCount} to merchant</span>
-          <button type="button" className="admin-btn admin-btn--ghost" onClick={reload}>
+          <button type="button" className="admin-btn admin-btn--ghost" onClick={() => reload()}>
             <i className="fa-solid fa-arrows-rotate" aria-hidden="true" />
             Refresh
           </button>

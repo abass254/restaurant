@@ -10,7 +10,7 @@ export function AuthBrandHeader({ href = "/sign-in" }: Props) {
     <div className="auth-split__brand">
       <Link href={href} className="auth-split__logo">
         <span className="auth-split__wordmark">duk</span>
-        <DukAiLogoMark size={64} color="#0d1b2a" accentColor="#1877f2" />
+        <DukAiLogoMark size={64} color="#1a100c" accentColor="#e85d04" />
         <span className="auth-split__wordmark">
           ai<span className="auth-split__tm">™</span>
         </span>

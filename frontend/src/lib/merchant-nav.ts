@@ -69,6 +69,12 @@ export const merchantNavLinks: MerchantNavLink[] = [
     section: "delivery",
   },
   {
+    href: "/trans-chap",
+    icon: "fa-book-open",
+    label: "Trans Chap",
+    section: "dashboard",
+  },
+  {
     href: "/tools",
     icon: "fa-screwdriver-wrench",
     label: "Tools",
