@@ -90,6 +90,7 @@ export function receiptFromOrder(
   };
 }
 
+/** Opens WhatsApp (or WhatsApp Web) with this number as the chat recipient. */
 export function whatsappReceiptUrl(phone: string, receipt: TransChapReceipt): string | null {
   const msisdn = toWhatsAppMsisdn(phone);
   if (!msisdn) return null;

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useOptionalAuthUser } from "@/components/app/AuthProvider";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
 
@@ -17,23 +18,39 @@ const NAV = [
   { href: "/trans-chap/settings", label: "Settings", title: "Settings", icon: "fa-gear" },
 ] as const;
 
-export function TransChapShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const active = NAV.find((item) =>
+function headerMeta(pathname: string): { title: string; backHref: string | null } {
+  if (pathname.startsWith("/trans-chap/make-a-sale/receipt")) {
+    return { title: "Receipt", backHref: "/trans-chap/make-a-sale" };
+  }
+  if (pathname.startsWith("/trans-chap/make-a-sale/new")) {
+    return { title: "New sale", backHref: "/trans-chap/make-a-sale" };
+  }
+  if (pathname.startsWith("/trans-chap/install")) {
+    return { title: "Download", backHref: "/trans-chap/settings" };
+  }
+  if (pathname.startsWith("/trans-chap/sign-in")) {
+    return { title: "Sign in", backHref: null };
+  }
+  if (pathname === "/trans-chap" || pathname === "/trans-chap/") {
+    return { title: "Trans Chap", backHref: null };
+  }
+  const tab = NAV.find((item) =>
     item.exact
       ? pathname === item.href
       : pathname === item.href || pathname.startsWith(`${item.href}/`),
   );
-  const heading = pathname.startsWith("/trans-chap/make-a-sale/receipt")
-    ? "Receipt"
-    : pathname.startsWith("/trans-chap/make-a-sale/new")
-      ? "Make a sale"
-      : pathname.startsWith("/trans-chap/install")
-        ? "Download"
-        : pathname.startsWith("/trans-chap/sign-in")
-          ? "Sign in"
-          : (active?.title ?? "Trans Chap");
+  return { title: tab?.title ?? "Trans Chap", backHref: null };
+}
+
+export function TransChapShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const user = useOptionalAuthUser();
+  const { title, backHref } = headerMeta(pathname);
   const showNav = !pathname.startsWith("/trans-chap/sign-in");
+  const shopName =
+    user?.active_account?.business_name || user?.account?.business_name || null;
+  const subtitle =
+    pathname === "/trans-chap" || pathname === "/trans-chap/" ? shopName : null;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -46,44 +63,45 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
     <div className="auth-split trans-chap-root">
       <section className="auth-split__panel">
         <div className="mobile-root trans-chap-app">
-          <header className="trans-chap-top">
-            <div className="auth-split__brand trans-chap-brand">
-              <Link href="/trans-chap" className="auth-split__logo" aria-label="DukAI home">
-                <span className="auth-split__wordmark">duk</span>
-                <DukAiLogoMark size={48} color="currentColor" accentColor="#e85d04" />
-                <span className="auth-split__wordmark">
-                  ai<span className="auth-split__tm">™</span>
-                </span>
-              </Link>
+          <header className="trans-chap-header">
+            <div className="trans-chap-header__side">
+              {backHref ? (
+                <Link href={backHref} className="trans-chap-header__icon" aria-label="Back">
+                  <i className="fa-solid fa-chevron-left" aria-hidden />
+                </Link>
+              ) : (
+                <Link href="/trans-chap" className="trans-chap-header__brand" aria-label="Trans Chap home">
+                  <DukAiLogoMark size={28} color="currentColor" accentColor="#e85d04" />
+                </Link>
+              )}
             </div>
-            <div className="mobile-header">
-              <div>
-                <h1>{heading}</h1>
-              </div>
-              <div className="mobile-header__actions">
-                <ThemeToggle />
-              </div>
+            <div className="trans-chap-header__center">
+              <h1>{title}</h1>
+              {subtitle ? <p>{subtitle}</p> : null}
+            </div>
+            <div className="trans-chap-header__side trans-chap-header__side--end">
+              <ThemeToggle />
             </div>
           </header>
           <main className="trans-chap-app__content">{children}</main>
           {showNav ? (
-          <nav className="mobile-nav mobile-nav--3" aria-label="Trans Chap navigation">
-            {NAV.map((item) => {
-              const isActive = item.exact
-                ? pathname === item.href
-                : pathname === item.href || pathname.startsWith(`${item.href}/`);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={isActive ? "is-active" : ""}
-                >
-                  <i className={`fa-solid ${item.icon}`} aria-hidden />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
+            <nav className="mobile-nav mobile-nav--3" aria-label="Trans Chap navigation">
+              {NAV.map((item) => {
+                const isActive = item.exact
+                  ? pathname === item.href
+                  : pathname === item.href || pathname.startsWith(`${item.href}/`);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={isActive ? "is-active" : ""}
+                  >
+                    <i className={`fa-solid ${item.icon}`} aria-hidden />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
           ) : null}
         </div>
       </section>

@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AuthShell } from "@/components/auth/AuthShell";
-import { AuthSubmitButton } from "@/components/auth/AuthSubmitButton";
 import { apiFetch, ApiError, resetCsrfCookie } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
-import { loginFormAction, verifyLoginCodeAction } from "./actions";
+import { firstAllowedPath } from "@/lib/merchant-permissions";
+import type { AuthUser } from "@/lib/types";
+import { verifyLoginCodeAction } from "./actions";
 import PasswordField from "./PasswordField";
 
 type Mode = "otp" | "password";
@@ -193,6 +194,39 @@ export default function LoginForm({
     }
   }
 
+  async function submitPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const email = String(form.get("email") ?? "").trim();
+    const password = String(form.get("password") ?? "");
+    if (!email || !password) {
+      setError("Email and password are required.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      resetCsrfCookie();
+      const user = await apiFetch<AuthUser>(apiRoutes.login, {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+      if (user.require_change_password) {
+        window.location.assign(
+          nextPath
+            ? `/change-password?next=${encodeURIComponent(nextPath)}`
+            : "/change-password",
+        );
+        return;
+      }
+      window.location.assign(nextPath || firstAllowedPath(user));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not sign in. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function onDigitPaste(text: string) {
     const chars = text.replace(/\D/g, "").slice(0, OTP_LENGTH).split("");
     if (!chars.length) return;
@@ -326,9 +360,7 @@ export default function LoginForm({
           </>
         ) : null}
 
-        <form className="auth-split__form" action={loginFormAction}>
-          {nextPath ? <input type="hidden" name="next" value={nextPath} /> : null}
-          {signInPath ? <input type="hidden" name="from" value={signInPath} /> : null}
+        <form className="auth-split__form" onSubmit={(e) => void submitPassword(e)}>
           <div className="auth-split__field">
             <label htmlFor="login-email" className="sr-only">
               Email
@@ -348,7 +380,14 @@ export default function LoginForm({
 
           <PasswordField label={null} placeholder="Password" />
 
-          <AuthSubmitButton className="auth-split__btn">Sign In</AuthSubmitButton>
+          <button
+            type="submit"
+            className="auth-split__btn"
+            disabled={busy}
+            aria-busy={busy}
+          >
+            {busy ? "Signing in…" : "Sign In"}
+          </button>
         </form>
 
         <Link href="/forgot-password" className="auth-split__link auth-split__link--end">

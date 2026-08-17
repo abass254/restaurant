@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import os from "os";
 import { loadRootEnvFile } from "./loadRootEnv";
 
 loadRootEnvFile();
@@ -6,8 +7,20 @@ loadRootEnvFile();
 /** Backend API (server-side proxy target only). Defaults to FastAPI. */
 const backendUrl = process.env.BACKEND_URL ?? "http://127.0.0.1:7001";
 
+function lanDevOrigins(): string[] {
+  const origins = new Set(["uat.dukai.app", "dukai.app", "127.0.0.1", "localhost"]);
+  for (const addrs of Object.values(os.networkInterfaces())) {
+    for (const addr of addrs ?? []) {
+      if (addr.family === "IPv4" && !addr.internal) {
+        origins.add(addr.address);
+      }
+    }
+  }
+  return [...origins];
+}
+
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["uat.dukai.app", "dukai.app", "127.0.0.1", "localhost"],
+  allowedDevOrigins: lanDevOrigins(),
   turbopack: {
     root: __dirname,
   },
