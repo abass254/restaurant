@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { apiFetch, ApiError } from "@/lib/api";
-import { confirmAction, extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
+import { confirmAction, extractErrorMessage, promptMpesaReceipt, showError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { MotionFade } from "@/components/app/MotionList";
 import { buildMpesaFlowSteps, MpesaFlowStatus } from "@/components/app/MpesaFlowStatus";
@@ -101,6 +101,7 @@ export default function AdminMpesaTransactionsPage() {
   const [kindFilter, setKindFilter] = useState<KindFilter>("client");
   const [releasingId, setReleasingId] = useState<string | null>(null);
   const [unlockingId, setUnlockingId] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [balance, setBalance] = useState<HubBalance | null>(null);
   const [balanceMessage, setBalanceMessage] = useState<string | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(true);
@@ -254,6 +255,32 @@ export default function AdminMpesaTransactionsPage() {
     }
   }
 
+  async function confirmCollection(txn: AdminMpesaTransaction) {
+    const receipt = await promptMpesaReceipt(
+      "Fix failed M-PESA payment",
+      "Enter the M-PESA transaction code from the customer's confirmation SMS. This marks the collection as paid so you can send it to the merchant.",
+    );
+    if (!receipt) return;
+
+    setConfirmingId(txn.id);
+    try {
+      const res = await apiFetch<{ message: string }>(apiRoutes.adminMpesaConfirm(txn.id), {
+        method: "POST",
+        body: JSON.stringify({ mpesa_receipt_number: receipt }),
+      });
+      await toastSuccess(res.message);
+      reload(true);
+    } catch (err) {
+      await showError(
+        "Could not fix payment",
+        err instanceof ApiError ? err.message : extractErrorMessage(err),
+      );
+      reload(true);
+    } finally {
+      setConfirmingId(null);
+    }
+  }
+
   async function checkBalance() {
     setBalanceRefreshing(true);
     try {
@@ -284,7 +311,8 @@ export default function AdminMpesaTransactionsPage() {
           <h1 className="admin-page__title">M-PESA transactions</h1>
           <p className="admin-page__lead">
             Client → DukAI → Merchant. Merchant STK collections land here when paid; send each
-            received payment to the store with <strong>Send to merchant</strong>.
+            received payment to the store with <strong>Send to merchant</strong>. If a client
+            payment failed but they have an SMS code, use <strong>Fix payment</strong>.
           </p>
         </div>
         <div className="admin-page__header-meta">
@@ -519,7 +547,12 @@ export default function AdminMpesaTransactionsPage() {
                           <button
                             type="button"
                             className="admin-btn admin-btn--primary admin-btn--sm"
-                            disabled={busy || releasingId !== null || unlockingId !== null}
+                            disabled={
+                              busy ||
+                              releasingId !== null ||
+                              unlockingId !== null ||
+                              confirmingId !== null
+                            }
                             onClick={() => void sendToMerchant(txn)}
                           >
                             <i className="fa-solid fa-paper-plane" aria-hidden="true" />
@@ -540,7 +573,11 @@ export default function AdminMpesaTransactionsPage() {
                               <button
                                 type="button"
                                 className="admin-btn admin-btn--ghost admin-btn--sm"
-                                disabled={unlockingId !== null || releasingId !== null}
+                                disabled={
+                                  unlockingId !== null ||
+                                  releasingId !== null ||
+                                  confirmingId !== null
+                                }
                                 onClick={() => void unlockPayout(txn)}
                               >
                                 <i className="fa-solid fa-unlock" aria-hidden="true" />
@@ -548,6 +585,20 @@ export default function AdminMpesaTransactionsPage() {
                               </button>
                             ) : null}
                           </div>
+                        ) : txn.can_confirm_collection ? (
+                          <button
+                            type="button"
+                            className="admin-btn admin-btn--ghost admin-btn--sm"
+                            disabled={
+                              confirmingId !== null ||
+                              releasingId !== null ||
+                              unlockingId !== null
+                            }
+                            onClick={() => void confirmCollection(txn)}
+                          >
+                            <i className="fa-solid fa-wrench" aria-hidden="true" />
+                            {confirmingId === txn.id ? "Saving…" : "Fix payment"}
+                          </button>
                         ) : (
                           <span className="admin-table__muted">—</span>
                         )}

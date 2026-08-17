@@ -253,6 +253,8 @@ export const apiRoutes = {
     `${apiUrl}/api/v1/admin/mpesa-transactions/${encodeURIComponent(id)}/release`,
   adminMpesaUnlock: (id: string) =>
     `${apiUrl}/api/v1/admin/mpesa-transactions/${encodeURIComponent(id)}/unlock`,
+  adminMpesaConfirm: (id: string) =>
+    `${apiUrl}/api/v1/admin/mpesa-transactions/${encodeURIComponent(id)}/confirm`,
   adminMpesaBalance: `${apiUrl}/api/v1/admin/mpesa-balance`,
   adminCatalogProducts: `${apiUrl}/api/v1/admin/catalog/products`,
   adminCatalogProduct: (id: string) => `${apiUrl}/api/v1/admin/catalog/products/${id}`,

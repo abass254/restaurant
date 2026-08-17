@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useCallback, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TransChapProductField } from "@/components/trans-chap/TransChapProductField";
 import { useAuthUser } from "@/components/app/AuthProvider";
@@ -11,8 +12,13 @@ import {
   addLiteInventoryProduct,
   findInventoryByName,
 } from "@/lib/trans-chap-product";
-import { saveTransChapReceipt } from "@/lib/trans-chap-receipt";
-import type { InventoryItem, OrderCreatePayload, OrderMutationResponse } from "@/lib/types";
+import { receiptFromOrder, saveTransChapReceipt, toWhatsAppMsisdn } from "@/lib/trans-chap-receipt";
+import type {
+  InventoryItem,
+  MerchantMpesaConfigResponse,
+  OrderCreatePayload,
+  OrderMutationResponse,
+} from "@/lib/types";
 
 type PayMode = "cash" | "mpesa";
 
@@ -27,6 +33,7 @@ export function TransChapTransactForm() {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [saving, setSaving] = useState(false);
+  const [mpesaReady, setMpesaReady] = useState<boolean | null>(null);
 
   const shopName =
     user.active_account?.business_name ||
@@ -37,11 +44,33 @@ export function TransChapTransactForm() {
     setInventory(items);
   }, []);
 
+  useEffect(() => {
+    void apiFetch<MerchantMpesaConfigResponse>(apiRoutes.mpesaBusinessConfig)
+      .then((data) => setMpesaReady(Boolean(data.config)))
+      .catch(() => setMpesaReady(false));
+  }, []);
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     const name = product.trim();
     const parsedAmount = Number(amount);
     if (!name || !Number.isFinite(parsedAmount) || parsedAmount <= 0) return;
+
+    const msisdn = payMode === "mpesa" ? toWhatsAppMsisdn(phone) : null;
+    if (payMode === "mpesa" && !mpesaReady) {
+      await showError(
+        "M-PESA isn't set up",
+        "Add your Till, Paybill, Pochi, or phone in Settings before taking M-PESA.",
+      );
+      return;
+    }
+    if (payMode === "mpesa" && !msisdn) {
+      await showError(
+        "M-PESA phone needed",
+        "Enter the customer's M-PESA number so we can send the payment prompt.",
+      );
+      return;
+    }
 
     setSaving(true);
     try {
@@ -50,70 +79,64 @@ export function TransChapTransactForm() {
         try {
           item = await addLiteInventoryProduct(name, amount);
           setSelectedItem(item);
-          setInventory((prev) => [item, ...prev]);
+          setInventory((prev) => [item!, ...prev]);
         } catch {
           item = null;
         }
       }
 
-      if (payMode !== "cash") {
-        return;
-      }
-
-      let orderNumber = `CASH-${Date.now().toString().slice(-6)}`;
-      let orderId: string | null = null;
+      const customerPhone = msisdn ? `+${msisdn}` : phone.trim() || null;
       const line = {
         product_name: name,
         quantity: 1,
         unit_price: parsedAmount,
       };
+      const payload: OrderCreatePayload = {
+        source: "walkin",
+        fulfillment_type: "pickup",
+        payment_method: payMode,
+        customer_name: customerName.trim() || null,
+        customer_phone: customerPhone,
+        items: [{ ...line, inventory_item_id: item?.id ?? null }],
+      };
 
       try {
-        const created = await apiFetch<OrderMutationResponse>(apiRoutes.orders, {
-          method: "POST",
-          body: JSON.stringify({
-            source: "walkin",
-            fulfillment_type: "pickup",
-            payment_method: "cash",
-            customer_name: customerName.trim() || null,
-            customer_phone: phone.trim() || null,
-            items: [{ ...line, inventory_item_id: item?.id ?? null }],
-          } satisfies OrderCreatePayload),
-        });
-        orderId = created.data.id;
-        orderNumber = created.data.order_number;
-      } catch (err) {
+        let created: OrderMutationResponse;
         try {
-          const created = await apiFetch<OrderMutationResponse>(apiRoutes.orders, {
+          created = await apiFetch<OrderMutationResponse>(apiRoutes.orders, {
             method: "POST",
-            body: JSON.stringify({
-              source: "walkin",
-              fulfillment_type: "pickup",
-              payment_method: "cash",
-              customer_name: customerName.trim() || null,
-              customer_phone: phone.trim() || null,
-              items: [line],
-            } satisfies OrderCreatePayload),
+            body: JSON.stringify(payload),
           });
-          orderId = created.data.id;
-          orderNumber = created.data.order_number;
-        } catch {
-          await showError("Sale saved on this device", extractErrorMessage(err));
+        } catch (err) {
+          if (!item) throw err;
+          created = await apiFetch<OrderMutationResponse>(apiRoutes.orders, {
+            method: "POST",
+            body: JSON.stringify({ ...payload, items: [line] } satisfies OrderCreatePayload),
+          });
         }
+        saveTransChapReceipt(receiptFromOrder(created.data, shopName, created.mpesa_push));
+      } catch (err) {
+        if (payMode === "mpesa") {
+          await showError("Could not send M-PESA prompt", extractErrorMessage(err));
+          return;
+        }
+        await showError("Sale saved on this device", extractErrorMessage(err));
+        saveTransChapReceipt({
+          orderId: null,
+          orderNumber: `CASH-${Date.now().toString().slice(-6)}`,
+          shopName,
+          productName: name,
+          amount: parsedAmount,
+          currency: "KES",
+          payMode: "cash",
+          paymentStatus: "paid",
+          paidAt: new Date().toISOString(),
+          customerName: customerName.trim() || null,
+          customerPhone,
+          mpesaReceiptNumber: null,
+          mpesaMessage: null,
+        });
       }
-
-      saveTransChapReceipt({
-        orderId,
-        orderNumber,
-        shopName,
-        productName: name,
-        amount: parsedAmount,
-        currency: "KES",
-        payMode: "cash",
-        paidAt: new Date().toISOString(),
-        customerName: customerName.trim() || null,
-        customerPhone: phone.trim() || null,
-      });
       router.push("/trans-chap/make-a-sale/receipt");
     } finally {
       setSaving(false);
@@ -190,7 +213,14 @@ export function TransChapTransactForm() {
           </div>
         </div>
 
-        {payMode === "mpesa" ? (
+        {payMode === "mpesa" && mpesaReady === false ? (
+          <p className="trans-chap-mpesa-gate">
+            Set your M-PESA details in Settings before taking M-PESA.{" "}
+            <Link href="/trans-chap/settings">Set M-PESA details</Link>
+          </p>
+        ) : null}
+
+        {payMode === "mpesa" && mpesaReady !== false ? (
           <div className="auth-split__field">
             <label htmlFor="transact-phone">Phone number</label>
             <input
@@ -209,8 +239,18 @@ export function TransChapTransactForm() {
       </div>
 
       <div className="trans-chap-form__actions">
-        <button type="submit" className="auth-split__btn" disabled={saving}>
-          {saving ? "Saving sale…" : "Continue"}
+        <button
+          type="submit"
+          className="auth-split__btn"
+          disabled={saving || (payMode === "mpesa" && mpesaReady !== true)}
+        >
+          {saving
+            ? payMode === "mpesa"
+              ? "Sending prompt…"
+              : "Saving sale…"
+            : payMode === "mpesa"
+              ? "Send M-PESA prompt"
+              : "Continue"}
         </button>
       </div>
     </form>

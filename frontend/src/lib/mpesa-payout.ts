@@ -95,3 +95,18 @@ export function nextPayoutShortcode(
   }
   return looksLikeMsisdn(currentShortcode) ? "" : currentShortcode;
 }
+
+export function formatMerchantPayoutDestination(config: {
+  shortcode: string;
+  shortcode_type: string;
+  account_number?: string | null;
+}): string {
+  const type = isMerchantPayoutType(config.shortcode_type)
+    ? config.shortcode_type
+    : "paybill";
+  const meta = PAYOUT_DESTINATION_META[type];
+  if (type === "paybill" && config.account_number) {
+    return `${meta.label} ${config.shortcode} · Acc ${config.account_number}`;
+  }
+  return `${meta.label} ${config.shortcode}`;
+}

@@ -319,6 +319,7 @@ class AdminMpesaTransactionOut(BaseModel):
     merchant_received_payout: bool = False
     can_send_to_merchant: bool = False
     can_unlock_payout: bool = False
+    can_confirm_collection: bool = False
     is_admin_payout: bool = False
     is_client_collection: bool = True
     completed_at: datetime | None = None
@@ -1572,6 +1573,11 @@ def list_mpesa_transactions(
             and has_received
             and (txn.payout_status or "") in {"queued", "pending"}
         )
+        can_confirm = (
+            not is_admin_payout
+            and not has_received
+            and (txn.status or "") in {"pending", "failed", "cancelled", "success"}
+        )
         data.append(
             AdminMpesaTransactionOut(
                 id=txn.id,
@@ -1603,6 +1609,7 @@ def list_mpesa_transactions(
                 merchant_received_payout=txn.payout_status == "success",
                 can_send_to_merchant=can_send,
                 can_unlock_payout=can_unlock,
+                can_confirm_collection=can_confirm,
                 is_admin_payout=is_admin_payout,
                 is_client_collection=not is_admin_payout,
                 completed_at=txn.completed_at,
@@ -1702,6 +1709,56 @@ def unlock_mpesa_payout(
         transaction_id=txn.id,
         payout_status=txn.payout_status,
         payout_result_desc=txn.payout_result_desc,
+    )
+
+
+class AdminConfirmMpesaCollectionIn(BaseModel):
+    mpesa_receipt_number: str = Field(min_length=6, max_length=50)
+
+
+class AdminConfirmMpesaCollectionResponse(BaseModel):
+    message: str
+    transaction_id: str
+    status: str
+    mpesa_receipt_number: str | None = None
+    order_id: str | None = None
+
+
+@router.post(
+    "/mpesa-transactions/{transaction_id}/confirm",
+    response_model=AdminConfirmMpesaCollectionResponse,
+)
+def confirm_mpesa_collection(
+    transaction_id: str,
+    payload: AdminConfirmMpesaCollectionIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+    admin: User = Depends(require_super_admin),
+):
+    """Fix a failed or stuck Client → DukAI collection using the customer's SMS code."""
+    from app.services.mpesa_service import MpesaApiError
+
+    validate_csrf(request, session)
+    try:
+        txn = mpesa_service.confirm_collection_manually(
+            db,
+            transaction_id=transaction_id,
+            receipt_number=payload.mpesa_receipt_number,
+            confirmed_by_user_id=admin.id,
+        )
+    except MpesaApiError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return AdminConfirmMpesaCollectionResponse(
+        message=(
+            f"Marked KES {int(txn.amount)} as paid. Receipt {txn.mpesa_receipt_number}. "
+            "You can now send it to the merchant if needed."
+        ),
+        transaction_id=txn.id,
+        status=txn.status,
+        mpesa_receipt_number=txn.mpesa_receipt_number,
+        order_id=txn.order_id,
     )
 
 

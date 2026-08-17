@@ -7,6 +7,7 @@ import { useAuthUser } from "@/components/app/AuthProvider";
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
+import { orderHasSuccessfulMpesa } from "@/lib/orders";
 import { receiptFromOrder, saveTransChapReceipt, formatKsh } from "@/lib/trans-chap-receipt";
 import type { Order, OrdersListResponse } from "@/lib/types";
 
@@ -53,6 +54,8 @@ export function TransChapSalesList() {
         ) : (
           orders.map((order) => {
             const product = order.items?.[0]?.product_name || "Sale";
+            const waitingMpesa =
+              order.payment_method === "mpesa" && !orderHasSuccessfulMpesa(order);
             return (
               <button
                 key={order.id}
@@ -64,6 +67,8 @@ export function TransChapSalesList() {
                   <strong>{product}</strong>
                   <span>
                     {order.customer_name || "Walk-in"}
+                    {order.payment_method === "mpesa" ? " · M-PESA" : ""}
+                    {waitingMpesa ? " · waiting" : ""}
                     {order.placed_at || order.created_at
                       ? ` · ${formatNairobiDateTime(order.placed_at || order.created_at)}`
                       : ""}

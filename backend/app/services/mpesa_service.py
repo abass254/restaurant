@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 from dataclasses import dataclass
@@ -500,7 +501,7 @@ def apply_callback(db: Session, payload: dict[str, Any]) -> MpesaTransaction | N
 def _sync_linked_orders_on_success(db: Session, txn: MpesaTransaction) -> list[str]:
     """Advance linked orders to ``payment_received`` when an STK push succeeds."""
     from app.models import Order, OrderStatusHistory
-    from app.support.order_status import AWAITING_PAYMENT, PAYMENT_RECEIVED
+    from app.support.order_status import AWAITING_PAYMENT, PAYMENT_RECEIVED, PLACED
 
     linked: dict[str, Order] = {}
     if txn.order_id:
@@ -518,7 +519,7 @@ def _sync_linked_orders_on_success(db: Session, txn: MpesaTransaction) -> list[s
     for order in linked.values():
         order.mpesa_transaction_id = txn.id
         order.updated_at = now
-        if order.status != AWAITING_PAYMENT:
+        if order.status not in {AWAITING_PAYMENT, PLACED}:
             continue
 
         prev = order.status
@@ -574,6 +575,88 @@ def _sync_linked_bookings_on_success(db: Session, txn: MpesaTransaction) -> list
                 "Booking confirmation email failed for booking=%s", booking.id
             )
     return updated
+
+
+def confirm_collection_manually(
+    db: Session,
+    *,
+    transaction_id: str,
+    receipt_number: str,
+    confirmed_by_user_id: str | None = None,
+) -> MpesaTransaction:
+    """Mark a failed/stuck client collection as paid using the customer's SMS code."""
+    from app.support.mpesa_order_link import normalize_mpesa_receipt
+
+    txn = (
+        db.query(MpesaTransaction)
+        .filter(MpesaTransaction.id == transaction_id)
+        .first()
+    )
+    if txn is None:
+        raise MpesaApiError("Transaction not found.")
+
+    payload = txn.callback_payload if isinstance(txn.callback_payload, dict) else {}
+    if payload.get("admin_merchant_payout"):
+        raise MpesaApiError("Admin hub payouts cannot be confirmed as client collections.")
+
+    already_paid = txn.status == "success" and bool((txn.mpesa_receipt_number or "").strip())
+    if already_paid:
+        raise MpesaApiError("This collection is already confirmed.")
+
+    normalized = normalize_mpesa_receipt(receipt_number)
+    if not normalized:
+        raise MpesaApiError("Enter the M-PESA transaction code from the customer's SMS.")
+    if not re.fullmatch(r"[A-Z0-9]{6,20}", normalized):
+        raise MpesaApiError("Enter a valid M-PESA transaction code (6–20 letters/numbers).")
+
+    duplicate = (
+        db.query(MpesaTransaction)
+        .filter(
+            MpesaTransaction.id != txn.id,
+            MpesaTransaction.status == "success",
+            MpesaTransaction.mpesa_receipt_number == normalized,
+        )
+        .first()
+    )
+    if duplicate:
+        raise MpesaApiError("That M-PESA code is already on another successful payment.")
+
+    now = _now_utc()
+    prior_status = txn.status or "unknown"
+    txn.status = "success"
+    txn.result_code = 0
+    txn.mpesa_receipt_number = normalized
+    txn.completed_at = now
+    txn.updated_at = now
+    txn.result_desc = (
+        f"Admin confirmed collection (was {prior_status}). Receipt {normalized}."
+    )[:500]
+    txn.callback_payload = {
+        **payload,
+        "admin_confirmed": True,
+        "admin_confirmed_by": confirmed_by_user_id,
+        "admin_confirmed_from_status": prior_status,
+    }
+
+    db.flush()
+    updated_order_ids = _sync_linked_orders_on_success(db, txn)
+    _sync_linked_bookings_on_success(db, txn)
+    db.commit()
+    db.refresh(txn)
+
+    if updated_order_ids:
+        from app.services.order_notification_service import notify_order_status_change
+
+        for order_id in updated_order_ids:
+            notify_order_status_change(
+                db,
+                order_id,
+                receipt=txn.mpesa_receipt_number,
+                force=True,
+            )
+
+    return txn
+
 
 # Last Daraja OAuth test result (env-based config has no DB row to persist to).
 _last_test: dict[str, Any] = {"at": None, "result": None}

@@ -149,6 +149,7 @@ export type AdminMpesaTransaction = {
   merchant_received_payout: boolean;
   can_send_to_merchant: boolean;
   can_unlock_payout?: boolean;
+  can_confirm_collection?: boolean;
   is_admin_payout: boolean;
   is_client_collection: boolean;
   completed_at: string | null;

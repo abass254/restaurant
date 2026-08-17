@@ -649,6 +649,20 @@ def create_order(
             },
         )
 
+    if payload.payment_method == PAYMENT_MPESA and not mpesa_service.get_merchant_profile(
+        db, account_id
+    ):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "errors": {
+                    "payment_method": [
+                        "Set your M-PESA payout details in Settings before taking M-PESA payments.",
+                    ],
+                },
+            },
+        )
+
     # Resolve & snapshot every line up front so we either accept the whole
     # order or fail before writing anything.
     resolved_lines: list[tuple[OrderItemPayload, InventoryItem | None, Decimal, str, str | None]] = []
@@ -859,6 +873,13 @@ def _trigger_mpesa_for_order(
         if order.account_id
         else None
     )
+    if not profile:
+        return {
+            "status": "not_configured",
+            "message": (
+                "Set your M-PESA payout details in Settings before taking M-PESA payments."
+            ),
+        }
     from app.support.mpesa_amounts import min_collection_kes
 
     min_kes = min_collection_kes(

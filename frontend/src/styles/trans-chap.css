@@ -3,6 +3,15 @@
 .trans-chap-root.auth-split {
   --trans-chap-pad: 2rem;
   --trans-chap-gutter-x: 1rem;
+  --color-bg: var(--app-bg);
+  --color-bg-muted: var(--app-bg);
+  --color-bg-accent: var(--app-surface);
+  --color-surface: var(--app-surface);
+  --color-border: var(--app-border);
+  --color-border-strong: var(--app-border);
+  --color-text: var(--app-text);
+  --color-text-muted: var(--app-text-secondary);
+  --color-text-subtle: var(--app-text-secondary);
   grid-template-columns: 1fr;
   height: 100dvh;
   min-height: 100dvh;
@@ -14,6 +23,12 @@
 
 html[data-theme="dark"] .trans-chap-root.auth-split {
   color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .trans-chap-root.auth-split {
+    color-scheme: dark;
+  }
 }
 
 .trans-chap-root.auth-split .auth-split__panel {
@@ -42,6 +57,7 @@ html[data-theme="dark"] .trans-chap-root.auth-split {
   max-width: 560px;
   min-height: 0;
   height: 100%;
+  color-scheme: inherit;
   background: var(--app-bg);
   color: var(--app-text);
 }
@@ -252,6 +268,140 @@ html[data-theme="dark"] .trans-chap-root.auth-split {
   gap: var(--trans-chap-pad);
 }
 
+.trans-chap-pay--dest {
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+}
+
+.trans-chap-pay--dest .trans-chap-pay__option {
+  min-height: 48px;
+  border-radius: 14px;
+  font-size: 0.88rem;
+}
+
+.trans-chap-mpesa-gate {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  background: var(--app-surface);
+  color: var(--app-text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.trans-chap-mpesa-gate a {
+  color: var(--app-primary);
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.trans-chap-settings {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  padding-bottom: 0.5rem;
+}
+
+.trans-chap-settings .trans-chap-install {
+  flex: none;
+  overflow: visible;
+}
+
+.trans-chap-mpesa {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.trans-chap-mpesa__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.trans-chap-mpesa__head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.trans-chap-mpesa__pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 0.7rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.trans-chap-mpesa__pill.is-ok {
+  background: color-mix(in srgb, #4ade80 22%, var(--app-surface));
+  color: var(--app-text);
+}
+
+.trans-chap-mpesa__pill.is-warn {
+  background: color-mix(in srgb, #fbbf24 28%, var(--app-surface));
+  color: var(--app-text);
+}
+
+.trans-chap-mpesa__lead,
+.trans-chap-mpesa__hint {
+  margin: 0;
+  color: var(--app-text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.trans-chap-mpesa__hint {
+  margin-top: 0.45rem;
+}
+
+.trans-chap-mpesa__summary,
+.trans-chap-mpesa__confirm,
+.trans-chap-mpesa__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.trans-chap-mpesa__summary {
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  background: var(--app-surface);
+}
+
+.trans-chap-mpesa__summary p,
+.trans-chap-mpesa__confirm p {
+  margin: 0;
+  font-weight: 700;
+}
+
+.trans-chap-mpesa__confirm strong {
+  font-size: 1.05rem;
+}
+
+.trans-chap-mpesa__change {
+  border: 0;
+  background: transparent;
+  color: var(--app-primary);
+  font: inherit;
+  font-weight: 750;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+
+.trans-chap-mpesa__change:hover {
+  text-decoration: underline;
+}
+
 .trans-chap-pay__option {
   border: 1px solid var(--app-border);
   background: var(--app-surface);
@@ -372,32 +522,38 @@ html[data-theme="dark"] .trans-chap-root.auth-split {
   overflow: auto;
 }
 
-.trans-chap-receipt .auth-split__btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.55rem;
-}
-
-.trans-chap-receipt .auth-split__btn:disabled {
-  opacity: 0.7;
-  cursor: wait;
-}
-
-.trans-chap-receipt__wa-hint {
-  margin: 0.45rem 0 0;
-  color: var(--app-text-secondary);
-  font-size: 0.8rem;
-  line-height: 1.35;
-}
-
 .trans-chap-ticket-stage {
-  --ticket-bg: #232830;
-  --ticket-muted: #9aa3ad;
-  --ticket-line: #3a424c;
-  --ticket-success: #2ecc71;
+  --ticket-bg: var(--app-surface);
+  --ticket-muted: var(--app-text-secondary);
+  --ticket-line: var(--app-border);
+  --ticket-success: #4ade80;
+  --ticket-whatsapp: #25d366;
+  --ticket-text: var(--app-text);
+  --ticket-check: #111111;
+  --ticket-input-bg: var(--app-bg);
+  --ticket-shadow: var(--app-shadow);
   padding: 1.75rem 0 14px;
   background: var(--app-bg);
+}
+
+html[data-theme="dark"] .trans-chap-ticket-stage {
+  --ticket-bg: #21262d;
+  --ticket-muted: #9ca3af;
+  --ticket-line: #3a424c;
+  --ticket-text: #ffffff;
+  --ticket-input-bg: #1a1f24;
+  --ticket-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px #3a424c;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .trans-chap-ticket-stage {
+    --ticket-bg: #21262d;
+    --ticket-muted: #9ca3af;
+    --ticket-line: #3a424c;
+    --ticket-text: #ffffff;
+    --ticket-input-bg: #1a1f24;
+    --ticket-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px #3a424c;
+  }
 }
 
 .trans-chap-ticket {
@@ -405,9 +561,10 @@ html[data-theme="dark"] .trans-chap-root.auth-split {
   padding: 2.35rem 1.15rem 1.7rem;
   border-radius: 28px 28px 0 0;
   background: var(--ticket-bg);
-  color: #fff;
+  color: var(--ticket-text);
+  color-scheme: inherit;
   text-align: center;
-  box-shadow: 0 18px 40px rgba(13, 27, 42, 0.22);
+  box-shadow: var(--ticket-shadow);
 }
 
 .trans-chap-ticket::after {
@@ -435,10 +592,26 @@ html[data-theme="dark"] .trans-chap-root.auth-split {
   height: 56px;
   border-radius: 50%;
   background: var(--ticket-success);
-  color: #111;
+  color: var(--ticket-check);
   font-size: 1.15rem;
   transform: translate(-50%, -50%);
-  box-shadow: 0 0 0 6px var(--app-bg);
+  box-shadow:
+    0 0 0 6px var(--app-bg),
+    0 8px 22px color-mix(in srgb, var(--ticket-success) 45%, transparent);
+}
+
+.trans-chap-ticket__badge.is-pending {
+  background: #fbbf24;
+  box-shadow:
+    0 0 0 6px var(--app-bg),
+    0 8px 22px color-mix(in srgb, #fbbf24 45%, transparent);
+}
+
+.trans-chap-ticket__badge.is-failed {
+  background: #f87171;
+  box-shadow:
+    0 0 0 6px var(--app-bg),
+    0 8px 22px color-mix(in srgb, #f87171 45%, transparent);
 }
 
 .trans-chap-ticket__title {
@@ -499,33 +672,178 @@ html[data-theme="dark"] .trans-chap-root.auth-split {
 
 .trans-chap-ticket__grid dd {
   margin: 0.28rem 0 0;
-  color: #fff;
+  color: var(--ticket-text);
   font-size: 0.82rem;
   font-weight: 700;
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
 
+.trans-chap-ticket__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-top: 1.25rem;
+}
+
+.trans-chap-ticket__phone {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  text-align: left;
+}
+
+.trans-chap-ticket__phone span {
+  color: var(--ticket-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.trans-chap-ticket__phone-row {
+  display: grid;
+  grid-template-columns: minmax(8.5rem, 0.46fr) 1fr;
+  gap: 0.5rem;
+}
+
+.trans-chap-ticket__country,
+.trans-chap-ticket__phone input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 48px;
+  padding: 0.7rem 0.7rem;
+  border: 1px solid var(--ticket-line);
+  border-radius: 12px;
+  background: var(--ticket-input-bg);
+  color: var(--ticket-text);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 650;
+  appearance: none;
+}
+
+.trans-chap-ticket__country {
+  padding-right: 1.65rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  color-scheme: inherit;
+  background-color: var(--ticket-input-bg);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ticket-muted) 50%),
+    linear-gradient(135deg, var(--ticket-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) calc(50% - 3px),
+    calc(100% - 9px) calc(50% - 3px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.trans-chap-ticket__country option {
+  background: var(--ticket-input-bg);
+  color: var(--ticket-text);
+}
+
+.trans-chap-ticket__phone input:-webkit-autofill,
+.trans-chap-ticket__phone input:-webkit-autofill:hover,
+.trans-chap-ticket__phone input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ticket-text);
+  box-shadow: 0 0 0 1000px var(--ticket-input-bg) inset;
+  caret-color: var(--ticket-text);
+}
+
+.trans-chap-ticket__phone input::placeholder {
+  color: var(--ticket-muted);
+}
+
+.trans-chap-ticket__country:focus,
+.trans-chap-ticket__phone input:focus {
+  outline: none;
+  border-color: var(--ticket-whatsapp);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ticket-whatsapp) 28%, transparent);
+}
+
+.trans-chap-ticket__wa-hint {
+  margin: 0;
+  color: var(--ticket-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.trans-chap-ticket__choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+}
+
+.trans-chap-ticket__wa,
 .trans-chap-ticket__pdf {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.55rem;
-  width: 100%;
-  margin-top: 1.35rem;
-  padding: 0.35rem 0 0.55rem;
-  border: 0;
-  background: none;
-  color: #fff;
+  gap: 0.45rem;
+  min-height: 48px;
+  padding: 0.7rem 0.75rem;
+  border-radius: 14px;
   font: inherit;
-  font-size: 0.95rem;
-  font-weight: 650;
+  font-size: 0.88rem;
+  font-weight: 750;
   cursor: pointer;
 }
 
-.trans-chap-ticket__pdf:disabled {
+.trans-chap-ticket__wa {
+  border: 0;
+  background: var(--ticket-whatsapp);
+  color: #fff;
+  box-shadow:
+    0 8px 22px color-mix(in srgb, var(--ticket-whatsapp) 42%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--ticket-whatsapp) 70%, #fff);
+}
+
+.trans-chap-ticket__wa:hover:not(:disabled) {
+  background: #22c55e;
+  box-shadow:
+    0 10px 26px color-mix(in srgb, var(--ticket-whatsapp) 55%, transparent),
+    0 0 18px color-mix(in srgb, var(--ticket-success) 40%, transparent);
+}
+
+.trans-chap-ticket__pdf {
+  border: 1px solid var(--ticket-line);
+  background: transparent;
+  color: var(--ticket-text);
+}
+
+.trans-chap-ticket__pdf:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ticket-text) 8%, transparent);
+}
+
+.trans-chap-ticket__wa:disabled,
+.trans-chap-ticket__pdf:disabled,
+.trans-chap-ticket__retry:disabled {
   opacity: 0.7;
   cursor: wait;
+}
+
+.trans-chap-ticket__retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 48px;
+  padding: 0.7rem 0.75rem;
+  border-radius: 14px;
+  border: 1px solid var(--ticket-line);
+  background: color-mix(in srgb, var(--ticket-text) 8%, transparent);
+  color: var(--ticket-text);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.trans-chap-ticket__retry:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ticket-text) 14%, transparent);
 }
 
 .trans-chap-receipt__again {

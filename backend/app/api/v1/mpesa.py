@@ -17,6 +17,7 @@ from app.core.session import require_user, validate_csrf
 from app.support.merchant_permissions import (
     active_account_id,
     assert_merchant_section_access,
+    assert_merchant_section_any_access,
     require_merchant_admin,
 )
 from app.database import get_db
@@ -535,7 +536,7 @@ def show_merchant_business_config(
     session: dict = Depends(get_request_session),
 ):
     user = require_user(db, session)
-    assert_merchant_section_access(user, "settings")
+    assert_merchant_section_any_access(user, "settings", "pos", "orders", "dashboard")
     _require_merchant(user)
     account_id = active_account_id(user)
     config = mpesa_service.get_merchant_profile(db, account_id)
@@ -585,7 +586,7 @@ def verify_merchant_business_config(
 ):
     validate_csrf(request, session)
     user = require_user(db, session)
-    assert_merchant_section_access(user, "settings")
+    assert_merchant_section_any_access(user, "settings", "dashboard")
     require_merchant_admin(user)
     _require_merchant(user)
 
@@ -642,7 +643,7 @@ def upsert_merchant_business_config(
 ):
     validate_csrf(request, session)
     user = require_user(db, session)
-    assert_merchant_section_access(user, "settings")
+    assert_merchant_section_any_access(user, "settings", "dashboard")
     require_merchant_admin(user)
     _require_merchant(user)
 
