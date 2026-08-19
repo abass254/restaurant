@@ -10,7 +10,7 @@ import {
 const INK = "#1a100c";
 const MUTED = "#6b625c";
 const LINE = "#e6dcd4";
-const ACCENT = "#e85d04";
+const ACCENT = "#e8412a";
 
 export function receiptPdfFileName(receipt: TransChapReceipt): string {
   return `receipt-${receipt.orderNumber.replace(/[^\w.-]+/g, "-")}.pdf`;

@@ -86,7 +86,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="trans-chap-header__center">
               <span className="trans-chap-header__logo" aria-hidden>
-                <DukAiLogoMark size={28} color="currentColor" accentColor="#e85d04" />
+                <DukAiLogoMark size={28} color="currentColor" accentColor="#e8412a" />
               </span>
               <h1>{title}</h1>
             </div>

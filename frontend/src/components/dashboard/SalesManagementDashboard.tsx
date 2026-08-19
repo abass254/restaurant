@@ -47,7 +47,7 @@ type ChartColors = {
 };
 
 const FALLBACK_CHART_COLORS: ChartColors = {
-  primary: "#e85d04",
+  primary: "#e8412a",
   teal: "#7ec8b8",
   amber: "#f5c77a",
   peach: "#fb923c",

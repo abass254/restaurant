@@ -215,7 +215,7 @@ export function TransChapReceiptView() {
     <div className="trans-chap-receipt">
       <article className="trans-chap-slip">
         <header className="trans-chap-slip__brand">
-          <DukAiLogoMark size={36} color="currentColor" accentColor="#e85d04" />
+          <DukAiLogoMark size={36} color="currentColor" accentColor="#e8412a" />
           <div>
             <strong>{receipt.shopName}</strong>
             <span>Receipt</span>
