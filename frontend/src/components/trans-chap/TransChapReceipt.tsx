@@ -1,85 +1,98 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { toPng } from "html-to-image";
+import { useAuthUser } from "@/components/app/AuthProvider";
+import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
 import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
-import { NAIROBI_TZ, parseIso } from "@/lib/nairobi-time";
+import { formatNairobiDateTime } from "@/lib/nairobi-time";
 import {
   formatKsh,
   isTransChapReceiptPaid,
   loadTransChapReceipt,
   receiptFromOrder,
   saveTransChapReceipt,
-  toWhatsAppMsisdn,
-  whatsappReceiptUrl,
   type TransChapReceipt,
 } from "@/lib/trans-chap-receipt";
+import { buildTransChapReceiptPdf, saveReceiptFile } from "@/lib/trans-chap-receipt-pdf";
 import type { OrderDetailResponse, OrderMutationResponse } from "@/lib/types";
-import {
-  DEFAULT_WHATSAPP_COUNTRY,
-  WHATSAPP_COUNTRIES,
-  formatWhatsAppDisplay,
-  parseWhatsAppPhone,
-  whatsappCountryByIso,
-} from "@/lib/whatsapp-phone";
 
 const ORDER_POLL_MS = 4_000;
 
-function formatPaymentTime(iso: string): string {
-  const date = parseIso(iso);
-  if (!date) return "—";
-  return date.toLocaleString("en-GB", {
-    timeZone: NAIROBI_TZ,
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-}
-
 export function TransChapReceiptView() {
   const router = useRouter();
-  const cardRef = useRef<HTMLDivElement>(null);
+  const user = useAuthUser();
+  const shopName =
+    user.active_account?.business_name ||
+    user.account?.business_name ||
+    "DukAI";
   const [receipt, setReceipt] = useState<TransChapReceipt | null>(null);
-  const [countryIso, setCountryIso] = useState(DEFAULT_WHATSAPP_COUNTRY);
-  const [phone, setPhone] = useState("");
+  const [missing, setMissing] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [resending, setResending] = useState(false);
 
-  const country = whatsappCountryByIso(countryIso);
-  const msisdn = toWhatsAppMsisdn(phone, country.dial);
-  const waDisplay = msisdn ? formatWhatsAppDisplay(msisdn, country.dial) : null;
+  function applyReceipt(next: TransChapReceipt) {
+    setReceipt(next);
+    saveTransChapReceipt(next);
+  }
 
   useEffect(() => {
-    const stored = loadTransChapReceipt();
-    if (!stored) {
-      router.replace("/trans-chap/make-a-sale");
-      return;
+    let cancelled = false;
+    const orderId = new URLSearchParams(window.location.search).get("order");
+
+    async function load() {
+      if (orderId) {
+        try {
+          const data = await apiFetch<OrderDetailResponse>(apiRoutes.order(orderId));
+          if (cancelled) return;
+          applyReceipt(receiptFromOrder(data.data, shopName));
+          return;
+        } catch {
+          const stored = loadTransChapReceipt();
+          if (!cancelled && stored?.orderId === orderId) {
+            applyReceipt(stored);
+            return;
+          }
+          if (!cancelled) {
+            setMissing(true);
+            router.replace("/trans-chap/make-a-sale");
+          }
+          return;
+        }
+      }
+
+      const stored = loadTransChapReceipt();
+      if (!stored) {
+        if (!cancelled) {
+          setMissing(true);
+          router.replace("/trans-chap/make-a-sale");
+        }
+        return;
+      }
+      if (!cancelled) applyReceipt(stored);
     }
-    setReceipt(stored);
-    const parsed = parseWhatsAppPhone(stored.customerPhone ?? "");
-    setCountryIso(parsed.iso);
-    setPhone(parsed.national);
-  }, [router]);
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [router, shopName]);
 
   useEffect(() => {
     if (!receipt?.orderId || isTransChapReceiptPaid(receipt)) return;
     let cancelled = false;
-    const shopName = receipt.shopName;
+    const currentShop = receipt.shopName;
     const orderId = receipt.orderId;
 
     const poll = async () => {
       try {
         const data = await apiFetch<OrderDetailResponse>(apiRoutes.order(orderId));
         if (cancelled) return;
-        const next = receiptFromOrder(data.data, shopName);
+        const next = receiptFromOrder(data.data, currentShop);
         let becamePaid = false;
         setReceipt((current) => {
           if (!current) return next;
@@ -116,115 +129,38 @@ export function TransChapReceiptView() {
     };
   }, [receipt?.orderId, receipt?.paymentStatus, receipt?.shopName]);
 
-  if (!receipt) {
-    return null;
-  }
-
-  async function captureReceiptPng(): Promise<{ file: File; dataUrl: string; blob: Blob }> {
-    if (!receipt || !cardRef.current) {
-      throw new Error("Could not find the receipt.");
-    }
-    const pageBg = getComputedStyle(cardRef.current).backgroundColor || "#5a6570";
-    const dataUrl = await toPng(cardRef.current, {
-      pixelRatio: 2,
-      cacheBust: true,
-      backgroundColor: pageBg,
-      filter: (node) =>
-        !(node instanceof HTMLElement && node.dataset.capture === "skip"),
-    });
-    const blob = await (await fetch(dataUrl)).blob();
-    const fileName = `receipt-${receipt.orderNumber.replace(/[^\w.-]+/g, "-")}.png`;
-    const file = new File([blob], fileName, { type: "image/png" });
-    return { file, dataUrl, blob };
-  }
-
-  async function copyReceiptImage(blob: Blob): Promise<boolean> {
-    if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) return false;
-    try {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          [blob.type || "image/png"]: blob,
-        }),
-      ]);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  function openWhatsAppChat(webUrl: string) {
-    const nativeUrl = webUrl
-      .replace(/^https:\/\/wa\.me\//, "whatsapp://send?phone=")
-      .replace("?text=", "&text=");
-    const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (!mobile) {
-      const link = document.createElement("a");
-      link.href = webUrl;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      return;
-    }
-    const started = Date.now();
-    const timer = window.setTimeout(() => {
-      if (document.visibilityState === "visible" && Date.now() - started < 2500) {
-        window.location.assign(webUrl);
-      }
-    }, 1200);
-    const onHide = () => {
-      if (document.hidden) {
-        window.clearTimeout(timer);
-        document.removeEventListener("visibilitychange", onHide);
-      }
-    };
-    document.addEventListener("visibilitychange", onHide);
-    window.location.assign(nativeUrl);
-  }
-
-  function saveReceiptPng(dataUrl: string, fileName: string) {
-    const link = document.createElement("a");
-    link.href = dataUrl;
-    link.download = fileName;
-    link.rel = "noopener";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  }
-
-  function applyPhoneInput(value: string) {
-    const parsed = parseWhatsAppPhone(value, countryIso);
-    if (parsed.international && parsed.national.length >= 7) {
-      setCountryIso(parsed.iso);
-      setPhone(parsed.national);
-      return;
-    }
-    setPhone(value.replace(/[^\d+\s()-]/g, ""));
-  }
-
-  async function sendWhatsApp() {
+  async function sharePdf() {
     if (!receipt) return;
-    const url = whatsappReceiptUrl(phone, receipt, country.dial);
-    if (!url || !msisdn) {
-      await showError(
-        "WhatsApp number needed",
-        `Enter the number as WhatsApp stores it, for example ${country.example}.`,
-      );
-      return;
-    }
-    saveTransChapReceipt({ ...receipt, customerPhone: `+${msisdn}` });
     setSharing(true);
     try {
-      const { file, dataUrl, blob } = await captureReceiptPng();
-      const copied = await copyReceiptImage(blob);
-      if (!copied) saveReceiptPng(dataUrl, file.name);
-      openWhatsAppChat(url);
+      const file = buildTransChapReceiptPdf(receipt);
+      const canShare =
+        typeof navigator.share === "function" &&
+        typeof navigator.canShare === "function" &&
+        navigator.canShare({ files: [file] });
+      if (canShare) {
+        await navigator.share({ files: [file] });
+        return;
+      }
+      saveReceiptFile(file);
+      await toastSuccess("PDF saved. Attach it in WhatsApp.");
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
-      openWhatsAppChat(url);
+      await showError("Could not share receipt", "Please try downloading the PDF instead.");
     } finally {
       setSharing(false);
+    }
+  }
+
+  async function downloadPdf() {
+    if (!receipt) return;
+    setDownloading(true);
+    try {
+      saveReceiptFile(buildTransChapReceiptPdf(receipt));
+    } catch {
+      await showError("Could not download receipt", "Please try again.");
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -258,167 +194,128 @@ export function TransChapReceiptView() {
     }
   }
 
-  async function downloadReceipt() {
-    if (!receipt) return;
-    setDownloading(true);
-    try {
-      const { file, dataUrl } = await captureReceiptPng();
-      const canShare =
-        typeof navigator.share === "function" &&
-        typeof navigator.canShare === "function" &&
-        navigator.canShare({ files: [file] });
-      if (canShare) {
-        await navigator.share({
-          files: [file],
-          title: `Receipt ${receipt.orderNumber}`,
-        });
-        return;
-      }
-      saveReceiptPng(dataUrl, file.name);
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return;
-      await showError("Could not download receipt", "Please try again.");
-    } finally {
-      setDownloading(false);
-    }
+  if (!receipt) {
+    return (
+      <p className="trans-chap-sales__empty">
+        {missing ? "Receipt not found." : "Loading receipt…"}
+      </p>
+    );
   }
 
-  const thanksName = receipt.customerName?.trim() || "Walk-in";
-  const paymentTime = formatPaymentTime(receipt.paidAt);
   const paid = isTransChapReceiptPaid(receipt);
   const waiting = receipt.payMode === "mpesa" && receipt.paymentStatus === "pending";
   const failed = receipt.payMode === "mpesa" && receipt.paymentStatus === "failed";
   const paymentMethod = receipt.payMode === "mpesa" ? "M-PESA" : "Cash";
-  const title = paid
-    ? "Payment Success!"
-    : waiting
-      ? "Waiting for M-PESA"
-      : "M-PESA didn't go through";
-  const subtitle = paid
-    ? "Your payment has been successfully done."
-    : waiting
-      ? receipt.mpesaMessage || "Ask the customer to enter their PIN on the prompt."
-      : receipt.mpesaMessage || "The prompt didn't reach the phone. Send it again.";
+  const lines = receipt.items?.length
+    ? receipt.items
+    : [{ name: receipt.productName, quantity: 1, unitPrice: receipt.amount, lineTotal: receipt.amount }];
+  const status = paid ? "Paid" : waiting ? "Waiting" : "Failed";
 
   return (
     <div className="trans-chap-receipt">
-      <div ref={cardRef} className="trans-chap-ticket-stage">
-        <article className="trans-chap-ticket">
-          <span
-            className={`trans-chap-ticket__badge${waiting ? " is-pending" : ""}${failed ? " is-failed" : ""}`}
-            aria-hidden
-          >
-            <i
-              className={`fa-solid ${paid ? "fa-check" : waiting ? "fa-mobile-screen" : "fa-exclamation"}`}
-            />
-          </span>
-          <h2 className="trans-chap-ticket__title">{title}</h2>
-          <p className="trans-chap-ticket__sub">{subtitle}</p>
-          <hr className="trans-chap-ticket__rule" />
-          <p className="trans-chap-ticket__total-label">Total Payment</p>
-          <strong className="trans-chap-ticket__total">{formatKsh(receipt.amount)}</strong>
-          <dl className="trans-chap-ticket__grid">
-            <div>
-              <dt>Ref Number</dt>
-              <dd>{receipt.orderNumber}</dd>
-            </div>
-            <div>
-              <dt>Payment Time</dt>
-              <dd>{paymentTime}</dd>
-            </div>
-            <div>
-              <dt>Payment Method</dt>
-              <dd>{paymentMethod}</dd>
-            </div>
-            <div>
-              <dt>Sender Name</dt>
-              <dd>{thanksName}</dd>
-            </div>
-            {receipt.mpesaReceiptNumber ? (
-              <div>
-                <dt>M-PESA code</dt>
-                <dd>{receipt.mpesaReceiptNumber}</dd>
-              </div>
-            ) : null}
-          </dl>
-          <div className="trans-chap-ticket__actions" data-capture="skip">
-            {paid ? (
-              <>
-                <div className="trans-chap-ticket__phone">
-                  <span id="receipt-whatsapp-label">WhatsApp number</span>
-                  <div className="trans-chap-ticket__phone-row">
-                    <label className="sr-only" htmlFor="receipt-whatsapp-country">
-                      Country code
-                    </label>
-                    <select
-                      id="receipt-whatsapp-country"
-                      className="trans-chap-ticket__country"
-                      value={countryIso}
-                      aria-labelledby="receipt-whatsapp-label"
-                      onChange={(e) => setCountryIso(e.target.value)}
-                    >
-                      {WHATSAPP_COUNTRIES.map((item) => (
-                        <option key={item.iso} value={item.iso}>
-                          {item.iso} +{item.dial}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      id="receipt-whatsapp"
-                      type="tel"
-                      autoComplete="tel"
-                      inputMode="numeric"
-                      placeholder={country.example}
-                      value={phone}
-                      aria-labelledby="receipt-whatsapp-label"
-                      onChange={(e) => applyPhoneInput(e.target.value)}
-                    />
-                  </div>
-                  <p className="trans-chap-ticket__wa-hint">
-                    {waDisplay
-                      ? waDisplay
-                      : `As saved in WhatsApp, e.g. ${country.example}`}
-                  </p>
-                </div>
-                <div className="trans-chap-ticket__choices">
-                  <button
-                    type="button"
-                    className="trans-chap-ticket__wa"
-                    onClick={() => void sendWhatsApp()}
-                    disabled={sharing || downloading}
-                  >
-                    <i className="fa-brands fa-whatsapp" aria-hidden />
-                    {sharing ? "Opening…" : "WhatsApp"}
-                  </button>
-                  <button
-                    type="button"
-                    className="trans-chap-ticket__pdf"
-                    onClick={() => void downloadReceipt()}
-                    disabled={downloading || sharing}
-                  >
-                    <i className="fa-solid fa-download" aria-hidden />
-                    {downloading ? "Preparing…" : "Download"}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="trans-chap-ticket__retry"
-                onClick={() => void resendMpesaPrompt()}
-                disabled={resending}
-              >
-                <i className="fa-solid fa-rotate-right" aria-hidden />
-                {resending ? "Sending…" : waiting ? "Resend prompt" : "Send prompt again"}
-              </button>
-            )}
+      <article className="trans-chap-slip">
+        <header className="trans-chap-slip__brand">
+          <DukAiLogoMark size={36} color="currentColor" accentColor="#e85d04" />
+          <div>
+            <strong>{receipt.shopName}</strong>
+            <span>Receipt</span>
           </div>
-        </article>
-      </div>
+        </header>
+        <p className={`trans-chap-slip__status is-${paid ? "ok" : waiting ? "wait" : "fail"}`}>
+          {status}
+        </p>
+        {!paid ? (
+          <p className="trans-chap-slip__note">
+            {waiting
+              ? receipt.mpesaMessage || "Ask the customer to enter their PIN on the prompt."
+              : receipt.mpesaMessage || "The prompt didn't reach the phone. Send it again."}
+          </p>
+        ) : null}
+        <ul className="trans-chap-slip__lines">
+          {lines.map((line, index) => (
+            <li key={`${line.name}-${index}`}>
+              <span>
+                {line.name}
+                {line.quantity > 1 ? ` × ${line.quantity}` : ""}
+              </span>
+              <em>{formatKsh(line.lineTotal)}</em>
+            </li>
+          ))}
+        </ul>
+        <p className="trans-chap-slip__total">
+          <span>Total</span>
+          <strong>{formatKsh(receipt.amount)}</strong>
+        </p>
+        <dl className="trans-chap-slip__meta">
+          <div>
+            <dt>Ref</dt>
+            <dd>{receipt.orderNumber}</dd>
+          </div>
+          <div>
+            <dt>Date</dt>
+            <dd>{formatNairobiDateTime(receipt.paidAt) || "—"}</dd>
+          </div>
+          <div>
+            <dt>Payment</dt>
+            <dd>{paymentMethod}</dd>
+          </div>
+          <div>
+            <dt>Customer</dt>
+            <dd>{receipt.customerName?.trim() || "Walk-in"}</dd>
+          </div>
+          {receipt.mpesaReceiptNumber ? (
+            <div>
+              <dt>M-PESA code</dt>
+              <dd>{receipt.mpesaReceiptNumber}</dd>
+            </div>
+          ) : null}
+          {receipt.customerPhone ? (
+            <div>
+              <dt>Phone</dt>
+              <dd>{receipt.customerPhone}</dd>
+            </div>
+          ) : null}
+        </dl>
+        <footer className="trans-chap-slip__thanks">Thank you for shopping with us</footer>
+      </article>
 
-      <Link href="/trans-chap/make-a-sale/new" className="trans-chap-receipt__again">
-        Make another sale
-      </Link>
+      <div className="trans-chap-slip__actions">
+        {paid ? (
+          <div className="trans-chap-slip__choices">
+            <button
+              type="button"
+              className="trans-chap-slip__wa"
+              onClick={() => void sharePdf()}
+              disabled={sharing || downloading}
+            >
+              <i className="fa-brands fa-whatsapp" aria-hidden />
+              {sharing ? "Sharing…" : "WhatsApp PDF"}
+            </button>
+            <button
+              type="button"
+              className="trans-chap-slip__pdf"
+              onClick={() => void downloadPdf()}
+              disabled={downloading || sharing}
+            >
+              <i className="fa-solid fa-file-pdf" aria-hidden />
+              {downloading ? "Saving…" : "Download PDF"}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="trans-chap-slip__retry"
+            onClick={() => void resendMpesaPrompt()}
+            disabled={resending}
+          >
+            <i className="fa-solid fa-rotate-right" aria-hidden />
+            {resending ? "Sending…" : waiting ? "Resend prompt" : "Send prompt again"}
+          </button>
+        )}
+        <Link href="/trans-chap/make-a-sale/new" className="trans-chap-receipt__again">
+          Make another sale
+        </Link>
+      </div>
     </div>
   );
 }

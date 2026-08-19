@@ -9,11 +9,19 @@ export const TRANS_CHAP_RECEIPT_KEY = "trans-chap:last-receipt";
 export type TransChapPayMode = "cash" | "mpesa";
 export type TransChapPaymentStatus = "paid" | "pending" | "failed";
 
+export type TransChapReceiptLine = {
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+};
+
 export type TransChapReceipt = {
   orderId: string | null;
   orderNumber: string;
   shopName: string;
   productName: string;
+  items: TransChapReceiptLine[];
   amount: number;
   currency: string;
   payMode: TransChapPayMode;
@@ -24,6 +32,11 @@ export type TransChapReceipt = {
   mpesaReceiptNumber: string | null;
   mpesaMessage: string | null;
 };
+
+export function transChapReceiptHref(orderId: string | null | undefined): string {
+  if (!orderId) return "/trans-chap/make-a-sale/receipt";
+  return `/trans-chap/make-a-sale/receipt?order=${encodeURIComponent(orderId)}`;
+}
 
 export function saveTransChapReceipt(receipt: TransChapReceipt): void {
   try {
@@ -40,12 +53,24 @@ export function loadTransChapReceipt(): TransChapReceipt | null {
     const parsed = JSON.parse(raw) as Partial<TransChapReceipt>;
     if (!parsed?.productName || !Number.isFinite(parsed.amount)) return null;
     const payMode: TransChapPayMode = parsed.payMode === "mpesa" ? "mpesa" : "cash";
+    const productName = parsed.productName;
+    const amount = parsed.amount;
+    const items = Array.isArray(parsed.items) && parsed.items.length
+      ? parsed.items.filter(
+          (line) =>
+            line &&
+            typeof line.name === "string" &&
+            Number.isFinite(line.quantity) &&
+            Number.isFinite(line.lineTotal),
+        )
+      : [{ name: productName, quantity: 1, unitPrice: amount, lineTotal: amount }];
     return {
       orderId: parsed.orderId ?? null,
       orderNumber: parsed.orderNumber || "Sale",
       shopName: parsed.shopName || "DukAI",
-      productName: parsed.productName,
-      amount: parsed.amount,
+      productName,
+      items,
+      amount,
       currency: parsed.currency || "KES",
       payMode,
       paymentStatus: normalizePaymentStatus(payMode, parsed.paymentStatus),
@@ -96,11 +121,21 @@ export function receiptFromOrder(
   push?: OrderMpesaPushResult | null,
 ): TransChapReceipt {
   const payMode: TransChapPayMode = order.payment_method === "mpesa" ? "mpesa" : "cash";
+  const items: TransChapReceiptLine[] = (order.items ?? []).map((line) => ({
+    name: line.product_name || "Sale",
+    quantity: line.quantity || 1,
+    unitPrice: line.unit_price,
+    lineTotal: line.line_total,
+  }));
+  const productName = items[0]?.name || "Sale";
   return {
     orderId: order.id,
     orderNumber: order.order_number,
     shopName,
-    productName: order.items?.[0]?.product_name || "Sale",
+    productName,
+    items: items.length
+      ? items
+      : [{ name: productName, quantity: 1, unitPrice: order.total, lineTotal: order.total }],
     amount: order.total,
     currency: order.currency || "KES",
     payMode,

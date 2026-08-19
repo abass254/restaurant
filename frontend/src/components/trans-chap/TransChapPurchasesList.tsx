@@ -3,17 +3,13 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuthUser } from "@/components/app/AuthProvider";
-import { formatNairobiDateTime } from "@/lib/nairobi-time";
+import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
+import { formatNairobiDateTime, formatNairobiListTime } from "@/lib/nairobi-time";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import {
   loadTransChapPurchases,
   type TransChapPurchase,
 } from "@/lib/trans-chap-purchases";
-
-function productInitial(name: string): string {
-  const match = name.trim().match(/[A-Za-z0-9]/);
-  return (match?.[0] || "P").toUpperCase();
-}
 
 function accountId(user: { active_account?: { id: string } | null; account?: { id: string } | null }): string {
   return user.active_account?.id || user.account?.id || "local";
@@ -68,59 +64,49 @@ export function TransChapPurchasesList() {
           filtered.map((row) => {
             const open = openId === row.id;
             const panelId = `${listId}-${row.id}`;
+            const whenLabel = formatNairobiListTime(row.paidAt);
             return (
-              <article
+              <TransChapPanel
                 key={row.id}
-                className={`trans-chap-sale${open ? " is-open" : ""}`}
+                id={panelId}
+                open={open}
+                tone="purchase"
+                title={row.productName}
+                subtitle={`${formatKsh(row.total)}${whenLabel ? ` · ${whenLabel}` : ""}`}
+                badge={{ label: `${row.quantity} bought`, tone: "ok" }}
+                onToggle={() => setOpenId(open ? null : row.id)}
               >
-                <div className="trans-chap-sale__row">
-                  <span className="trans-chap-sale__avatar" aria-hidden>
-                    {productInitial(row.productName)}
-                  </span>
-                  <span className="trans-chap-sale__main">
-                    <strong>{row.productName}</strong>
-                    <span className="trans-chap-sale__status is-ok">
-                      {row.quantity} bought · {formatKsh(row.total)}
+                <p className="trans-chap-panel__lead">
+                  Stock was added for this purchase.
+                </p>
+                <ul className="trans-chap-panel__lines">
+                  <li>
+                    <span>
+                      {row.productName}
+                      {row.quantity > 1 ? ` × ${row.quantity}` : ""}
                     </span>
-                  </span>
-                  <button
-                    type="button"
-                    className="trans-chap-sale__add"
-                    aria-expanded={open}
-                    aria-controls={panelId}
-                    aria-label={open ? "Hide purchase" : "Show purchase"}
-                    onClick={() => setOpenId(open ? null : row.id)}
-                  >
-                    <i className="fa-solid fa-plus" aria-hidden />
-                  </button>
-                </div>
-                {open ? (
-                  <div className="trans-chap-sale__receipt" id={panelId}>
-                    <p className="trans-chap-sale__receipt-kicker">Purchase</p>
-                    <strong className="trans-chap-sale__receipt-total">
-                      {formatKsh(row.total)}
-                    </strong>
-                    <dl>
-                      <div>
-                        <dt>Qty</dt>
-                        <dd>{row.quantity}</dd>
-                      </div>
-                      <div>
-                        <dt>Unit cost</dt>
-                        <dd>{formatKsh(row.unitCost)}</dd>
-                      </div>
-                      <div>
-                        <dt>Time</dt>
-                        <dd>{formatNairobiDateTime(row.paidAt) || "—"}</dd>
-                      </div>
-                      <div>
-                        <dt>Supplier</dt>
-                        <dd>{row.supplier?.trim() || "—"}</dd>
-                      </div>
-                    </dl>
+                    <em>{formatKsh(row.total)}</em>
+                  </li>
+                </ul>
+                <dl className="trans-chap-panel__facts">
+                  <div>
+                    <dt>Unit cost</dt>
+                    <dd>{formatKsh(row.unitCost)}</dd>
                   </div>
-                ) : null}
-              </article>
+                  <div>
+                    <dt>Qty</dt>
+                    <dd>{row.quantity}</dd>
+                  </div>
+                  <div>
+                    <dt>Time</dt>
+                    <dd>{formatNairobiDateTime(row.paidAt) || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>Supplier</dt>
+                    <dd>{row.supplier?.trim() || "—"}</dd>
+                  </div>
+                </dl>
+              </TransChapPanel>
             );
           })
         )}

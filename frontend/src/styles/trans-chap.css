@@ -550,269 +550,180 @@ html[data-theme="dark"] .trans-chap-app {
 .trans-chap-receipt {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1rem;
   flex: 1;
   min-height: 0;
   overflow: auto;
+  padding-bottom: 0.35rem;
 }
 
-.trans-chap-ticket-stage {
-  --ticket-bg: var(--app-surface);
-  --ticket-muted: var(--app-text-secondary);
-  --ticket-line: var(--app-border);
-  --ticket-success: #4ade80;
-  --ticket-whatsapp: #25d366;
-  --ticket-text: var(--app-text);
-  --ticket-check: #111111;
-  --ticket-input-bg: var(--app-bg);
-  --ticket-shadow: var(--app-shadow);
-  padding: 1.75rem 0 14px;
+.trans-chap-slip {
+  padding: 1.15rem 1.1rem 1.2rem;
+  border-radius: 18px;
+  border: 1px solid var(--app-border);
   background: var(--app-bg);
+  color: var(--app-text);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--app-text) 6%, transparent);
 }
 
-html[data-theme="dark"] .trans-chap-ticket-stage {
-  --ticket-bg: #21262d;
-  --ticket-muted: #9ca3af;
-  --ticket-line: #3a424c;
-  --ticket-text: #ffffff;
-  --ticket-input-bg: #1a1f24;
-  --ticket-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px #3a424c;
+.trans-chap-slip__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.85rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  html:not([data-theme="light"]) .trans-chap-ticket-stage {
-    --ticket-bg: #21262d;
-    --ticket-muted: #9ca3af;
-    --ticket-line: #3a424c;
-    --ticket-text: #ffffff;
-    --ticket-input-bg: #1a1f24;
-    --ticket-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px #3a424c;
-  }
+.trans-chap-slip__brand svg {
+  flex-shrink: 0;
+  margin-inline: -0.35rem;
 }
 
-.trans-chap-ticket {
-  position: relative;
-  padding: 2.35rem 1.15rem 1.7rem;
-  border-radius: 28px 28px 0 0;
-  background: var(--ticket-bg);
-  color: var(--ticket-text);
-  color-scheme: inherit;
-  text-align: center;
-  box-shadow: var(--ticket-shadow);
+.trans-chap-slip__brand div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.08rem;
 }
 
-.trans-chap-ticket::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -10px;
-  height: 20px;
-  background: radial-gradient(circle at 10px 10px, var(--app-bg) 9px, transparent 9.5px);
-  background-size: 20px 20px;
-  background-repeat: repeat-x;
-  background-position: -10px 0;
-  pointer-events: none;
+.trans-chap-slip__brand strong {
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
-.trans-chap-ticket__badge {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: var(--ticket-success);
-  color: var(--ticket-check);
-  font-size: 1.15rem;
-  transform: translate(-50%, -50%);
-  box-shadow:
-    0 0 0 6px var(--app-bg),
-    0 8px 22px color-mix(in srgb, var(--ticket-success) 45%, transparent);
+.trans-chap-slip__brand span {
+  color: var(--app-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
-.trans-chap-ticket__badge.is-pending {
-  background: #fbbf24;
-  box-shadow:
-    0 0 0 6px var(--app-bg),
-    0 8px 22px color-mix(in srgb, #fbbf24 45%, transparent);
+.trans-chap-slip__status {
+  margin: 0 0 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.trans-chap-ticket__badge.is-failed {
-  background: #f87171;
-  box-shadow:
-    0 0 0 6px var(--app-bg),
-    0 8px 22px color-mix(in srgb, #f87171 45%, transparent);
+.trans-chap-slip__status.is-ok {
+  color: var(--trans-chap-cash);
 }
 
-.trans-chap-ticket__title {
-  margin: 0.35rem 0 0;
+.trans-chap-slip__status.is-wait {
+  color: #d97706;
+}
+
+.trans-chap-slip__status.is-fail {
+  color: #e11d48;
+}
+
+.trans-chap-slip__note {
+  margin: 0 0 0.75rem;
+  color: var(--app-text-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.trans-chap-slip__lines {
+  list-style: none;
+  margin: 0;
+  padding: 0.75rem 0;
+  border-top: 1px dashed var(--app-border);
+  border-bottom: 1px dashed var(--app-border);
+}
+
+.trans-chap-slip__lines li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.28rem 0;
+}
+
+.trans-chap-slip__lines span {
+  min-width: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.trans-chap-slip__lines em {
+  flex-shrink: 0;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.trans-chap-slip__total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.85rem 0 0.35rem;
+}
+
+.trans-chap-slip__total span {
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--app-text-secondary);
+}
+
+.trans-chap-slip__total strong {
   font-size: 1.45rem;
   font-weight: 800;
   letter-spacing: -0.03em;
 }
 
-.trans-chap-ticket__sub {
-  margin: 0.4rem 0 0;
-  color: var(--ticket-muted);
-  font-size: 0.88rem;
-  line-height: 1.4;
-}
-
-.trans-chap-ticket__rule {
-  margin: 1.15rem 0.15rem 1.05rem;
-  border: 0;
-  border-top: 1px solid var(--ticket-line);
-}
-
-.trans-chap-ticket__total-label {
-  margin: 0;
-  color: var(--ticket-muted);
-  font-size: 0.82rem;
-}
-
-.trans-chap-ticket__total {
-  display: block;
-  margin: 0.35rem 0 1.15rem;
-  font-size: 1.85rem;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-}
-
-.trans-chap-ticket__grid {
+.trans-chap-slip__meta {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.65rem;
+  gap: 0.7rem 0.85rem;
+  margin: 0.85rem 0 0;
+  padding-top: 0.85rem;
+  border-top: 1px dashed var(--app-border);
+}
+
+.trans-chap-slip__meta dt {
   margin: 0;
-  text-align: left;
+  color: var(--app-text-secondary);
+  font-size: 0.68rem;
+  font-weight: 700;
 }
 
-.trans-chap-ticket__grid > div {
-  min-width: 0;
-  padding: 0.7rem 0.75rem;
-  border: 1px solid var(--ticket-line);
-  border-radius: 12px;
-}
-
-.trans-chap-ticket__grid dt {
-  margin: 0;
-  color: var(--ticket-muted);
-  font-size: 0.72rem;
-  font-weight: 600;
-}
-
-.trans-chap-ticket__grid dd {
-  margin: 0.28rem 0 0;
-  color: var(--ticket-text);
+.trans-chap-slip__meta dd {
+  margin: 0.18rem 0 0;
   font-size: 0.82rem;
   font-weight: 700;
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
 
-.trans-chap-ticket__actions {
+.trans-chap-slip__thanks {
+  margin: 1rem 0 0;
+  color: var(--app-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 650;
+  text-align: center;
+}
+
+.trans-chap-slip__actions {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
-  margin-top: 1.25rem;
 }
 
-.trans-chap-ticket__phone {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  text-align: left;
-}
-
-.trans-chap-ticket__phone span {
-  color: var(--ticket-muted);
-  font-size: 0.72rem;
-  font-weight: 600;
-}
-
-.trans-chap-ticket__phone-row {
-  display: grid;
-  grid-template-columns: minmax(8.5rem, 0.46fr) 1fr;
-  gap: 0.5rem;
-}
-
-.trans-chap-ticket__country,
-.trans-chap-ticket__phone input {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 48px;
-  padding: 0.7rem 0.7rem;
-  border: 1px solid var(--ticket-line);
-  border-radius: 12px;
-  background: var(--ticket-input-bg);
-  color: var(--ticket-text);
-  font: inherit;
-  font-size: 1rem;
-  font-weight: 650;
-  appearance: none;
-}
-
-.trans-chap-ticket__country {
-  padding-right: 1.65rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.82rem;
-  color-scheme: inherit;
-  background-color: var(--ticket-input-bg);
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--ticket-muted) 50%),
-    linear-gradient(135deg, var(--ticket-muted) 50%, transparent 50%);
-  background-position:
-    calc(100% - 14px) calc(50% - 3px),
-    calc(100% - 9px) calc(50% - 3px);
-  background-size: 5px 5px, 5px 5px;
-  background-repeat: no-repeat;
-}
-
-.trans-chap-ticket__country option {
-  background: var(--ticket-input-bg);
-  color: var(--ticket-text);
-}
-
-.trans-chap-ticket__phone input:-webkit-autofill,
-.trans-chap-ticket__phone input:-webkit-autofill:hover,
-.trans-chap-ticket__phone input:-webkit-autofill:focus {
-  -webkit-text-fill-color: var(--ticket-text);
-  box-shadow: 0 0 0 1000px var(--ticket-input-bg) inset;
-  caret-color: var(--ticket-text);
-}
-
-.trans-chap-ticket__phone input::placeholder {
-  color: var(--ticket-muted);
-}
-
-.trans-chap-ticket__country:focus,
-.trans-chap-ticket__phone input:focus {
-  outline: none;
-  border-color: var(--ticket-whatsapp);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ticket-whatsapp) 28%, transparent);
-}
-
-.trans-chap-ticket__wa-hint {
-  margin: 0;
-  color: var(--ticket-muted);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-.trans-chap-ticket__choices {
+.trans-chap-slip__choices {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.65rem;
 }
 
-.trans-chap-ticket__wa,
-.trans-chap-ticket__pdf {
+.trans-chap-slip__wa,
+.trans-chap-slip__pdf,
+.trans-chap-slip__retry {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -821,63 +732,47 @@ html[data-theme="dark"] .trans-chap-ticket-stage {
   padding: 0.7rem 0.75rem;
   border-radius: 14px;
   font: inherit;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   font-weight: 750;
   cursor: pointer;
 }
 
-.trans-chap-ticket__wa {
+.trans-chap-slip__wa {
   border: 0;
-  background: var(--ticket-whatsapp);
+  background: #25d366;
   color: #fff;
-  box-shadow:
-    0 8px 22px color-mix(in srgb, var(--ticket-whatsapp) 42%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--ticket-whatsapp) 70%, #fff);
 }
 
-.trans-chap-ticket__wa:hover:not(:disabled) {
-  background: #22c55e;
-  box-shadow:
-    0 10px 26px color-mix(in srgb, var(--ticket-whatsapp) 55%, transparent),
-    0 0 18px color-mix(in srgb, var(--ticket-success) 40%, transparent);
+.trans-chap-slip__pdf,
+.trans-chap-slip__retry {
+  border: 1px solid var(--app-border);
+  background: var(--app-bg);
+  color: var(--app-text);
 }
 
-.trans-chap-ticket__pdf {
-  border: 1px solid var(--ticket-line);
-  background: transparent;
-  color: var(--ticket-text);
+html[data-theme="dark"] .trans-chap-slip__status.is-wait {
+  color: #fbbf24;
 }
 
-.trans-chap-ticket__pdf:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ticket-text) 8%, transparent);
+html[data-theme="dark"] .trans-chap-slip__status.is-fail {
+  color: #fb7185;
 }
 
-.trans-chap-ticket__wa:disabled,
-.trans-chap-ticket__pdf:disabled,
-.trans-chap-ticket__retry:disabled {
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .trans-chap-slip__status.is-wait {
+    color: #fbbf24;
+  }
+
+  html:not([data-theme="light"]) .trans-chap-slip__status.is-fail {
+    color: #fb7185;
+  }
+}
+
+.trans-chap-slip__wa:disabled,
+.trans-chap-slip__pdf:disabled,
+.trans-chap-slip__retry:disabled {
   opacity: 0.7;
   cursor: wait;
-}
-
-.trans-chap-ticket__retry {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.45rem;
-  min-height: 48px;
-  padding: 0.7rem 0.75rem;
-  border-radius: 14px;
-  border: 1px solid var(--ticket-line);
-  background: color-mix(in srgb, var(--ticket-text) 8%, transparent);
-  color: var(--ticket-text);
-  font: inherit;
-  font-size: 0.88rem;
-  font-weight: 750;
-  cursor: pointer;
-}
-
-.trans-chap-ticket__retry:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ticket-text) 14%, transparent);
 }
 
 .trans-chap-receipt__again {
@@ -911,9 +806,17 @@ html[data-theme="dark"] .trans-chap-ticket-stage {
   margin-bottom: 0.7rem;
 }
 
+.trans-chap-sales__search-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .trans-chap-sales__search {
   display: flex;
   align-items: center;
+  flex: 1;
+  min-width: 0;
   gap: 0.6rem;
   min-height: 44px;
   padding: 0 0.9rem;
@@ -944,17 +847,92 @@ html[data-theme="dark"] .trans-chap-ticket-stage {
   font-weight: 500;
 }
 
+.trans-chap-sales__filter-btn {
+  position: relative;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--app-surface);
+  color: var(--app-text-secondary);
+  box-shadow: 0 1px 2px rgba(26, 16, 12, 0.04);
+  cursor: pointer;
+}
+
+.trans-chap-sales__filter-btn.is-on {
+  background: var(--app-primary);
+  color: #fff;
+}
+
+.trans-chap-sales__filter-btn em {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--app-primary);
+  font-size: 0.62rem;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 14px;
+}
+
+.trans-chap-sales__summary {
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--app-primary);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 .trans-chap-sales__chips {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 0.4rem;
+  margin: 0 calc(var(--trans-chap-gutter-x) * -1);
+  padding: 0.05rem var(--trans-chap-gutter-x) 0.15rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.trans-chap-sales__chips::-webkit-scrollbar {
+  display: none;
+}
+
+.trans-chap-sales__chips-group {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.4rem;
+}
+
+.trans-chap-sales__chips-group + .trans-chap-sales__chips-group {
+  margin-left: 0.15rem;
+  padding-left: 0.55rem;
+  border-left: 1px solid var(--app-border);
 }
 
 .trans-chap-sales__chip {
   display: inline-flex;
   align-items: center;
-  min-height: 30px;
-  padding: 0.2rem 0.72rem;
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 0.2rem 0.75rem;
   border: 1px solid var(--app-border);
   border-radius: 999px;
   background: var(--app-surface);
@@ -962,6 +940,7 @@ html[data-theme="dark"] .trans-chap-ticket-stage {
   font: inherit;
   font-size: 0.78rem;
   font-weight: 700;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -969,6 +948,12 @@ html[data-theme="dark"] .trans-chap-ticket-stage {
   border-color: var(--app-primary);
   background: var(--app-primary);
   color: #fff;
+}
+
+.trans-chap-sales__chip--clear {
+  border-color: transparent;
+  background: transparent;
+  color: var(--app-primary);
 }
 
 .trans-chap-sales__list {
@@ -987,6 +972,203 @@ html[data-theme="dark"] .trans-chap-ticket-stage {
   color: var(--app-text-secondary);
   text-align: center;
   font-weight: 600;
+}
+
+.trans-chap-panel {
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--app-surface);
+  box-shadow: 0 2px 10px rgba(26, 16, 12, 0.08);
+}
+
+.trans-chap-panel--sale {
+  --panel-head: var(--app-primary);
+}
+
+.trans-chap-panel--purchase {
+  --panel-head: var(--trans-chap-cash);
+}
+
+.trans-chap-panel__head {
+  display: flex;
+  align-items: stretch;
+  background: var(--panel-head);
+  color: #fff;
+}
+
+.trans-chap-panel__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0.85rem 0.5rem 0.85rem 0.9rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.trans-chap-panel__copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.trans-chap-panel__copy strong {
+  font-size: 0.98rem;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trans-chap-panel__copy span {
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 0.78rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trans-chap-panel__badge {
+  flex-shrink: 0;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.trans-chap-panel__badge.is-wait,
+.trans-chap-panel__badge.is-fail {
+  background: rgba(255, 255, 255, 0.92);
+  color: #9f1239;
+}
+
+.trans-chap-panel__toggle > i {
+  flex-shrink: 0;
+  font-size: 0.82rem;
+  transition: transform 0.18s ease;
+}
+
+.trans-chap-panel.is-open .trans-chap-panel__toggle > i {
+  transform: rotate(180deg);
+}
+
+.trans-chap-panel__receipt {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  color: #fff;
+  text-decoration: none;
+}
+
+.trans-chap-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.95rem 0.95rem 0.7rem;
+  background: var(--app-surface);
+}
+
+.trans-chap-panel__lead {
+  margin: 0;
+  color: var(--app-text-secondary);
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.trans-chap-panel__lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.trans-chap-panel__lines li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.trans-chap-panel__lines span {
+  min-width: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.trans-chap-panel__lines em {
+  flex-shrink: 0;
+  font-style: normal;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.trans-chap-panel__facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.trans-chap-panel__facts div {
+  min-width: 0;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+}
+
+.trans-chap-panel__facts dt {
+  margin: 0;
+  color: var(--app-text-secondary);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.trans-chap-panel__facts dd {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.trans-chap-panel__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 0.1rem;
+}
+
+.trans-chap-panel__link,
+.trans-chap-panel__hide {
+  padding: 0.35rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--panel-head);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
 }
 
 .trans-chap-sale {
@@ -1259,8 +1441,8 @@ html[data-theme="dark"] .trans-chap-sale__add {
 }
 
 .trans-chap-dash__hello {
-  text-align: right;
-  padding-right: 0.15rem;
+  text-align: left;
+  padding-left: 0.15rem;
 }
 
 .trans-chap-dash__hello h2 {

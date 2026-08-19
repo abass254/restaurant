@@ -12,7 +12,7 @@ import {
   addLiteInventoryProduct,
   findInventoryByName,
 } from "@/lib/trans-chap-product";
-import { receiptFromOrder, saveTransChapReceipt, toWhatsAppMsisdn } from "@/lib/trans-chap-receipt";
+import { receiptFromOrder, saveTransChapReceipt, toWhatsAppMsisdn, transChapReceiptHref } from "@/lib/trans-chap-receipt";
 import type {
   InventoryItem,
   MerchantMpesaConfigResponse,
@@ -121,7 +121,10 @@ export function TransChapTransactForm() {
             body: JSON.stringify({ ...payload, items: [line] } satisfies OrderCreatePayload),
           });
         }
-        saveTransChapReceipt(receiptFromOrder(created.data, shopName, created.mpesa_push));
+        const receipt = receiptFromOrder(created.data, shopName, created.mpesa_push);
+        saveTransChapReceipt(receipt);
+        router.push(transChapReceiptHref(created.data.id));
+        return;
       } catch (err) {
         if (payMode === "mpesa") {
           await showError("Could not send M-PESA prompt", extractErrorMessage(err));
@@ -133,6 +136,7 @@ export function TransChapTransactForm() {
           orderNumber: `CASH-${Date.now().toString().slice(-6)}`,
           shopName,
           productName: name,
+          items: [{ name, quantity: 1, unitPrice: parsedAmount, lineTotal: parsedAmount }],
           amount: parsedAmount,
           currency: "KES",
           payMode: "cash",
@@ -143,8 +147,9 @@ export function TransChapTransactForm() {
           mpesaReceiptNumber: null,
           mpesaMessage: null,
         });
+        router.push("/trans-chap/make-a-sale/receipt");
+        return;
       }
-      router.push("/trans-chap/make-a-sale/receipt");
     } finally {
       setSaving(false);
     }
