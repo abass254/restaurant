@@ -39,8 +39,10 @@ INSTAGRAM_APP_ID=<Instagram product app id>
 INSTAGRAM_APP_SECRET=<secret>
 META_APP_SECRET=<secret>
 META_WEBHOOK_VERIFY_TOKEN=<random token>
+INSTAGRAM_HUB_URL=https://dukai.app
+DUKAI_PLATFORM=merchant
 INSTAGRAM_REDIRECT_URI=https://dukai.app/instagram/callback
-OAUTH_ALLOWED_RETURN_ORIGINS=https://dukai.app
+OAUTH_ALLOWED_RETURN_ORIGINS=https://merchants.dukai.app,https://uat.dukai.app
 ```
 
 Run migration before deploy:

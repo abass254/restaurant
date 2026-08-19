@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,24 @@ from app.services.instagram_permissions import InstagramPermissions
 logger = logging.getLogger(__name__)
 
 _webhook_subscription_cache: dict[int, bool] = {}
+_TOKEN_REFRESH_LEAD = timedelta(days=7)
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def graph_access_token(
+    db: Session | None,
+    settings: Settings,
+    instagram_api: InstagramApiService,
+    account: InstagramAccount,
+) -> str:
+    if db is None:
+        return account.access_token()
+    return InstagramConnectionService(db, settings, instagram_api).ensure_fresh_token(account)
 
 
 class InstagramConnectionService:
@@ -20,6 +38,36 @@ class InstagramConnectionService:
         self.db = db
         self.settings = settings
         self.instagram_api = instagram_api
+
+    def ensure_fresh_token(self, account: InstagramAccount) -> str:
+        """Refresh the long-lived Graph token when it is missing expiry or within 7 days."""
+        token = account.access_token()
+        if not token or account.login_provider != "instagram":
+            return token
+
+        expires_at = account.token_expires_at
+        if expires_at is not None:
+            remaining = _as_utc(expires_at) - datetime.now(timezone.utc)
+            if remaining > _TOKEN_REFRESH_LEAD:
+                return token
+
+        try:
+            refreshed = self.instagram_api.refresh_long_lived_token(token)
+        except Exception:
+            logger.warning(
+                "Instagram token refresh failed account=%s; using existing token",
+                account.username,
+                exc_info=True,
+            )
+            return token
+
+        new_token = str(refreshed["access_token"])
+        account.user_access_token = new_token
+        account.token_expires_at = refreshed.get("expires_at")
+        account.updated_at = datetime.now(timezone.utc)
+        self.db.commit()
+        logger.info("Instagram long-lived token refreshed account=%s", account.username)
+        return new_token
 
     def subscribe_webhooks(self, account: InstagramAccount, force: bool = False) -> dict:
         user_id = str(account.instagram_user_id or "")
@@ -31,7 +79,7 @@ class InstagramConnectionService:
 
         result = self.instagram_api.subscribe_to_webhooks(
             user_id,
-            account.access_token(),
+            self.ensure_fresh_token(account),
             self.settings.instagram_webhook_subscribed_fields,
         )
 

@@ -5,8 +5,16 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from fastapi.responses import RedirectResponse
 
 from app.config import get_settings
+from app.core.instagram_hub import (
+    OAUTH_STATE_COOKIE,
+    OAUTH_STATE_SESSION_KEY,
+    new_oauth_state,
+    public_https_origin,
+    state_cookie,
+    states_match,
+)
 from app.core.oauth_state import try_parse_return_origin
-from app.core.session import get_current_user, save_session
+from app.core.session import _cookie_secure, get_current_user, save_session
 from app.dependencies import ServiceContainer, get_request_session, get_services
 from app.services.platform_instagram import user_can_manage_platform_instagram
 from app.web.webhooks import handle_webhook, verify_instagram_webhook
@@ -45,7 +53,11 @@ def _request_return_origin(request: Request) -> str:
 def _known_oauth_return_origin(origin: str) -> str | None:
     """Allow known app hosts on OAuth callback even if this backend's env omits them."""
     normalized = origin.rstrip("/")
-    for candidate in ("https://dukai.app", "https://uat.dukai.app"):
+    for candidate in (
+        "https://dukai.app",
+        "https://uat.dukai.app",
+        "https://merchants.dukai.app",
+    ):
         if normalized == candidate:
             return candidate
     return None
@@ -65,6 +77,20 @@ def _safe_return_origin(request: Request, state: str | None = None) -> str:
         if known:
             return known
         return settings.frontend_url.rstrip("/")
+
+
+def _hub_return_origin(request: Request) -> str | None:
+    settings = get_settings()
+    return public_https_origin(
+        settings.app_url,
+        _request_return_origin(request),
+        settings.frontend_url,
+    )
+
+
+def _clear_oauth_state(redirect: RedirectResponse, session: dict) -> None:
+    session.pop(OAUTH_STATE_SESSION_KEY, None)
+    redirect.delete_cookie(OAUTH_STATE_COOKIE, path="/")
 
 
 @router.get("/auth/instagram")
@@ -96,11 +122,16 @@ def instagram_redirect(
             status_code=302,
         )
 
-    login_url = services.auth.get_login_url(
-        user_id=str(user.id),
-        return_origin=return_origin,
+    state = new_oauth_state()
+    session[OAUTH_STATE_SESSION_KEY] = state
+    hub_url = services.auth.get_login_url(
+        state=state,
+        origin=_hub_return_origin(request) or return_origin,
     )
-    return RedirectResponse(login_url, status_code=302)
+    redirect = RedirectResponse(hub_url, status_code=302)
+    redirect.set_cookie(**save_session(request, session))
+    redirect.set_cookie(**state_cookie(value=state, secure=_cookie_secure(request)))
+    return redirect
 
 
 @router.get("/instagram/callback")
@@ -119,7 +150,7 @@ def instagram_callback(
 ):
     if hub_mode:
         logger.warning(
-            "Meta webhook verify hit OAuth callback URL; use https://…/webhooks/instagram instead"
+            "Meta webhook verify hit OAuth callback URL; handshake belongs on dukai.app"
         )
         return verify_instagram_webhook(hub_mode, hub_verify_token, hub_challenge)
 
@@ -132,26 +163,53 @@ def instagram_callback(
     )
 
     if error:
-        message = error_description or "Meta authorization was cancelled."
-        return RedirectResponse(_frontend_url("/settings", base=return_origin, error=message))
+        logger.info(
+            "Instagram OAuth cancelled error=%s description=%s",
+            error,
+            error_description,
+        )
+        redirect = RedirectResponse(
+            _frontend_url("/settings", base=return_origin, error="cancelled"),
+        )
+        _clear_oauth_state(redirect, session)
+        redirect.set_cookie(**save_session(request, session))
+        return redirect
 
-    if not code or not state:
+    expected = request.cookies.get(OAUTH_STATE_COOKIE) or session.get(OAUTH_STATE_SESSION_KEY)
+    cookie_ok = states_match(state, str(expected) if expected else None)
+    user = get_current_user(services.db, session)
+
+    if not cookie_ok and state:
+        try:
+            user = services.auth.user_from_signed_state(services.db, state, user)
+            cookie_ok = True
+        except RuntimeError:
+            cookie_ok = False
+
+    if not code or not state or not cookie_ok:
+        redirect = RedirectResponse(
+            _frontend_url("/settings", base=return_origin, error="invalid_state"),
+        )
+        _clear_oauth_state(redirect, session)
+        redirect.set_cookie(**save_session(request, session))
+        return redirect
+
+    if user is None:
         return RedirectResponse(
             _frontend_url(
-                "/settings",
+                "/sign-in",
                 base=return_origin,
-                error="Incomplete response from Meta. Please try again.",
+                error="Please sign in to connect your Instagram account.",
             ),
         )
 
-    user = get_current_user(services.db, session)
     settings = get_settings()
     try:
         _, return_origin = services.auth.handle_callback(
             services.db,
             code,
-            state,
             user,
+            return_origin=return_origin,
         )
     except Exception as exc:
         logger.exception("Instagram OAuth callback failed")
@@ -160,14 +218,17 @@ def instagram_callback(
             if settings.app_debug
             else "Could not connect your Instagram account. Please try again."
         )
-        return RedirectResponse(_frontend_url("/settings", base=return_origin, error=message))
+        redirect = RedirectResponse(_frontend_url("/settings", base=return_origin, error=message))
+        _clear_oauth_state(redirect, session)
+        redirect.set_cookie(**save_session(request, session))
+        return redirect
 
     redirect = RedirectResponse(
         _frontend_url("/settings?connected=1", base=return_origin),
         status_code=302,
     )
-    if user is not None:
-        redirect.set_cookie(**save_session(request, session))
+    _clear_oauth_state(redirect, session)
+    redirect.set_cookie(**save_session(request, session))
     return redirect
 
 
@@ -176,9 +237,8 @@ def instagram_callback(
 async def instagram_callback_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
-    services: ServiceContainer = Depends(get_services),
 ):
     logger.warning(
-        "Meta webhook POST hit OAuth callback URL; use https://…/webhooks/instagram instead"
+        "Webhook POST hit OAuth callback URL; hub should POST /webhooks/instagram"
     )
-    return await handle_webhook(request, background_tasks, services)
+    return await handle_webhook(request, background_tasks)

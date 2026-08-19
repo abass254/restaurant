@@ -68,7 +68,11 @@ export default function SettingsPage() {
     }
     const err = searchParams.get("error");
     if (err) {
-      void showError("Connection failed", err);
+      const messages: Record<string, string> = {
+        cancelled: "Instagram authorization was cancelled.",
+        invalid_state: "This Instagram connection link expired. Please try again.",
+      };
+      void showError("Connection failed", messages[err] ?? err);
     }
 
     const hash = window.location.hash.replace("#", "").replace("section-", "") as SectionId;

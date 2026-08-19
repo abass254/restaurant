@@ -20,6 +20,7 @@ from app.services.conversation_resolver import (
 from app.services.instagram_api import InstagramApiService
 from app.services.bot_sandbox_context import should_fake_instagram_outbound
 from app.services.dm_templates import menu_choice_from_text
+from app.services.instagram_connection import graph_access_token
 from app.services.instagram_outbound_transport import InstagramOutboundTransport
 from app.services.typing_state import clear_agent_typing, clear_typing, set_typing
 from app.support.sales_session import read_session
@@ -84,7 +85,7 @@ class InstagramOutboundService:
         self.instagram_api.send_sender_action(
             recipient_ig_scoped_id,
             "typing_on",
-            account.access_token(),
+            graph_access_token(self.db, self.settings, self.instagram_api, account),
         )
 
     def send_typing_off(self, account: InstagramAccount, recipient_ig_scoped_id: str) -> None:
@@ -96,7 +97,7 @@ class InstagramOutboundService:
             self.instagram_api.send_sender_action(
                 recipient_ig_scoped_id,
                 "typing_off",
-                account.access_token(),
+                graph_access_token(self.db, self.settings, self.instagram_api, account),
             )
         except Exception as exc:
             logger.warning(
@@ -249,7 +250,7 @@ class InstagramMessagingService:
         self.auto_reply = auto_reply
 
     def sync(self, account: InstagramAccount) -> dict:
-        token = account.access_token()
+        token = graph_access_token(self.db, self.settings, self.instagram_api, account)
         my_ig_id = str(account.instagram_user_id or "")
         synced = 0
         conversations = self.instagram_api.get_conversations(token)

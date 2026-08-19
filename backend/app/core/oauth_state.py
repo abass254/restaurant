@@ -15,8 +15,8 @@ def _oauth_signing_key(settings: Settings) -> str:
     """
     Secret for signing OAuth state.
 
-    Uses the Meta app secret so UAT (:7001) and prod (:7071) can both verify
-    state when Meta redirects to the shared https://dukai.app/instagram/callback.
+    Uses the Meta app secret so a leftover signed state from before the
+    hub cutover can still be verified on callback.
     """
     for candidate in (
         settings.instagram_app_secret,

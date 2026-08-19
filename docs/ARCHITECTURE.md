@@ -41,13 +41,13 @@ See [DOCKER.md](DOCKER.md) for the full guide.
 - **Public domain** → Next.js (port 7070 behind nginx).
 - **API** → FastAPI on port 7071 (internal or `api.insta.ufanisi.net`).
 - Set `FRONTEND_URL=https://insta.ufanisi.net`, `APP_URL=https://api.insta.ufanisi.net` (or your API host).
-- Instagram OAuth callback must hit the API: `{APP_URL}/auth/instagram/callback`.
+- Instagram OAuth starts on this API (`/auth/instagram`), which sends the user to the dukai.app hub. The hub returns the auth code to `{APP_URL}/instagram/callback`.
 
 ## Authentication
 
 - Merchant UI primary route: **`/sign-in`**. `/` redirects signed-in users to their first allowed page, otherwise to `/sign-in`. `/login` is a compatibility redirect to `/sign-in`.
 - **Session + CSRF** (Sanctum-compatible contract): cookies shared between frontend and API via `CORS_ALLOWED_ORIGINS`.
-- Login flow: Next.js → `{API}/auth/instagram` → Meta → callback on API → redirect to Next.js `/settings`.
+- Login flow: Next.js → `{API}/auth/instagram` → dukai.app hub → Instagram → hub → `{APP_URL}/instagram/callback` → Next.js `/settings`.
 - API calls from Next.js use `credentials: "include"` and `GET /sanctum/csrf-cookie` before mutating requests.
 
 ## API surface

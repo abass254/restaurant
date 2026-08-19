@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useOptionalAuthUser } from "@/components/app/AuthProvider";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
 
@@ -25,6 +24,21 @@ function headerMeta(pathname: string): { title: string; backHref: string | null 
   if (pathname.startsWith("/trans-chap/make-a-sale/new")) {
     return { title: "New sale", backHref: "/trans-chap/make-a-sale" };
   }
+  if (pathname.startsWith("/trans-chap/purchases/new")) {
+    return { title: "New purchase", backHref: "/trans-chap/purchases" };
+  }
+  if (pathname.startsWith("/trans-chap/purchases")) {
+    return { title: "Purchases", backHref: "/trans-chap" };
+  }
+  if (pathname.startsWith("/trans-chap/stocks/stock-up")) {
+    return { title: "Stock up", backHref: "/trans-chap/stocks" };
+  }
+  if (pathname.startsWith("/trans-chap/stocks")) {
+    return { title: "Stocks", backHref: "/trans-chap" };
+  }
+  if (pathname.startsWith("/trans-chap/reports")) {
+    return { title: "Reports", backHref: "/trans-chap" };
+  }
   if (pathname.startsWith("/trans-chap/install")) {
     return { title: "Download", backHref: "/trans-chap/settings" };
   }
@@ -44,13 +58,8 @@ function headerMeta(pathname: string): { title: string; backHref: string | null 
 
 export function TransChapShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const user = useOptionalAuthUser();
   const { title, backHref } = headerMeta(pathname);
   const showNav = !pathname.startsWith("/trans-chap/sign-in");
-  const shopName =
-    user?.active_account?.business_name || user?.account?.business_name || null;
-  const subtitle =
-    pathname === "/trans-chap" || pathname === "/trans-chap/" ? shopName : null;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -70,14 +79,16 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                   <i className="fa-solid fa-chevron-left" aria-hidden />
                 </Link>
               ) : (
-                <Link href="/trans-chap" className="trans-chap-header__brand" aria-label="Trans Chap home">
-                  <DukAiLogoMark size={28} color="currentColor" accentColor="#e85d04" />
+                <Link href="/trans-chap" className="trans-chap-header__icon" aria-label="Trans Chap home">
+                  <i className="fa-solid fa-table-cells" aria-hidden />
                 </Link>
               )}
             </div>
             <div className="trans-chap-header__center">
+              <span className="trans-chap-header__logo" aria-hidden>
+                <DukAiLogoMark size={28} color="currentColor" accentColor="#e85d04" />
+              </span>
               <h1>{title}</h1>
-              {subtitle ? <p>{subtitle}</p> : null}
             </div>
             <div className="trans-chap-header__side trans-chap-header__side--end">
               <ThemeToggle />

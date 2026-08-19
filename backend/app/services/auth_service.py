@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from urllib.parse import urlencode
-
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import Settings
-from app.core.oauth_state import create_oauth_state, parse_oauth_state
+from app.core.instagram_hub import hub_connect_url
+from app.core.oauth_state import parse_oauth_state
 from app.models import User
 from app.services.instagram_account_link import InstagramAccountLinkService
 from app.services.instagram_api import InstagramApiService
@@ -22,45 +21,33 @@ class InstagramAuthService:
         self.instagram_api = instagram_api
         self.linker = linker
 
-    def get_login_url(self, *, user_id: str, return_origin: str) -> str:
-        redirect_uri = self.settings.effective_instagram_redirect_uri
-        state = create_oauth_state(
-            self.settings,
-            user_id=user_id,
-            return_origin=return_origin,
-        )
-        query = urlencode(
-            {
-                "client_id": self.settings.instagram_app_id,
-                "redirect_uri": redirect_uri,
-                "response_type": "code",
-                "scope": ",".join(self.settings.instagram_scopes),
-                "state": state,
-                "enable_fb_login": "0",
-            },
-        )
-        return f"{self.settings.instagram_oauth_authorize_url}?{query}"
+    def get_login_url(self, *, state: str, origin: str | None = None) -> str:
+        """Send the user to the dukai.app hub. The hub talks to Meta; we never do."""
+        return hub_connect_url(self.settings, state, origin=origin)
 
-    def handle_callback(
-        self,
-        db: Session,
-        code: str,
-        state: str,
-        user: User | None = None,
-    ) -> tuple[User, str]:
+    def user_from_signed_state(self, db: Session, state: str, session_user: User | None) -> User:
         payload = parse_oauth_state(self.settings, state)
-        return_origin = str(payload["return_origin"])
         state_user_id = str(payload["user_id"])
-
-        if user is None:
+        if session_user is None:
             user = db.get(User, state_user_id)
             if user is None:
                 raise RuntimeError(
                     "Your account was not found. Please sign in and try again.",
                 )
-        elif str(user.id) != state_user_id:
+            return user
+        if str(session_user.id) != state_user_id:
             raise RuntimeError("OAuth state mismatch. Please try logging in again.")
+        return session_user
 
+    def handle_callback(
+        self,
+        db: Session,
+        code: str,
+        user: User,
+        *,
+        return_origin: str,
+    ) -> tuple[User, str]:
+        # Always the hub URI registered with Meta — never this app's callback URL.
         redirect_uri = self.settings.effective_instagram_redirect_uri
         token_payload = self.instagram_api.exchange_code_for_token(
             code,

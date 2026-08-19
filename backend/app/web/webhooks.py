@@ -258,6 +258,7 @@ async def verify_webhook(
     hub_verify_token: str | None = Query(None, alias="hub.verify_token"),
     hub_challenge: str | None = Query(None, alias="hub.challenge"),
 ):
+    # Meta's GET handshake lives on dukai.app. Kept so local/legacy configs still work.
     return verify_instagram_webhook(hub_mode, hub_verify_token, hub_challenge)
 
 

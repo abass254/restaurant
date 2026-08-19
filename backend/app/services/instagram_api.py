@@ -58,6 +58,8 @@ class InstagramApiService:
         *,
         redirect_uri: str,
     ) -> dict[str, Any]:
+        # Meta appends `#_` to the redirect URI; it is not part of the code.
+        code = code.split("#", 1)[0].strip()
         with httpx.Client(timeout=30) as client:
             response = client.post(
                 self.settings.instagram_oauth_token_url,
@@ -94,17 +96,17 @@ class InstagramApiService:
             "access_token": short_lived_token,
         }
         with httpx.Client(timeout=30) as client:
-            # Instagram Login apps may require POST; older docs show GET. Try both.
-            response = client.post(url, data=payload)
+            # Business Login docs specify GET; some Instagram Login apps accept POST.
+            response = client.get(url, params=payload)
             if not response.is_success:
-                get_response = client.get(url, params=payload)
-                if get_response.is_success:
-                    response = get_response
+                post_response = client.post(url, data=payload)
+                if post_response.is_success:
+                    response = post_response
                 else:
                     logger.warning(
-                        "Long-lived token exchange failed POST then GET: post=%s get=%s",
+                        "Long-lived token exchange failed GET then POST: get=%s post=%s",
                         self._meta_error_message(response),
-                        self._meta_error_message(get_response),
+                        self._meta_error_message(post_response),
                     )
         self._ensure_success(response, "Long-lived token exchange failed")
         data = response.json()
@@ -113,11 +115,29 @@ class InstagramApiService:
             expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(data["expires_in"]))
         return {"access_token": data["access_token"], "expires_at": expires_at}
 
+    def refresh_long_lived_token(self, long_lived_token: str) -> dict[str, Any]:
+        """Refresh a long-lived Instagram user token before it expires (~60 days)."""
+        url = self.token_url("refresh_access_token")
+        payload = {
+            "grant_type": "ig_refresh_token",
+            "access_token": long_lived_token,
+        }
+        with httpx.Client(timeout=30) as client:
+            response = client.get(url, params=payload)
+        self._ensure_success(response, "Token refresh failed")
+        data = response.json()
+        expires_at = None
+        if data.get("expires_in"):
+            expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(data["expires_in"]))
+        if not data.get("access_token"):
+            raise RuntimeError("Token refresh failed: no access_token")
+        return {"access_token": data["access_token"], "expires_at": expires_at}
+
     def get_me(self, access_token: str) -> dict[str, Any]:
         return self.get(
             "me",
             {
-                "fields": "user_id,username,name,account_type,profile_picture_url",
+                "fields": "id,user_id,username,name,account_type,profile_picture_url",
                 "access_token": access_token,
             },
         )

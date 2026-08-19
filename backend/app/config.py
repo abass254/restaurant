@@ -44,7 +44,10 @@ class Settings(BaseSettings):
     instagram_app_id: str = ""
     instagram_app_secret: str = ""
     meta_app_secret: str = ""
-    instagram_redirect_uri: str = "http://127.0.0.1:7000/instagram/callback"
+    # Must match Meta + the hub exactly. Do not use this app's /instagram/callback.
+    instagram_redirect_uri: str = "https://dukai.app/instagram/callback"
+    instagram_hub_url: str = "https://dukai.app"
+    dukai_platform: str = "merchant"
     instagram_graph_version: str = "v21.0"
     meta_webhook_verify_token: str = ""
     meta_access_token: str = ""
@@ -277,6 +280,7 @@ class Settings(BaseSettings):
             {
                 "https://dukai.app",
                 "https://uat.dukai.app",
+                "https://merchants.dukai.app",
                 "http://127.0.0.1:7000",
                 "http://localhost:7000",
             },
@@ -291,6 +295,11 @@ class Settings(BaseSettings):
                 f"OAuth return origin not allowed: {origin}. Allowed: {allowed}",
             )
         return normalized
+
+    def instagram_hub_connect_url(self, state: str, *, origin: str | None = None) -> str:
+        from app.core.instagram_hub import hub_connect_url
+
+        return hub_connect_url(self, state, origin=origin)
 
     def instagram_callback_url_for_origin(self, origin: str) -> str:
         """Per-origin callback URL (legacy). OAuth uses effective_instagram_redirect_uri."""

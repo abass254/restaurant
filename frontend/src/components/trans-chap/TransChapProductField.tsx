@@ -20,6 +20,8 @@ type Props = {
   onAmountChange: (amount: string) => void;
   onSelectItem: (item: InventoryItem | null) => void;
   onItemsChange?: (items: InventoryItem[]) => void;
+  fillAmountFrom?: "selling" | "buying" | "none";
+  suggestMeta?: "price" | "stock";
 };
 
 export function TransChapProductField({
@@ -30,6 +32,8 @@ export function TransChapProductField({
   onAmountChange,
   onSelectItem,
   onItemsChange,
+  fillAmountFrom = "selling",
+  suggestMeta = "price",
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -91,7 +95,9 @@ export function TransChapProductField({
   function selectItem(item: InventoryItem) {
     onNameChange(inventoryProductName(item));
     onSelectItem(item);
-    if (item.selling_price != null) {
+    if (fillAmountFrom === "buying" && item.buying_price != null) {
+      onAmountChange(String(item.buying_price));
+    } else if (fillAmountFrom === "selling" && item.selling_price != null) {
       onAmountChange(String(item.selling_price));
     }
     setOpen(false);
@@ -167,9 +173,13 @@ export function TransChapProductField({
                     {inventoryProductName(item)}
                   </span>
                   <span className="trans-chap-suggest__meta">
-                    {item.selling_price != null
-                      ? formatMoney(item.selling_price)
-                      : "No price"}
+                    {suggestMeta === "stock"
+                      ? item.stock_quantity == null
+                        ? "Not tracked"
+                        : `${item.stock_quantity} in stock`
+                      : item.selling_price != null
+                        ? formatMoney(item.selling_price)
+                        : "No price"}
                   </span>
                 </button>
               </li>

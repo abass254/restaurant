@@ -1,239 +1,80 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuthUser } from "@/components/app/AuthProvider";
-import { apiFetch } from "@/lib/api";
-import { apiRoutes } from "@/lib/config";
-import { nairobiDateKey, parseIso } from "@/lib/nairobi-time";
-import { formatKsh } from "@/lib/trans-chap-receipt";
-import type { Order, OrdersListResponse } from "@/lib/types";
+import { TransChapHomePies } from "@/components/trans-chap/TransChapHomePies";
+
+type DashTone = "sale" | "cash" | "mpesa" | "records" | "shop";
+
+type DashTile = {
+  href: string;
+  label: string;
+  icon: string;
+  tone: DashTone;
+};
+
+const LOOKUP_TILES: DashTile[] = [
+  { href: "/trans-chap/make-a-sale", label: "Sales", icon: "fa-list", tone: "records" },
+  { href: "/trans-chap/purchases", label: "Purchases", icon: "fa-truck", tone: "cash" },
+  { href: "/trans-chap/stocks", label: "Stocks", icon: "fa-boxes-stacked", tone: "sale" },
+  { href: "/trans-chap/reports", label: "Reports", icon: "fa-chart-column", tone: "records" },
+  { href: "/trans-chap/settings", label: "Settings", icon: "fa-gear", tone: "shop" },
+];
+
+const ACTION_TILES: DashTile[] = [
+  { href: "/trans-chap/make-a-sale/new", label: "New sale", icon: "fa-cash-register", tone: "sale" },
+  { href: "/trans-chap/purchases/new", label: "New purchase", icon: "fa-cart-plus", tone: "cash" },
+  { href: "/trans-chap/stocks/stock-up", label: "Stock up", icon: "fa-box-open", tone: "mpesa" },
+];
 
 function firstName(name: string): string {
   const part = name.trim().split(/\s+/)[0];
   return part || "there";
 }
 
-function nairobiHour(): number {
-  const hour = new Intl.DateTimeFormat("en-KE", {
-    timeZone: "Africa/Nairobi",
-    hour: "numeric",
-    hourCycle: "h23",
-  }).format(new Date());
-  return Number.parseInt(hour, 10);
-}
-
-function greetingWord(hour: number): string {
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
-}
-
-function lastNairobiDays(count: number): { key: string; label: string }[] {
-  const today = nairobiDateKey(new Date());
-  const [year, month, day] = today.split("-").map(Number);
-  return Array.from({ length: count }, (_, index) => {
-    const offset = count - 1 - index;
-    const date = new Date(Date.UTC(year, month - 1, day - offset, 12));
-    return {
-      key: date.toISOString().slice(0, 10),
-      label: new Intl.DateTimeFormat("en-US", {
-        timeZone: "UTC",
-        weekday: "short",
-      }).format(date),
-    };
-  });
-}
-
-function orderDayKey(order: Order): string | null {
-  const created = parseIso(order.placed_at || order.created_at);
-  return created ? nairobiDateKey(created) : null;
-}
-
-function saleTotal(order: Order): number {
-  return Number(order.total) || 0;
+function DashTileLink({ tile }: { tile: DashTile }) {
+  return (
+    <Link
+      href={tile.href}
+      className={`trans-chap-dash__tile trans-chap-dash__tile--${tile.tone}`}
+    >
+      <i className={`fa-solid ${tile.icon}`} aria-hidden />
+      <span>{tile.label}</span>
+    </Link>
+  );
 }
 
 export function TransChapHome() {
   const user = useAuthUser();
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const shopName =
-    user.active_account?.business_name ||
-    user.account?.business_name ||
-    "your shop";
   const name = firstName(user.name);
-  const hello = greetingWord(nairobiHour());
-
-  const reload = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await apiFetch<OrdersListResponse>(
-        `${apiRoutes.orders}?source=walkin&per_page=100`,
-      );
-      setOrders(data.data);
-    } catch {
-      setOrders([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
-
-  const days = useMemo(() => lastNairobiDays(7), []);
-  const todayKey = days[days.length - 1]?.key ?? nairobiDateKey(new Date());
-  const yesterdayKey = days[days.length - 2]?.key ?? todayKey;
-
-  const analytics = useMemo(() => {
-    const byDay = new Map(days.map((day) => [day.key, { count: 0, revenue: 0 }]));
-    const productTotals = new Map<string, { name: string; units: number; revenue: number }>();
-
-    for (const order of orders) {
-      const key = orderDayKey(order);
-      const amount = saleTotal(order);
-      if (key && byDay.has(key)) {
-        const bucket = byDay.get(key);
-        if (bucket) {
-          bucket.count += 1;
-          bucket.revenue += amount;
-        }
-      }
-      for (const item of order.items ?? []) {
-        const productName = item.product_name?.trim() || "Sale";
-        const row = productTotals.get(productName) ?? {
-          name: productName,
-          units: 0,
-          revenue: 0,
-        };
-        row.units += item.quantity || 1;
-        row.revenue += item.line_total ?? (item.quantity || 1) * (item.unit_price ?? 0);
-        productTotals.set(productName, row);
-      }
-    }
-
-    const today = byDay.get(todayKey) ?? { count: 0, revenue: 0 };
-    const yesterday = byDay.get(yesterdayKey) ?? { count: 0, revenue: 0 };
-    const weekRevenue = [...byDay.values()].reduce((sum, day) => sum + day.revenue, 0);
-    const weekCount = [...byDay.values()].reduce((sum, day) => sum + day.count, 0);
-    const maxDayRevenue = Math.max(1, ...[...byDay.values()].map((day) => day.revenue));
-    const topProduct = [...productTotals.values()].sort((a, b) => b.revenue - a.revenue)[0] ?? null;
-
-    return {
-      today,
-      yesterday,
-      weekRevenue,
-      weekCount,
-      topProduct,
-      chart: days.map((day) => {
-        const bucket = byDay.get(day.key) ?? { count: 0, revenue: 0 };
-        return {
-          ...day,
-          ...bucket,
-          height: Math.round((bucket.revenue / maxDayRevenue) * 100),
-        };
-      }),
-    };
-  }, [days, orders, todayKey, yesterdayKey]);
-
-  const note =
-    analytics.today.count === 0
-      ? `Ready when you are — make the first sale of the day for ${shopName}.`
-      : analytics.today.count === 1
-        ? `Nice start, ${name}. One sale is already on the board.`
-        : `Nice work, ${name}. ${analytics.today.count} sales so far today.`;
+  const email = user.email?.trim() || user.phone || "";
 
   return (
-    <div className="trans-chap-home">
-      <section className="trans-chap-welcome">
-        <p className="trans-chap-welcome__hello">
-          {hello}, {name}
-        </p>
-        <h2>Welcome to Trans Chap</h2>
-        <p>{note}</p>
+    <div className="trans-chap-home trans-chap-dash">
+      <section className="trans-chap-dash__hello">
+        <h2>Welcome, {name}</h2>
+        {email ? <p>{email}</p> : null}
       </section>
 
-      <section className="trans-chap-kpis" aria-label="Sales today">
-        <article className="trans-chap-kpi trans-chap-kpi--wide">
-          <span>Today</span>
-          <strong>{loading ? "…" : formatKsh(analytics.today.revenue)}</strong>
-          <em>
-            {loading
-              ? "Loading"
-              : analytics.yesterday.revenue > 0
-                ? `${analytics.today.revenue >= analytics.yesterday.revenue ? "+" : ""}${Math.round(((analytics.today.revenue - analytics.yesterday.revenue) / analytics.yesterday.revenue) * 100)}% vs yesterday`
-                : `${analytics.today.count} ${analytics.today.count === 1 ? "sale" : "sales"}`}
-          </em>
-        </article>
-        <article className="trans-chap-kpi">
-          <span>Sales</span>
-          <strong>{loading ? "…" : analytics.today.count.toLocaleString()}</strong>
-          <em>Today</em>
-        </article>
-        <article className="trans-chap-kpi">
-          <span>This week</span>
-          <strong>{loading ? "…" : formatKsh(analytics.weekRevenue)}</strong>
-          <em>
-            {analytics.weekCount} {analytics.weekCount === 1 ? "sale" : "sales"}
-          </em>
-        </article>
-      </section>
+      <TransChapHomePies />
 
-      <section className="trans-chap-week" aria-label="This week">
-        <div className="trans-chap-week__head">
-          <h3>This week</h3>
-          <span>
-            {analytics.topProduct
-              ? `Top: ${analytics.topProduct.name}`
-              : "Walk-in sales"}
-          </span>
-        </div>
-        <div className="trans-chap-week__chart">
-          {analytics.chart.map((day) => (
-            <div
-              key={day.key}
-              className={`trans-chap-week__col${day.key === todayKey ? " is-today" : ""}`}
-            >
-              <span
-                className="trans-chap-week__bar"
-                style={{ height: `${loading ? 12 : Math.max(day.revenue > 0 ? 18 : 8, day.height)}%` }}
-                title={`${day.label}: ${formatKsh(day.revenue)}`}
-              />
-              <em>{day.label.slice(0, 2)}</em>
-            </div>
+      <section className="trans-chap-dash__section" aria-labelledby="trans-chap-lookup-heading">
+        <h3 id="trans-chap-lookup-heading">Your shop</h3>
+        <div className="trans-chap-dash__grid">
+          {LOOKUP_TILES.map((tile) => (
+            <DashTileLink key={tile.label} tile={tile} />
           ))}
         </div>
       </section>
 
-      <section className="trans-chap-recent">
-        <div className="trans-chap-week__head">
-          <h3>Recent sales</h3>
-          <Link href="/trans-chap/make-a-sale">See all</Link>
+      <section className="trans-chap-dash__section" aria-labelledby="trans-chap-action-heading">
+        <h3 id="trans-chap-action-heading">Record</h3>
+        <div className="trans-chap-dash__grid">
+          {ACTION_TILES.map((tile) => (
+            <DashTileLink key={tile.label} tile={tile} />
+          ))}
         </div>
-        {loading ? (
-          <p className="trans-chap-sales__empty">Loading sales…</p>
-        ) : orders.length === 0 ? (
-          <p className="trans-chap-sales__empty">No sales yet. Head to Sales to start.</p>
-        ) : (
-          <ul className="trans-chap-recent__list">
-            {orders.slice(0, 4).map((order) => (
-              <li key={order.id}>
-                <span>
-                  <strong>{order.items?.[0]?.product_name || "Sale"}</strong>
-                  <em>{order.customer_name || "Walk-in"}</em>
-                </span>
-                <strong>{formatKsh(order.total)}</strong>
-              </li>
-            ))}
-          </ul>
-        )}
       </section>
-
-      <Link href="/trans-chap/make-a-sale/new" className="auth-split__btn">
-        Make a sale
-      </Link>
     </div>
   );
 }

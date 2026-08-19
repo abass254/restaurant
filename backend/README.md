@@ -39,8 +39,9 @@ Users must log in again when session settings change.
 
 All routes under `/api/v1/*` plus:
 
-- `GET /auth/instagram`, `GET /auth/instagram/callback`
-- `GET/POST /webhooks/instagram`
+- `GET /auth/instagram` — starts Instagram Login via the dukai.app hub
+- `GET /instagram/callback` (and `/auth/instagram/callback`) — receives the hub-forwarded auth code
+- `POST /webhooks/instagram` — receives Instagram events forwarded by the hub
 
 See `docs/ARCHITECTURE.md` for the full contract.
 

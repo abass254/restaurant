@@ -25,6 +25,10 @@ export function findInventoryByName(
 export async function addLiteInventoryProduct(
   name: string,
   amount: string,
+  extras?: {
+    buying_price?: number | null;
+    stock_quantity?: number | null;
+  },
 ): Promise<InventoryItem> {
   const created = await apiFetch<CatalogProductMutationResponse>(
     apiRoutes.products,
@@ -47,9 +51,33 @@ export async function addLiteInventoryProduct(
           Number.isFinite(parsedAmount) && parsedAmount > 0
             ? parsedAmount
             : null,
-        stock_quantity: null,
+        buying_price: extras?.buying_price ?? null,
+        stock_quantity: extras?.stock_quantity ?? null,
         is_active: true,
       }),
+    },
+  );
+  return inventory.data;
+}
+
+export async function addInventoryQuantity(
+  item: InventoryItem,
+  quantity: number,
+  extras?: { buying_price?: number | null },
+): Promise<InventoryItem> {
+  const nextQty = (item.stock_quantity ?? 0) + quantity;
+  const body: {
+    stock_quantity: number;
+    buying_price?: number;
+  } = { stock_quantity: nextQty };
+  if (extras?.buying_price != null && Number.isFinite(extras.buying_price)) {
+    body.buying_price = extras.buying_price;
+  }
+  const inventory = await apiFetch<InventoryItemMutationResponse>(
+    apiRoutes.inventoryItem(item.id),
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
     },
   );
   return inventory.data;

@@ -45,6 +45,13 @@ export function TransChapTransactForm() {
   }, []);
 
   useEffect(() => {
+    const pay = new URLSearchParams(window.location.search).get("pay");
+    if (pay === "mpesa" || pay === "cash") {
+      setPayMode(pay);
+    }
+  }, []);
+
+  useEffect(() => {
     void apiFetch<MerchantMpesaConfigResponse>(apiRoutes.mpesaBusinessConfig)
       .then((data) => setMpesaReady(Boolean(data.config)))
       .catch(() => setMpesaReady(false));

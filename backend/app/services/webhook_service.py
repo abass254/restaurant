@@ -80,8 +80,8 @@ class InstagramWebhookService:
         for item in normalized:
             account = self._resolve_account(item.get("account_hint"), item["event"])
             if not account:
-                logger.warning(
-                    "Instagram webhook: no matching account hint=%s",
+                logger.info(
+                    "Instagram webhook: no matching merchant account hint=%s (ignored)",
                     item.get("account_hint"),
                 )
                 continue
@@ -129,8 +129,8 @@ class InstagramWebhookService:
                 str(account_hint),
             )
         if account is None:
-            logger.warning(
-                "Instagram comment webhook: no matching account hint=%s comment=%s",
+            logger.info(
+                "Instagram comment webhook: no matching merchant account hint=%s comment=%s (ignored)",
                 account_hint,
                 comment_id,
             )

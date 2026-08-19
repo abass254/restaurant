@@ -17,6 +17,7 @@ from app.services.instagram_beta_event_service import (
     STATUS_FAILED,
     STATUS_SUCCEEDED,
 )
+from app.services.instagram_connection import graph_access_token
 from app.services.platform_instagram import (
     INSTAGRAM_BETA_PLATFORM,
     get_merchant_instagram_beta_account,
@@ -112,6 +113,9 @@ class InstagramOutboundTransport:
         self.db = db
         self.beta_service = beta_service or InstagramBetaService()
 
+    def _graph_token(self, account: InstagramAccount) -> str:
+        return graph_access_token(self.db, self.settings, self.instagram_api, account)
+
     def _beta_account(self, account: InstagramAccount) -> InstagramAccount | None:
         if self.db is None or not account.account_id:
             return None
@@ -195,7 +199,7 @@ class InstagramOutboundTransport:
             response = self.instagram_api.send_text_message(
                 recipient_ig_scoped_id,
                 text,
-                account.access_token(),
+                self._graph_token(account),
                 quick_replies=quick_replies,
             )
             message_id = str(response.get("message_id") or response.get("id") or "")
@@ -244,7 +248,7 @@ class InstagramOutboundTransport:
         response = self.instagram_api.send_image_message(
             recipient_ig_scoped_id,
             image_url,
-            account.access_token(),
+            self._graph_token(account),
         )
         message_id = str(response.get("message_id") or response.get("id") or "")
         return OutboundSendResult(message_id=message_id, transport="official")
@@ -269,7 +273,7 @@ class InstagramOutboundTransport:
         response = self.instagram_api.send_generic_template(
             recipient_ig_scoped_id,
             elements,
-            account.access_token(),
+            self._graph_token(account),
         )
         message_id = str(response.get("message_id") or response.get("id") or "")
         return OutboundSendResult(message_id=message_id, transport="official")
