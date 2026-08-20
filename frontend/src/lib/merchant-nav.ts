@@ -70,7 +70,7 @@ export const merchantNavLinks: MerchantNavLink[] = [
   },
   {
     href: "/trans-chap",
-    icon: "fa-book-open",
+    icon: "fa-bolt",
     label: "Trans Chap",
     section: "dashboard",
   },

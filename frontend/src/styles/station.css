@@ -774,6 +774,14 @@ html[data-theme="dark"] .mobile-root {
   grid-template-columns: repeat(3, 1fr);
 }
 
+.mobile-nav--4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.mobile-nav--5 {
+  grid-template-columns: repeat(5, 1fr);
+}
+
 .mobile-row {
   display: flex;
   justify-content: space-between;

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { TransChapHomePies } from "@/components/trans-chap/TransChapHomePies";
+import { userCanAccessSection, type MerchantSection } from "@/lib/merchant-permissions";
 
 type DashTone = "sale" | "cash" | "mpesa" | "records" | "shop";
 
@@ -11,12 +12,15 @@ type DashTile = {
   label: string;
   icon: string;
   tone: DashTone;
+  section?: MerchantSection;
 };
 
 const LOOKUP_TILES: DashTile[] = [
   { href: "/trans-chap/make-a-sale", label: "Sales", icon: "fa-list", tone: "records" },
   { href: "/trans-chap/purchases", label: "Purchases", icon: "fa-truck", tone: "cash" },
   { href: "/trans-chap/stocks", label: "Stocks", icon: "fa-boxes-stacked", tone: "sale" },
+  { href: "/trans-chap/chats", label: "Chats", icon: "fa-comments", tone: "records", section: "tickets" },
+  { href: "/trans-chap/feeds", label: "Feeds", icon: "fa-images", tone: "mpesa", section: "feeds" },
   { href: "/trans-chap/reports", label: "Reports", icon: "fa-chart-column", tone: "records" },
   { href: "/trans-chap/settings", label: "Settings", icon: "fa-gear", tone: "shop" },
 ];
@@ -61,7 +65,9 @@ export function TransChapHome() {
       <section className="trans-chap-dash__section" aria-labelledby="trans-chap-lookup-heading">
         <h3 id="trans-chap-lookup-heading">Your shop</h3>
         <div className="trans-chap-dash__grid">
-          {LOOKUP_TILES.map((tile) => (
+          {LOOKUP_TILES.filter(
+            (tile) => !tile.section || userCanAccessSection(user, tile.section),
+          ).map((tile) => (
             <DashTileLink key={tile.label} tile={tile} />
           ))}
         </div>

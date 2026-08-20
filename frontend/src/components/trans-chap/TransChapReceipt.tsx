@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthUser } from "@/components/app/AuthProvider";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
@@ -215,7 +215,7 @@ export function TransChapReceiptView() {
     <div className="trans-chap-receipt">
       <article className="trans-chap-slip">
         <header className="trans-chap-slip__brand">
-          <DukAiLogoMark size={36} color="currentColor" accentColor="#e8412a" />
+          <TransChapLogoMark size={36} color="currentColor" accentColor="#e8412a" />
           <div>
             <strong>{receipt.shopName}</strong>
             <span>Receipt</span>

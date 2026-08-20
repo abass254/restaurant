@@ -48,6 +48,7 @@ html[data-theme="dark"] .trans-chap-root.auth-split {
   --trans-chap-shop: var(--app-text-secondary);
   width: 100%;
   max-width: 560px;
+  min-width: 0;
   margin-inline: auto;
   flex: 1;
   min-height: 0;
@@ -169,6 +170,7 @@ html[data-theme="dark"] .trans-chap-app {
 
 .trans-chap-app__content {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
   display: flex;
@@ -281,6 +283,77 @@ html[data-theme="dark"] .trans-chap-app {
 .trans-chap-app .mobile-nav a.is-active {
   color: var(--app-primary);
   background: color-mix(in srgb, var(--app-primary) 10%, var(--app-surface-hover));
+}
+
+.trans-chap-app .mobile-nav--5 a {
+  font-size: 0.58rem;
+  letter-spacing: 0.03em;
+  padding-inline: 0.12rem;
+}
+
+.trans-chap-app__content:has(.trans-chap-social),
+.trans-chap-app__content:has(.trans-chap-sales) {
+  padding: 0;
+  overflow: hidden;
+  background: var(--app-bg);
+}
+
+.trans-chap-social {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  background: var(--app-surface);
+}
+
+.trans-chap-app .fb-app.trans-chap-social {
+  min-height: 0;
+  background: var(--app-surface);
+}
+
+.trans-chap-social:has(.chat-app) {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.trans-chap-app .chat-app {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+}
+
+.trans-chap-app .chat-sidebar__title {
+  font-size: 1.05rem;
+}
+
+.trans-chap-app .feeds-page,
+.trans-chap-app .messages-empty {
+  min-height: 100%;
+}
+
+.trans-chap-app .messages-empty__card {
+  padding: 1.15rem 0.95rem;
+  box-shadow: none;
+  border: 1px solid var(--app-border);
+}
+
+.trans-chap-app .feeds-header .app-title {
+  display: none;
+}
+
+.trans-chap-app .feeds-header .app-lead {
+  font-size: 0.84rem;
+}
+
+.trans-chap-app .tickets-subnav {
+  margin-bottom: 0.75rem;
+}
+
+.trans-chap-app:has(.chat-app--thread-open) .trans-chap-header,
+.trans-chap-app:has(.chat-app--thread-open) .mobile-nav {
+  display: none;
 }
 
 .trans-chap-app .mobile-nav a i {
@@ -790,16 +863,21 @@ html[data-theme="dark"] .trans-chap-slip__status.is-fail {
 .trans-chap-sales {
   position: relative;
   flex: 1;
+  min-width: 0;
   min-height: 0;
+  width: 100%;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
-  margin: -1rem calc(var(--trans-chap-gutter-x) * -1) calc(var(--trans-chap-pad) * -1);
-  padding: 0.85rem var(--trans-chap-gutter-x) var(--trans-chap-pad);
+  margin: 0;
+  padding: 0.85rem max(var(--trans-chap-gutter-x), env(safe-area-inset-left))
+    0.85rem max(var(--trans-chap-gutter-x), env(safe-area-inset-right));
   background: var(--app-bg);
 }
 
 .trans-chap-sales__filters {
   flex-shrink: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
@@ -904,8 +982,11 @@ html[data-theme="dark"] .trans-chap-slip__status.is-fail {
   flex-wrap: nowrap;
   align-items: center;
   gap: 0.4rem;
-  margin: 0 calc(var(--trans-chap-gutter-x) * -1);
-  padding: 0.05rem var(--trans-chap-gutter-x) 0.15rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0.05rem 0 0.15rem;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
@@ -958,12 +1039,14 @@ html[data-theme="dark"] .trans-chap-slip__status.is-fail {
 
 .trans-chap-sales__list {
   flex: 1;
+  min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
-  padding-bottom: 5.5rem;
+  padding-bottom: 4.5rem;
 }
 
 .trans-chap-sales__empty {
@@ -975,6 +1058,10 @@ html[data-theme="dark"] .trans-chap-slip__status.is-fail {
 }
 
 .trans-chap-panel {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   overflow: hidden;
   border: 1px solid var(--app-border);
   border-radius: 16px;

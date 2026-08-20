@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "@/styles/station.css";
+import "@/styles/app-dashboard.css";
+import "@/styles/messages-chat.css";
+import "@/styles/tickets-analytics.css";
 import "@/styles/trans-chap.css";
 
 export const metadata: Metadata = {

@@ -3,20 +3,20 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const tabs = [
-  { href: "/feeds", label: "Feed", icon: "fa-images" },
-  { href: "/feeds/analytics", label: "Analytics", icon: "fa-chart-line" },
-];
-
 export function FeedsSubNav() {
   const pathname = usePathname();
+  const base = pathname.startsWith("/trans-chap") ? "/trans-chap/feeds" : "/feeds";
+  const tabs = [
+    { href: base, label: "Feed", icon: "fa-images" },
+    { href: `${base}/analytics`, label: "Analytics", icon: "fa-chart-line" },
+  ];
 
   return (
     <nav className="tickets-subnav" aria-label="Feeds sections">
       {tabs.map((tab) => {
         const active =
-          tab.href === "/feeds"
-            ? pathname === "/feeds"
+          tab.href === base
+            ? pathname === base || pathname === `${base}/`
             : pathname.startsWith(tab.href);
         return (
           <Link

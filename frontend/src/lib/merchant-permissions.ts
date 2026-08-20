@@ -53,6 +53,8 @@ const PATH_SECTION_MAP: Array<{ prefix: string; section: MerchantSection }> = [
   { prefix: "/orders", section: "orders" },
   { prefix: "/station", section: "orders" },
   { prefix: "/delivery", section: "delivery" },
+  { prefix: "/trans-chap/feeds", section: "feeds" },
+  { prefix: "/trans-chap/chats", section: "tickets" },
   { prefix: "/trans-chap", section: "dashboard" },
   { prefix: "/tools", section: "tools" },
   { prefix: "/bot", section: "tools" },

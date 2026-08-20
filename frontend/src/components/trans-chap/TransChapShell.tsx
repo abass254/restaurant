@@ -1,12 +1,24 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuthUser } from "@/components/app/AuthProvider";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
+import {
+  userCanAccessSection,
+  type MerchantSection,
+} from "@/lib/merchant-permissions";
 
-const NAV = [
+const NAV: Array<{
+  href: string;
+  label: string;
+  title: string;
+  icon: string;
+  exact?: boolean;
+  section?: MerchantSection;
+}> = [
   { href: "/trans-chap", label: "Home", title: "Home", icon: "fa-house", exact: true },
   {
     href: "/trans-chap/make-a-sale",
@@ -14,8 +26,22 @@ const NAV = [
     title: "Sales",
     icon: "fa-cash-register",
   },
+  {
+    href: "/trans-chap/chats",
+    label: "Chats",
+    title: "Chats",
+    icon: "fa-comments",
+    section: "tickets",
+  },
+  {
+    href: "/trans-chap/feeds",
+    label: "Feeds",
+    title: "Feeds",
+    icon: "fa-images",
+    section: "feeds",
+  },
   { href: "/trans-chap/settings", label: "Settings", title: "Settings", icon: "fa-gear" },
-] as const;
+];
 
 function headerMeta(pathname: string): { title: string; backHref: string | null } {
   if (pathname.startsWith("/trans-chap/make-a-sale/receipt")) {
@@ -39,6 +65,9 @@ function headerMeta(pathname: string): { title: string; backHref: string | null 
   if (pathname.startsWith("/trans-chap/reports")) {
     return { title: "Reports", backHref: "/trans-chap" };
   }
+  if (pathname.startsWith("/trans-chap/feeds/analytics")) {
+    return { title: "Feed analytics", backHref: "/trans-chap/feeds" };
+  }
   if (pathname.startsWith("/trans-chap/install")) {
     return { title: "Download", backHref: "/trans-chap/settings" };
   }
@@ -58,8 +87,16 @@ function headerMeta(pathname: string): { title: string; backHref: string | null 
 
 export function TransChapShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const user = useAuthUser();
   const { title, backHref } = headerMeta(pathname);
   const showNav = !pathname.startsWith("/trans-chap/sign-in");
+  const items = useMemo(
+    () =>
+      NAV.filter(
+        (item) => !item.section || userCanAccessSection(user, item.section),
+      ),
+    [user],
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -86,7 +123,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="trans-chap-header__center">
               <span className="trans-chap-header__logo" aria-hidden>
-                <DukAiLogoMark size={28} color="currentColor" accentColor="#e8412a" />
+                <TransChapLogoMark size={28} color="currentColor" accentColor="#e8412a" />
               </span>
               <h1>{title}</h1>
             </div>
@@ -96,8 +133,11 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
           </header>
           <main className="trans-chap-app__content">{children}</main>
           {showNav ? (
-            <nav className="mobile-nav mobile-nav--3" aria-label="Trans Chap navigation">
-              {NAV.map((item) => {
+            <nav
+              className={`mobile-nav mobile-nav--${items.length}`}
+              aria-label="Trans Chap navigation"
+            >
+              {items.map((item) => {
                 const isActive = item.exact
                   ? pathname === item.href
                   : pathname === item.href || pathname.startsWith(`${item.href}/`);
