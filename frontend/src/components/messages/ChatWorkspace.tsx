@@ -18,6 +18,7 @@ import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import {
   formatNairobiDayLabel,
+  formatNairobiFeedDate,
   formatNairobiListTime,
   formatNairobiTime,
 } from "@/lib/nairobi-time";
@@ -165,6 +166,8 @@ type ChatWorkspaceProps = {
   title?: string;
   showTicketFilters?: boolean;
   defaultTicketFilter?: TicketFilter;
+  /** Magazine-style list with source chips (Trans Chap chats). */
+  listLayout?: "default" | "feed";
 };
 
 export function ChatWorkspace({
@@ -173,6 +176,7 @@ export function ChatWorkspace({
   title = "Messages",
   showTicketFilters = false,
   defaultTicketFilter = "all",
+  listLayout = "default",
 }: ChatWorkspaceProps) {
   const [inbox, setInbox] = useState<InboxResponse | null>(initialInbox);
   const [inboxLoading, setInboxLoading] = useState(!initialInbox && !initialInboxError);
@@ -598,6 +602,8 @@ export function ChatWorkspace({
     }
   }
 
+  const feedList = listLayout === "feed";
+
   return (
     <div
       className={[
@@ -605,6 +611,7 @@ export function ChatWorkspace({
         activeId ? "chat-app--thread-open" : "",
         activePlatform === "whatsapp" ? "chat-app--platform-whatsapp" : "",
         showTicketFilters ? "chat-app--tickets" : "",
+        feedList ? "chat-app--feed-list" : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -612,16 +619,18 @@ export function ChatWorkspace({
     >
       <aside className="chat-sidebar chat-sidebar--compact">
         <div className="chat-sidebar__header">
-          <div className="chat-sidebar__title-row">
-            <h1 className="chat-sidebar__title">
-              {title}
-              {totalUnread > 0 ? (
-                <span className="chat-sidebar__unread-badge" aria-label={`${totalUnread} unread`}>
-                  {totalUnread > 99 ? "99+" : totalUnread}
-                </span>
-              ) : null}
-            </h1>
-          </div>
+          {!feedList ? (
+            <div className="chat-sidebar__title-row">
+              <h1 className="chat-sidebar__title">
+                {title}
+                {totalUnread > 0 ? (
+                  <span className="chat-sidebar__unread-badge" aria-label={`${totalUnread} unread`}>
+                    {totalUnread > 99 ? "99+" : totalUnread}
+                  </span>
+                ) : null}
+              </h1>
+            </div>
+          ) : null}
           {showBetaBanner ? (
             <p className="chat-sidebar__beta-banner" role="status">
               <i className="fa-solid fa-triangle-exclamation" aria-hidden="true" />
@@ -629,7 +638,7 @@ export function ChatWorkspace({
               approves Advanced Access. Connect Instagram (Beta) in Settings → Channels.
             </p>
           ) : null}
-          {autoRepliesLoaded ? (
+          {!feedList && autoRepliesLoaded ? (
             <div className="chat-auto-replies-toggle">
               <span className="chat-auto-replies-toggle__label">Auto-replies</span>
               <button
@@ -671,30 +680,51 @@ export function ChatWorkspace({
             </div>
           ) : null}
           {!showTicketFilters ? (
-            <div className="chat-sidebar__chips" role="tablist" aria-label="Filter chats by channel">
+            <div
+              className={`chat-sidebar__chips${feedList ? " chat-sidebar__chips--labeled" : ""}`}
+              role="tablist"
+              aria-label="Filter chats by channel"
+            >
               <button
                 type="button"
-                className={`chat-sidebar__chip${channelFilter === "all" ? " is-active" : ""}`}
+                className={`chat-sidebar__chip${feedList ? " chat-sidebar__chip--text" : ""}${
+                  channelFilter === "all" ? " is-active" : ""
+                }`}
                 onClick={() => setChannelFilter("all")}
                 aria-pressed={channelFilter === "all"}
                 title="All channels"
               >
-                <i className="fas fa-layer-group chat-sidebar__chip-icon" aria-hidden="true" />
-                <span className="sr-only">All channels</span>
+                {feedList ? (
+                  "All"
+                ) : (
+                  <>
+                    <i className="fas fa-layer-group chat-sidebar__chip-icon" aria-hidden="true" />
+                    <span className="sr-only">All channels</span>
+                  </>
+                )}
               </button>
               {availableChannelFilters.map((platform) => (
                 <button
                   key={platform}
                   type="button"
-                  className={`chat-sidebar__chip${
+                  className={`chat-sidebar__chip${feedList ? " chat-sidebar__chip--text" : ""}${
                     channelFilter === platform ? " is-active" : ""
                   }${platform === "whatsapp" ? " is-whatsapp" : ""}`}
                   onClick={() => setChannelFilter(platform)}
                   aria-pressed={channelFilter === platform}
                   title={platformLabel(platform)}
                 >
-                  <i className={`${platformIcon(platform)} chat-sidebar__chip-icon`} aria-hidden="true" />
-                  <span className="sr-only">{platformLabel(platform)}</span>
+                  {feedList ? (
+                    <>
+                      <i className={`${platformIcon(platform)} chat-sidebar__chip-icon`} aria-hidden="true" />
+                      {platformLabel(platform)}
+                    </>
+                  ) : (
+                    <>
+                      <i className={`${platformIcon(platform)} chat-sidebar__chip-icon`} aria-hidden="true" />
+                      <span className="sr-only">{platformLabel(platform)}</span>
+                    </>
+                  )}
                 </button>
               ))}
             </div>
@@ -738,7 +768,7 @@ export function ChatWorkspace({
         ) : filteredConversations.length === 0 ? (
           <p className="chat-sidebar__empty">No conversations yet.</p>
         ) : (
-          <ul className="chat-conversation-list">
+          <ul className={`chat-conversation-list${feedList ? " chat-conversation-list--feed" : ""}`}>
             {filteredConversations.map((item) => {
               const name = displayName(item.participant_username, item.participant_ig_id);
               const preview =
@@ -751,6 +781,9 @@ export function ChatWorkspace({
               const ticket = item.active_ticket;
               const resolution = resolutionLabel(ticket?.resolution);
               const duration = formatTicketDuration(ticket?.duration_seconds);
+              const headline = feedList
+                ? `${name}${preview ? ` — ${preview}` : ""}`
+                : null;
 
               return (
                 <li key={item.id}>
@@ -758,6 +791,7 @@ export function ChatWorkspace({
                     type="button"
                     className={[
                       "chat-conversation-item",
+                      feedList ? "chat-conversation-item--feed" : "",
                       showTicketFilters ? "chat-conversation-item--ticket" : "",
                       isActive ? "is-active" : "",
                       unread ? "is-unread" : "is-read",
@@ -769,68 +803,98 @@ export function ChatWorkspace({
                     onClick={() => setActiveId(item.id)}
                     aria-current={isActive ? "true" : undefined}
                   >
-                    <span className="chat-conversation-item__avatar-wrap">
-                      <ConversationAvatar
-                        name={name}
-                        photoUrl={item.participant_profile_pic_url}
-                        compact
-                      />
-                      {unread && !showTicketFilters ? (
-                        <span className="chat-conversation-item__dot" aria-hidden="true" />
-                      ) : null}
-                    </span>
-                    <span className="chat-conversation-item__body">
-                      <span className="chat-conversation-item__row">
-                        <span className="chat-conversation-item__name-wrap">
-                          {!showTicketFilters ? (
+                    {feedList ? (
+                      <>
+                        <span className="chat-conversation-item__thumb">
+                          <ConversationAvatar
+                            name={name}
+                            photoUrl={item.participant_profile_pic_url}
+                          />
+                          {unread ? (
+                            <span className="chat-conversation-item__dot" aria-hidden="true" />
+                          ) : null}
+                        </span>
+                        <span className="chat-conversation-item__body">
+                          <span className="chat-conversation-item__headline">{headline}</span>
+                          <span className="chat-conversation-item__foot">
                             <span
-                              className="chat-conversation-item__channel chat-conversation-item__channel--inline"
-                              title={platformLabel(platform)}
+                              className={`chat-conversation-item__source is-${platform}`}
                             >
                               <i className={platformIcon(platform)} aria-hidden="true" />
+                              {platformLabel(platform)}
                             </span>
-                          ) : null}
-                          <span className="chat-conversation-item__name">{name}</span>
+                            <time className="chat-conversation-item__date">
+                              {formatNairobiFeedDate(item.last_message_at)}
+                            </time>
+                          </span>
                         </span>
-                        <span className="chat-conversation-item__meta">
-                          {showTicketFilters ? (
-                            <>
-                              {ticket?.display_number ? (
-                                <span className="chat-ticket-number">{ticket.display_number}</span>
-                              ) : null}
-                              <span
-                                className={`chat-ticket-badge chat-ticket-badge--${
-                                  item.ticket_status ?? "open"
-                                }`}
-                              >
-                                {(item.ticket_status ?? "open") === "open" ? "Open" : "Closed"}
-                              </span>
-                              {resolution ? (
+                      </>
+                    ) : (
+                      <>
+                        <span className="chat-conversation-item__avatar-wrap">
+                          <ConversationAvatar
+                            name={name}
+                            photoUrl={item.participant_profile_pic_url}
+                            compact
+                          />
+                          {unread && !showTicketFilters ? (
+                            <span className="chat-conversation-item__dot" aria-hidden="true" />
+                          ) : null}
+                        </span>
+                        <span className="chat-conversation-item__body">
+                          <span className="chat-conversation-item__row">
+                            <span className="chat-conversation-item__name-wrap">
+                              {!showTicketFilters ? (
                                 <span
-                                  className={`chat-ticket-badge chat-ticket-badge--resolution chat-ticket-badge--${ticket?.resolution ?? "unknown"}`}
+                                  className="chat-conversation-item__channel chat-conversation-item__channel--inline"
+                                  title={platformLabel(platform)}
                                 >
-                                  {resolution}
+                                  <i className={platformIcon(platform)} aria-hidden="true" />
                                 </span>
                               ) : null}
-                            </>
-                          ) : null}
-                          <time className="chat-conversation-item__time">
-                            {formatNairobiListTime(item.last_message_at)}
-                          </time>
-                        </span>
-                      </span>
-                      <span className="chat-conversation-item__row chat-conversation-item__row--preview">
-                        <span className="chat-conversation-item__preview">{preview}</span>
-                        {showTicketFilters && duration !== "—" ? (
-                          <span className="chat-ticket-duration">{duration}</span>
-                        ) : null}
-                        {unread ? (
-                          <span className="chat-conversation-item__count">
-                            {item.unread_count}
+                              <span className="chat-conversation-item__name">{name}</span>
+                            </span>
+                            <span className="chat-conversation-item__meta">
+                              {showTicketFilters ? (
+                                <>
+                                  {ticket?.display_number ? (
+                                    <span className="chat-ticket-number">{ticket.display_number}</span>
+                                  ) : null}
+                                  <span
+                                    className={`chat-ticket-badge chat-ticket-badge--${
+                                      item.ticket_status ?? "open"
+                                    }`}
+                                  >
+                                    {(item.ticket_status ?? "open") === "open" ? "Open" : "Closed"}
+                                  </span>
+                                  {resolution ? (
+                                    <span
+                                      className={`chat-ticket-badge chat-ticket-badge--resolution chat-ticket-badge--${ticket?.resolution ?? "unknown"}`}
+                                    >
+                                      {resolution}
+                                    </span>
+                                  ) : null}
+                                </>
+                              ) : null}
+                              <time className="chat-conversation-item__time">
+                                {formatNairobiListTime(item.last_message_at)}
+                              </time>
+                            </span>
                           </span>
-                        ) : null}
-                      </span>
-                    </span>
+                          <span className="chat-conversation-item__row chat-conversation-item__row--preview">
+                            <span className="chat-conversation-item__preview">{preview}</span>
+                            {showTicketFilters && duration !== "—" ? (
+                              <span className="chat-ticket-duration">{duration}</span>
+                            ) : null}
+                            {unread ? (
+                              <span className="chat-conversation-item__count">
+                                {item.unread_count}
+                              </span>
+                            ) : null}
+                          </span>
+                        </span>
+                      </>
+                    )}
                   </button>
                 </li>
               );

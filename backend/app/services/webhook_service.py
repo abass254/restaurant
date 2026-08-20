@@ -20,12 +20,14 @@ from app.services.dm_templates import DEFAULT_HOLD_REPLY, greeting_was_sent, is_
 from app.services.platform_messaging_settings import auto_responses_paused
 from app.services.participant_profile_service import schedule_participant_profile_enrichment
 from app.services.platform_instagram import channel_auto_replies_active, find_channel_account_by_external_id
-from app.services.sales_autopilot_service import SHOP_SELECT_PREFIX
 from app.services.typing_state import clear_typing, set_typing
 from app.services.webhook_payload import InstagramWebhookPayload
 from app.support.sales_session import read_session
 
 logger = logging.getLogger(__name__)
+
+# Legacy product-card postback prefix (sales autopilot removed).
+SHOP_SELECT_PREFIX = "SHOP_SELECT:"
 
 
 def message_body(message: dict) -> str | None:

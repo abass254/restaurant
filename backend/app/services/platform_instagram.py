@@ -86,7 +86,7 @@ def get_merchant_bot_preview_account(db: Session, account_id: str) -> InstagramA
 
 
 def supports_dm_bot(account: InstagramAccount) -> bool:
-    """True when DmTicket/DmMenu bot pipeline applies to this account."""
+    """True when the DM ticket + AI sales agent pipeline applies to this account."""
     return (account.platform or DEFAULT_PLATFORM) in BOT_DM_PLATFORMS
 
 

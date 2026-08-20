@@ -92,9 +92,9 @@ export function AdminBotTestView() {
           </ol>
 
           <nav className="admin-bot-test__links" aria-label="Related admin pages">
-            <Link href="/admin/bots" className="admin-bot-test__link">
-              <i className="fa-solid fa-robot" aria-hidden="true" />
-              Bots &amp; AI settings
+            <Link href="/admin/settings#section-ai-agent" className="admin-bot-test__link">
+              <i className="fa-solid fa-wand-magic-sparkles" aria-hidden="true" />
+              AI agent settings
             </Link>
             <Link href="/admin/merchants" className="admin-bot-test__link">
               <i className="fa-solid fa-store" aria-hidden="true" />

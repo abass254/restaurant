@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AuthShell } from "@/components/auth/AuthShell";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import { apiFetch, ApiError, resetCsrfCookie } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { firstAllowedPath } from "@/lib/merchant-permissions";
@@ -34,6 +35,20 @@ type Props = {
 
 const OTP_LENGTH = 4;
 
+function TransChapSignInBrand() {
+  return (
+    <div className="trans-chap-signin__brand">
+      <TransChapLogoMark size={52} color="currentColor" accentColor="#e8412a" />
+      <div className="trans-chap-signin__brand-copy">
+        <p className="trans-chap-signin__name">Trans Chap</p>
+        <p className="trans-chap-signin__by">
+          by <span>DukAI</span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function LoginFrame({
   embedded,
   children,
@@ -42,7 +57,12 @@ function LoginFrame({
   children: React.ReactNode;
 }) {
   if (embedded) {
-    return <div className="trans-chap-signin">{children}</div>;
+    return (
+      <div className="trans-chap-signin">
+        <TransChapSignInBrand />
+        {children}
+      </div>
+    );
   }
   return <AuthShell>{children}</AuthShell>;
 }
@@ -71,6 +91,7 @@ export default function LoginForm({
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
 
   useEffect(() => {
+    if (embedded) return;
     let cancelled = false;
     apiFetch<{ google: boolean }>(apiRoutes.signupOptions)
       .then((opts) => {
@@ -82,7 +103,7 @@ export default function LoginForm({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [embedded]);
 
   useEffect(() => {
     if (!statusMessage) return;
@@ -257,13 +278,15 @@ export default function LoginForm({
             ←
           </button>
           {embedded ? null : (
-            <h1 className="auth-split__title">Sign in to your dashboard</h1>
+            <>
+              <h1 className="auth-split__title">Sign in to your dashboard</h1>
+              <p className="auth-split__subtitle">
+                Enter 4 Digit Code sent to
+                <br />
+                <strong>{maskedTarget || identifier}</strong>
+              </p>
+            </>
           )}
-          <p className="auth-split__subtitle">
-            Enter 4 Digit Code sent to
-            <br />
-            <strong>{maskedTarget || identifier}</strong>
-          </p>
 
           <form className="auth-otp__form" onSubmit={(e) => void verifyCode(e)}>
             <div className="auth-otp-grid" role="group" aria-label="One-time code">
@@ -294,7 +317,7 @@ export default function LoginForm({
                 {error}
               </p>
             ) : null}
-            {devCode ? (
+            {!embedded && devCode ? (
               <p className="auth-otp__hint">
                 Code: <strong>{devCode}</strong>
               </p>
@@ -310,14 +333,16 @@ export default function LoginForm({
             </button>
           </form>
 
-          <button
-            type="button"
-            className="auth-otp__resend"
-            onClick={() => void requestCode()}
-            disabled={busy}
-          >
-            Resend Code
-          </button>
+          {embedded ? null : (
+            <button
+              type="button"
+              className="auth-otp__resend"
+              onClick={() => void requestCode()}
+              disabled={busy}
+            >
+              Resend Code
+            </button>
+          )}
         </div>
       </LoginFrame>
     );
@@ -327,11 +352,13 @@ export default function LoginForm({
     return (
       <LoginFrame embedded={embedded}>
         {embedded ? null : (
-          <h1 className="auth-split__title">Sign in to your dashboard</h1>
+          <>
+            <h1 className="auth-split__title">Sign in to your dashboard</h1>
+            <p className="auth-split__subtitle">
+              Enter your email address and password to continue
+            </p>
+          </>
         )}
-        <p className="auth-split__subtitle">
-          Enter your email address and password to continue
-        </p>
 
         {error ? (
           <p
@@ -344,7 +371,7 @@ export default function LoginForm({
           </p>
         ) : null}
 
-        {googleEnabled ? (
+        {!embedded && googleEnabled ? (
           <>
             <a
               href={apiRoutes.googleAuth(googleNext)}
@@ -390,32 +417,46 @@ export default function LoginForm({
           </button>
         </form>
 
-        <Link href="/forgot-password" className="auth-split__link auth-split__link--end">
-          Forgot password?
-        </Link>
-
-        <p className="auth-split__footer">
+        {embedded ? (
           <button
             type="button"
+            className="auth-split__link auth-split__link--end"
             onClick={switchToOtp}
             style={{
               border: "none",
               background: "transparent",
-              color: "var(--auth-accent, #e85d04)",
-              font: "inherit",
-              fontWeight: 650,
               cursor: "pointer",
-              padding: 0,
+              font: "inherit",
             }}
           >
             Use OTP instead
           </button>
-        </p>
-
-        {embedded ? null : (
-          <p className="auth-split__footer">
-            Don&apos;t have an account yet? <Link href="/signup">Register Now.</Link>
-          </p>
+        ) : (
+          <>
+            <Link href="/forgot-password" className="auth-split__link auth-split__link--end">
+              Forgot password?
+            </Link>
+            <p className="auth-split__footer">
+              <button
+                type="button"
+                onClick={switchToOtp}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--auth-accent, #e85d04)",
+                  font: "inherit",
+                  fontWeight: 650,
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                Use OTP instead
+              </button>
+            </p>
+            <p className="auth-split__footer">
+              Don&apos;t have an account yet? <Link href="/signup">Register Now.</Link>
+            </p>
+          </>
         )}
       </LoginFrame>
     );
@@ -424,18 +465,20 @@ export default function LoginForm({
   return (
     <LoginFrame embedded={embedded}>
       {embedded ? null : (
-        <h1 className="auth-split__title">Sign in to your dashboard</h1>
+        <>
+          <h1 className="auth-split__title">Sign in to your dashboard</h1>
+          <p className="auth-split__subtitle">
+            Enter your Email address or Mobile Number to continue
+          </p>
+        </>
       )}
-      <p className="auth-split__subtitle">
-        Enter your Email address or Mobile Number to continue
-      </p>
 
       {error ? (
         <p role="alert" className="auth-split__alert auth-split__alert--error">
           {error}
         </p>
       ) : null}
-      {info && !error ? (
+      {!embedded && info && !error ? (
         <p className="auth-split__alert auth-split__alert--ok">{info}</p>
       ) : null}
 

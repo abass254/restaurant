@@ -133,142 +133,149 @@ export function TransChapMpesaSettings() {
   const active = PAYOUT_DESTINATION_META[form.shortcode_type];
 
   return (
-    <section className="trans-chap-mpesa">
-      <header className="trans-chap-mpesa__head">
-        <h2>M-PESA</h2>
-        {loaded ? (
-          <span className={`trans-chap-mpesa__pill${config ? " is-ok" : " is-warn"}`}>
-            {config ? "Set" : "Not set"}
-          </span>
-        ) : null}
-      </header>
-      <p className="trans-chap-mpesa__lead">
+    <section className="trans-chap-mpesa ios-settings-detail">
+      <p className="ios-settings__footer ios-settings__footer--top">
         Customer payments go through DukAI to your Till, Paybill, Pochi, or M-PESA
         phone. M-PESA sales stay blocked until this is saved.
       </p>
 
       {!loaded ? (
-        <p className="trans-chap-mpesa__lead">Loading M-PESA details…</p>
+        <div className="ios-settings__card">
+          <div className="ios-settings__row ios-settings__row--static">
+            <span className="ios-settings__label">Loading…</span>
+          </div>
+        </div>
       ) : config && !editing ? (
-        <div className="trans-chap-mpesa__summary">
-          <p>{formatMerchantPayoutDestination(config)}</p>
-          {canEdit ? (
-            <button type="button" className="trans-chap-mpesa__change" onClick={startEdit}>
-              Change
-            </button>
-          ) : null}
+        <div className="ios-settings__group">
+          <h3 className="ios-settings__caption">Destination</h3>
+          <div className="ios-settings__card">
+            <div className="ios-settings__row ios-settings__row--static">
+              <span className="ios-settings__label">{formatMerchantPayoutDestination(config)}</span>
+            </div>
+            {canEdit ? (
+              <button type="button" className="ios-settings__row" onClick={startEdit}>
+                <span className="ios-settings__label ios-settings__label--action">Change</span>
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : !canEdit ? (
-        <p className="trans-chap-mpesa__lead">
+        <p className="ios-settings__footer">
           Ask the shop owner to set M-PESA details before taking M-PESA payments.
         </p>
       ) : lookup ? (
-        <div className="trans-chap-mpesa__confirm">
-          <p>{lookup.prompt}</p>
-          {lookup.organization_name ? <strong>{lookup.organization_name}</strong> : null}
-          <p>{lookup.destination_label}</p>
-          <button
-            type="button"
-            className="auth-split__btn"
-            onClick={() => void handleSave()}
-            disabled={busy}
-          >
-            {busy ? "Saving…" : "Yes, save"}
-          </button>
-          <button
-            type="button"
-            className="trans-chap-mpesa__change"
-            onClick={() => setLookup(null)}
-            disabled={busy}
-          >
-            No, change
-          </button>
-        </div>
-      ) : (
-        <form className="trans-chap-mpesa__form" onSubmit={(e) => void handleLookup(e)}>
-          <div className="auth-split__field">
-            <span id="mpesa-dest-label">Where should money land?</span>
-            <div
-              className="trans-chap-pay trans-chap-pay--dest"
-              role="radiogroup"
-              aria-labelledby="mpesa-dest-label"
-            >
-              {MERCHANT_PAYOUT_TYPES.map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  role="radio"
-                  aria-checked={form.shortcode_type === type}
-                  className={`trans-chap-pay__option${form.shortcode_type === type ? " is-selected" : ""}`}
-                  onClick={() => selectType(type)}
-                  disabled={busy}
-                >
-                  {PAYOUT_DESTINATION_META[type].shortLabel}
-                </button>
-              ))}
-            </div>
-            <p className="trans-chap-mpesa__hint">{active.hint}</p>
-          </div>
-
-          <div className="auth-split__field">
-            <label htmlFor="mpesa-shortcode">{active.field}</label>
-            <input
-              id="mpesa-shortcode"
-              type="text"
-              required
-              className="auth-split__input"
-              value={form.shortcode}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, shortcode: e.target.value.trim() }))
-              }
-              placeholder={active.placeholder}
-              inputMode={
-                form.shortcode_type === "pochi" || form.shortcode_type === "phone"
-                  ? "tel"
-                  : "numeric"
-              }
-              autoComplete="off"
-              disabled={busy}
-            />
-          </div>
-
-          {active.needsAccount ? (
-            <div className="auth-split__field">
-              <label htmlFor="mpesa-account">Account number</label>
-              <input
-                id="mpesa-account"
-                type="text"
-                required
-                className="auth-split__input"
-                value={form.account_number}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, account_number: e.target.value.trim() }))
-                }
-                placeholder="e.g. 957207"
-                maxLength={12}
-                autoComplete="off"
-                disabled={busy}
-              />
-            </div>
-          ) : null}
-
-          <button type="submit" className="auth-split__btn" disabled={busy}>
-            {busy ? "Looking up…" : "Look up"}
-          </button>
-          {config ? (
+        <div className="ios-settings__group">
+          <h3 className="ios-settings__caption">Confirm</h3>
+          <div className="ios-settings__card ios-settings__card--pad">
+            <p className="trans-chap-mpesa__confirm-copy">{lookup.prompt}</p>
+            {lookup.organization_name ? (
+              <strong className="trans-chap-mpesa__confirm-name">{lookup.organization_name}</strong>
+            ) : null}
+            <p className="trans-chap-mpesa__confirm-copy">{lookup.destination_label}</p>
             <button
               type="button"
-              className="trans-chap-mpesa__change"
-              onClick={() => {
-                setForm(formFromConfig(config));
-                setLookup(null);
-                setEditing(false);
-              }}
+              className="auth-split__btn"
+              onClick={() => void handleSave()}
               disabled={busy}
             >
-              Cancel
+              {busy ? "Saving…" : "Yes, save"}
             </button>
-          ) : null}
+            <button
+              type="button"
+              className="ios-settings__text-btn"
+              onClick={() => setLookup(null)}
+              disabled={busy}
+            >
+              No, change
+            </button>
+          </div>
+        </div>
+      ) : (
+        <form className="ios-settings__group" onSubmit={(e) => void handleLookup(e)}>
+          <h3 className="ios-settings__caption">Where should money land?</h3>
+          <div className="ios-settings__card">
+            {MERCHANT_PAYOUT_TYPES.map((type) => (
+              <button
+                key={type}
+                type="button"
+                role="radio"
+                aria-checked={form.shortcode_type === type}
+                className={`ios-settings__row${form.shortcode_type === type ? " is-selected" : ""}`}
+                onClick={() => selectType(type)}
+                disabled={busy}
+              >
+                <span className="ios-settings__label">{PAYOUT_DESTINATION_META[type].shortLabel}</span>
+                {form.shortcode_type === type ? (
+                  <i className="fa-solid fa-check ios-settings__check" aria-hidden />
+                ) : null}
+              </button>
+            ))}
+          </div>
+          <p className="ios-settings__footer">{active.hint}</p>
+
+          <h3 className="ios-settings__caption">{active.field}</h3>
+          <div className="ios-settings__card">
+            <div className="ios-settings__row ios-settings__row--field">
+              <input
+                id="mpesa-shortcode"
+                type="text"
+                required
+                className="ios-settings__input"
+                value={form.shortcode}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, shortcode: e.target.value.trim() }))
+                }
+                placeholder={active.placeholder}
+                inputMode={
+                  form.shortcode_type === "pochi" || form.shortcode_type === "phone"
+                    ? "tel"
+                    : "numeric"
+                }
+                autoComplete="off"
+                disabled={busy}
+                aria-label={active.field}
+              />
+            </div>
+            {active.needsAccount ? (
+              <div className="ios-settings__row ios-settings__row--field">
+                <input
+                  id="mpesa-account"
+                  type="text"
+                  required
+                  className="ios-settings__input"
+                  value={form.account_number}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, account_number: e.target.value.trim() }))
+                  }
+                  placeholder="Account number"
+                  maxLength={12}
+                  autoComplete="off"
+                  disabled={busy}
+                  aria-label="Account number"
+                />
+              </div>
+            ) : null}
+          </div>
+
+          <div className="ios-settings__actions">
+            <button type="submit" className="auth-split__btn" disabled={busy}>
+              {busy ? "Looking up…" : "Look up"}
+            </button>
+            {config ? (
+              <button
+                type="button"
+                className="ios-settings__text-btn"
+                onClick={() => {
+                  setForm(formFromConfig(config));
+                  setLookup(null);
+                  setEditing(false);
+                }}
+                disabled={busy}
+              >
+                Cancel
+              </button>
+            ) : null}
+          </div>
         </form>
       )}
     </section>

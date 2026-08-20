@@ -379,6 +379,20 @@ export default function InventoryPage() {
           </p>
         </div>
         <div className="inventory-header__actions">
+          <Link
+            href="/inventory/stock-in"
+            className="btn btn-ghost btn-sm"
+          >
+            <i className="fa-solid fa-arrow-down" aria-hidden="true" />
+            Stock in
+          </Link>
+          <Link
+            href="/inventory/stock-out"
+            className="btn btn-ghost btn-sm"
+          >
+            <i className="fa-solid fa-arrow-up" aria-hidden="true" />
+            Stock out
+          </Link>
           <button
             type="button"
             className="btn btn-ghost btn-sm"

@@ -14,6 +14,14 @@ const listDateOptions: Intl.DateTimeFormatOptions = {
   day: "numeric",
 };
 
+const feedDateOptions: Intl.DateTimeFormatOptions = {
+  timeZone: NAIROBI_TZ,
+  weekday: "short",
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+};
+
 const dayLabelOptions: Intl.DateTimeFormatOptions = {
   timeZone: NAIROBI_TZ,
   weekday: "long",
@@ -110,6 +118,14 @@ export function formatNairobiListTime(iso: string | null | undefined): string {
     return formatNairobiTime(iso);
   }
   return date.toLocaleDateString(KENYA_LOCALE, listDateOptions);
+}
+
+export function formatNairobiFeedDate(iso: string | null | undefined): string {
+  const date = parseIso(iso);
+  if (!date) {
+    return "";
+  }
+  return date.toLocaleDateString(KENYA_LOCALE, feedDateOptions);
 }
 
 export function formatNairobiDayLabel(iso: string | null | undefined): string {

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useOptionalAuthUser } from "@/components/app/AuthProvider";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
-import { AuthHeroPanel } from "@/components/auth/AuthHeroPanel";
 import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
 import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import {
@@ -20,6 +19,7 @@ const NAV: Array<{
   icon: string;
   exact?: boolean;
   section?: MerchantSection;
+  requiresInstagram?: boolean;
 }> = [
   { href: "/trans-chap", label: "Home", title: "Home", icon: "fa-house", exact: true },
   {
@@ -34,6 +34,7 @@ const NAV: Array<{
     title: "Chats",
     icon: "fa-comments",
     section: "tickets",
+    requiresInstagram: true,
   },
   {
     href: "/trans-chap/feeds",
@@ -41,6 +42,7 @@ const NAV: Array<{
     title: "Feeds",
     icon: "fa-images",
     section: "feeds",
+    requiresInstagram: true,
   },
   { href: "/trans-chap/settings", label: "Settings", title: "Settings", icon: "fa-gear" },
 ];
@@ -93,6 +95,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
   const { title, backHref } = headerMeta(pathname);
   const isSignIn = pathname.startsWith("/trans-chap/sign-in");
   const showNav = !isSignIn;
+  const instagramConnected = Boolean(user?.instagram_account);
   const items = useMemo(
     () =>
       NAV.filter(
@@ -111,35 +114,32 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={`auth-split trans-chap-root${isSignIn ? " trans-chap-root--signin" : ""}`}>
-      {isSignIn ? (
-        <div className="trans-chap-signin-bg" aria-hidden="true">
-          <AuthHeroPanel />
-        </div>
-      ) : null}
       <section className="auth-split__panel">
         <div className="mobile-root trans-chap-app">
-          <header className="trans-chap-header">
-            <div className="trans-chap-header__side">
-              {backHref ? (
-                <Link href={backHref} className="trans-chap-header__icon" aria-label="Back">
-                  <i className="fa-solid fa-chevron-left" aria-hidden />
-                </Link>
-              ) : (
-                <Link href="/trans-chap" className="trans-chap-header__icon" aria-label="Trans Chap home">
-                  <DukAiLogoMark size={42} color="currentColor" accentColor="#e85d04" />
-                </Link>
-              )}
-            </div>
-            <div className="trans-chap-header__center">
-              <span className="trans-chap-header__logo" aria-hidden>
-                <TransChapLogoMark size={34} color="currentColor" accentColor="#e8412a" />
-              </span>
-              <h1>{title}</h1>
-            </div>
-            <div className="trans-chap-header__side trans-chap-header__side--end">
-              <ThemeToggle />
-            </div>
-          </header>
+          {isSignIn ? null : (
+            <header className="trans-chap-header">
+              <div className="trans-chap-header__side">
+                {backHref ? (
+                  <Link href={backHref} className="trans-chap-header__icon" aria-label="Back">
+                    <i className="fa-solid fa-chevron-left" aria-hidden />
+                  </Link>
+                ) : (
+                  <Link href="/trans-chap" className="trans-chap-header__icon" aria-label="Trans Chap home">
+                    <DukAiLogoMark size={42} color="currentColor" accentColor="#e85d04" />
+                  </Link>
+                )}
+              </div>
+              <div className="trans-chap-header__center">
+                <span className="trans-chap-header__logo" aria-hidden>
+                  <TransChapLogoMark size={34} color="currentColor" accentColor="#e8412a" />
+                </span>
+                <h1>{title}</h1>
+              </div>
+              <div className="trans-chap-header__side trans-chap-header__side--end">
+                <ThemeToggle />
+              </div>
+            </header>
+          )}
           <main className="trans-chap-app__content">{children}</main>
           {showNav ? (
             <nav
@@ -150,6 +150,20 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                 const isActive = item.exact
                   ? pathname === item.href
                   : pathname === item.href || pathname.startsWith(`${item.href}/`);
+                const disabled = Boolean(item.requiresInstagram && !instagramConnected);
+                if (disabled) {
+                  return (
+                    <span
+                      key={item.href}
+                      className="is-disabled"
+                      aria-disabled="true"
+                      title="Connect Instagram to use this"
+                    >
+                      <i className={`fa-solid ${item.icon}`} aria-hidden />
+                      {item.label}
+                    </span>
+                  );
+                }
                 return (
                   <Link
                     key={item.href}

@@ -15,7 +15,12 @@ function getInitialTheme(): Theme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-export function ThemeToggle() {
+type ThemeToggleProps = {
+  /** "icon" for header buttons; "switch" for iOS-style settings rows. */
+  variant?: "icon" | "switch";
+};
+
+export function ThemeToggle({ variant = "icon" }: ThemeToggleProps) {
   const [theme, setTheme] = useState<Theme>("light");
   const [mounted, setMounted] = useState(false);
 
@@ -26,11 +31,31 @@ export function ThemeToggle() {
     setMounted(true);
   }, []);
 
-  function toggle() {
-    const next: Theme = theme === "light" ? "dark" : "light";
+  function applyTheme(next: Theme) {
     setTheme(next);
     document.documentElement.setAttribute("data-theme", next);
     localStorage.setItem("dukai-theme", next);
+  }
+
+  function toggle() {
+    applyTheme(theme === "light" ? "dark" : "light");
+  }
+
+  if (variant === "switch") {
+    const dark = theme === "dark";
+    return (
+      <button
+        type="button"
+        role="switch"
+        className={`theme-switch${dark ? " is-on" : ""}`}
+        aria-checked={dark}
+        aria-label="Dark mode"
+        disabled={!mounted}
+        onClick={toggle}
+      >
+        <span className="theme-switch__thumb" aria-hidden />
+      </button>
+    );
   }
 
   return (

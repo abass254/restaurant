@@ -38,7 +38,7 @@ class AutoReplyService:
         if not message.is_inbound() or message.auto_replied or not (message.body or "").strip():
             return
 
-        # Instagram DMs are handled by DmTicketService + DmMenuService only.
+        # Instagram DMs are handled by DmTicketService + DmBotRouter (AI agent).
         if (account.platform or "instagram") == "instagram":
             return
 

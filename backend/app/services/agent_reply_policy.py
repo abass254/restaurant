@@ -19,15 +19,12 @@ def conversation_free_messaging(conversation: InstagramConversation) -> bool:
 
 
 def platform_bot_is_ai_agent(db: Session) -> bool:
-    from app.services.dm_bot_registry import normalize_dm_bot
-    from app.services.platform_messaging_settings import get_platform_dm_bot
-
-    return normalize_dm_bot(get_platform_dm_bot(db)) == "ai_agent"
+    del db
+    return True
 
 
 def platform_uses_ai_agent(db: Session, settings: Settings) -> bool:
-    if not platform_bot_is_ai_agent(db):
-        return False
+    del db
     from app.services.dm_chat_provider import chat_provider_available
 
     return bool(settings.dm_agent_enabled) and chat_provider_available(settings)

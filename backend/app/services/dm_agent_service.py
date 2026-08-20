@@ -14,8 +14,6 @@ from app.models import InstagramAccount, InstagramConversation, InstagramMessage
 from app.services.agent_reply_policy import conversation_live_agent_handoff, platform_bot_is_ai_agent
 from app.services.dm_chips_only import parse_product_select_payload, parse_quantity_payload
 from app.support.quantity_parse import parse_quantity
-from app.services.dm_bot_registry import normalize_dm_bot
-from app.services.platform_messaging_settings import get_platform_dm_bot
 from app.services.ai_agent_config import effective_agent_settings
 from app.services.dm_agent_context import build_conversation_context
 from app.services.dm_agent_tools import AGENT_TOOL_DEFINITIONS, DmAgentTools, merchant_script, resolve_shop_display_name
@@ -211,13 +209,10 @@ class DmAgentService:
         db: Session,
         settings: Settings,
         instagram_api,
-        *,
-        dm_menu=None,
     ):
         self.db = db
         self.settings = settings
         self.instagram_api = instagram_api
-        self.dm_menu = dm_menu
         self.tools = DmAgentTools(db, settings, instagram_api)
         self.support_tickets = SupportTicketService(db)
 
@@ -732,7 +727,6 @@ class DmAgentService:
         from app.services.agent_reply_policy import (
             auto_replies_handle_inbound,
             conversation_live_agent_handoff,
-            platform_bot_is_ai_agent,
         )
         from app.support.sales_session import STEP_IDLE, merge_sales_session
 
@@ -751,21 +745,13 @@ class DmAgentService:
 
         should_notify = notify_customer and auto_replies_handle_inbound(self.db, account)
         if should_notify and conversation.participant_ig_id:
-            bot = normalize_dm_bot(get_platform_dm_bot(self.db))
-            if bot == "menu_bot" and self.dm_menu is not None:
-                return self.dm_menu.resume_autopilot_after_handoff(
-                    account,
-                    conversation,
-                    notify_customer=notify_customer,
-                )
-
             signal_agent_typing(
-            account,
-            conversation,
-            settings=self.settings,
-            instagram_api=self.instagram_api,
-            duration_seconds=2.0,
-        )
+                account,
+                conversation,
+                settings=self.settings,
+                instagram_api=self.instagram_api,
+                duration_seconds=2.0,
+            )
             self._send_outbound(
                 account,
                 conversation,

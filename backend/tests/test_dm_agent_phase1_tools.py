@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from app.services.catalog.catalog_types import CatalogItem, CatalogSearchHit, platform_ref
 from app.services.dm_agent_tools import AGENT_TOOL_DEFINITIONS, DmAgentTools
-from app.services.dm_bot_registry import DM_BOT_CATALOG
+from app.services.dm_bot_registry import DEFAULT_DM_BOT, normalize_dm_bot
 
 
 def _catalog_item(
@@ -50,11 +50,10 @@ def test_agent_tool_definitions_include_phase1_and_closer_tools():
     } <= names
 
 
-def test_ai_agent_registry_does_not_claim_mpesa_stk():
-    ai = next(bot for bot in DM_BOT_CATALOG if bot.id == "ai_agent")
-    joined = " ".join(ai.capabilities).lower()
-    assert "m-pesa stk" not in joined
-    assert "recommendations" in joined
+def test_platform_bot_is_always_ai_agent():
+    assert normalize_dm_bot("menu_bot") == DEFAULT_DM_BOT
+    assert normalize_dm_bot("sales_autopilot") == DEFAULT_DM_BOT
+    assert normalize_dm_bot(None) == "ai_agent"
 
 
 def test_product_payload_includes_product_type_and_description():

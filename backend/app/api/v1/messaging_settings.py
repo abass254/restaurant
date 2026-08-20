@@ -16,7 +16,7 @@ from app.core.session import require_user, validate_csrf
 from app.database import get_db
 from app.dependencies import get_request_session
 from app.models import PlatformMessagingSettings, User
-from app.services.dm_bot_registry import dm_bot_catalog_payload, normalize_dm_bot
+from app.services.dm_bot_registry import DEFAULT_DM_BOT, normalize_dm_bot
 from app.services.platform_messaging_settings import (
     DEFAULT_WAIT_DM_TIME_SECONDS,
     get_platform_messaging_settings,
@@ -62,14 +62,12 @@ def show_messaging_settings(
                 "id": "",
                 "wait_dm_time_seconds": DEFAULT_WAIT_DM_TIME_SECONDS,
                 "pause_auto_responses": False,
-                "dm_bot": normalize_dm_bot(None),
+                "dm_bot": DEFAULT_DM_BOT,
             },
-            "available_bots": dm_bot_catalog_payload(),
         }
-    return {
-        "settings": MessagingSettingsOut.model_validate(row),
-        "available_bots": dm_bot_catalog_payload(),
-    }
+    settings = MessagingSettingsOut.model_validate(row)
+    settings = settings.model_copy(update={"dm_bot": normalize_dm_bot(settings.dm_bot)})
+    return {"settings": settings}
 
 
 @router.put("")
@@ -91,13 +89,14 @@ def upsert_messaging_settings(
 
     row.wait_dm_time_seconds = payload.wait_dm_time_seconds
     row.pause_auto_responses = payload.pause_auto_responses
-    if payload.dm_bot is not None:
-        row.dm_bot = normalize_dm_bot(payload.dm_bot)
+    row.dm_bot = DEFAULT_DM_BOT
     row.updated_at = now
     db.commit()
     db.refresh(row)
 
+    settings = MessagingSettingsOut.model_validate(row)
+    settings = settings.model_copy(update={"dm_bot": DEFAULT_DM_BOT})
     return {
         "message": "Messaging settings saved.",
-        "settings": MessagingSettingsOut.model_validate(row),
+        "settings": settings,
     }

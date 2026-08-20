@@ -15,7 +15,6 @@ from app.services.comment_agent_service import CommentAgentService
 from app.services.conversation_starter_service import ConversationStarterService
 from app.services.dm_agent_service import DmAgentService
 from app.services.dm_bot_router import DmBotRouter
-from app.services.dm_menu_service import DmMenuService
 from app.services.dm_ticket_service import DmTicketService
 from app.services.instagram_account_link import InstagramAccountLinkService
 from app.services.instagram_api import InstagramApiService
@@ -26,7 +25,6 @@ from app.services.messaging_service import (
 )
 from app.services.onboarding_service import OnboardingRequirementService
 from app.services.registration import BusinessRegistrationService
-from app.services.sales_autopilot_dm_service import SalesAutopilotDmService
 from app.services.webhook_service import InstagramWebhookService
 
 
@@ -48,21 +46,12 @@ class ServiceContainer:
         self.instagram_api = InstagramApiService(settings)
         self.auto_reply = AutoReplyService(db, settings, self.instagram_api)
         self.dm_tickets = DmTicketService(db, settings, self.instagram_api)
-        self.dm_menu = DmMenuService(db, settings, self.instagram_api, dm_tickets=self.dm_tickets)
-        self.dm_agent = DmAgentService(
-            db,
-            settings,
-            self.instagram_api,
-            dm_menu=self.dm_menu,
-        )
+        self.dm_agent = DmAgentService(db, settings, self.instagram_api)
         self.comment_agent = CommentAgentService(db, settings, self.instagram_api)
-        self.sales_autopilot_dm = SalesAutopilotDmService(db, settings, self.instagram_api)
         self.dm_bots = DmBotRouter(
             db,
             settings,
             self.dm_agent,
-            self.dm_menu,
-            self.sales_autopilot_dm,
             dm_tickets=self.dm_tickets,
         )
         self.messaging = InstagramMessagingService(

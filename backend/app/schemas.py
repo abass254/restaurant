@@ -288,6 +288,43 @@ class InventoryItemOut(BaseModel):
         )
 
 
+class StockMovementOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    account_id: str
+    inventory_item_id: str
+    direction: str
+    quantity: int
+    quantity_before: int | None
+    quantity_after: int | None
+    reason: str
+    note: str | None
+    created_by: str | None
+    created_at: datetime | None
+    inventory_item: InventoryItemOut | None = None
+
+    @classmethod
+    def from_model(cls, movement, *, include_item: bool = False) -> "StockMovementOut":
+        item_out = None
+        if include_item and getattr(movement, "inventory_item", None) is not None:
+            item_out = InventoryItemOut.from_model(movement.inventory_item)
+        return cls(
+            id=movement.id,
+            account_id=movement.account_id,
+            inventory_item_id=movement.inventory_item_id,
+            direction=movement.direction,
+            quantity=movement.quantity,
+            quantity_before=movement.quantity_before,
+            quantity_after=movement.quantity_after,
+            reason=movement.reason,
+            note=movement.note,
+            created_by=movement.created_by,
+            created_at=movement.created_at,
+            inventory_item=item_out,
+        )
+
+
 # --- Orders ----------------------------------------------------------------
 
 

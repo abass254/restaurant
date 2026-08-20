@@ -412,21 +412,8 @@ export type MessagingSettings = {
   dm_bot: string;
 };
 
-export type DmBotOption = {
-  id: string;
-  label: string;
-  tagline?: string;
-  description: string;
-  icon: string;
-  capabilities?: string[];
-  flow_steps?: string[];
-  best_for?: string;
-  limitations?: string;
-};
-
 export type MessagingSettingsResponse = {
   settings: MessagingSettings;
-  available_bots?: DmBotOption[];
 };
 
 export type MapboxPublicConfig = {
@@ -1047,6 +1034,44 @@ export type InventoryImportResponse = {
 
 export type InventoryItemMutationResponse = {
   message: string;
+  data: InventoryItem;
+};
+
+export type StockMovementDirection = "in" | "out";
+export type StockMovementReason =
+  | "receive"
+  | "adjustment"
+  | "damage"
+  | "other";
+
+export type StockMovement = {
+  id: string;
+  account_id: string;
+  inventory_item_id: string;
+  direction: StockMovementDirection;
+  quantity: number;
+  quantity_before: number | null;
+  quantity_after: number | null;
+  reason: StockMovementReason | string;
+  note: string | null;
+  created_by: string | null;
+  created_at: string | null;
+  inventory_item?: InventoryItem | null;
+};
+
+export type StockMovementsCreatePayload = {
+  direction: StockMovementDirection;
+  reason: StockMovementReason;
+  note?: string | null;
+  lines: Array<{ inventory_item_id: string; quantity: number }>;
+};
+
+export type StockMovementsResponse = {
+  message: string;
+  data: StockMovement[];
+};
+
+export type InventoryByCodeResponse = {
   data: InventoryItem;
 };
 

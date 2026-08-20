@@ -54,12 +54,6 @@ const links: NavLink[] = [
     matchPrefix: true,
   },
   {
-    href: "/admin/bots",
-    icon: "fa-robot",
-    label: "Bots & AI",
-    matchPrefix: true,
-  },
-  {
     href: "/admin/bot-test",
     icon: "fa-flask",
     label: "Test bot",

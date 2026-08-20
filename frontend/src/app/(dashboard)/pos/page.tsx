@@ -34,6 +34,7 @@ import {
   SOURCE_LABELS,
   formatMoney,
 } from "@/lib/orders";
+import { findInventoryByBarcode } from "@/lib/barcode";
 import type {
   InventoryItem,
   InventoryResponse,
@@ -53,10 +54,6 @@ type CartLine = {
   quantity: number;
   image_url: string | null;
 };
-
-function normalizeScanValue(value: string | null | undefined): string {
-  return (value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
-}
 
 function nameInitial(name: string | null | undefined): string {
   if (!name) return "?";
@@ -199,33 +196,6 @@ export default function PosPage() {
     }
   }
 
-  function itemMatchesBarcode(item: InventoryItem, code: string): boolean {
-    const rawScan = code.trim().toLowerCase();
-    const normalizedScan = normalizeScanValue(code);
-    if (!rawScan && !normalizedScan) return false;
-
-    const exactCandidates = [item.product?.product_code, item.product?.sku].filter(
-      Boolean,
-    ) as string[];
-    for (const candidate of exactCandidates) {
-      const raw = candidate.trim().toLowerCase();
-      const normalized = normalizeScanValue(candidate);
-      if (rawScan === raw || normalizedScan === normalized) return true;
-      if (raw && rawScan.length >= 4 && raw.startsWith(rawScan)) return true;
-      if (
-        normalized &&
-        normalizedScan.length >= 4 &&
-        normalized.includes(normalizedScan)
-      ) {
-        return true;
-      }
-    }
-
-    const productName = item.product?.name?.trim().toLowerCase() ?? "";
-    if (productName && rawScan.length >= 4 && productName === rawScan) return true;
-    return false;
-  }
-
   function clearScannerBuffer() {
     scannerBuffer.current = "";
     scannerLastKeyAt.current = 0;
@@ -327,7 +297,7 @@ export default function PosPage() {
         if (scanned.length < 3) return;
         event.preventDefault();
 
-        const matched = items.find((item) => itemMatchesBarcode(item, scanned));
+        const matched = findInventoryByBarcode(items, scanned);
         if (!matched) {
           void handleUnknownBarcode(scanned);
           return;
@@ -366,7 +336,7 @@ export default function PosPage() {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [addToCart, clearScannerBuffer, itemMatchesBarcode, items]);
+  }, [addToCart, clearScannerBuffer, items]);
 
   const categories = useMemo(() => {
     const seen = new Set<string>();

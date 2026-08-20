@@ -77,7 +77,7 @@ def admin_get_bot_sandbox(
             conversation,
             account,
             settings,
-            services.dm_menu.catalog,
+            services.dm_agent.tools.catalog,
             uses_ai_agent=uses_ai_agent,
         ),
         "conversation": (
@@ -158,7 +158,7 @@ def admin_bot_sandbox_message(
             message.conversation,
             account,
             settings,
-            services.dm_menu.catalog,
+            services.dm_agent.tools.catalog,
             uses_ai_agent=uses_ai_agent,
         ),
         "conversation": _conversation_detail(

@@ -34,7 +34,7 @@ from app.core.uploads import delete_upload, save_generated_image, save_upload
 from app.database import get_db
 from app.dependencies import ServiceContainer, get_request_session, get_services
 from app.models import InventoryItem, Product, User
-from app.schemas import InventoryItemOut
+from app.schemas import InventoryItemOut, StockMovementOut
 from app.services.image_generation_service import (
     ImageGenerationDisabled,
     ImageGenerationError,
@@ -42,6 +42,11 @@ from app.services.image_generation_service import (
     generate_product_image,
 )
 from app.services.inventory_import_service import import_inventory_from_excel
+from app.services.inventory_stock_service import (
+    InsufficientStockError,
+    UntrackedStockError,
+    adjust_stock,
+)
 from app.services.feed_post_link_service import add_post_link
 from app.services.platform_instagram import require_merchant_instagram_account
 from app.services.product_media_service import (
@@ -54,6 +59,7 @@ from app.services.social_publish_service import (
     publish_instagram_media,
     require_instagram_publish_account,
 )
+from app.support.barcode import product_matches_barcode
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
@@ -90,6 +96,18 @@ class InventoryUpdate(BaseModel):
     low_stock_threshold: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
     notes: str | None = Field(default=None, max_length=2000)
+
+
+class StockMovementLineIn(BaseModel):
+    inventory_item_id: str = Field(min_length=1, max_length=64)
+    quantity: int = Field(ge=1, le=1_000_000)
+
+
+class StockMovementsCreate(BaseModel):
+    direction: Literal["in", "out"]
+    reason: Literal["receive", "adjustment", "damage", "other"] = "receive"
+    note: str | None = Field(default=None, max_length=500)
+    lines: list[StockMovementLineIn] = Field(min_length=1, max_length=200)
 
 
 @router.get("")
@@ -188,6 +206,112 @@ async def import_inventory_excel(
                 "message": row.message,
             }
             for row in result.rows
+        ],
+    }
+
+
+@router.get("/by-code")
+def get_inventory_by_code(
+    code: str = Query(..., min_length=1, max_length=120),
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Look up an inventory item by product_code, sku, or attributes.barcode."""
+    user = _auth_inventory_user(db, session, pos_read_ok=True)
+    account_id = _require_shop(user)
+    scanned = code.strip()
+    if not scanned:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Barcode code is required.",
+        )
+
+    rows = (
+        db.query(InventoryItem)
+        .options(joinedload(InventoryItem.product))
+        .join(Product, Product.id == InventoryItem.product_id)
+        .filter(InventoryItem.account_id == account_id)
+        .all()
+    )
+    matched = [
+        row for row in rows if product_matches_barcode(row.product, scanned)
+    ]
+    if not matched:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail=f'No product matched "{scanned}".',
+        )
+    if len(matched) > 1:
+        # Prefer exact sku / product_code when multiple fuzzy hits.
+        exact = [
+            row
+            for row in matched
+            if row.product
+            and (
+                (row.product.sku or "").strip().lower() == scanned.lower()
+                or (row.product.product_code or "").strip().lower() == scanned.lower()
+            )
+        ]
+        matched = exact or matched
+
+    return {"data": InventoryItemOut.from_model(matched[0])}
+
+
+@router.post("/stock-movements", status_code=status.HTTP_201_CREATED)
+def create_stock_movements(
+    payload: StockMovementsCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Commit a stock-in or stock-out session as atomic delta adjustments."""
+    validate_csrf(request, session)
+    user = _auth_inventory_user(db, session)
+    account_id = _require_shop(user)
+
+    reason = payload.reason
+    if payload.direction == "out" and reason == "receive":
+        reason = "adjustment"
+
+    lines = [(line.inventory_item_id, line.quantity) for line in payload.lines]
+    try:
+        movements = adjust_stock(
+            db,
+            lines,
+            direction=payload.direction,
+            account_id=str(account_id),
+            reason=reason,
+            note=payload.note,
+            user_id=str(user.id),
+        )
+    except InsufficientStockError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    except UntrackedStockError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    db.commit()
+    for movement in movements:
+        db.refresh(movement)
+        db.refresh(movement, attribute_names=["inventory_item"])
+        if movement.inventory_item is not None:
+            db.refresh(movement.inventory_item, attribute_names=["product"])
+
+    verb = "received" if payload.direction == "in" else "issued"
+    return {
+        "message": f"Stock {verb} for {len(movements)} item(s).",
+        "data": [
+            StockMovementOut.from_model(m, include_item=True) for m in movements
         ],
     }
 

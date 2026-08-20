@@ -13,14 +13,29 @@ type DashTile = {
   icon: string;
   tone: DashTone;
   section?: MerchantSection;
+  requiresInstagram?: boolean;
 };
 
 const LOOKUP_TILES: DashTile[] = [
   { href: "/trans-chap/make-a-sale", label: "Sales", icon: "fa-list", tone: "records" },
   { href: "/trans-chap/purchases", label: "Purchases", icon: "fa-truck", tone: "cash" },
   { href: "/trans-chap/stocks", label: "Stocks", icon: "fa-boxes-stacked", tone: "sale" },
-  { href: "/trans-chap/chats", label: "Chats", icon: "fa-comments", tone: "records", section: "tickets" },
-  { href: "/trans-chap/feeds", label: "Feeds", icon: "fa-images", tone: "mpesa", section: "feeds" },
+  {
+    href: "/trans-chap/chats",
+    label: "Chats",
+    icon: "fa-comments",
+    tone: "records",
+    section: "tickets",
+    requiresInstagram: true,
+  },
+  {
+    href: "/trans-chap/feeds",
+    label: "Feeds",
+    icon: "fa-images",
+    tone: "mpesa",
+    section: "feeds",
+    requiresInstagram: true,
+  },
   { href: "/trans-chap/reports", label: "Reports", icon: "fa-chart-column", tone: "records" },
   { href: "/trans-chap/settings", label: "Settings", icon: "fa-gear", tone: "shop" },
 ];
@@ -36,7 +51,26 @@ function firstName(name: string): string {
   return part || "there";
 }
 
-function DashTileLink({ tile }: { tile: DashTile }) {
+function DashTileLink({
+  tile,
+  disabled,
+}: {
+  tile: DashTile;
+  disabled?: boolean;
+}) {
+  if (disabled) {
+    return (
+      <span
+        className={`trans-chap-dash__tile trans-chap-dash__tile--${tile.tone} is-disabled`}
+        aria-disabled="true"
+        title="Connect Instagram to use this"
+      >
+        <i className={`fa-solid ${tile.icon}`} aria-hidden />
+        <span>{tile.label}</span>
+      </span>
+    );
+  }
+
   return (
     <Link
       href={tile.href}
@@ -52,6 +86,7 @@ export function TransChapHome() {
   const user = useAuthUser();
   const name = firstName(user.name);
   const email = user.email?.trim() || user.phone || "";
+  const instagramConnected = Boolean(user.instagram_account);
 
   return (
     <div className="trans-chap-home trans-chap-dash">
@@ -68,7 +103,11 @@ export function TransChapHome() {
           {LOOKUP_TILES.filter(
             (tile) => !tile.section || userCanAccessSection(user, tile.section),
           ).map((tile) => (
-            <DashTileLink key={tile.label} tile={tile} />
+            <DashTileLink
+              key={tile.label}
+              tile={tile}
+              disabled={Boolean(tile.requiresInstagram && !instagramConnected)}
+            />
           ))}
         </div>
       </section>

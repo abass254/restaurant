@@ -8,7 +8,7 @@ export default async function TransChapFeedsLayout({
   children: React.ReactNode;
 }) {
   const user = await getServerUser();
-  if (!user || !userCanAccessSection(user, "feeds")) {
+  if (!user || !userCanAccessSection(user, "feeds") || !user.instagram_account) {
     redirect("/trans-chap");
   }
   return children;

@@ -141,6 +141,9 @@ export const apiRoutes = {
   product: (id: string) => `${apiUrl}/api/v1/products/${id}`,
   inventory: `${apiUrl}/api/v1/inventory`,
   inventoryImport: `${apiUrl}/api/v1/inventory/import`,
+  inventoryByCode: (code: string) =>
+    `${apiUrl}/api/v1/inventory/by-code?code=${encodeURIComponent(code)}`,
+  inventoryStockMovements: `${apiUrl}/api/v1/inventory/stock-movements`,
   inventoryItem: (id: string) => `${apiUrl}/api/v1/inventory/${id}`,
   inventoryMedia: (id: string) => `${apiUrl}/api/v1/inventory/${id}/media`,
   inventoryMediaGenerate: (id: string) =>

@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuthUser } from "@/components/app/AuthProvider";
 import { apiFetch } from "@/lib/api";
 import { extractErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
+import { userCanAccessSection } from "@/lib/merchant-permissions";
 import { formatMoney } from "@/lib/orders";
 import type {
   InventoryItem,
@@ -11,7 +14,16 @@ import type {
   InventoryResponse,
 } from "@/lib/types";
 
-export function QuickStockPanel() {
+type QuickStockPanelProps = {
+  /** Base path for stock-in / stock-out links (e.g. /station/stock or /m/stock). */
+  stockBasePath?: string;
+};
+
+export function QuickStockPanel({
+  stockBasePath = "/station/stock",
+}: QuickStockPanelProps) {
+  const user = useAuthUser();
+  const canInventory = userCanAccessSection(user, "inventory");
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -70,6 +82,29 @@ export function QuickStockPanel() {
 
   return (
     <div>
+      {canInventory ? (
+        <div
+          style={{
+            display: "flex",
+            gap: "0.5rem",
+            marginBottom: "0.85rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <Link
+            href={`${stockBasePath}/in`}
+            className="station-btn station-btn--primary"
+          >
+            <i className="fa-solid fa-barcode" aria-hidden="true" /> Receive
+          </Link>
+          <Link
+            href={`${stockBasePath}/out`}
+            className="station-btn station-btn--ghost"
+          >
+            <i className="fa-solid fa-barcode" aria-hidden="true" /> Issue
+          </Link>
+        </div>
+      ) : null}
       <input
         type="search"
         value={query}

@@ -812,6 +812,38 @@ class InventoryItem(Base):
             return None
 
 
+class StockMovement(Base):
+    """Audit row for manual stock in / stock out adjustments."""
+
+    __tablename__ = "stock_movements"
+    __table_args__ = (
+        Index("ix_stock_movements_account_created", "account_id", "created_at"),
+        Index("ix_stock_movements_item_created", "inventory_item_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    account_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("accounts.id"))
+    inventory_item_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("inventory_items.id"),
+    )
+    direction: Mapped[str] = mapped_column(String(8))  # in | out
+    quantity: Mapped[int] = mapped_column(Integer)
+    quantity_before: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quantity_after: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reason: Mapped[str] = mapped_column(String(32))
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    account: Mapped[Account] = relationship()
+    inventory_item: Mapped[InventoryItem] = relationship()
+
+
 class Order(Base):
     """A customer order placed through any channel.
 

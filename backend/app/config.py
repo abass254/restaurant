@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     # INSTAGRAM_DM_GREETING_ENABLED=false to skip the welcome message.
     instagram_dm_greeting_enabled: bool = True
     instagram_simulate_dm_sender_id: str = "999888777666"
-    sales_autopilot_enabled: bool = True
+    sales_autopilot_enabled: bool = True  # unused; kept for env compatibility
     # Session-based Instagram Beta (instagrapi) — enable on UAT first; keep false on prod until ready.
     instagram_beta_enabled: bool = False
     # beta | official | auto — auto uses beta when merchant has instagram_beta connected.
