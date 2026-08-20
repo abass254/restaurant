@@ -46,11 +46,14 @@ def test_build_system_prompt_includes_closer_playbook():
     )
     prompt = build_system_prompt(account)
     assert "Mission:" in prompt
-    assert "place an order" in prompt
+    assert "Own the conversation end-to-end" in prompt
     assert "Sales playbook:" in prompt
     assert "Ask clearly to order or book" in prompt
     assert "let me know if you need anything" in prompt
     assert "recommend_products" in prompt
+    assert "Accuracy is mandatory" in prompt
+    assert "gentle and straight to the point" in prompt
+    assert "Work independently" in prompt
 
 
 def test_build_system_prompt_includes_amend_order_rules():

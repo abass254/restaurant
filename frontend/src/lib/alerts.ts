@@ -1,6 +1,7 @@
 import Swal from "sweetalert2";
 import { ApiError } from "@/lib/api";
 import { notifyNavigationComplete } from "@/lib/navigation-loading";
+import { toWhatsAppMsisdn } from "@/lib/whatsapp-phone";
 
 const dukaiSwal = Swal.mixin({
   customClass: {
@@ -172,6 +173,49 @@ export async function promptMpesaReceipt(
         return false;
       }
       return code;
+    },
+  });
+
+  if (!result.isConfirmed || !result.value) {
+    return null;
+  }
+  return String(result.value).trim();
+}
+
+export async function promptWhatsAppPhone(
+  title = "Customer WhatsApp number",
+  text = "Enter the WhatsApp number so we can open their chat with the receipt.",
+  initialValue = "",
+) {
+  const result = await dukaiSwal.fire({
+    icon: "question",
+    title,
+    text,
+    input: "tel",
+    inputLabel: "WhatsApp number",
+    inputValue: initialValue,
+    inputPlaceholder: "07… or 2547…",
+    inputAttributes: {
+      autocapitalize: "off",
+      autocorrect: "off",
+      spellcheck: "false",
+      inputmode: "tel",
+      "aria-label": "WhatsApp number",
+    },
+    showCancelButton: true,
+    confirmButtonText: "Open WhatsApp",
+    preConfirm: (value) => {
+      const phone = String(value ?? "").trim();
+      if (!phone) {
+        dukaiSwal.showValidationMessage("Enter a WhatsApp number.");
+        return false;
+      }
+      const msisdn = toWhatsAppMsisdn(phone);
+      if (!msisdn) {
+        dukaiSwal.showValidationMessage("Enter a valid phone number, e.g. 0712 345 678.");
+        return false;
+      }
+      return `+${msisdn}`;
     },
   });
 

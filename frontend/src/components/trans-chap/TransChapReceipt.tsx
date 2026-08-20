@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
-import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
+import { extractErrorMessage, promptWhatsAppPhone, showError, toastSuccess } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
@@ -15,6 +15,8 @@ import {
   loadTransChapReceipt,
   receiptFromOrder,
   saveTransChapReceipt,
+  toWhatsAppMsisdn,
+  whatsappReceiptUrl,
   type TransChapReceipt,
 } from "@/lib/trans-chap-receipt";
 import { buildTransChapReceiptPdf, saveReceiptFile } from "@/lib/trans-chap-receipt-pdf";
@@ -32,7 +34,7 @@ export function TransChapReceiptView() {
   const [receipt, setReceipt] = useState<TransChapReceipt | null>(null);
   const [missing, setMissing] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const [sharing, setSharing] = useState(false);
+  const [openingWhatsApp, setOpeningWhatsApp] = useState(false);
   const [resending, setResending] = useState(false);
 
   function applyReceipt(next: TransChapReceipt) {
@@ -129,26 +131,41 @@ export function TransChapReceiptView() {
     };
   }, [receipt?.orderId, receipt?.paymentStatus, receipt?.shopName]);
 
-  async function sharePdf() {
+  async function openWhatsApp() {
     if (!receipt) return;
-    setSharing(true);
+    setOpeningWhatsApp(true);
     try {
-      const file = buildTransChapReceiptPdf(receipt);
-      const canShare =
-        typeof navigator.share === "function" &&
-        typeof navigator.canShare === "function" &&
-        navigator.canShare({ files: [file] });
-      if (canShare) {
-        await navigator.share({ files: [file] });
+      let phone = receipt.customerPhone?.trim() || "";
+      let prompted = false;
+      if (!toWhatsAppMsisdn(phone)) {
+        const entered = await promptWhatsAppPhone(
+          "Customer WhatsApp number",
+          "Enter the customer's WhatsApp number to open their chat with this receipt.",
+          phone,
+        );
+        if (!entered) return;
+        phone = entered;
+        prompted = true;
+        applyReceipt({ ...receipt, customerPhone: phone });
+      }
+
+      const url = whatsappReceiptUrl(phone, { ...receipt, customerPhone: phone });
+      if (!url) {
+        await showError(
+          "Invalid WhatsApp number",
+          "Enter a valid phone number, e.g. 0712 345 678.",
+        );
         return;
       }
-      saveReceiptFile(file);
-      await toastSuccess("PDF saved. Attach it in WhatsApp.");
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return;
-      await showError("Could not share receipt", "Please try downloading the PDF instead.");
+      // After an async prompt, popup blockers often stop window.open — navigate instead.
+      if (prompted) {
+        window.location.assign(url);
+        return;
+      }
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      if (!opened) window.location.assign(url);
     } finally {
-      setSharing(false);
+      setOpeningWhatsApp(false);
     }
   }
 
@@ -285,17 +302,17 @@ export function TransChapReceiptView() {
             <button
               type="button"
               className="trans-chap-slip__wa"
-              onClick={() => void sharePdf()}
-              disabled={sharing || downloading}
+              onClick={() => void openWhatsApp()}
+              disabled={openingWhatsApp || downloading}
             >
               <i className="fa-brands fa-whatsapp" aria-hidden />
-              {sharing ? "Sharing…" : "WhatsApp PDF"}
+              {openingWhatsApp ? "Opening…" : "WhatsApp"}
             </button>
             <button
               type="button"
               className="trans-chap-slip__pdf"
               onClick={() => void downloadPdf()}
-              disabled={downloading || sharing}
+              disabled={downloading || openingWhatsApp}
             >
               <i className="fa-solid fa-file-pdf" aria-hidden />
               {downloading ? "Saving…" : "Download PDF"}

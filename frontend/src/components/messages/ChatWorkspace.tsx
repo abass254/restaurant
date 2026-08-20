@@ -412,12 +412,16 @@ export function ChatWorkspace({
   }, [activeId, markConversationReadInInbox]);
 
   useEffect(() => {
+    // Feed layout (e.g. Trans Chap) is list-first on mobile — don't jump into a thread.
+    if (listLayout === "feed") {
+      return;
+    }
     if (didAutoOpenRef.current || !inbox?.conversations[0]) {
       return;
     }
     didAutoOpenRef.current = true;
     setActiveId(inbox.conversations[0].id);
-  }, [inbox]);
+  }, [inbox, listLayout]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
