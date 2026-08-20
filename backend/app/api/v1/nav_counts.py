@@ -43,7 +43,9 @@ def _messaging_counts(services: ServiceContainer, user: User) -> tuple[int, int]
         for conversation in account.conversations:
             raw_unread = _unread_count(conversation, account_ig_id)
             unread = merchant_unread_count(conversation, raw_unread, account, db)
-            messages_unread += unread
+            # Badge shows number of unopened chats, not total unread messages.
+            if unread > 0:
+                messages_unread += 1
             if conversation.is_ticket_open() and conversation_needs_merchant_attention(
                 conversation,
                 raw_unread,

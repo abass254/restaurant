@@ -7,10 +7,12 @@ import { useOptionalAuthUser } from "@/components/app/AuthProvider";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
 import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
+import { formatNavBadgeCount } from "@/lib/merchant-nav";
 import {
   userCanAccessSection,
   type MerchantSection,
 } from "@/lib/merchant-permissions";
+import { useNavCounts } from "@/lib/use-nav-counts";
 
 const NAV: Array<{
   href: string;
@@ -20,6 +22,7 @@ const NAV: Array<{
   exact?: boolean;
   section?: MerchantSection;
   requiresInstagram?: boolean;
+  badgeKey?: "messages";
 }> = [
   { href: "/trans-chap", label: "Home", title: "Home", icon: "fa-house", exact: true },
   {
@@ -35,6 +38,7 @@ const NAV: Array<{
     icon: "fa-comments",
     section: "tickets",
     requiresInstagram: true,
+    badgeKey: "messages",
   },
   {
     href: "/trans-chap/feeds",
@@ -92,6 +96,7 @@ function headerMeta(pathname: string): { title: string; backHref: string | null 
 export function TransChapShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const user = useOptionalAuthUser();
+  const counts = useNavCounts();
   const { title, backHref } = headerMeta(pathname);
   const isSignIn = pathname.startsWith("/trans-chap/sign-in");
   const showNav = !isSignIn;
@@ -151,6 +156,18 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                   ? pathname === item.href
                   : pathname === item.href || pathname.startsWith(`${item.href}/`);
                 const disabled = Boolean(item.requiresInstagram && !instagramConnected);
+                const badgeCount = item.badgeKey ? counts[item.badgeKey] : 0;
+                const badgeLabel = formatNavBadgeCount(badgeCount);
+                const icon = (
+                  <span className="mobile-nav__icon">
+                    <i className={`fa-solid ${item.icon}`} aria-hidden />
+                    {badgeLabel ? (
+                      <span className="mobile-nav__badge" aria-hidden="true">
+                        {badgeLabel}
+                      </span>
+                    ) : null}
+                  </span>
+                );
                 if (disabled) {
                   return (
                     <span
@@ -159,7 +176,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                       aria-disabled="true"
                       title="Connect Instagram to use this"
                     >
-                      <i className={`fa-solid ${item.icon}`} aria-hidden />
+                      {icon}
                       {item.label}
                     </span>
                   );
@@ -169,8 +186,13 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                     key={item.href}
                     href={item.href}
                     className={isActive ? "is-active" : ""}
+                    aria-label={
+                      badgeCount > 0
+                        ? `${item.label}, ${badgeCount} new`
+                        : item.label
+                    }
                   >
-                    <i className={`fa-solid ${item.icon}`} aria-hidden />
+                    {icon}
                     {item.label}
                   </Link>
                 );

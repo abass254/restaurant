@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { TransChapHomePies } from "@/components/trans-chap/TransChapHomePies";
+import { formatNavBadgeCount } from "@/lib/merchant-nav";
 import { userCanAccessSection, type MerchantSection } from "@/lib/merchant-permissions";
+import { useNavCounts } from "@/lib/use-nav-counts";
 
 type DashTone = "sale" | "cash" | "mpesa" | "records" | "shop";
 
@@ -14,6 +16,7 @@ type DashTile = {
   tone: DashTone;
   section?: MerchantSection;
   requiresInstagram?: boolean;
+  badgeKey?: "messages";
 };
 
 const LOOKUP_TILES: DashTile[] = [
@@ -27,6 +30,7 @@ const LOOKUP_TILES: DashTile[] = [
     tone: "records",
     section: "tickets",
     requiresInstagram: true,
+    badgeKey: "messages",
   },
   {
     href: "/trans-chap/feeds",
@@ -54,10 +58,24 @@ function firstName(name: string): string {
 function DashTileLink({
   tile,
   disabled,
+  badgeCount = 0,
 }: {
   tile: DashTile;
   disabled?: boolean;
+  badgeCount?: number;
 }) {
+  const badgeLabel = formatNavBadgeCount(badgeCount);
+  const icon = (
+    <span className="trans-chap-dash__tile-icon">
+      <i className={`fa-solid ${tile.icon}`} aria-hidden />
+      {badgeLabel ? (
+        <em className="trans-chap-dash__tile-badge" aria-hidden="true">
+          {badgeLabel}
+        </em>
+      ) : null}
+    </span>
+  );
+
   if (disabled) {
     return (
       <span
@@ -65,8 +83,8 @@ function DashTileLink({
         aria-disabled="true"
         title="Connect Instagram to use this"
       >
-        <i className={`fa-solid ${tile.icon}`} aria-hidden />
-        <span>{tile.label}</span>
+        {icon}
+        <span className="trans-chap-dash__tile-label">{tile.label}</span>
       </span>
     );
   }
@@ -75,15 +93,17 @@ function DashTileLink({
     <Link
       href={tile.href}
       className={`trans-chap-dash__tile trans-chap-dash__tile--${tile.tone}`}
+      aria-label={badgeCount > 0 ? `${tile.label}, ${badgeCount} new` : tile.label}
     >
-      <i className={`fa-solid ${tile.icon}`} aria-hidden />
-      <span>{tile.label}</span>
+      {icon}
+      <span className="trans-chap-dash__tile-label">{tile.label}</span>
     </Link>
   );
 }
 
 export function TransChapHome() {
   const user = useAuthUser();
+  const counts = useNavCounts();
   const name = firstName(user.name);
   const email = user.email?.trim() || user.phone || "";
   const instagramConnected = Boolean(user.instagram_account);
@@ -107,6 +127,7 @@ export function TransChapHome() {
               key={tile.label}
               tile={tile}
               disabled={Boolean(tile.requiresInstagram && !instagramConnected)}
+              badgeCount={tile.badgeKey ? counts[tile.badgeKey] : 0}
             />
           ))}
         </div>

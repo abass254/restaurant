@@ -289,6 +289,38 @@ html[data-theme="dark"] .trans-chap-app {
   background: color-mix(in srgb, var(--app-primary) 10%, var(--app-surface-hover));
 }
 
+.trans-chap-app .mobile-nav__icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.4rem;
+  line-height: 1;
+}
+
+.trans-chap-app .mobile-nav__badge {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.55rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  padding: 0 0.28rem;
+  border-radius: 999px;
+  border: 2px solid var(--app-surface);
+  background: #e8412a;
+  color: #fff;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1;
+  pointer-events: none;
+}
+
 .trans-chap-app .mobile-nav span.is-disabled {
   display: flex;
   flex-direction: column;
@@ -2188,7 +2220,38 @@ html[data-theme="dark"] .trans-chap-sale__add {
   color: var(--tile-accent);
 }
 
-.trans-chap-dash__tile span {
+.trans-chap-dash__tile-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.trans-chap-dash__tile-badge {
+  position: absolute;
+  top: -0.4rem;
+  right: -0.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  border: 2px solid var(--app-surface);
+  background: #e8412a;
+  color: #fff;
+  font-size: 0.62rem;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.trans-chap-dash__tile-label {
   display: block;
   max-width: 100%;
   overflow: hidden;
