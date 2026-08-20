@@ -5,7 +5,7 @@ import { apiFetch } from "@/lib/api";
 import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import type { InventoryIntegrationConfig, SettingsResponse } from "@/lib/types";
-import { Skeleton } from "./Skeleton";
+import { SkeletonText } from "./Skeleton";
 
 const DEFAULT_CONFIG: InventoryIntegrationConfig = {
   catalog_source: "platform",
@@ -83,7 +83,7 @@ export function InventoryIntegrationSection() {
   }
 
   if (!loaded) {
-    return <Skeleton lines={4} />;
+    return <SkeletonText lines={4} />;
   }
 
   const external = config.external ?? {

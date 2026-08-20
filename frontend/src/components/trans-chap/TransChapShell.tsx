@@ -3,8 +3,10 @@
 import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useAuthUser } from "@/components/app/AuthProvider";
+import { useOptionalAuthUser } from "@/components/app/AuthProvider";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
+import { AuthHeroPanel } from "@/components/auth/AuthHeroPanel";
+import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
 import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import {
   userCanAccessSection,
@@ -87,13 +89,15 @@ function headerMeta(pathname: string): { title: string; backHref: string | null 
 
 export function TransChapShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const user = useAuthUser();
+  const user = useOptionalAuthUser();
   const { title, backHref } = headerMeta(pathname);
-  const showNav = !pathname.startsWith("/trans-chap/sign-in");
+  const isSignIn = pathname.startsWith("/trans-chap/sign-in");
+  const showNav = !isSignIn;
   const items = useMemo(
     () =>
       NAV.filter(
-        (item) => !item.section || userCanAccessSection(user, item.section),
+        (item) =>
+          !item.section || (user != null && userCanAccessSection(user, item.section)),
       ),
     [user],
   );
@@ -106,7 +110,12 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div className="auth-split trans-chap-root">
+    <div className={`auth-split trans-chap-root${isSignIn ? " trans-chap-root--signin" : ""}`}>
+      {isSignIn ? (
+        <div className="trans-chap-signin-bg" aria-hidden="true">
+          <AuthHeroPanel />
+        </div>
+      ) : null}
       <section className="auth-split__panel">
         <div className="mobile-root trans-chap-app">
           <header className="trans-chap-header">
@@ -117,13 +126,13 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                 </Link>
               ) : (
                 <Link href="/trans-chap" className="trans-chap-header__icon" aria-label="Trans Chap home">
-                  <i className="fa-solid fa-table-cells" aria-hidden />
+                  <DukAiLogoMark size={42} color="currentColor" accentColor="#e85d04" />
                 </Link>
               )}
             </div>
             <div className="trans-chap-header__center">
               <span className="trans-chap-header__logo" aria-hidden>
-                <TransChapLogoMark size={28} color="currentColor" accentColor="#e8412a" />
+                <TransChapLogoMark size={34} color="currentColor" accentColor="#e8412a" />
               </span>
               <h1>{title}</h1>
             </div>

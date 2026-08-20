@@ -93,6 +93,7 @@ export default function AdminSettingsPage() {
           "ai-agent": undefined,
           mpesa: undefined,
           "payment-sim": { text: "Test", tone: "neutral" },
+          "merchant-payout": { text: "Send", tone: "neutral" },
           "google-maps": undefined,
           email: undefined,
         }
@@ -111,6 +112,7 @@ export default function AdminSettingsPage() {
             tone: darajaReady ? "ok" : "warn",
           },
           "payment-sim": { text: "Test", tone: "neutral" },
+          "merchant-payout": { text: "Send", tone: "neutral" },
           "google-maps": {
             text: mapsReady ? "Ready" : "Setup",
             tone: mapsReady ? "ok" : "warn",

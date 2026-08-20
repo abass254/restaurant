@@ -215,7 +215,7 @@ export function TransChapReceiptView() {
     <div className="trans-chap-receipt">
       <article className="trans-chap-slip">
         <header className="trans-chap-slip__brand">
-          <TransChapLogoMark size={36} color="currentColor" accentColor="#e8412a" />
+          <TransChapLogoMark size={42} color="currentColor" accentColor="#e8412a" />
           <div>
             <strong>{receipt.shopName}</strong>
             <span>Receipt</span>

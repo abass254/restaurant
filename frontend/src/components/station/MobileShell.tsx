@@ -62,9 +62,10 @@ export function MobileShell({ children }: { children: React.ReactNode }) {
         <main className="mobile-content">{children}</main>
         <nav className="mobile-nav" aria-label="Companion navigation">
           {NAV.map((item) => {
-            const active = item.exact
-              ? pathname === item.href
-              : pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const active =
+              "exact" in item && item.exact
+                ? pathname === item.href
+                : pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <Link
                 key={item.href}

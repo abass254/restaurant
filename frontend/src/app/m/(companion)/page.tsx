@@ -68,7 +68,7 @@ export default function MobileHomePage() {
     [orders],
   );
   const activeCount = useMemo(
-    () => orders.filter((o) => !isOrderClosed(o) && !isStationNeedsAction(o)).length,
+    () => orders.filter((o) => !isOrderClosed(o.status) && !isStationNeedsAction(o)).length,
     [orders],
   );
 

@@ -85,7 +85,7 @@ html[data-theme="dark"] .trans-chap-app {
 .trans-chap-header {
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: 48px 1fr 48px;
+  grid-template-columns: 52px 1fr 52px;
   align-items: center;
   gap: 0.35rem;
   min-height: 56px;
@@ -152,15 +152,19 @@ html[data-theme="dark"] .trans-chap-app {
 .trans-chap-header__icon {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   border-radius: 14px;
   color: var(--app-primary);
   text-decoration: none;
 }
 
 .trans-chap-header__icon {
-  font-size: 1.05rem;
+  font-size: 1.15rem;
+}
+
+.trans-chap-header__icon svg {
+  display: block;
 }
 
 .trans-chap-header__brand:hover,
@@ -1885,13 +1889,61 @@ html[data-theme="dark"] .trans-chap-sale__add {
   flex-shrink: 0;
 }
 
+.trans-chap-signin-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.28;
+}
+
+.trans-chap-signin-bg .auth-split__hero {
+  min-height: 100%;
+  height: 100%;
+}
+
+.trans-chap-root--signin {
+  position: relative;
+}
+
+.trans-chap-root--signin .auth-split__panel {
+  position: relative;
+  z-index: 1;
+  background: color-mix(in srgb, var(--app-bg) 72%, transparent);
+}
+
+.trans-chap-root--signin .trans-chap-app,
+.trans-chap-root--signin .trans-chap-app.mobile-root {
+  background: transparent;
+}
+
+.trans-chap-root--signin .trans-chap-header {
+  background: color-mix(in srgb, var(--app-surface) 78%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.trans-chap-root--signin .trans-chap-app__content {
+  justify-content: center;
+  background: transparent;
+}
+
 .trans-chap-signin {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 1rem;
-  flex: 1;
-  min-height: 0;
+  flex: 0 1 auto;
+  width: 100%;
+  max-width: 22rem;
+  max-height: 100%;
+  margin-inline: auto;
   overflow: auto;
+  padding: 1.25rem 1.1rem 1.5rem;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--app-surface) 88%, transparent);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 40px rgba(26, 16, 12, 0.08);
 }
 
 .trans-chap-signin .auth-split__subtitle,

@@ -54,16 +54,32 @@ export function loadTransChapReceipt(): TransChapReceipt | null {
     if (!parsed?.productName || !Number.isFinite(parsed.amount)) return null;
     const payMode: TransChapPayMode = parsed.payMode === "mpesa" ? "mpesa" : "cash";
     const productName = parsed.productName;
-    const amount = parsed.amount;
-    const items = Array.isArray(parsed.items) && parsed.items.length
-      ? parsed.items.filter(
-          (line) =>
-            line &&
-            typeof line.name === "string" &&
-            Number.isFinite(line.quantity) &&
-            Number.isFinite(line.lineTotal),
-        )
-      : [{ name: productName, quantity: 1, unitPrice: amount, lineTotal: amount }];
+    const amount = Number(parsed.amount);
+    const items: TransChapReceiptLine[] =
+      Array.isArray(parsed.items) && parsed.items.length
+        ? parsed.items.flatMap((line) => {
+            if (
+              !line ||
+              typeof line.name !== "string" ||
+              !Number.isFinite(line.quantity) ||
+              !Number.isFinite(line.unitPrice) ||
+              !Number.isFinite(line.lineTotal)
+            ) {
+              return [];
+            }
+            return [
+              {
+                name: line.name,
+                quantity: Number(line.quantity),
+                unitPrice: Number(line.unitPrice),
+                lineTotal: Number(line.lineTotal),
+              },
+            ];
+          })
+        : [];
+    if (!items.length) {
+      items.push({ name: productName, quantity: 1, unitPrice: amount, lineTotal: amount });
+    }
     return {
       orderId: parsed.orderId ?? null,
       orderNumber: parsed.orderNumber || "Sale",
