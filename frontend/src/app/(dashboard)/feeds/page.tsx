@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { apiFetch } from "@/lib/api";
@@ -13,6 +14,7 @@ import {
 import { Skeleton } from "@/components/app/Skeleton";
 import { FeedsComposeModal } from "@/components/app/FeedsComposeModal";
 import { FeedPostMedia } from "@/components/app/FeedPostMedia";
+import { FeedsReelsView } from "@/components/app/FeedsReelsView";
 import { FeedsSubNav } from "@/components/app/FeedsSubNav";
 import { FeedsLinkProductModal } from "@/components/app/FeedsLinkProductModal";
 import { FeedsPermissionBanner } from "@/components/app/FeedsPermissionBanner";
@@ -34,6 +36,11 @@ import type {
   PlatformFeed,
 } from "@/lib/types";
 
+type FeedsPageProps = {
+  /** Trans Chap uses a vertical Instagram Reels-style scroller. */
+  variant?: "grid" | "reels";
+};
+
 function formatPostDate(value: string | null): string {
   if (!value) return "";
   const date = new Date(value);
@@ -52,8 +59,11 @@ function mediaTypeLabel(type: string): string {
   return "Photo";
 }
 
-export default function FeedsPage() {
+export default function FeedsPage({ variant = "grid" }: FeedsPageProps) {
   const reduce = useReducedMotion();
+  const isReels = variant === "reels";
+  const pathname = usePathname();
+  const router = useRouter();
   const [data, setData] = useState<FeedsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +77,14 @@ export default function FeedsPage() {
     feed: PlatformFeed;
   } | null>(null);
   const [detailPermissionIssue, setDetailPermissionIssue] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("compose") !== "1") return;
+    setComposeOpen(true);
+    router.replace(pathname, { scroll: false });
+  }, [pathname, router]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -249,16 +267,18 @@ export default function FeedsPage() {
   }
 
   if (loading) {
-    return <FeedsSkeleton />;
+    return <FeedsSkeleton reels={isReels} />;
   }
 
   if (error && !data) {
     return (
-      <section className="feeds-page">
-        <header className="feeds-header">
-          <h1 className="app-title">Feeds</h1>
-          <p className="app-lead">Posts from your connected social channels.</p>
-        </header>
+      <section className={`feeds-page${isReels ? " feeds-page--reels" : ""}`}>
+        {!isReels ? (
+          <header className="feeds-header">
+            <h1 className="app-title">Feeds</h1>
+            <p className="app-lead">Posts from your connected social channels.</p>
+          </header>
+        ) : null}
         <div className="app-error">{error}</div>
         <button type="button" className="btn btn-primary btn-sm" onClick={() => void reload()}>
           Try again
@@ -276,45 +296,82 @@ export default function FeedsPage() {
     ...connectedFeeds.map((f) => ({ key: f.platform, label: f.label })),
   ];
 
+  const reelsEmpty =
+    activePlatform === "all" ? (
+      <AllChannelsEmpty
+        feeds={connectedFeeds}
+        canPost={canPostToInstagram}
+        onCompose={() => setComposeOpen(true)}
+      />
+    ) : (
+      <SingleChannelEmpty
+        feed={visibleFeeds[0]}
+        canPost={canPostToInstagram}
+        onCompose={() => setComposeOpen(true)}
+      />
+    );
+
   return (
-    <section className="feeds-page">
-      <header className="feeds-header">
-        <div>
-          <h1 className="app-title">Feeds</h1>
-          <p className="app-lead">
-            Recent posts from the social channels linked in Settings.
-          </p>
-        </div>
-        <div className="feeds-header__actions">
-          {canPostToInstagram ? (
+    <section className={`feeds-page${isReels ? " feeds-page--reels" : ""}`}>
+      {isReels ? (
+        <div className="feeds-reels-chrome">
+          <div className="feeds-reels-chrome__nav">
+            <FeedsSubNav />
+          </div>
+          <div className="feeds-reels-chrome__actions">
             <button
               type="button"
-              className="btn btn-primary btn-sm"
-              onClick={() => setComposeOpen(true)}
-              disabled={posting}
+              className="feeds-reels-chrome__btn"
+              onClick={() => void reload()}
+              aria-label="Refresh feeds"
             >
-              <i className="fa-brands fa-instagram" aria-hidden="true" />
-              New post
+              <i className="fa-solid fa-rotate-right" aria-hidden="true" />
             </button>
-          ) : null}
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => void reload()}
-            aria-label="Refresh feeds"
-          >
-            <i className="fa-solid fa-rotate-right" aria-hidden="true" />
-            Refresh
-          </button>
+          </div>
         </div>
-      </header>
+      ) : (
+        <>
+          <header className="feeds-header">
+            <div>
+              <h1 className="app-title">Feeds</h1>
+              <p className="app-lead">
+                Recent posts from the social channels linked in Settings.
+              </p>
+            </div>
+            <div className="feeds-header__actions">
+              {canPostToInstagram ? (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setComposeOpen(true)}
+                  disabled={posting}
+                >
+                  <i className="fa-brands fa-instagram" aria-hidden="true" />
+                  New post
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => void reload()}
+                aria-label="Refresh feeds"
+              >
+                <i className="fa-solid fa-rotate-right" aria-hidden="true" />
+                Refresh
+              </button>
+            </div>
+          </header>
 
-      <div className="feeds-page-nav">
-        <FeedsSubNav />
-      </div>
+          <div className="feeds-page-nav">
+            <FeedsSubNav />
+          </div>
+        </>
+      )}
 
       {showPermissionBanner ? (
-        <FeedsPermissionBanner connectUrl={instagramConnectUrl} />
+        <div className={isReels ? "feeds-reels-banner" : undefined}>
+          <FeedsPermissionBanner connectUrl={instagramConnectUrl} />
+        </div>
       ) : null}
 
       <FeedsComposeModal
@@ -390,139 +447,122 @@ export default function FeedsPage() {
         }}
       />
 
-      {platformTabs.length > 1 ? (
-        <div className="feeds-tabs" role="tablist" aria-label="Filter by channel">
-          {platformTabs.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              role="tab"
-              aria-selected={activePlatform === tab.key}
-              className={`feeds-tab${activePlatform === tab.key ? " is-active" : ""}`}
-              onClick={() => setActivePlatform(tab.key)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {activePlatform === "all" ? (
-        <AllChannelsView
-          feeds={connectedFeeds}
-          posts={allPosts}
-          reduce={!!reduce}
-          onLoadMore={loadMore}
+      {isReels ? (
+        <FeedsReelsView
+          posts={
+            activePlatform === "all"
+              ? allPosts
+              : (() => {
+                  const feed = visibleFeeds[0];
+                  return feed ? feed.posts.map((p) => ({ ...p, feed })) : [];
+                })()
+          }
+          feeds={activePlatform === "all" ? connectedFeeds : visibleFeeds}
           loadingMore={loadingMore}
+          onLoadMore={loadMore}
           onLinkPost={setLinkTarget}
           onViewPost={(post, feed) => setViewTarget({ post, feed })}
+          emptyState={reelsEmpty}
         />
       ) : (
-        <SingleChannelView
-          feed={visibleFeeds[0]}
-          reduce={!!reduce}
-          onLoadMore={loadMore}
-          loadingMore={loadingMore}
-          onLinkPost={setLinkTarget}
-          onViewPost={(post, feed) => setViewTarget({ post, feed })}
-        />
+        <>
+          {platformTabs.length > 1 ? (
+            <div className="feeds-tabs" role="tablist" aria-label="Filter by channel">
+              {platformTabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={activePlatform === tab.key}
+                  className={`feeds-tab${activePlatform === tab.key ? " is-active" : ""}`}
+                  onClick={() => setActivePlatform(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {activePlatform === "all" ? (
+            <AllChannelsView
+              feeds={connectedFeeds}
+              posts={allPosts}
+              reduce={!!reduce}
+              onLoadMore={loadMore}
+              loadingMore={loadingMore}
+              onLinkPost={setLinkTarget}
+              onViewPost={(post, feed) => setViewTarget({ post, feed })}
+            />
+          ) : (
+            <SingleChannelView
+              feed={visibleFeeds[0]}
+              reduce={!!reduce}
+              onLoadMore={loadMore}
+              loadingMore={loadingMore}
+              onLinkPost={setLinkTarget}
+              onViewPost={(post, feed) => setViewTarget({ post, feed })}
+            />
+          )}
+        </>
       )}
     </section>
   );
 }
 
-function AllChannelsView({
+function AllChannelsEmpty({
   feeds,
-  posts,
-  reduce,
-  onLoadMore,
-  loadingMore,
-  onLinkPost,
-  onViewPost,
+  canPost = false,
+  onCompose,
 }: {
   feeds: PlatformFeed[];
-  posts: Array<FeedPost & { feed: PlatformFeed }>;
-  reduce: boolean;
-  onLoadMore: (feed: PlatformFeed) => void;
-  loadingMore: boolean;
-  onLinkPost: (post: FeedPost) => void;
-  onViewPost: (post: FeedPost, feed: PlatformFeed) => void;
+  canPost?: boolean;
+  onCompose?: () => void;
 }) {
-  const sorted = [...posts].sort((a, b) => {
-    const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-    const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-    return tb - ta;
-  });
-
-  const hasPosts = sorted.length > 0;
   const fetchableFeeds = feeds.filter((f) => f.can_fetch);
   const hasErrors = fetchableFeeds.some((f) => f.error);
 
-  if (!hasPosts) {
-    return (
-      <div className="feeds-empty feeds-empty--small">
-        {hasErrors ? (
-          <>
-            <i className="fa-solid fa-triangle-exclamation" aria-hidden="true" />
-            <h2>Could not load posts</h2>
-            <p>
-              {fetchableFeeds.find((f) => f.error)?.error ??
-                "Check your channel connection and try again."}
-            </p>
-          </>
-        ) : (
-          <>
-            <i className="fa-solid fa-images" aria-hidden="true" />
-            <h2>No posts yet</h2>
-            <p>
-              Use <strong>New post</strong> to publish here, or click{" "}
-              <strong>Refresh</strong> after posting from Inventory.
-            </p>
-          </>
-        )}
-        <ChannelStatusList feeds={feeds} />
-      </div>
-    );
-  }
-
   return (
-    <>
-      <motion.div
-        className="feeds-grid"
-        variants={reduce ? undefined : staggerContainer}
-        initial={reduce ? undefined : "hidden"}
-        animate={reduce ? undefined : "visible"}
-      >
-        {sorted.map((post) => (
-          <motion.div key={`${post.platform}-${post.id}`} variants={reduce ? undefined : staggerItem}>
-            <FeedPostCard
-              post={post}
-              feed={post.feed}
-              onLink={() => onLinkPost(post)}
-              onView={() => onViewPost(post, post.feed)}
-            />
-          </motion.div>
-        ))}
-      </motion.div>
-      <LoadMoreButtons feeds={feeds} onLoadMore={onLoadMore} loadingMore={loadingMore} />
-    </>
+    <div className="feeds-empty feeds-empty--small">
+      {hasErrors ? (
+        <>
+          <i className="fa-solid fa-triangle-exclamation" aria-hidden="true" />
+          <h2>Could not load posts</h2>
+          <p>
+            {fetchableFeeds.find((f) => f.error)?.error ??
+              "Check your channel connection and try again."}
+          </p>
+        </>
+      ) : (
+        <>
+          <i className="fa-solid fa-cloud-arrow-up" aria-hidden="true" />
+          <h2>No posts yet</h2>
+          <p>Upload a photo or video to publish it to Instagram from here.</p>
+          {canPost && onCompose ? (
+            <button type="button" className="btn btn-primary btn-sm" onClick={onCompose}>
+              <i className="fa-solid fa-plus" aria-hidden="true" />
+              Upload a post
+            </button>
+          ) : (
+            <p>
+              Tap the <strong>+</strong> button in the menu, then choose{" "}
+              <strong>New post</strong>.
+            </p>
+          )}
+        </>
+      )}
+      <ChannelStatusList feeds={feeds} />
+    </div>
   );
 }
 
-function SingleChannelView({
+function SingleChannelEmpty({
   feed,
-  reduce,
-  onLoadMore,
-  loadingMore,
-  onLinkPost,
-  onViewPost,
+  canPost = false,
+  onCompose,
 }: {
   feed: PlatformFeed | undefined;
-  reduce: boolean;
-  onLoadMore: (feed: PlatformFeed) => void;
-  loadingMore: boolean;
-  onLinkPost: (post: FeedPost) => void;
-  onViewPost: (post: FeedPost, feed: PlatformFeed) => void;
+  canPost?: boolean;
+  onCompose?: () => void;
 }) {
   if (!feed) {
     return (
@@ -578,17 +618,89 @@ function SingleChannelView({
     );
   }
 
-  if (feed.posts.length === 0) {
-    return (
-      <div className="feeds-empty feeds-empty--small">
-        <i className="fa-solid fa-images" aria-hidden="true" />
-        <h2>No posts on {feed.label}</h2>
-        <p>
-          Use <strong>New post</strong> to publish here, or click{" "}
-          <strong>Refresh</strong> after posting from Inventory.
-        </p>
-      </div>
-    );
+  return (
+    <div className="feeds-empty feeds-empty--small">
+      <i className="fa-solid fa-cloud-arrow-up" aria-hidden="true" />
+      <h2>No posts on {feed.label}</h2>
+      <p>Upload a photo or video to publish it from Feeds.</p>
+      {canPost && onCompose ? (
+        <button type="button" className="btn btn-primary btn-sm" onClick={onCompose}>
+          <i className="fa-solid fa-plus" aria-hidden="true" />
+          Upload a post
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function AllChannelsView({
+  feeds,
+  posts,
+  reduce,
+  onLoadMore,
+  loadingMore,
+  onLinkPost,
+  onViewPost,
+}: {
+  feeds: PlatformFeed[];
+  posts: Array<FeedPost & { feed: PlatformFeed }>;
+  reduce: boolean;
+  onLoadMore: (feed: PlatformFeed) => void;
+  loadingMore: boolean;
+  onLinkPost: (post: FeedPost) => void;
+  onViewPost: (post: FeedPost, feed: PlatformFeed) => void;
+}) {
+  const sorted = [...posts].sort((a, b) => {
+    const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+    const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+    return tb - ta;
+  });
+
+  if (sorted.length === 0) {
+    return <AllChannelsEmpty feeds={feeds} />;
+  }
+
+  return (
+    <>
+      <motion.div
+        className="feeds-grid"
+        variants={reduce ? undefined : staggerContainer}
+        initial={reduce ? undefined : "hidden"}
+        animate={reduce ? undefined : "visible"}
+      >
+        {sorted.map((post) => (
+          <motion.div key={`${post.platform}-${post.id}`} variants={reduce ? undefined : staggerItem}>
+            <FeedPostCard
+              post={post}
+              feed={post.feed}
+              onLink={() => onLinkPost(post)}
+              onView={() => onViewPost(post, post.feed)}
+            />
+          </motion.div>
+        ))}
+      </motion.div>
+      <LoadMoreButtons feeds={feeds} onLoadMore={onLoadMore} loadingMore={loadingMore} />
+    </>
+  );
+}
+
+function SingleChannelView({
+  feed,
+  reduce,
+  onLoadMore,
+  loadingMore,
+  onLinkPost,
+  onViewPost,
+}: {
+  feed: PlatformFeed | undefined;
+  reduce: boolean;
+  onLoadMore: (feed: PlatformFeed) => void;
+  loadingMore: boolean;
+  onLinkPost: (post: FeedPost) => void;
+  onViewPost: (post: FeedPost, feed: PlatformFeed) => void;
+}) {
+  if (!feed || !feed.connected || !feed.can_fetch || (feed.error && feed.posts.length === 0) || feed.posts.length === 0) {
+    return <SingleChannelEmpty feed={feed} />;
   }
 
   return (
@@ -769,7 +881,17 @@ function FeedPostCard({
   );
 }
 
-function FeedsSkeleton() {
+function FeedsSkeleton({ reels = false }: { reels?: boolean }) {
+  if (reels) {
+    return (
+      <section className="feeds-page feeds-page--reels" aria-busy="true" aria-live="polite">
+        <div className="feeds-reel feeds-reel--skeleton">
+          <Skeleton variant="rect" height="100%" />
+        </div>
+      </section>
+    );
+  }
+
   const items = Array.from({ length: 6 });
   return (
     <section className="feeds-page" aria-busy="true" aria-live="polite">

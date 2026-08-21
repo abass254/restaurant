@@ -85,7 +85,7 @@ html[data-theme="dark"] .trans-chap-app {
 .trans-chap-header {
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: 52px 1fr 52px;
+  grid-template-columns: 88px 1fr 88px;
   align-items: center;
   gap: 0.35rem;
   min-height: 56px;
@@ -103,7 +103,44 @@ html[data-theme="dark"] .trans-chap-app {
 
 .trans-chap-header__side--end {
   justify-content: flex-end;
-  gap: 0.1rem;
+  gap: 0.15rem;
+}
+
+.trans-chap-header__icon.is-active {
+  color: var(--app-primary);
+  background: color-mix(in srgb, var(--app-primary) 10%, transparent);
+}
+
+.trans-chap-header__icon.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.trans-chap-header__icon-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.trans-chap-header__badge {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  padding: 0 0.28rem;
+  border-radius: 999px;
+  border: 2px solid var(--app-surface);
+  background: #e8412a;
+  color: #fff;
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .trans-chap-header__center {
@@ -352,6 +389,103 @@ html[data-theme="dark"] .trans-chap-app {
   padding-inline: 0.12rem;
 }
 
+.trans-chap-app .mobile-nav--create {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: end;
+  gap: 0.2rem;
+}
+
+.trans-chap-app .mobile-nav--create > a,
+.trans-chap-app .mobile-nav--create > span.is-disabled {
+  font-size: 0.62rem;
+  letter-spacing: 0.03em;
+  padding-inline: 0.1rem;
+}
+
+.trans-chap-app .mobile-nav__create {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 48px;
+  padding-bottom: 0.15rem;
+}
+
+.trans-chap-app .mobile-nav__create-btn {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin-top: -1.15rem;
+  border: 0;
+  border-radius: 999px;
+  background: #e8412a;
+  color: #fff;
+  font-size: 1.2rem;
+  box-shadow: 0 8px 20px color-mix(in srgb, #e8412a 35%, transparent);
+  cursor: pointer;
+}
+
+.trans-chap-app .mobile-nav__create-btn.is-open {
+  background: var(--app-text);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--app-text) 25%, transparent);
+}
+
+.trans-chap-app .mobile-nav__create-menu {
+  position: absolute;
+  bottom: calc(100% + 0.55rem);
+  left: 50%;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 11.5rem;
+  padding: 0.45rem;
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  background: var(--app-surface);
+  box-shadow: 0 14px 32px color-mix(in srgb, var(--app-text) 18%, transparent);
+  transform: translateX(-50%);
+}
+
+.trans-chap-app .mobile-nav__create-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  min-height: 42px;
+  padding: 0.55rem 0.7rem;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--app-text);
+  font-size: 0.88rem;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+
+.trans-chap-app .mobile-nav__create-item i {
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  color: #e8412a;
+  font-size: 0.95rem;
+}
+
+.trans-chap-app .mobile-nav__create-item:hover,
+.trans-chap-app .mobile-nav__create-item:focus-visible {
+  background: color-mix(in srgb, var(--app-primary) 10%, var(--app-surface));
+  outline: none;
+}
+
+.trans-chap-app .mobile-nav__create-item.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .trans-chap-app__content:has(.trans-chap-social),
 .trans-chap-app__content:has(.trans-chap-sales) {
   padding: 0;
@@ -376,6 +510,39 @@ html[data-theme="dark"] .trans-chap-app {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.trans-chap-social:has(.feeds-page--reels) {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #0a0a0a;
+}
+
+.trans-chap-app .fb-app.trans-chap-social:has(.feeds-page--reels) {
+  background: #0a0a0a;
+}
+
+.trans-chap-app .feeds-page--reels {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.trans-chap-app .feeds-page--reels .feeds-empty {
+  min-height: 100%;
+  display: grid;
+  place-content: center;
+  padding: 1.5rem 1rem 5rem;
+}
+
+.trans-chap-app .feeds-reel__meta {
+  bottom: calc(0.85rem + env(safe-area-inset-bottom));
+  right: 4.5rem;
+}
+
+.trans-chap-app .feeds-reel__actions {
+  bottom: calc(6.8rem + env(safe-area-inset-bottom));
 }
 
 .trans-chap-app .chat-app {

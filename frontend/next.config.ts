@@ -24,6 +24,16 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
+  // @ffmpeg/ffmpeg loads core via blob URLs; avoid bundling Node polyfills.
+  webpack: (config) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      path: false,
+      crypto: false,
+    };
+    return config;
+  },
   async redirects() {
     return [
       {

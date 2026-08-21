@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FeedsComposeProductPicker } from "@/components/app/FeedsComposeProductPicker";
+import { FeedsTimelineEditor } from "@/components/app/feed-editor/FeedsTimelineEditor";
 import { MotionModal } from "@/components/app/MotionModal";
 import { apiFetch } from "@/lib/api";
 import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
@@ -33,12 +35,19 @@ export function FeedsComposeModal({
   onPosted,
   onPostingChange,
 }: FeedsComposeModalProps) {
+  const pathname = usePathname();
+  const settingsHref = pathname.startsWith("/trans-chap")
+    ? "/trans-chap/settings"
+    : "/settings";
   const [captionBody, setCaptionBody] = useState("");
   const [linkedProducts, setLinkedProducts] = useState<ComposeLinkedProduct[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewIsVideo, setPreviewIsVideo] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorSeedFiles, setEditorSeedFiles] = useState<File[] | undefined>();
+  const [editorKey, setEditorKey] = useState(0);
+  const directInputRef = useRef<HTMLInputElement | null>(null);
 
   const captionLength = useMemo(
     () => composeCaptionLength(captionBody, linkedProducts),
@@ -47,19 +56,34 @@ export function FeedsComposeModal({
   const captionTooLong = captionLength > CAPTION_LIMIT;
 
   useEffect(() => {
-    if (!open) {
+    if (open) return;
+    const timer = window.setTimeout(() => {
       setCaptionBody("");
       setLinkedProducts([]);
       setFile(null);
       setPreviewIsVideo(false);
+      setEditorOpen(false);
+      setEditorSeedFiles(undefined);
       setPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
       });
-    }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [open]);
 
-  function handleFileChange(next: File | null) {
+  // New post should land in the timeline editor, not the caption modal first.
+  useEffect(() => {
+    if (!open || file || editorOpen) return;
+    const timer = window.setTimeout(() => {
+      setEditorSeedFiles(undefined);
+      setEditorKey((k) => k + 1);
+      setEditorOpen(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [open, file, editorOpen]);
+
+  function applyFile(next: File | null) {
     if (next) {
       const validationError = validateFeedFile(next);
       if (validationError) {
@@ -74,6 +98,19 @@ export function FeedsComposeModal({
     });
     setPreviewIsVideo(next ? fileIsFeedVideo(next) : false);
     setFile(next);
+  }
+
+  function openEditor(seed?: File[]) {
+    setEditorSeedFiles(seed);
+    setEditorKey((k) => k + 1);
+    setEditorOpen(true);
+  }
+
+  function handleEditorClose() {
+    setEditorOpen(false);
+    setEditorSeedFiles(undefined);
+    // Closing the editor with nothing exported cancels the whole New post flow.
+    if (!file) onClose();
   }
 
   async function handleSubmit() {
@@ -125,156 +162,165 @@ export function FeedsComposeModal({
   }
 
   return (
-    <MotionModal
-      open={open}
-      onClose={onClose}
-      ariaLabel="Create a new social post"
-      panelClassName="inv-post-modal feeds-compose-modal"
-      closeOnBackdrop={!posting}
-      closeOnEscape={!posting}
-    >
-      <header className="inventory-modal__head">
-        <div>
-          <h2>
-            <i className="fa-brands fa-instagram" aria-hidden="true" /> New post
-          </h2>
-          <span className="app-muted">
-            Upload a photo or video and publish it to your connected Instagram account.
-          </span>
-        </div>
-        <button
-          type="button"
-          className="fb-icon-btn"
-          aria-label="Close"
-          onClick={onClose}
-          disabled={posting}
-        >
-          <i className="fa-solid fa-xmark" aria-hidden="true" />
-        </button>
-      </header>
-
-      <div className="inventory-modal__body inv-post-modal__body">
-        {previewUrl ? (
-          <figure className="inv-post-modal__preview">
-            {previewIsVideo ? (
-              <video
-                src={previewUrl}
-                controls
-                playsInline
-                preload="metadata"
-                aria-label="Selected video preview"
-              />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={previewUrl} alt="Selected photo preview" />
-            )}
-          </figure>
-        ) : (
+    <>
+      <MotionModal
+        open={open && Boolean(file)}
+        onClose={onClose}
+        ariaLabel="Create a new social post"
+        panelClassName="inv-post-modal feeds-compose-modal"
+        closeOnBackdrop={!posting && !editorOpen}
+        closeOnEscape={!posting && !editorOpen}
+      >
+        <header className="inventory-modal__head">
+          <div>
+            <h2>
+              <i className="fa-brands fa-instagram" aria-hidden="true" /> New post
+            </h2>
+            <span className="app-muted">
+              Edit a photo or video on a timeline, then publish to Instagram.
+            </span>
+          </div>
           <button
             type="button"
-            className="feeds-compose-dropzone"
-            onClick={() => fileInputRef.current?.click()}
+            className="fb-icon-btn"
+            aria-label="Close"
+            onClick={onClose}
             disabled={posting}
           >
-            <i className="fa-solid fa-cloud-arrow-up" aria-hidden="true" />
-            <strong>Choose a photo or video</strong>
-            <span className="app-muted">
-              JPEG, MP4, or MOV · photos up to 5 MB · videos up to 50 MB
-            </span>
+            <i className="fa-solid fa-xmark" aria-hidden="true" />
           </button>
-        )}
+        </header>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={FEED_UPLOAD_ACCEPT}
-          hidden
-          onChange={(e) => {
-            handleFileChange(e.target.files?.[0] ?? null);
-            e.target.value = "";
-          }}
-        />
+        <div className="inventory-modal__body inv-post-modal__body">
+          {previewUrl ? (
+            <figure className="inv-post-modal__preview">
+              {previewIsVideo ? (
+                <video
+                  src={previewUrl}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  aria-label="Selected video preview"
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={previewUrl} alt="Selected photo preview" />
+              )}
+            </figure>
+          ) : null}
 
-        {previewUrl ? (
+          <input
+            ref={directInputRef}
+            type="file"
+            accept={FEED_UPLOAD_ACCEPT}
+            hidden
+            onChange={(e) => {
+              const picked = e.target.files?.[0] ?? null;
+              e.target.value = "";
+              applyFile(picked);
+            }}
+          />
+
           <div className="feeds-compose-actions">
             <button
               type="button"
               className="btn btn-ghost btn-sm"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => openEditor(file ? [file] : undefined)}
               disabled={posting}
             >
-              Change file
+              <i className="fa-solid fa-pen-to-square" aria-hidden="true" />
+              Edit again
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => directInputRef.current?.click()}
+              disabled={posting}
+            >
+              Replace file
             </button>
           </div>
-        ) : null}
 
-        <FeedsComposeProductPicker
-          disabled={posting}
-          linkedProducts={linkedProducts}
-          onChange={setLinkedProducts}
-        />
-
-        <label className="settings-field" htmlFor="feeds-compose-caption">
-          <div className="inv-post-modal__caption-head">
-            <span>Caption</span>
-            <span className={captionTooLong ? "feeds-compose-caption-count--over" : "app-muted"}>
-              {captionLength}/{CAPTION_LIMIT}
-            </span>
-          </div>
-          <textarea
-            id="feeds-compose-caption"
-            rows={5}
-            value={captionBody}
-            onChange={(e) => setCaptionBody(e.target.value)}
+          <FeedsComposeProductPicker
             disabled={posting}
-            placeholder="Write a caption for your post…"
+            linkedProducts={linkedProducts}
+            onChange={setLinkedProducts}
           />
-          {linkedProducts.length > 0 ? (
-            <div className="feeds-compose-caption-products" aria-label="Products in caption">
-              <span className="feeds-compose-caption-products__label">Shop:</span>
-              <pre className="feeds-compose-caption-products__list">
-                {linkedProducts
-                  .map((product, index) => formatComposeProductLine(product, index))
-                  .join("\n")}
-              </pre>
+
+          <label className="settings-field" htmlFor="feeds-compose-caption">
+            <div className="inv-post-modal__caption-head">
+              <span>Caption</span>
+              <span className={captionTooLong ? "feeds-compose-caption-count--over" : "app-muted"}>
+                {captionLength}/{CAPTION_LIMIT}
+              </span>
             </div>
-          ) : null}
-        </label>
-
-        <p className="app-muted inv-post-modal__hint">
-          Instagram must be connected via Meta OAuth in{" "}
-          <Link href="/settings">Settings</Link>. Your site must be publicly
-          reachable so Instagram can fetch the file. Videos are published as Reels
-          and may take a minute to process.
-        </p>
-
-        <div className="settings-actions">
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            disabled={posting || !file || captionTooLong}
-            onClick={() => void handleSubmit()}
-          >
-            <i
-              className={
-                posting
-                  ? "fa-solid fa-spinner fa-spin"
-                  : "fa-brands fa-instagram"
-              }
-              aria-hidden="true"
+            <textarea
+              id="feeds-compose-caption"
+              rows={5}
+              value={captionBody}
+              onChange={(e) => setCaptionBody(e.target.value)}
+              disabled={posting}
+              placeholder="Write a caption for your post…"
             />
-            {posting ? "Posting…" : "Post now"}
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={onClose}
-            disabled={posting}
-          >
-            Cancel
-          </button>
+            {linkedProducts.length > 0 ? (
+              <div className="feeds-compose-caption-products" aria-label="Products in caption">
+                <span className="feeds-compose-caption-products__label">Shop:</span>
+                <pre className="feeds-compose-caption-products__list">
+                  {linkedProducts
+                    .map((product, index) => formatComposeProductLine(product, index))
+                    .join("\n")}
+                </pre>
+              </div>
+            ) : null}
+          </label>
+
+          <p className="app-muted inv-post-modal__hint">
+            Instagram must be connected via Meta OAuth in{" "}
+            <Link href={settingsHref}>Settings</Link>. Your site must be publicly
+            reachable so Instagram can fetch the file. Videos are published as Reels
+            and may take a minute to process.
+          </p>
+
+          <div className="settings-actions">
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={posting || !file || captionTooLong}
+              onClick={() => void handleSubmit()}
+            >
+              <i
+                className={
+                  posting
+                    ? "fa-solid fa-spinner fa-spin"
+                    : "fa-brands fa-instagram"
+                }
+                aria-hidden="true"
+              />
+              {posting ? "Posting…" : "Post now"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={onClose}
+              disabled={posting}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
-      </div>
-    </MotionModal>
+      </MotionModal>
+
+      <FeedsTimelineEditor
+        key={editorKey}
+        open={editorOpen}
+        initialFiles={editorSeedFiles}
+        onClose={handleEditorClose}
+        onDone={(exported) => {
+          applyFile(exported);
+          setEditorOpen(false);
+          setEditorSeedFiles(undefined);
+        }}
+      />
+    </>
   );
 }

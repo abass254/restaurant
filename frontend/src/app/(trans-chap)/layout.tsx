@@ -12,7 +12,9 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "Trans Chap",
-    statusBarStyle: "default",
+    // Draw under the iOS status bar so the header color fills to the top edge
+    // (no black gap). Header already pads with env(safe-area-inset-top).
+    statusBarStyle: "black-translucent",
   },
   icons: {
     apple: [

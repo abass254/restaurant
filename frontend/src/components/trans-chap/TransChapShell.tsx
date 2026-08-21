@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useOptionalAuthUser } from "@/components/app/AuthProvider";
-import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
 import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import { formatNavBadgeCount } from "@/lib/merchant-nav";
@@ -22,7 +21,6 @@ const NAV: Array<{
   exact?: boolean;
   section?: MerchantSection;
   requiresInstagram?: boolean;
-  badgeKey?: "messages";
 }> = [
   { href: "/trans-chap", label: "Home", title: "Home", icon: "fa-house", exact: true },
   {
@@ -32,13 +30,10 @@ const NAV: Array<{
     icon: "fa-cash-register",
   },
   {
-    href: "/trans-chap/chats",
-    label: "Chats",
-    title: "Chats",
-    icon: "fa-comments",
-    section: "tickets",
-    requiresInstagram: true,
-    badgeKey: "messages",
+    href: "/trans-chap/purchases",
+    label: "Purchases",
+    title: "Purchases",
+    icon: "fa-truck",
   },
   {
     href: "/trans-chap/feeds",
@@ -48,7 +43,32 @@ const NAV: Array<{
     section: "feeds",
     requiresInstagram: true,
   },
-  { href: "/trans-chap/settings", label: "Settings", title: "Settings", icon: "fa-gear" },
+];
+
+const CREATE_ACTIONS: Array<{
+  href: string;
+  label: string;
+  icon: string;
+  requiresInstagram?: boolean;
+  section?: MerchantSection;
+}> = [
+  {
+    href: "/trans-chap/make-a-sale/new",
+    label: "New sale",
+    icon: "fa-cash-register",
+  },
+  {
+    href: "/trans-chap/purchases/new",
+    label: "New purchase",
+    icon: "fa-cart-plus",
+  },
+  {
+    href: "/trans-chap/feeds?compose=1",
+    label: "New post",
+    icon: "fa-plus",
+    requiresInstagram: true,
+    section: "feeds",
+  },
 ];
 
 function headerMeta(pathname: string): { title: string; backHref: string | null } {
@@ -61,9 +81,6 @@ function headerMeta(pathname: string): { title: string; backHref: string | null 
   if (pathname.startsWith("/trans-chap/purchases/new")) {
     return { title: "New purchase", backHref: "/trans-chap/purchases" };
   }
-  if (pathname.startsWith("/trans-chap/purchases")) {
-    return { title: "Purchases", backHref: "/trans-chap" };
-  }
   if (pathname.startsWith("/trans-chap/stocks/stock-up")) {
     return { title: "Stock up", backHref: "/trans-chap/stocks" };
   }
@@ -75,6 +92,12 @@ function headerMeta(pathname: string): { title: string; backHref: string | null 
   }
   if (pathname.startsWith("/trans-chap/feeds/analytics")) {
     return { title: "Feed analytics", backHref: "/trans-chap/feeds" };
+  }
+  if (pathname.startsWith("/trans-chap/chats")) {
+    return { title: "Chats", backHref: null };
+  }
+  if (pathname.startsWith("/trans-chap/settings")) {
+    return { title: "Settings", backHref: null };
   }
   if (pathname.startsWith("/trans-chap/install")) {
     return { title: "Download", backHref: "/trans-chap/settings" };
@@ -95,12 +118,16 @@ function headerMeta(pathname: string): { title: string; backHref: string | null 
 
 export function TransChapShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const user = useOptionalAuthUser();
   const counts = useNavCounts();
   const { title, backHref } = headerMeta(pathname);
   const isSignIn = pathname.startsWith("/trans-chap/sign-in");
   const showNav = !isSignIn;
   const instagramConnected = Boolean(user?.instagram_account);
+  const [createOpen, setCreateOpen] = useState(false);
+  const createRef = useRef<HTMLDivElement>(null);
+
   const items = useMemo(
     () =>
       NAV.filter(
@@ -110,12 +137,96 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
     [user],
   );
 
+  const createActions = useMemo(
+    () =>
+      CREATE_ACTIONS.filter(
+        (action) =>
+          !action.section || (user != null && userCanAccessSection(user, action.section)),
+      ),
+    [user],
+  );
+
+  const canAccessChats =
+    user != null &&
+    userCanAccessSection(user, "tickets") &&
+    Boolean(user.instagram_account);
+  const chatsBadge = formatNavBadgeCount(counts.messages);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     if ("serviceWorker" in navigator) {
       void navigator.serviceWorker.register("/sw.js").catch(() => undefined);
     }
   }, []);
+
+  useEffect(() => {
+    setCreateOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!createOpen) return;
+    function onPointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target as Node | null;
+      if (createRef.current && target && !createRef.current.contains(target)) {
+        setCreateOpen(false);
+      }
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setCreateOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [createOpen]);
+
+  const homeItem = items.find((item) => item.exact);
+  const salesItem = items.find((item) => item.href === "/trans-chap/make-a-sale");
+  const purchasesItem = items.find((item) => item.href === "/trans-chap/purchases");
+  const feedsItem = items.find((item) => item.href === "/trans-chap/feeds");
+
+  function renderNavLink(
+    item: (typeof NAV)[number] | undefined,
+  ): ReactNode {
+    if (!item) return null;
+    const isActive = item.exact
+      ? pathname === item.href
+      : pathname === item.href || pathname.startsWith(`${item.href}/`);
+    const disabled = Boolean(item.requiresInstagram && !instagramConnected);
+    const icon = (
+      <span className="mobile-nav__icon">
+        <i className={`fa-solid ${item.icon}`} aria-hidden />
+      </span>
+    );
+    if (disabled) {
+      return (
+        <span
+          key={item.href}
+          className="is-disabled"
+          aria-disabled="true"
+          title="Connect Instagram to use this"
+        >
+          {icon}
+          {item.label}
+        </span>
+      );
+    }
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={isActive ? "is-active" : ""}
+        aria-label={item.label}
+      >
+        {icon}
+        {item.label}
+      </Link>
+    );
+  }
 
   return (
     <div className={`auth-split trans-chap-root${isSignIn ? " trans-chap-root--signin" : ""}`}>
@@ -141,62 +252,105 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                 <h1>{title}</h1>
               </div>
               <div className="trans-chap-header__side trans-chap-header__side--end">
-                <ThemeToggle />
+                {canAccessChats ? (
+                  <Link
+                    href="/trans-chap/chats"
+                    className={`trans-chap-header__icon${
+                      pathname.startsWith("/trans-chap/chats") ? " is-active" : ""
+                    }`}
+                    aria-label={
+                      counts.messages > 0
+                        ? `Chats, ${counts.messages} new`
+                        : "Chats"
+                    }
+                  >
+                    <span className="trans-chap-header__icon-wrap">
+                      <i className="fa-solid fa-comments" aria-hidden />
+                      {chatsBadge ? (
+                        <span className="trans-chap-header__badge" aria-hidden="true">
+                          {chatsBadge}
+                        </span>
+                      ) : null}
+                    </span>
+                  </Link>
+                ) : (
+                  <span
+                    className="trans-chap-header__icon is-disabled"
+                    aria-disabled="true"
+                    title="Connect Instagram to use chats"
+                  >
+                    <i className="fa-solid fa-comments" aria-hidden />
+                  </span>
+                )}
+                <Link
+                  href="/trans-chap/settings"
+                  className={`trans-chap-header__icon${
+                    pathname.startsWith("/trans-chap/settings") ? " is-active" : ""
+                  }`}
+                  aria-label="Settings"
+                >
+                  <i className="fa-solid fa-gear" aria-hidden />
+                </Link>
               </div>
             </header>
           )}
           <main className="trans-chap-app__content">{children}</main>
           {showNav ? (
-            <nav
-              className={`mobile-nav mobile-nav--${items.length}`}
-              aria-label="Trans Chap navigation"
-            >
-              {items.map((item) => {
-                const isActive = item.exact
-                  ? pathname === item.href
-                  : pathname === item.href || pathname.startsWith(`${item.href}/`);
-                const disabled = Boolean(item.requiresInstagram && !instagramConnected);
-                const badgeCount = item.badgeKey ? counts[item.badgeKey] : 0;
-                const badgeLabel = formatNavBadgeCount(badgeCount);
-                const icon = (
-                  <span className="mobile-nav__icon">
-                    <i className={`fa-solid ${item.icon}`} aria-hidden />
-                    {badgeLabel ? (
-                      <span className="mobile-nav__badge" aria-hidden="true">
-                        {badgeLabel}
-                      </span>
-                    ) : null}
-                  </span>
-                );
-                if (disabled) {
-                  return (
-                    <span
-                      key={item.href}
-                      className="is-disabled"
-                      aria-disabled="true"
-                      title="Connect Instagram to use this"
-                    >
-                      {icon}
-                      {item.label}
-                    </span>
-                  );
-                }
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={isActive ? "is-active" : ""}
-                    aria-label={
-                      badgeCount > 0
-                        ? `${item.label}, ${badgeCount} new`
-                        : item.label
-                    }
-                  >
-                    {icon}
-                    {item.label}
-                  </Link>
-                );
-              })}
+            <nav className="mobile-nav mobile-nav--create" aria-label="Trans Chap navigation">
+              {renderNavLink(homeItem)}
+              {renderNavLink(salesItem)}
+              <div className="mobile-nav__create" ref={createRef}>
+                {createOpen ? (
+                  <div className="mobile-nav__create-menu" role="menu" aria-label="Create">
+                    {createActions.map((action) => {
+                      const disabled = Boolean(
+                        action.requiresInstagram && !instagramConnected,
+                      );
+                      if (disabled) {
+                        return (
+                          <span
+                            key={action.href}
+                            className="mobile-nav__create-item is-disabled"
+                            role="menuitem"
+                            aria-disabled="true"
+                            title="Connect Instagram to post"
+                          >
+                            <i className={`fa-solid ${action.icon}`} aria-hidden />
+                            {action.label}
+                          </span>
+                        );
+                      }
+                      return (
+                        <button
+                          key={action.href}
+                          type="button"
+                          className="mobile-nav__create-item"
+                          role="menuitem"
+                          onClick={() => {
+                            setCreateOpen(false);
+                            router.push(action.href);
+                          }}
+                        >
+                          <i className={`fa-solid ${action.icon}`} aria-hidden />
+                          {action.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  className={`mobile-nav__create-btn${createOpen ? " is-open" : ""}`}
+                  aria-label={createOpen ? "Close create menu" : "Create"}
+                  aria-expanded={createOpen}
+                  aria-haspopup="menu"
+                  onClick={() => setCreateOpen((open) => !open)}
+                >
+                  <i className={`fa-solid ${createOpen ? "fa-xmark" : "fa-plus"}`} aria-hidden />
+                </button>
+              </div>
+              {renderNavLink(purchasesItem)}
+              {renderNavLink(feedsItem)}
             </nav>
           ) : null}
         </div>
