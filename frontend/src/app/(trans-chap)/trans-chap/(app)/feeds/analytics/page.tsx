@@ -1,12 +1,5 @@
-import { FeedsAnalyticsDashboard } from "@/components/app/FeedsAnalyticsDashboard";
-import { TransChapSocial } from "@/components/trans-chap/TransChapSocial";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export default function TransChapFeedsAnalyticsPage() {
-  return (
-    <TransChapSocial>
-      <FeedsAnalyticsDashboard />
-    </TransChapSocial>
-  );
+export default function TransChapFeedsAnalyticsRedirect() {
+  redirect("/trans-chap/reports");
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthUser } from "@/components/app/AuthProvider";
+import { FeedsAnalyticsDashboard } from "@/components/app/FeedsAnalyticsDashboard";
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { nairobiDateKey, parseIso } from "@/lib/nairobi-time";
@@ -9,6 +10,9 @@ import { orderHasSuccessfulMpesa } from "@/lib/orders";
 import { loadTransChapPurchases } from "@/lib/trans-chap-purchases";
 import { inventoryProductName } from "@/lib/trans-chap-product";
 import { formatKsh } from "@/lib/trans-chap-receipt";
+import {
+  userCanAccessSection,
+} from "@/lib/merchant-permissions";
 import type {
   InventoryItem,
   InventoryResponse,
@@ -52,11 +56,16 @@ function inPeriod(key: string | null, when: WhenFilter, todayKey: string): boole
 export function TransChapReports() {
   const user = useAuthUser();
   const shopId = user.active_account?.id || user.account?.id || "local";
+  const canSeeFeedAnalytics =
+    userCanAccessSection(user, "feeds") && Boolean(user.instagram_account);
   const [orders, setOrders] = useState<Order[]>([]);
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [purchases, setPurchases] = useState<ReturnType<typeof loadTransChapPurchases>>([]);
   const [loading, setLoading] = useState(true);
   const [when, setWhen] = useState<WhenFilter>("today");
+  const [section, setSection] = useState<"sales" | "feeds">(
+    "sales",
+  );
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -144,101 +153,137 @@ export function TransChapReports() {
 
   return (
     <div className="trans-chap-sales trans-chap-reports">
-      <div className="trans-chap-sales__filters">
-        <div className="trans-chap-sales__chips" role="group" aria-label="Report period">
-          {WHEN_CHIPS.map((chip) => (
+      {canSeeFeedAnalytics ? (
+        <div className="trans-chap-sales__filters">
+          <div className="trans-chap-sales__chips" role="tablist" aria-label="Report section">
             <button
-              key={chip.id}
               type="button"
-              className={`trans-chap-sales__chip${when === chip.id ? " is-active" : ""}`}
-              aria-pressed={when === chip.id}
-              onClick={() => setWhen(chip.id)}
+              role="tab"
+              className={`trans-chap-sales__chip${section === "sales" ? " is-active" : ""}`}
+              aria-selected={section === "sales"}
+              onClick={() => setSection("sales")}
             >
-              {chip.label}
+              Sales
             </button>
-          ))}
+            <button
+              type="button"
+              role="tab"
+              className={`trans-chap-sales__chip${section === "feeds" ? " is-active" : ""}`}
+              aria-selected={section === "feeds"}
+              onClick={() => setSection("feeds")}
+            >
+              Feeds
+            </button>
+          </div>
         </div>
-      </div>
+      ) : null}
 
-      {loading ? (
-        <p className="trans-chap-sales__empty">Loading report…</p>
+      {section === "feeds" && canSeeFeedAnalytics ? (
+        <div className="trans-chap-reports__feeds fb-app">
+          <FeedsAnalyticsDashboard
+            embedded
+            settingsHref="/trans-chap/settings"
+          />
+        </div>
       ) : (
-        <div className="trans-chap-reports__body">
-          <section className="trans-chap-reports__kpis" aria-label="Totals">
-            <article className="trans-chap-reports__kpi">
-              <span>Sales</span>
-              <strong>{formatKsh(report.salesTotal)}</strong>
-              <small>
-                {report.saleCount} sale{report.saleCount === 1 ? "" : "s"} · {report.units} sold
-              </small>
-            </article>
-            <article className="trans-chap-reports__kpi">
-              <span>Purchases</span>
-              <strong>{formatKsh(report.purchaseTotal)}</strong>
-              <small>
-                {report.purchaseCount} purchase{report.purchaseCount === 1 ? "" : "s"}
-              </small>
-            </article>
-            <article className="trans-chap-reports__kpi trans-chap-reports__kpi--wide">
-              <span>Profit</span>
-              <strong>{formatKsh(report.profit)}</strong>
-              <small>Sales minus purchases in this period</small>
-            </article>
-          </section>
+        <>
+          <div className="trans-chap-sales__filters">
+            <div className="trans-chap-sales__chips" role="group" aria-label="Report period">
+              {WHEN_CHIPS.map((chip) => (
+                <button
+                  key={chip.id}
+                  type="button"
+                  className={`trans-chap-sales__chip${when === chip.id ? " is-active" : ""}`}
+                  aria-pressed={when === chip.id}
+                  onClick={() => setWhen(chip.id)}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          <section className="trans-chap-reports__split" aria-label="How customers paid">
-            <article>
-              <span>Cash</span>
-              <strong>{formatKsh(report.cashTotal)}</strong>
-            </article>
-            <article>
-              <span>M-PESA</span>
-              <strong>{formatKsh(report.mpesaTotal)}</strong>
-            </article>
-          </section>
+          {loading ? (
+            <p className="trans-chap-sales__empty">Loading report…</p>
+          ) : (
+            <div className="trans-chap-reports__body">
+              <section className="trans-chap-reports__kpis" aria-label="Totals">
+                <article className="trans-chap-reports__kpi">
+                  <span>Sales</span>
+                  <strong>{formatKsh(report.salesTotal)}</strong>
+                  <small>
+                    {report.saleCount} sale{report.saleCount === 1 ? "" : "s"} · {report.units} sold
+                  </small>
+                </article>
+                <article className="trans-chap-reports__kpi">
+                  <span>Purchases</span>
+                  <strong>{formatKsh(report.purchaseTotal)}</strong>
+                  <small>
+                    {report.purchaseCount} purchase{report.purchaseCount === 1 ? "" : "s"}
+                  </small>
+                </article>
+                <article className="trans-chap-reports__kpi trans-chap-reports__kpi--wide">
+                  <span>Profit</span>
+                  <strong>{formatKsh(report.profit)}</strong>
+                  <small>Sales minus purchases in this period</small>
+                </article>
+              </section>
 
-          <section className="trans-chap-reports__block" aria-labelledby="trans-chap-top-products">
-            <h2 id="trans-chap-top-products">Top products</h2>
-            {report.topProducts.length === 0 ? (
-              <p className="trans-chap-sales__empty">No paid sales in this period.</p>
-            ) : (
-              <ul>
-                {report.topProducts.map((row) => (
-                  <li key={row.name}>
-                    <span>
-                      <strong>{row.name}</strong>
-                      <small>
-                        {row.qty} sold
-                      </small>
-                    </span>
-                    <em>{formatKsh(row.amount)}</em>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+              <section className="trans-chap-reports__split" aria-label="How customers paid">
+                <article>
+                  <span>Cash</span>
+                  <strong>{formatKsh(report.cashTotal)}</strong>
+                </article>
+                <article>
+                  <span>M-PESA</span>
+                  <strong>{formatKsh(report.mpesaTotal)}</strong>
+                </article>
+              </section>
 
-          <section className="trans-chap-reports__block" aria-labelledby="trans-chap-stock-alerts">
-            <h2 id="trans-chap-stock-alerts">Stock alerts</h2>
-            {report.lowStock.length === 0 ? (
-              <p className="trans-chap-sales__empty">No low-stock items right now.</p>
-            ) : (
-              <ul>
-                {report.lowStock.map((item) => {
-                  const qty = item.stock_quantity ?? 0;
-                  return (
-                    <li key={item.id}>
-                      <span>
-                        <strong>{inventoryProductName(item)}</strong>
-                        <small>{qty <= 0 ? "Out of stock" : `${qty} left`}</small>
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-        </div>
+              <section className="trans-chap-reports__block" aria-labelledby="trans-chap-top-products">
+                <h2 id="trans-chap-top-products">Top products</h2>
+                {report.topProducts.length === 0 ? (
+                  <p className="trans-chap-sales__empty">No paid sales in this period.</p>
+                ) : (
+                  <ul>
+                    {report.topProducts.map((row) => (
+                      <li key={row.name}>
+                        <span>
+                          <strong>{row.name}</strong>
+                          <small>
+                            {row.qty} sold
+                          </small>
+                        </span>
+                        <em>{formatKsh(row.amount)}</em>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section className="trans-chap-reports__block" aria-labelledby="trans-chap-stock-alerts">
+                <h2 id="trans-chap-stock-alerts">Stock alerts</h2>
+                {report.lowStock.length === 0 ? (
+                  <p className="trans-chap-sales__empty">No low-stock items right now.</p>
+                ) : (
+                  <ul>
+                    {report.lowStock.map((item) => {
+                      const qty = item.stock_quantity ?? 0;
+                      return (
+                        <li key={item.id}>
+                          <span>
+                            <strong>{inventoryProductName(item)}</strong>
+                            <small>{qty <= 0 ? "Out of stock" : `${qty} left`}</small>
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

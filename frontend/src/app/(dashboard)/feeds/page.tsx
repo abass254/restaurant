@@ -78,13 +78,28 @@ export default function FeedsPage({ variant = "grid" }: FeedsPageProps) {
   } | null>(null);
   const [detailPermissionIssue, setDetailPermissionIssue] = useState(false);
 
+  const isTransChap = pathname.startsWith("/trans-chap");
+  const newPostHref = isTransChap ? "/trans-chap/feeds/new" : null;
+
+  function openCompose() {
+    if (newPostHref) {
+      router.push(newPostHref);
+      return;
+    }
+    setComposeOpen(true);
+  }
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("compose") !== "1") return;
+    if (isTransChap) {
+      router.replace("/trans-chap/feeds/new");
+      return;
+    }
     setComposeOpen(true);
     router.replace(pathname, { scroll: false });
-  }, [pathname, router]);
+  }, [isTransChap, pathname, router]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -301,13 +316,13 @@ export default function FeedsPage({ variant = "grid" }: FeedsPageProps) {
       <AllChannelsEmpty
         feeds={connectedFeeds}
         canPost={canPostToInstagram}
-        onCompose={() => setComposeOpen(true)}
+        onCompose={openCompose}
       />
     ) : (
       <SingleChannelEmpty
         feed={visibleFeeds[0]}
         canPost={canPostToInstagram}
-        onCompose={() => setComposeOpen(true)}
+        onCompose={openCompose}
       />
     );
 
@@ -343,7 +358,7 @@ export default function FeedsPage({ variant = "grid" }: FeedsPageProps) {
                 <button
                   type="button"
                   className="btn btn-primary btn-sm"
-                  onClick={() => setComposeOpen(true)}
+                  onClick={openCompose}
                   disabled={posting}
                 >
                   <i className="fa-brands fa-instagram" aria-hidden="true" />

@@ -23,7 +23,7 @@ import {
   type EditorProject,
   type TransitionType,
 } from "@/lib/feed-editor/project";
-import { clamp, formatTimecode, pxPerSecond } from "@/lib/feed-editor/timeline";
+import { clamp, formatClock, pxPerSecond } from "@/lib/feed-editor/timeline";
 
 type EditorTimelineProps = {
   project: EditorProject;
@@ -32,6 +32,7 @@ type EditorTimelineProps = {
   selectedClipId: string | null;
   selectedAudioId: string | null;
   selectedTextId: string | null;
+  clipMuted: boolean;
   onSeek: (time: number) => void;
   onSelectClip: (id: string | null) => void;
   onSelectAudio: (id: string | null) => void;
@@ -39,6 +40,9 @@ type EditorTimelineProps = {
   onReorderClips: (from: number, to: number) => void;
   onTrimClip: (clipId: string, trimStart: number, trimEnd: number) => void;
   onSetTransition: (afterIndex: number, type: TransitionType) => void;
+  onToggleMuteClip: () => void;
+  onAddMusic: () => void;
+  onAddText: () => void;
 };
 
 function SortableClip({
@@ -47,6 +51,7 @@ function SortableClip({
   label,
   selected,
   kind,
+  objectUrl,
   trimStart,
   trimEnd,
   mediaDuration,
@@ -59,6 +64,7 @@ function SortableClip({
   label: string;
   selected: boolean;
   kind: string;
+  objectUrl?: string;
   trimStart: number;
   trimEnd: number;
   mediaDuration: number;
@@ -82,10 +88,7 @@ function SortableClip({
     function move(ev: PointerEvent) {
       const deltaSec = (ev.clientX - clientX) / pps;
       if (edge === "left") {
-        onTrim(
-          clamp(baseStart + deltaSec, 0, baseEnd - 0.05),
-          baseEnd,
-        );
+        onTrim(clamp(baseStart + deltaSec, 0, baseEnd - 0.05), baseEnd);
       } else {
         onTrim(
           baseStart,
@@ -126,11 +129,16 @@ function SortableClip({
         className="feeds-editor-clip__body"
         {...attributes}
         {...listeners}
+        style={
+          kind !== "audio" && objectUrl
+            ? {
+                backgroundImage: `linear-gradient(90deg, rgba(0,0,0,0.25), rgba(0,0,0,0.1)), url(${objectUrl})`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+              }
+            : undefined
+        }
       >
-        <i
-          className={`fa-solid ${kind === "image" ? "fa-image" : "fa-film"}`}
-          aria-hidden="true"
-        />
         <span>{label}</span>
       </button>
       <button
@@ -154,6 +162,7 @@ export function EditorTimeline({
   selectedClipId,
   selectedAudioId,
   selectedTextId,
+  clipMuted,
   onSeek,
   onSelectClip,
   onSelectAudio,
@@ -161,10 +170,13 @@ export function EditorTimeline({
   onReorderClips,
   onTrimClip,
   onSetTransition,
+  onToggleMuteClip,
+  onAddMusic,
+  onAddText,
 }: EditorTimelineProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const duration = Math.max(1, projectDuration(project));
-  const trackWidth = Math.max(320, duration * 64);
+  const trackWidth = Math.max(360, duration * 72);
   const pps = pxPerSecond(duration, trackWidth);
 
   const sensors = useSensors(
@@ -172,6 +184,13 @@ export function EditorTimeline({
   );
 
   const clipIds = useMemo(() => project.clips.map((c) => c.id), [project.clips]);
+
+  const rulerMarks = useMemo(() => {
+    const step = duration <= 8 ? 1 : duration <= 30 ? 2 : 5;
+    const marks: number[] = [];
+    for (let t = 0; t <= duration + 0.001; t += step) marks.push(Number(t.toFixed(2)));
+    return marks;
+  }, [duration]);
 
   function seekFromClientX(clientX: number) {
     const el = trackRef.current;
@@ -191,25 +210,31 @@ export function EditorTimeline({
 
   return (
     <div className="feeds-editor-timeline">
-      <div className="feeds-editor-timeline__meta">
-        <span>{formatTimecode(currentTime)}</span>
-        <span className="app-muted">/ {formatTimecode(duration)}</span>
-      </div>
-
       <div
         className="feeds-editor-timeline__scroll"
         ref={trackRef}
         onClick={(e) => seekFromClientX(e.clientX)}
       >
         <div className="feeds-editor-timeline__tracks" style={{ width: trackWidth }}>
+          <div className="feeds-editor-ruler" aria-hidden="true">
+            {rulerMarks.map((t) => (
+              <span
+                key={t}
+                className="feeds-editor-ruler__mark"
+                style={{ left: t * pps }}
+              >
+                {formatClock(t)}
+              </span>
+            ))}
+          </div>
+
           <div
             className="feeds-editor-playhead"
             style={{ left: currentTime * pps }}
             aria-hidden="true"
           />
 
-          <div className="feeds-editor-track">
-            <span className="feeds-editor-track__label">Video</span>
+          <div className="feeds-editor-track feeds-editor-track--video">
             <div className="feeds-editor-track__lane">
               <DndContext
                 sensors={sensors}
@@ -219,7 +244,7 @@ export function EditorTimeline({
                 <SortableContext items={clipIds} strategy={horizontalListSortingStrategy}>
                   {project.clips.map((clip, index) => {
                     const media = mediaById.get(clip.mediaId);
-                    const width = Math.max(48, clipDuration(clip) * pps);
+                    const width = Math.max(56, clipDuration(clip) * pps);
                     return (
                       <div key={clip.id} className="feeds-editor-clip-wrap">
                         <SortableClip
@@ -227,6 +252,7 @@ export function EditorTimeline({
                           width={width}
                           label={media?.name ?? "Clip"}
                           kind={media?.kind ?? "video"}
+                          objectUrl={media?.objectUrl}
                           selected={selectedClipId === clip.id}
                           trimStart={clip.trimStart}
                           trimEnd={clip.trimEnd}
@@ -254,8 +280,38 @@ export function EditorTimeline({
             </div>
           </div>
 
-          <div className="feeds-editor-track">
-            <span className="feeds-editor-track__label">Audio</span>
+          {selectedClipId ? (
+            <div className="feeds-editor-clip-actions">
+              <button
+                type="button"
+                className={`feeds-editor-chip${clipMuted ? " is-active" : ""}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleMuteClip();
+                }}
+              >
+                <i
+                  className={`fa-solid ${clipMuted ? "fa-volume-xmark" : "fa-volume-high"}`}
+                  aria-hidden
+                />
+                Mute Clip
+              </button>
+              <button
+                type="button"
+                className="feeds-editor-chip"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSeek(currentTime);
+                }}
+                title="Use the current frame as cover"
+              >
+                <i className="fa-solid fa-image" aria-hidden />
+                Cover
+              </button>
+            </div>
+          ) : null}
+
+          <div className="feeds-editor-track feeds-editor-track--overlay">
             <div className="feeds-editor-track__lane feeds-editor-track__lane--free">
               {project.audioClips.map((audio) => {
                 const media = mediaById.get(audio.mediaId);
@@ -281,15 +337,6 @@ export function EditorTimeline({
                   </button>
                 );
               })}
-              {project.audioClips.length === 0 ? (
-                <span className="feeds-editor-track__empty">No music</span>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="feeds-editor-track">
-            <span className="feeds-editor-track__label">Text</span>
-            <div className="feeds-editor-track__lane feeds-editor-track__lane--free">
               {project.textOverlays.map((text) => (
                 <button
                   key={text.id}
@@ -297,7 +344,11 @@ export function EditorTimeline({
                   className={`feeds-editor-text-clip${
                     selectedTextId === text.id ? " is-selected" : ""
                   }`}
-                  style={{ left: text.startAt * pps, width: Math.max(40, text.duration * pps) }}
+                  style={{
+                    left: text.startAt * pps,
+                    width: Math.max(40, text.duration * pps),
+                    top: project.audioClips.length ? 34 : 4,
+                  }}
                   onClick={(e) => {
                     e.stopPropagation();
                     onSelectText(text.id);
@@ -307,12 +358,20 @@ export function EditorTimeline({
                   <span>{text.text}</span>
                 </button>
               ))}
-              {project.textOverlays.length === 0 ? (
-                <span className="feeds-editor-track__empty">No text</span>
-              ) : null}
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="feeds-editor-add-rows">
+        <button type="button" className="feeds-editor-add-row" onClick={onAddMusic}>
+          <i className="fa-solid fa-music" aria-hidden />
+          Add Sound
+        </button>
+        <button type="button" className="feeds-editor-add-row" onClick={onAddText}>
+          <i className="fa-solid fa-font" aria-hidden />
+          Add Text
+        </button>
       </div>
     </div>
   );

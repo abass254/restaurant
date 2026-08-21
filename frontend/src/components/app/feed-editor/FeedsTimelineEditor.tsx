@@ -4,7 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { EditorPreview } from "@/components/app/feed-editor/EditorPreview";
 import { EditorTimeline } from "@/components/app/feed-editor/EditorTimeline";
-import { EditorToolbar } from "@/components/app/feed-editor/EditorToolbar";
+import {
+  EditorToolbar,
+  type EditorTool,
+} from "@/components/app/feed-editor/EditorToolbar";
 import { extractErrorMessage, showError } from "@/lib/alerts";
 import {
   DEFAULT_IMAGE_DURATION,
@@ -74,6 +77,12 @@ export function FeedsTimelineEditor({
     ratio: number;
     message: string;
   } | null>(null);
+  const [activeTool, setActiveTool] = useState<EditorTool>(null);
+  const [exportPreset, setExportPreset] = useState<"1080p" | "720p">(() =>
+    prefersMobileExportPreset(),
+  );
+  const [clipMuted, setClipMuted] = useState(true);
+  const [previewExpanded, setPreviewExpanded] = useState(false);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const musicInputRef = useRef<HTMLInputElement>(null);
   const initialHandled = useRef(false);
@@ -283,7 +292,7 @@ export function FeedsTimelineEditor({
     setExportProgress({ ratio: 0, message: "Starting export…" });
     try {
       const { exportEditorProject } = await import("@/lib/feed-editor/export");
-      const preset = prefersMobileExportPreset();
+      const preset = exportPreset;
       let file = await exportEditorProject(project, mediaById, filesByIdRef.current, {
         preset,
         onProgress: setExportProgress,
@@ -334,62 +343,75 @@ export function FeedsTimelineEditor({
 
   if (!open || typeof document === "undefined") return null;
 
+  const selectedTransitionType =
+    selectedClipId != null
+      ? (() => {
+          const idx = project.clips.findIndex((c) => c.id === selectedClipId);
+          if (idx < 0 || idx >= project.clips.length - 1) return "none" as const;
+          return (
+            project.transitions.find((t) => t.afterClipIndex === idx)?.type ?? "none"
+          );
+        })()
+      : ("none" as const);
+
   return createPortal(
-    <div className="feeds-editor" role="dialog" aria-modal="true" aria-label="Edit post">
+    <div
+      className={`feeds-editor${previewExpanded ? " feeds-editor--expanded" : ""}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Edit post"
+    >
       <header className="feeds-editor__head">
         <button
           type="button"
-          className="fb-icon-btn"
+          className="feeds-editor__round-btn"
           aria-label="Close editor"
           onClick={onClose}
           disabled={exporting}
         >
           <i className="fa-solid fa-xmark" aria-hidden="true" />
         </button>
-        <div className="feeds-editor__title">
-          <strong>Edit post</strong>
-          <span className="app-muted">9:16 Reels timeline</span>
-        </div>
-        <div className="feeds-editor__head-actions">
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => void handleUseOriginal()}
-            disabled={exporting || project.clips.length === 0}
-          >
-            Use original
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={() => void handleExport()}
-            disabled={exporting || project.clips.length === 0}
-          >
-            {exporting ? (
-              <>
-                <i className="fa-solid fa-spinner fa-spin" aria-hidden="true" />
-                Exporting…
-              </>
-            ) : (
-              <>
-                <i className="fa-solid fa-check" aria-hidden="true" />
-                Done
-              </>
-            )}
-          </button>
-        </div>
+        <div className="feeds-editor__head-spacer" />
+        <button
+          type="button"
+          className="feeds-editor__quality"
+          disabled={exporting}
+          onClick={() =>
+            setExportPreset((p) => (p === "1080p" ? "720p" : "1080p"))
+          }
+          aria-label="Export quality"
+        >
+          {exportPreset === "1080p" ? "AI UHD" : "HD"}
+          <i className="fa-solid fa-chevron-down" aria-hidden />
+        </button>
+        <button
+          type="button"
+          className="feeds-editor__round-btn feeds-editor__round-btn--accent"
+          aria-label="Export"
+          onClick={() => void handleExport()}
+          disabled={exporting || project.clips.length === 0}
+        >
+          {exporting ? (
+            <i className="fa-solid fa-spinner fa-spin" aria-hidden="true" />
+          ) : (
+            <i className="fa-solid fa-arrow-up-from-bracket" aria-hidden="true" />
+          )}
+        </button>
       </header>
 
       <EditorPreview
         project={project}
         mediaById={mediaById}
         currentTime={currentTime}
+        duration={duration}
         playing={playing}
+        muted={clipMuted}
         selectedTextId={selectedTextId}
         onSelectText={(id) => {
           setSelectedTextId(id);
           setSelectedClipId(null);
           setSelectedAudioId(null);
+          if (id) setActiveTool("text");
         }}
         onMoveText={(id, x, y) =>
           setProject((p) => updateTextOverlay(p, id, { x, y }))
@@ -399,57 +421,27 @@ export function FeedsTimelineEditor({
       <div className="feeds-editor__transport">
         <button
           type="button"
-          className="fb-icon-btn"
+          className="feeds-editor__transport-btn"
+          aria-label={previewExpanded ? "Exit full preview" : "Full preview"}
+          onClick={() => setPreviewExpanded((v) => !v)}
+          disabled={exporting}
+        >
+          <i
+            className={`fa-solid ${previewExpanded ? "fa-compress" : "fa-expand"}`}
+            aria-hidden="true"
+          />
+        </button>
+        <button
+          type="button"
+          className="feeds-editor__play"
           aria-label={playing ? "Pause" : "Play"}
           onClick={() => setPlaying((p) => !p)}
           disabled={exporting || project.clips.length === 0}
         >
           <i className={`fa-solid ${playing ? "fa-pause" : "fa-play"}`} aria-hidden="true" />
         </button>
-        <input
-          type="range"
-          min={0}
-          max={duration}
-          step={0.05}
-          value={clamp(currentTime, 0, duration)}
-          disabled={exporting || project.clips.length === 0}
-          onChange={(e) => {
-            setPlaying(false);
-            setCurrentTime(Number(e.target.value));
-          }}
-          aria-label="Seek"
-        />
+        <div className="feeds-editor__transport-spacer" />
       </div>
-
-      <EditorToolbar
-        clipCount={project.clips.length}
-        selectedClip={selectedClip}
-        selectedAudio={selectedAudio}
-        selectedText={selectedText}
-        exporting={exporting}
-        onAddMedia={() => mediaInputRef.current?.click()}
-        onAddMusic={() => musicInputRef.current?.click()}
-        onAddText={() => {
-          setProject((p) => {
-            const next = addTextOverlay(p, "Your text", currentTime);
-            const last = next.textOverlays[next.textOverlays.length - 1];
-            if (last) setSelectedTextId(last.id);
-            return next;
-          });
-          setSelectedClipId(null);
-          setSelectedAudioId(null);
-        }}
-        onSplit={handleSplit}
-        onDeleteSelected={handleDeleteSelected}
-        onUpdateText={(patch) => {
-          if (!selectedText) return;
-          setProject((p) => updateTextOverlay(p, selectedText.id, patch));
-        }}
-        onUpdateAudio={(patch) => {
-          if (!selectedAudio) return;
-          setProject((p) => updateAudioClip(p, selectedAudio.id, patch));
-        }}
-      />
 
       <EditorTimeline
         project={project}
@@ -458,6 +450,7 @@ export function FeedsTimelineEditor({
         selectedClipId={selectedClipId}
         selectedAudioId={selectedAudioId}
         selectedTextId={selectedTextId}
+        clipMuted={clipMuted}
         onSeek={(t) => {
           setPlaying(false);
           setCurrentTime(t);
@@ -471,11 +464,13 @@ export function FeedsTimelineEditor({
           setSelectedAudioId(id);
           setSelectedClipId(null);
           setSelectedTextId(null);
+          setActiveTool("volume");
         }}
         onSelectText={(id) => {
           setSelectedTextId(id);
           setSelectedClipId(null);
           setSelectedAudioId(null);
+          setActiveTool("text");
         }}
         onReorderClips={(from, to) =>
           setProject((p) => reorderClips(p, from, to))
@@ -494,7 +489,86 @@ export function FeedsTimelineEditor({
         onSetTransition={(afterIndex, type: TransitionType) =>
           setProject((p) => setTransition(p, afterIndex, type))
         }
+        onToggleMuteClip={() => setClipMuted((m) => !m)}
+        onAddMusic={() => {
+          setActiveTool("music");
+          musicInputRef.current?.click();
+        }}
+        onAddText={() => {
+          setProject((p) => {
+            const next = addTextOverlay(p, "Your text", currentTime);
+            const last = next.textOverlays[next.textOverlays.length - 1];
+            if (last) setSelectedTextId(last.id);
+            return next;
+          });
+          setSelectedClipId(null);
+          setSelectedAudioId(null);
+          setActiveTool("text");
+        }}
       />
+
+      <EditorToolbar
+        activeTool={activeTool}
+        onToolChange={setActiveTool}
+        clipCount={project.clips.length}
+        selectedClip={selectedClip}
+        selectedAudio={selectedAudio}
+        selectedText={selectedText}
+        clipMuted={clipMuted}
+        exporting={exporting}
+        transitionType={selectedTransitionType}
+        onAddMedia={() => mediaInputRef.current?.click()}
+        onAddMusic={() => musicInputRef.current?.click()}
+        onAddText={() => {
+          setProject((p) => {
+            const next = addTextOverlay(p, "Your text", currentTime);
+            const last = next.textOverlays[next.textOverlays.length - 1];
+            if (last) setSelectedTextId(last.id);
+            return next;
+          });
+          setSelectedClipId(null);
+          setSelectedAudioId(null);
+          setActiveTool("text");
+        }}
+        onSplit={handleSplit}
+        onDeleteSelected={handleDeleteSelected}
+        onToggleMuteClip={() => setClipMuted((m) => !m)}
+        onSetTransition={(type) => {
+          const idx = project.clips.findIndex((c) => c.id === selectedClipId);
+          if (idx < 0 || idx >= project.clips.length - 1) return;
+          setProject((p) => setTransition(p, idx, type));
+        }}
+        onUpdateText={(patch) => {
+          if (!selectedText) return;
+          setProject((p) => updateTextOverlay(p, selectedText.id, patch));
+        }}
+        onUpdateAudio={(patch) => {
+          if (!selectedAudio) return;
+          setProject((p) => updateAudioClip(p, selectedAudio.id, patch));
+        }}
+        onUpdateClipTrim={(trimStart, trimEnd) => {
+          if (!selectedClip) return;
+          const media = mediaById.get(selectedClip.mediaId);
+          if (!media) return;
+          setProject((p) =>
+            updateClip(p, selectedClip.id, {
+              trimStart: clamp(trimStart, 0, media.duration - 0.05),
+              trimEnd: clamp(trimEnd, 0.05, media.duration),
+            }),
+          );
+        }}
+      />
+
+      <div className="feeds-editor__footer-actions">
+        <button
+          type="button"
+          className="feeds-editor__link-btn"
+          onClick={() => void handleUseOriginal()}
+          disabled={exporting || project.clips.length === 0}
+        >
+          Use original
+        </button>
+      </div>
 
       {exportProgress ? (
         <div className="feeds-editor-export" role="status" aria-live="polite">

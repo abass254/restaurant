@@ -24,11 +24,22 @@ import type {
   PlatformFeed,
 } from "@/lib/types";
 
-export function FeedsAnalyticsDashboard() {
+type FeedsAnalyticsDashboardProps = {
+  /** Hide page chrome when embedded inside Trans Chap reports. */
+  embedded?: boolean;
+  settingsHref?: string;
+};
+
+export function FeedsAnalyticsDashboard({
+  embedded = false,
+  settingsHref = "/settings#section-channels",
+}: FeedsAnalyticsDashboardProps) {
   const [data, setData] = useState<FeedsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activePlatform, setActivePlatform] = useState<ChannelPlatform | "all">("all");
+  const [activePlatform, setActivePlatform] = useState<ChannelPlatform | "all">(
+    embedded ? "instagram" : "all",
+  );
   const [linkTarget, setLinkTarget] = useState<FeedPost | null>(null);
   const [viewTarget, setViewTarget] = useState<{
     post: FeedPost;
@@ -149,19 +160,23 @@ export function FeedsAnalyticsDashboard() {
   }
 
   if (loading) {
-    return <FeedsAnalyticsSkeleton />;
+    return <FeedsAnalyticsSkeleton embedded={embedded} />;
   }
 
   if (error && !data) {
     return (
-      <section className="feeds-page">
-        <header className="feeds-header">
-          <h1 className="app-title">Feed analytics</h1>
-          <p className="app-lead">Top posts by likes and comments from your channels.</p>
-        </header>
-        <div className="feeds-page-nav">
-          <FeedsSubNav />
-        </div>
+      <section className={`feeds-page${embedded ? " feeds-page--embedded" : ""}`}>
+        {!embedded ? (
+          <>
+            <header className="feeds-header">
+              <h1 className="app-title">Feed analytics</h1>
+              <p className="app-lead">Top posts by likes and comments from your channels.</p>
+            </header>
+            <div className="feeds-page-nav">
+              <FeedsSubNav />
+            </div>
+          </>
+        ) : null}
         <div className="app-error">{error}</div>
         <button type="button" className="btn btn-primary btn-sm" onClick={() => void reload()}>
           Try again
@@ -172,23 +187,35 @@ export function FeedsAnalyticsDashboard() {
 
   if (!data?.any_connected) {
     return (
-      <div className="messages-empty">
-        <div className="messages-empty__card">
-          <div className="messages-empty__icon" aria-hidden="true">
-            <i className="fa-solid fa-chart-line" />
-          </div>
-          <h1>Connect a channel to see analytics</h1>
-          <p className="messages-empty__lead">
-            Link Instagram or other social channels in Settings. Once connected, post
-            interaction analytics will appear here.
-          </p>
-          <p className="messages-empty__footer">
-            <Link href="/settings#section-channels" className="btn btn-primary btn-sm">
-              <i className="fa-solid fa-arrow-right" aria-hidden="true" />
-              Go to channel settings
+      <div className={embedded ? "trans-chap-reports__block" : "messages-empty"}>
+        {embedded ? (
+          <>
+            <h2>Feed analytics</h2>
+            <p className="trans-chap-sales__empty">
+              Connect Instagram in Settings to see likes and comments here.
+            </p>
+            <Link href={settingsHref} className="btn btn-ghost btn-sm">
+              Open settings
             </Link>
-          </p>
-        </div>
+          </>
+        ) : (
+          <div className="messages-empty__card">
+            <div className="messages-empty__icon" aria-hidden="true">
+              <i className="fa-solid fa-chart-line" />
+            </div>
+            <h1>Connect a channel to see analytics</h1>
+            <p className="messages-empty__lead">
+              Link Instagram or other social channels in Settings. Once connected, post
+              interaction analytics will appear here.
+            </p>
+            <p className="messages-empty__footer">
+              <Link href={settingsHref} className="btn btn-primary btn-sm">
+                <i className="fa-solid fa-arrow-right" aria-hidden="true" />
+                Go to channel settings
+              </Link>
+            </p>
+          </div>
+        )}
       </div>
     );
   }
@@ -199,15 +226,39 @@ export function FeedsAnalyticsDashboard() {
   ];
 
   return (
-    <section className="feeds-page">
-      <header className="feeds-header">
-        <div>
-          <h1 className="app-title">Feed analytics</h1>
-          <p className="app-lead">
-            Top posts by likes and comments from your connected channels.
-          </p>
-        </div>
-        <div className="feeds-header__actions">
+    <section className={`feeds-page${embedded ? " feeds-page--embedded" : ""}`}>
+      {!embedded ? (
+        <>
+          <header className="feeds-header">
+            <div>
+              <h1 className="app-title">Feed analytics</h1>
+              <p className="app-lead">
+                Top posts by likes and comments from your connected channels.
+              </p>
+            </div>
+            <div className="feeds-header__actions">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => void reload()}
+                aria-label="Refresh analytics"
+              >
+                <i className="fa-solid fa-rotate-right" aria-hidden="true" />
+                Refresh
+              </button>
+            </div>
+          </header>
+
+          <div className="feeds-page-nav">
+            <FeedsSubNav />
+          </div>
+        </>
+      ) : (
+        <header className="feeds-header feeds-header--embedded">
+          <div>
+            <h2 className="app-title">Feed analytics</h2>
+            <p className="app-lead">Top posts by likes and comments.</p>
+          </div>
           <button
             type="button"
             className="btn btn-ghost btn-sm"
@@ -215,14 +266,9 @@ export function FeedsAnalyticsDashboard() {
             aria-label="Refresh analytics"
           >
             <i className="fa-solid fa-rotate-right" aria-hidden="true" />
-            Refresh
           </button>
-        </div>
-      </header>
-
-      <div className="feeds-page-nav">
-        <FeedsSubNav />
-      </div>
+        </header>
+      )}
 
       {showPermissionBanner ? (
         <FeedsPermissionBanner connectUrl={instagramConnectUrl} />
@@ -293,7 +339,7 @@ export function FeedsAnalyticsDashboard() {
         }}
       />
 
-      {platformTabs.length > 1 ? (
+      {!embedded && platformTabs.length > 1 ? (
         <div className="feeds-tabs" role="tablist" aria-label="Filter by channel">
           {platformTabs.map((tab) => (
             <button
@@ -330,18 +376,30 @@ export function FeedsAnalyticsDashboard() {
   );
 }
 
-function FeedsAnalyticsSkeleton() {
+function FeedsAnalyticsSkeleton({ embedded = false }: { embedded?: boolean }) {
   return (
-    <section className="feeds-page" aria-busy="true" aria-live="polite">
-      <header className="feeds-header">
-        <div>
-          <Skeleton variant="text" height={28} width={160} />
-          <Skeleton variant="text" height={16} width={320} />
-        </div>
-      </header>
-      <div className="feeds-page-nav">
-        <FeedsSubNav />
-      </div>
+    <section
+      className={`feeds-page${embedded ? " feeds-page--embedded" : ""}`}
+      aria-busy="true"
+      aria-live="polite"
+    >
+      {!embedded ? (
+        <>
+          <header className="feeds-header">
+            <div>
+              <Skeleton variant="text" height={28} width={160} />
+              <Skeleton variant="text" height={16} width={320} />
+            </div>
+          </header>
+          <div className="feeds-page-nav">
+            <FeedsSubNav />
+          </div>
+        </>
+      ) : (
+        <header className="feeds-header feeds-header--embedded">
+          <Skeleton variant="text" height={22} width={140} />
+        </header>
+      )}
       <div className="feeds-analytics__summary">
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="feeds-analytics__tile">

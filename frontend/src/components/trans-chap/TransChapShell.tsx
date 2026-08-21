@@ -63,7 +63,7 @@ const CREATE_ACTIONS: Array<{
     icon: "fa-cart-plus",
   },
   {
-    href: "/trans-chap/feeds?compose=1",
+    href: "/trans-chap/feeds/new",
     label: "New post",
     icon: "fa-plus",
     requiresInstagram: true,
@@ -90,8 +90,14 @@ function headerMeta(pathname: string): { title: string; backHref: string | null 
   if (pathname.startsWith("/trans-chap/reports")) {
     return { title: "Reports", backHref: "/trans-chap" };
   }
+  if (pathname.startsWith("/trans-chap/feeds/new")) {
+    return { title: "New post", backHref: "/trans-chap/feeds" };
+  }
   if (pathname.startsWith("/trans-chap/feeds/analytics")) {
-    return { title: "Feed analytics", backHref: "/trans-chap/feeds" };
+    return { title: "Reports", backHref: "/trans-chap/reports" };
+  }
+  if (pathname.startsWith("/trans-chap/feeds")) {
+    return { title: "Feeds", backHref: null };
   }
   if (pathname.startsWith("/trans-chap/chats")) {
     return { title: "Chats", backHref: null };
@@ -123,7 +129,9 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
   const counts = useNavCounts();
   const { title, backHref } = headerMeta(pathname);
   const isSignIn = pathname.startsWith("/trans-chap/sign-in");
-  const showNav = !isSignIn;
+  const isNewPost = pathname.startsWith("/trans-chap/feeds/new");
+  const showNav = !isSignIn && !isNewPost;
+  const showHeader = !isSignIn && !isNewPost;
   const instagramConnected = Boolean(user?.instagram_account);
   const [createOpen, setCreateOpen] = useState(false);
   const createRef = useRef<HTMLDivElement>(null);
@@ -231,8 +239,8 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
   return (
     <div className={`auth-split trans-chap-root${isSignIn ? " trans-chap-root--signin" : ""}`}>
       <section className="auth-split__panel">
-        <div className="mobile-root trans-chap-app">
-          {isSignIn ? null : (
+        <div className={`mobile-root trans-chap-app${isNewPost ? " trans-chap-app--new-post" : ""}`}>
+          {showHeader ? (
             <header className="trans-chap-header">
               <div className="trans-chap-header__side">
                 {backHref ? (
@@ -293,7 +301,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                 </Link>
               </div>
             </header>
-          )}
+          ) : null}
           <main className="trans-chap-app__content">{children}</main>
           {showNav ? (
             <nav className="mobile-nav mobile-nav--create" aria-label="Trans Chap navigation">

@@ -77,6 +77,14 @@ export function formatTimecode(seconds: number): string {
   return `${m}:${whole.toString().padStart(2, "0")}.${frac}`;
 }
 
+/** CapCut-style mm:ss clock for the preview badge. */
+export function formatClock(seconds: number): string {
+  const s = Math.max(0, seconds);
+  const m = Math.floor(s / 60);
+  const whole = Math.floor(s - m * 60);
+  return `${m.toString().padStart(2, "0")}:${whole.toString().padStart(2, "0")}`;
+}
+
 export function pxPerSecond(projectDurationSec: number, trackWidthPx: number): number {
   const duration = Math.max(1, projectDurationSec);
   return Math.max(24, trackWidthPx / duration);

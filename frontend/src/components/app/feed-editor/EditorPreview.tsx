@@ -9,6 +9,7 @@ import {
 import {
   buildClipSegments,
   findActiveSegment,
+  formatClock,
   mediaTimeAt,
 } from "@/lib/feed-editor/timeline";
 
@@ -16,7 +17,9 @@ type EditorPreviewProps = {
   project: EditorProject;
   mediaById: Map<string, EditorMediaAsset>;
   currentTime: number;
+  duration: number;
   playing: boolean;
+  muted?: boolean;
   selectedTextId: string | null;
   onSelectText: (id: string | null) => void;
   onMoveText: (id: string, x: number, y: number) => void;
@@ -26,7 +29,9 @@ export function EditorPreview({
   project,
   mediaById,
   currentTime,
+  duration,
   playing,
+  muted = true,
   selectedTextId,
   onSelectText,
   onMoveText,
@@ -97,7 +102,7 @@ export function EditorPreview({
             ref={videoRef}
             src={active.media.objectUrl}
             playsInline
-            muted
+            muted={muted}
             preload="auto"
             className="feeds-editor-preview__media"
           />
@@ -132,6 +137,10 @@ export function EditorPreview({
             {overlay.text}
           </div>
         ))}
+
+        <div className="feeds-editor-preview__time" aria-live="off">
+          {formatClock(currentTime)} / {formatClock(Math.max(duration, 0))}
+        </div>
       </div>
     </div>
   );
