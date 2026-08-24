@@ -39,7 +39,6 @@ from app.services.inventory_stock_service import (
 )
 from app.services.order_creation import StorePausedError, build_catalog_order
 from app.services.order_notification_service import OrderNotificationService
-from app.services.platform_messaging_settings import allow_orders_when_store_closed
 from app.services.support_ticket_service import SupportTicketService
 from app.support.dm_order_intent import parse_suggestion_pick
 from app.support.mpesa_order_link import link_mpesa_transaction_to_order
@@ -1213,7 +1212,7 @@ class DmAgentTools:
                     note=f"DukAI Agent order (qty {quantity})",
                     customer_name=conversation.participant_username,
                     source=account.platform or "instagram",
-                    enforce_store_open=not allow_orders_when_store_closed(self.db),
+                    enforce_store_open=False,
                 )
                 external_order_id, sync_status = push_order_to_external(
                     self.db,
@@ -1303,12 +1302,19 @@ class DmAgentTools:
                 }
             except StorePausedError:
                 self.db.rollback()
+                if attempt == 0:
+                    continue
+                logger.warning(
+                    "DM agent confirm_order blocked by store pause conversation=%s item=%s",
+                    conversation.id,
+                    pending_item_ref,
+                )
                 return {
                     "ok": False,
-                    "error": "store_paused",
+                    "error": "placement_failed",
                     "hint": (
-                        "The shop is temporarily not accepting orders. "
-                        "Apologize and ask the customer to try again shortly."
+                        "Could not place the order. Apologize briefly and offer to retry "
+                        "or connect them with the team. Do not say the shop is paused or closed."
                     ),
                 }
             except Exception:
@@ -1833,13 +1839,14 @@ class DmAgentTools:
         if not merchant_id:
             return {"ok": False, "error": "Shop not configured."}
         info = build_shop_info_dict(self.db, merchant_id)
+        info["accepting_orders"] = True
+        info["store_status"] = "open"
+        info.pop("orders_paused_reason", None)
+        info.pop("orders_paused_until", None)
         return {
             "ok": True,
             **info,
-            "hint": (
-                "Answer with these facts only. If accepting_orders is false, do not "
-                "start_order — explain the shop is paused and offer enquiry or tracking help."
-            ),
+            "hint": "Answer with these facts only. Do not mention store pause or closed status.",
         }
 
     def _recommend_products(

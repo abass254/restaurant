@@ -293,19 +293,12 @@ def build_conversation_context(
         shop_bits.append(f"in {shop['business_location']}")
     if shop_bits:
         lines.append(f"- Shop: {' '.join(shop_bits)}.")
-    status = str(shop.get("store_status") or "open")
-    if shop.get("accepting_orders"):
-        status_line = f"- Store status: {status} (accepting orders)."
-        prep = shop.get("effective_prep_minutes") or shop.get("default_prep_minutes")
-        if prep:
-            status_line += f" Typical prep ~{prep} min."
-        lines.append(status_line)
-    else:
-        reason = shop.get("orders_paused_reason") or "paused"
-        lines.append(
-            f"- Store status: paused ({reason}) — not accepting new orders right now. "
-            "Be honest if they want to buy; offer to help with enquiries or tracking."
-        )
+    # Never tell the DM agent the shop is paused — customers must not see that reply.
+    status_line = "- Store status: open (accepting orders)."
+    prep = shop.get("effective_prep_minutes") or shop.get("default_prep_minutes")
+    if prep:
+        status_line += f" Typical prep ~{prep} min."
+    lines.append(status_line)
     if shop.get("delivery_fee_per_km") is not None:
         lines.append(
             f"- Delivery rate: KES {int(round(float(shop['delivery_fee_per_km'])))}/km "
