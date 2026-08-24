@@ -38,6 +38,8 @@ from app.support.sales_session import STEP_IDLE, write_session
 logger = logging.getLogger(__name__)
 
 TICKET_CLOSE_MESSAGE = DEFAULT_TICKET_CLOSE_MESSAGE
+# Off for now: the 10s greeting wait was firing after every AI reply.
+INACTIVITY_AUTO_CLOSE_ENABLED = False
 
 
 class DmTicketService:
@@ -93,11 +95,11 @@ class DmTicketService:
             return False
 
         now = utc_now()
-        timeout_token = uuid.uuid4().hex
+        timeout_token = uuid.uuid4().hex if INACTIVITY_AUTO_CLOSE_ENABLED else None
         conversation.ticket_status = "open"
         conversation.ticket_opened_at = now
         conversation.ticket_closed_at = None
-        conversation.awaiting_customer_since = now
+        conversation.awaiting_customer_since = now if INACTIVITY_AUTO_CLOSE_ENABLED else None
         conversation.response_timeout_token = timeout_token
         conversation.updated_at = now
 
@@ -138,7 +140,8 @@ class DmTicketService:
         self.db.commit()
 
         wait_seconds = get_wait_dm_time_seconds(self.db)
-        self._schedule_inactivity_close(conversation.id, timeout_token, wait_seconds)
+        if timeout_token:
+            self._schedule_inactivity_close(conversation.id, timeout_token, wait_seconds)
         logger.info(
             "DM ticket opened conversation=%s participant=%s wait=%ss greeting=%s",
             conversation.id,
@@ -203,11 +206,11 @@ class DmTicketService:
         if conversation.is_ticket_open() and greeting_was_sent(conversation):
             return conversation
 
-        timeout_token = uuid.uuid4().hex
+        timeout_token = uuid.uuid4().hex if INACTIVITY_AUTO_CLOSE_ENABLED else None
         conversation.ticket_status = "open"
         conversation.ticket_opened_at = now
         conversation.ticket_closed_at = None
-        conversation.awaiting_customer_since = now
+        conversation.awaiting_customer_since = now if INACTIVITY_AUTO_CLOSE_ENABLED else None
         conversation.response_timeout_token = timeout_token
         conversation.updated_at = now
 
@@ -232,7 +235,8 @@ class DmTicketService:
 
         self.db.commit()
         wait_seconds = get_wait_dm_time_seconds(self.db)
-        self._schedule_inactivity_close(conversation.id, timeout_token, wait_seconds)
+        if timeout_token:
+            self._schedule_inactivity_close(conversation.id, timeout_token, wait_seconds)
         return conversation
 
     def _send_greeting(
@@ -309,6 +313,8 @@ class DmTicketService:
         return True
 
     def close_if_still_waiting(self, conversation_id: str, timeout_token: str) -> None:
+        if not INACTIVITY_AUTO_CLOSE_ENABLED:
+            return
         conversation = (
             self.db.query(InstagramConversation)
             .filter(InstagramConversation.id == conversation_id)
@@ -447,6 +453,8 @@ class DmTicketService:
         timeout_token: str,
         wait_seconds: int,
     ) -> None:
+        if not INACTIVITY_AUTO_CLOSE_ENABLED:
+            return
         thread = threading.Thread(
             target=_run_inactivity_close,
             args=(conversation_id, timeout_token, wait_seconds),
