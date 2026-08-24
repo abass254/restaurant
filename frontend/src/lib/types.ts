@@ -409,6 +409,7 @@ export type MessagingSettings = {
   id: string;
   wait_dm_time_seconds: number;
   pause_auto_responses: boolean;
+  allow_orders_when_store_closed: boolean;
   dm_bot: string;
 };
 

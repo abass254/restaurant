@@ -39,6 +39,7 @@ from app.services.inventory_stock_service import (
 )
 from app.services.order_creation import StorePausedError, build_catalog_order
 from app.services.order_notification_service import OrderNotificationService
+from app.services.platform_messaging_settings import allow_orders_when_store_closed
 from app.services.support_ticket_service import SupportTicketService
 from app.support.dm_order_intent import parse_suggestion_pick
 from app.support.mpesa_order_link import link_mpesa_transaction_to_order
@@ -1212,6 +1213,7 @@ class DmAgentTools:
                     note=f"DukAI Agent order (qty {quantity})",
                     customer_name=conversation.participant_username,
                     source=account.platform or "instagram",
+                    enforce_store_open=not allow_orders_when_store_closed(self.db),
                 )
                 external_order_id, sync_status = push_order_to_external(
                     self.db,

@@ -36,6 +36,7 @@ def _require_super_admin(user: User) -> None:
 class MessagingSettingsPayload(BaseModel):
     wait_dm_time_seconds: int = Field(default=DEFAULT_WAIT_DM_TIME_SECONDS, ge=1, le=3600)
     pause_auto_responses: bool = False
+    allow_orders_when_store_closed: bool = False
     dm_bot: str | None = None
 
 
@@ -45,6 +46,7 @@ class MessagingSettingsOut(BaseModel):
     id: str
     wait_dm_time_seconds: int
     pause_auto_responses: bool
+    allow_orders_when_store_closed: bool
     dm_bot: str
 
 
@@ -62,6 +64,7 @@ def show_messaging_settings(
                 "id": "",
                 "wait_dm_time_seconds": DEFAULT_WAIT_DM_TIME_SECONDS,
                 "pause_auto_responses": False,
+                "allow_orders_when_store_closed": False,
                 "dm_bot": DEFAULT_DM_BOT,
             },
         }
@@ -89,6 +92,7 @@ def upsert_messaging_settings(
 
     row.wait_dm_time_seconds = payload.wait_dm_time_seconds
     row.pause_auto_responses = payload.pause_auto_responses
+    row.allow_orders_when_store_closed = payload.allow_orders_when_store_closed
     row.dm_bot = DEFAULT_DM_BOT
     row.updated_at = now
     db.commit()

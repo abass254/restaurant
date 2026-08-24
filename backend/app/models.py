@@ -519,6 +519,7 @@ class PlatformMessagingSettings(Base):
     id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
     wait_dm_time_seconds: Mapped[int] = mapped_column(Integer, default=10)
     pause_auto_responses: Mapped[bool] = mapped_column(Boolean, default=False)
+    allow_orders_when_store_closed: Mapped[bool] = mapped_column(Boolean, default=False)
     runtime_mode: Mapped[str] = mapped_column(String(20), default="dev")
     dm_bot: Mapped[str] = mapped_column(String(32), default="ai_agent")
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

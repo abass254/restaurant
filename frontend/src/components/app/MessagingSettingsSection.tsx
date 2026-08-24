@@ -10,6 +10,7 @@ import { Skeleton } from "./Skeleton";
 export function MessagingSettingsSection() {
   const [waitDmTimeSeconds, setWaitDmTimeSeconds] = useState("10");
   const [allowAutoResponses, setAllowAutoResponses] = useState(true);
+  const [allowOrdersWhenStoreClosed, setAllowOrdersWhenStoreClosed] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toggleSaving, setToggleSaving] = useState(false);
@@ -19,10 +20,12 @@ export function MessagingSettingsSection() {
       .then((data) => {
         setWaitDmTimeSeconds(String(data.settings.wait_dm_time_seconds));
         setAllowAutoResponses(!(data.settings.pause_auto_responses ?? false));
+        setAllowOrdersWhenStoreClosed(data.settings.allow_orders_when_store_closed ?? false);
       })
       .catch(() => {
         setWaitDmTimeSeconds("10");
         setAllowAutoResponses(true);
+        setAllowOrdersWhenStoreClosed(false);
       })
       .finally(() => setLoaded(true));
   }, []);
@@ -30,6 +33,7 @@ export function MessagingSettingsSection() {
   async function persistSettings(
     waitSeconds: number,
     allowAuto: boolean,
+    allowWhenClosed: boolean,
     options?: { toast?: boolean },
   ) {
     const data = await apiFetch<MessagingSettingsResponse>(apiRoutes.messagingSettings, {
@@ -37,10 +41,12 @@ export function MessagingSettingsSection() {
       body: JSON.stringify({
         wait_dm_time_seconds: waitSeconds,
         pause_auto_responses: !allowAuto,
+        allow_orders_when_store_closed: allowWhenClosed,
       }),
     });
     setWaitDmTimeSeconds(String(data.settings.wait_dm_time_seconds));
     setAllowAutoResponses(!(data.settings.pause_auto_responses ?? false));
+    setAllowOrdersWhenStoreClosed(data.settings.allow_orders_when_store_closed ?? false);
     if (options?.toast) {
       toastSuccess(allowAuto ? "Auto-replies enabled." : "Auto-replies disabled.");
     }
@@ -56,10 +62,34 @@ export function MessagingSettingsSection() {
     setAllowAutoResponses(enabled);
     setToggleSaving(true);
     try {
-      await persistSettings(parsed, enabled, { toast: true });
+      await persistSettings(parsed, enabled, allowOrdersWhenStoreClosed, { toast: true });
     } catch (err) {
       setAllowAutoResponses(!enabled);
       showError(extractErrorMessage(err, "Could not update auto-replies setting."));
+    } finally {
+      setToggleSaving(false);
+    }
+  }
+
+  async function handleStoreClosedOrdersToggle(enabled: boolean) {
+    const parsed = Number(waitDmTimeSeconds.trim());
+    if (!Number.isFinite(parsed) || parsed < 1 || parsed > 3600) {
+      showError("Enter a valid wait time before changing store-closed behavior.");
+      return;
+    }
+
+    setAllowOrdersWhenStoreClosed(enabled);
+    setToggleSaving(true);
+    try {
+      await persistSettings(parsed, allowAutoResponses, enabled);
+      toastSuccess(
+        enabled
+          ? "Orders can continue even when the store is marked closed."
+          : "Customers will be told the store is not accepting orders while closed.",
+      );
+    } catch (err) {
+      setAllowOrdersWhenStoreClosed(!enabled);
+      showError(extractErrorMessage(err, "Could not update store-closed behavior."));
     } finally {
       setToggleSaving(false);
     }
@@ -75,7 +105,9 @@ export function MessagingSettingsSection() {
 
     setSaving(true);
     try {
-      await persistSettings(parsed, allowAutoResponses, { toast: true });
+      await persistSettings(parsed, allowAutoResponses, allowOrdersWhenStoreClosed, {
+        toast: true,
+      });
     } catch (err) {
       showError(extractErrorMessage(err, "Could not save messaging settings."));
     } finally {
@@ -115,6 +147,31 @@ export function MessagingSettingsSection() {
             <span className="settings-toggle__thumb" aria-hidden="true" />
             <span className="sr-only">
               {allowAutoResponses ? "Disable auto-replies" : "Enable auto-replies"}
+            </span>
+          </button>
+        </div>
+        <div className="settings-toggle settings-toggle--compact admin-messaging-toggle">
+          <div className="settings-toggle__copy">
+            <strong>Allow orders when store is closed</strong>
+            <span>
+              {allowOrdersWhenStoreClosed
+                ? "Orders can still be placed from DM even when the store is paused."
+                : 'Customers are told: "Unfortunately, the store is not accepting any orders."'}
+            </span>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={allowOrdersWhenStoreClosed}
+            className={`settings-toggle__switch${allowOrdersWhenStoreClosed ? " is-on" : ""}`}
+            disabled={toggleSaving || saving}
+            onClick={() => void handleStoreClosedOrdersToggle(!allowOrdersWhenStoreClosed)}
+          >
+            <span className="settings-toggle__thumb" aria-hidden="true" />
+            <span className="sr-only">
+              {allowOrdersWhenStoreClosed
+                ? "Disallow orders when store is closed"
+                : "Allow orders when store is closed"}
             </span>
           </button>
         </div>

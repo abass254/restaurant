@@ -61,6 +61,7 @@ def build_instagram_order(
     note: str | None,
     customer_name: str | None = None,
     source: str = "instagram",
+    enforce_store_open: bool = True,
 ) -> Order:
     """Create an ``Order`` (+ items + initial history) and flush it.
 
@@ -72,7 +73,8 @@ def build_instagram_order(
     if not line_items:
         raise ValueError("An order needs at least one line item.")
 
-    _assert_accepting(db, account_id)
+    if enforce_store_open:
+        _assert_accepting(db, account_id)
 
     now = datetime.utcnow()
     order = Order(
@@ -152,6 +154,7 @@ def build_catalog_order(
     note: str | None,
     customer_name: str | None = None,
     source: str = "instagram",
+    enforce_store_open: bool = True,
 ) -> Order:
     """Create an order from normalized catalogue rows (platform or external)."""
     if not line_items:
@@ -182,9 +185,11 @@ def build_catalog_order(
             note=note,
             customer_name=customer_name,
             source=source,
+            enforce_store_open=enforce_store_open,
         )
 
-    _assert_accepting(db, account_id)
+    if enforce_store_open:
+        _assert_accepting(db, account_id)
 
     now = datetime.utcnow()
     order = Order(
