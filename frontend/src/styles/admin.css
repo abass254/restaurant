@@ -944,7 +944,7 @@
 .admin-input:focus {
   outline: none;
   border-color: var(--color-primary, #6b2e14);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary, #6b2e14) 18%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-primary, #6b2e14) 18%, transparent);
 }
 
 .admin-input:disabled {
@@ -3010,7 +3010,7 @@ td.admin-table__actions {
 .admin-settings-page .settings-field textarea:focus {
   outline: none;
   border-color: var(--color-primary, #6b2e14);
-  box-shadow: 0 0 0 3px var(--color-primary-subtle, #f8f0e8);
+  box-shadow: inset 0 0 0 2px var(--color-primary-subtle, #f8f0e8);
 }
 
 /* Actions + buttons (.btn comes from landing.css; tighten for admin) */

@@ -194,7 +194,7 @@ html[data-theme="dark"] .fb-app .pos-title__icon {
 
 .fb-app .pos-search:focus-within {
   border-color: var(--brown-400);
-  box-shadow: 0 0 0 3px rgba(133, 85, 56, 0.12);
+  box-shadow: inset 0 0 0 2px rgba(133, 85, 56, 0.12);
 }
 
 .fb-app .pos-search__icon {
@@ -901,7 +901,7 @@ html[data-theme="dark"] .fb-app .pos-picker.is-active {
 .fb-app .pos-cart select.pos-payment-select:focus,
 .fb-app .pos-money-input input:focus {
   border-color: var(--brown-400);
-  box-shadow: 0 0 0 3px rgba(133, 85, 56, 0.12);
+  box-shadow: inset 0 0 0 2px rgba(133, 85, 56, 0.12);
 }
 
 .fb-app .pos-fields input::placeholder,

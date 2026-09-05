@@ -254,7 +254,7 @@
   outline: none;
   background-color: #efefef !important;
   border-color: transparent !important;
-  box-shadow: 0 0 0 3px rgba(232, 93, 4, 0.16);
+  box-shadow: inset 0 0 0 2px rgba(232, 93, 4, 0.35);
 }
 
 .auth-split__input-wrap {
@@ -799,7 +799,7 @@
 .auth-split--setup .loc-picker__control input:focus {
   outline: none;
   background: #efefef;
-  box-shadow: 0 0 0 3px rgba(232, 93, 4, 0.16);
+  box-shadow: inset 0 0 0 2px rgba(232, 93, 4, 0.16);
 }
 
 .auth-split--setup .loc-picker__control input:-webkit-autofill,
@@ -1002,7 +1002,7 @@
 .auth-split--setup .ob-hours-row input[type="time"]:focus {
   border-color: var(--auth-accent) !important;
   background-color: #fff !important;
-  box-shadow: 0 0 0 3px rgba(232, 93, 4, 0.16);
+  box-shadow: inset 0 0 0 2px rgba(232, 93, 4, 0.16);
 }
 
 .auth-split--setup .ob-svc-row__input:disabled {
@@ -1513,7 +1513,7 @@
 .landing-ufanisi .auth-field input:focus {
   outline: none;
   border-color: var(--uf-primary);
-  box-shadow: 0 0 0 3px rgba(107, 46, 20, 0.12);
+  box-shadow: inset 0 0 0 2px rgba(107, 46, 20, 0.12);
   background: var(--uf-card-bg);
 }
 

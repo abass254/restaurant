@@ -8,6 +8,10 @@
   min-width: 0;
 }
 
+.app-card:has(input:not([type="hidden"]), textarea, select) {
+  overflow: visible;
+}
+
 .app-card--pad {
   padding: var(--space-card);
   display: flex;

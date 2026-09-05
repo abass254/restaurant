@@ -225,10 +225,11 @@ html[data-theme="dark"] .trans-chap-app {
     flex: 1;
     min-width: 0;
     min-height: 0;
-    overflow: hidden;
+    overflow: auto;
     display: flex;
     flex-direction: column;
-    padding: 1rem 20px var(--trans-chap-pad);
+    padding-inline: max(var(--trans-chap-gutter-x), env(safe-area-inset-left))
+        max(var(--trans-chap-gutter-x), env(safe-area-inset-right));
     background: var(--app-surface);
 }
 
@@ -251,11 +252,15 @@ html[data-theme="dark"] .trans-chap-app {
     display: flex;
     flex-direction: column;
     gap: var(--trans-chap-pad);
-    padding-inline: 20px;
+    padding: 4px 20px;
 }
 
 .trans-chap-form__actions {
     flex-shrink: 0;
+    padding-inline: 20px;
+}
+
+.trans-chap-form > .trans-chap-form__lead {
     padding-inline: 20px;
 }
 
@@ -472,7 +477,7 @@ html[data-theme="dark"] .trans-chap-app {
 }
 
 .trans-chap-input:focus-within {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-primary) 28%, transparent);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--app-primary) 40%, transparent);
 }
 
 .trans-chap-app input[type="number"] {
@@ -494,7 +499,7 @@ html[data-theme="dark"] .trans-chap-app {
 .trans-chap-app .auth-split__field input:focus,
 .trans-chap-app .auth-split__input:focus {
     background-color: var(--app-surface-elevated) !important;
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-primary) 28%, transparent);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--app-primary) 40%, transparent);
 }
 
 .trans-chap-app .auth-split__btn {
@@ -712,7 +717,7 @@ html[data-theme="dark"] .trans-chap-app {
 }
 
 .trans-chap-app__content:has(.trans-chap-sales) {
-    /* padding: 0.85rem 20px; */
+    padding: 0;
     overflow: hidden;
     background: var(--app-bg);
 }
@@ -1156,6 +1161,10 @@ html[data-theme="dark"] .trans-chap-app {
     overflow: hidden;
     border: 1px solid var(--app-border);
     box-shadow: 0 2px 10px rgba(26, 16, 12, 0.08);
+}
+
+.ios-settings__card:has(input:not([type="hidden"]), textarea, select) {
+    overflow: visible;
 }
 
 .ios-settings__card--pad {
@@ -1858,7 +1867,8 @@ html[data-theme="dark"] .trans-chap-slip__status.is-fail {
     display: flex;
     flex-direction: column;
     margin: 0;
-    padding: 0;
+    padding: 0.75rem max(var(--trans-chap-gutter-x), env(safe-area-inset-left)) 0
+        max(var(--trans-chap-gutter-x), env(safe-area-inset-right));
     background: var(--app-bg);
 }
 
@@ -2072,6 +2082,10 @@ html[data-theme="dark"] .trans-chap-slip__status.is-fail {
     border-radius: 16px;
     background: var(--app-surface);
     box-shadow: 0 2px 10px rgba(26, 16, 12, 0.08);
+}
+
+.trans-chap-panel.is-open {
+    overflow: visible;
 }
 
 .trans-chap-panel--sale {

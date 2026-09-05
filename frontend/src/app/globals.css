@@ -12,3 +12,25 @@
 @import "../styles/swal.css";
 @import "../styles/session-timeout.css";
 @import "../styles/onboarding.css";
+
+/* Keep rounded text fields fully visible inside overflow-clipped shells. */
+:where(
+  input:not(
+    [type="checkbox"],
+    [type="radio"],
+    [type="range"],
+    [type="file"],
+    [type="color"],
+    [type="hidden"],
+    [type="submit"],
+    [type="button"],
+    [type="reset"],
+    [type="image"]
+  ),
+  textarea
+) {
+  box-sizing: border-box;
+  max-width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+}
