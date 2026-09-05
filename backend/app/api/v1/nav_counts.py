@@ -16,7 +16,7 @@ from app.services.agent_reply_policy import (
     conversation_needs_merchant_attention,
     merchant_unread_count,
 )
-from app.support.order_status import TERMINAL_STATUSES
+from app.support.order_status import SOURCE_RIDER_REQUEST, TERMINAL_STATUSES
 from app.support.merchant_permissions import active_account_id, user_can_access_section
 
 router = APIRouter(prefix="/nav-counts", tags=["nav-counts"])
@@ -64,6 +64,7 @@ def _active_orders_count(db: Session, user: User) -> int:
         .filter(
             Order.account_id == str(account_id),
             Order.status.notin_(tuple(TERMINAL_STATUSES)),
+            Order.source != SOURCE_RIDER_REQUEST,
         )
         .count()
     )

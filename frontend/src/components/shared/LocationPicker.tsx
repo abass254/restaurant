@@ -51,6 +51,11 @@ type LocationPickerProps = {
   hideHint?: boolean;
   /** Show a compact “use current location” control (e.g. pickup in ride UI). */
   showCurrentLocation?: boolean;
+  /** Show a compact “use store location” control (e.g. pickup in ride UI). */
+  showStoreLocation?: boolean;
+  storeLabel?: string;
+  storeCoords?: LatLng | null;
+  autoFocus?: boolean;
 };
 
 const FALLBACK_CENTER: LatLng = { lat: -1.2921, lng: 36.8219 }; // Nairobi
@@ -70,6 +75,10 @@ export function LocationPicker({
   allowMapPin = true,
   hideHint = false,
   showCurrentLocation = false,
+  showStoreLocation = false,
+  storeLabel = "",
+  storeCoords = null,
+  autoFocus = false,
 }: LocationPickerProps) {
   const apiKey = config.api_key ?? "";
   const containerRef = useRef<HTMLDivElement>(null);
@@ -143,6 +152,19 @@ export function LocationPicker({
   useEffect(() => {
     if (showMap) setMapOpen(true);
   }, [showMap]);
+
+  useEffect(() => {
+    if (!autoFocus) return;
+    const id = window.setTimeout(() => inputRef.current?.focus(), 80);
+    return () => window.clearTimeout(id);
+  }, [autoFocus]);
+
+  const initialValueRef = useRef(value);
+  useEffect(() => {
+    if (ready && initialValueRef.current.trim()) {
+      skipSuggestionsRef.current = true;
+    }
+  }, [ready]);
 
   useEffect(() => {
     if (!apiKey || disabled) return;
@@ -367,6 +389,21 @@ export function LocationPicker({
     }
   }
 
+  function useStoreLocation() {
+    const label = storeLabel.trim();
+    if (!label || disabled) return;
+    skipSuggestionsRef.current = true;
+    onChange(label);
+    onCoordsChange?.(storeCoords ?? null);
+    if (storeCoords && markerRef.current) {
+      setMarkerPosition(markerRef.current, storeCoords);
+    }
+    if (storeCoords && mapRef.current) {
+      flyTo(mapRef.current, storeCoords, 15);
+    }
+    closeDropdown();
+  }
+
   function useMyLocation() {
     if (!navigator.geolocation || disabled || locating) return;
     setLocating(true);
@@ -487,7 +524,7 @@ export function LocationPicker({
     ? "waitlist-field__control waitlist-field__control--search loc-picker__search-wrap"
     : isRide
       ? `ride-stop__control loc-picker__search-wrap${
-          showCurrentLocation ? " ride-stop__control--locate" : ""
+          showCurrentLocation || showStoreLocation ? " ride-stop__control--locate" : ""
         }`
       : "loc-picker__control loc-picker__control--search loc-picker__search-wrap";
 
@@ -531,6 +568,18 @@ export function LocationPicker({
               className={`fas ${searching ? "fa-circle-notch fa-spin" : "fa-magnifying-glass"}`}
               aria-hidden="true"
             />
+          </button>
+        ) : null}
+        {isRide && showStoreLocation ? (
+          <button
+            type="button"
+            className="ride-stop__locate"
+            onClick={useStoreLocation}
+            disabled={disabled || !storeLabel.trim()}
+            aria-label="Use store location for pickup"
+            title="Use store location"
+          >
+            <i className="fas fa-store" aria-hidden="true" />
           </button>
         ) : null}
         {isRide && showCurrentLocation ? (

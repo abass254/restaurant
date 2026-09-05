@@ -5,7 +5,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { userCanAccessSection } from "@/lib/merchant-permissions";
 
-const ALLOWED_WITHOUT_ONBOARDING = ["/tools", "/settings", "/bot", "/messages"];
+const IG_SURFACES = ["/tickets", "/messages", "/feeds"];
+
+function isInstagramSurface(pathname: string): boolean {
+  return IG_SURFACES.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  );
+}
 
 export function OnboardingGate() {
   const user = useAuthUser();
@@ -14,34 +20,24 @@ export function OnboardingGate() {
 
   useEffect(() => {
     const ig = user.instagram_account;
-    if (!ig) {
+    if (!ig || ig.onboarding_complete) {
       return;
     }
 
-    if (ig.onboarding_complete) {
+    if (pathname === "/tools/onboarding" || pathname.startsWith("/tools/onboarding/")) {
       return;
     }
 
-    const allowed = ALLOWED_WITHOUT_ONBOARDING.some(
-      (path) => pathname === path || pathname.startsWith(`${path}/`),
-    );
-    if (allowed) {
+    if (!isInstagramSurface(pathname)) {
       return;
     }
 
-    const blockedSection =
-      pathname.startsWith("/messages") || pathname.startsWith("/tickets")
-        ? "tickets"
-        : pathname.startsWith("/tools") || pathname.startsWith("/bot")
-          ? "tools"
-          : null;
-
-    if (blockedSection && !userCanAccessSection(user, blockedSection)) {
+    if (!userCanAccessSection(user, pathname.startsWith("/feeds") ? "feeds" : "tickets")) {
       return;
     }
 
     router.replace("/tools/onboarding");
-  }, [pathname, router, user.instagram_account, user]);
+  }, [pathname, router, user]);
 
   return null;
 }

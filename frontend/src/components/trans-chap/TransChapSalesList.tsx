@@ -4,19 +4,26 @@ import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
-import { apiFetch } from "@/lib/api";
-import { apiRoutes } from "@/lib/config";
+import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
+import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
+import { MotionItem, MotionList } from "@/components/app/MotionList";
+import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { formatNairobiDateTime, formatNairobiListTime, nairobiDateKey, parseIso } from "@/lib/nairobi-time";
 import {
   orderHasPendingMpesa,
   orderHasSuccessfulMpesa,
 } from "@/lib/orders";
-import { formatKsh, receiptFromOrder, transChapReceiptHref } from "@/lib/trans-chap-receipt";
-import type { Order, OrdersListResponse } from "@/lib/types";
+import {
+  fetchWalkinOrders,
+  promptAndUndoWalkinSale,
+  walkinUndoAction,
+} from "@/lib/trans-chap-orders";
+import { formatKsh, receiptFromOrder, transChapPayLabel, transChapReceiptHref } from "@/lib/trans-chap-receipt";
+import type { Order } from "@/lib/types";
 
 type WhenFilter = "all" | "today" | "week";
-type MethodFilter = "all" | "cash" | "mpesa";
-type StatusFilter = "all" | "paid" | "waiting" | "failed";
+type MethodFilter = "all" | "credit" | "mpesa";
+type StatusFilter = "all" | "paid" | "waiting" | "failed" | "voided";
 
 type ChipOption<T extends string> = { id: T; label: string };
 
@@ -26,7 +33,7 @@ const WHEN_CHIPS: ChipOption<Exclude<WhenFilter, "all">>[] = [
 ];
 
 const METHOD_CHIPS: ChipOption<Exclude<MethodFilter, "all">>[] = [
-  { id: "cash", label: "Cash" },
+  { id: "credit", label: "Credit" },
   { id: "mpesa", label: "M-PESA" },
 ];
 
@@ -34,9 +41,19 @@ const STATUS_CHIPS: ChipOption<Exclude<StatusFilter, "all">>[] = [
   { id: "paid", label: "Paid" },
   { id: "waiting", label: "Waiting" },
   { id: "failed", label: "Failed" },
+  { id: "voided", label: "Voided" },
 ];
 
-function saleStatus(order: Order): { label: string; tone: "ok" | "wait" | "fail" } {
+function saleStatus(order: Order): { label: string; tone: "ok" | "wait" | "fail" | "credit" } {
+  if (order.status === "cancelled") {
+    return { label: "Voided", tone: "fail" };
+  }
+  if (order.status === "refunded") {
+    return { label: "Refunded", tone: "fail" };
+  }
+  if (order.payment_method === "credit") {
+    return { label: "On credit", tone: "credit" };
+  }
   if (order.payment_method !== "mpesa") {
     return { label: "Paid", tone: "ok" };
   }
@@ -65,7 +82,7 @@ function isWithinLastDays(key: string, days: number, todayKey: string): boolean 
 function matchesQuery(order: Order, query: string): boolean {
   if (!query) return true;
   const haystack = [
-    order.items?.[0]?.product_name,
+    ...(order.items?.map((line) => line.product_name) ?? []),
     order.order_number,
     order.customer_name,
     order.customer_phone,
@@ -111,12 +128,15 @@ export function TransChapSalesList() {
   const listId = useId();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [truncated, setTruncated] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [when, setWhen] = useState<WhenFilter>("all");
   const [method, setMethod] = useState<MethodFilter>("all");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [undoingId, setUndoingId] = useState<string | null>(null);
   const shopName =
     user.active_account?.business_name ||
     user.account?.business_name ||
@@ -124,16 +144,11 @@ export function TransChapSalesList() {
 
   const reload = useCallback(async () => {
     setLoading(true);
-    try {
-      const data = await apiFetch<OrdersListResponse>(
-        `${apiRoutes.orders}?source=walkin&per_page=100`,
-      );
-      setOrders(data.data);
-    } catch {
-      setOrders([]);
-    } finally {
-      setLoading(false);
-    }
+    const result = await fetchWalkinOrders();
+    setOrders(result.orders);
+    setError(result.error);
+    setTruncated(result.truncated);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -148,17 +163,36 @@ export function TransChapSalesList() {
     }
   }, []);
 
+  async function undoSale(order: Order) {
+    setUndoingId(order.id);
+    try {
+      const updated = await promptAndUndoWalkinSale(order);
+      if (!updated) return;
+      setOrders((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+      await toastSuccess(updated.status === "refunded" ? "Sale refunded" : "Sale voided");
+    } catch (err) {
+      await showError("Could not undo sale", extractErrorMessage(err));
+    } finally {
+      setUndoingId(null);
+    }
+  }
+
   const todayKey = nairobiDateKey(new Date());
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return orders.filter((order) => {
       if (!matchesQuery(order, needle)) return false;
-      if (method === "cash" && order.payment_method === "mpesa") return false;
+      if (method === "credit" && order.payment_method !== "credit") return false;
       if (method === "mpesa" && order.payment_method !== "mpesa") return false;
       const tone = saleStatus(order).tone;
       if (status === "paid" && tone !== "ok") return false;
       if (status === "waiting" && tone !== "wait") return false;
-      if (status === "failed" && tone !== "fail") return false;
+      if (status === "failed" && (tone !== "fail" || order.status === "cancelled" || order.status === "refunded")) {
+        return false;
+      }
+      if (status === "voided" && order.status !== "cancelled" && order.status !== "refunded") {
+        return false;
+      }
       if (when === "all") return true;
       const key = orderDateKey(order);
       if (!key) return false;
@@ -172,8 +206,16 @@ export function TransChapSalesList() {
   const filtersOn = activeFilterCount > 0 || query.trim() !== "";
   const filterSummary = [
     when === "today" ? "Today" : when === "week" ? "7 days" : null,
-    method === "cash" ? "Cash" : method === "mpesa" ? "M-PESA" : null,
-    status === "paid" ? "Paid" : status === "waiting" ? "Waiting" : status === "failed" ? "Failed" : null,
+    method === "credit" ? "Credit" : method === "mpesa" ? "M-PESA" : null,
+    status === "paid"
+      ? "Paid"
+      : status === "waiting"
+        ? "Waiting"
+        : status === "failed"
+          ? "Failed"
+          : status === "voided"
+            ? "Voided"
+            : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -235,30 +277,39 @@ export function TransChapSalesList() {
       </div>
       <div className="trans-chap-sales__list">
         {loading ? (
-          <p className="trans-chap-sales__empty">Loading sales…</p>
+          <TransChapListSkeleton />
+        ) : error && orders.length === 0 ? (
+          <TransChapStatus tone="error">{error}</TransChapStatus>
         ) : orders.length === 0 ? (
-          <p className="trans-chap-sales__empty">No sales yet. Tap + to make a sale.</p>
+          <TransChapStatus
+            actionHref="/trans-chap/make-a-sale/new"
+            actionLabel="Make a sale"
+          >
+            No sales yet.
+          </TransChapStatus>
         ) : filtered.length === 0 ? (
           <p className="trans-chap-sales__empty">
             {filtersOn
               ? "No sales match these filters."
-              : "No sales yet. Tap + to make a sale."}
+              : "No sales yet."}
           </p>
         ) : (
-          filtered.map((order) => {
+          <MotionList as="div" className="trans-chap-sales__stagger">
+            {filtered.map((order) => {
             const product = order.items?.[0]?.product_name || "Sale";
             const extra = (order.items?.length ?? 0) > 1
               ? ` +${(order.items?.length ?? 0) - 1}`
               : "";
             const sale = saleStatus(order);
+            const undo = walkinUndoAction(order);
             const open = openId === order.id;
             const panelId = `${listId}-${order.id}`;
             const receipt = receiptFromOrder(order, shopName);
             const paidAt = formatNairobiDateTime(receipt.paidAt);
             const whenLabel = formatNairobiListTime(receipt.paidAt);
             return (
+              <MotionItem key={order.id} as="div">
               <TransChapPanel
-                key={order.id}
                 id={panelId}
                 open={open}
                 tone="sale"
@@ -276,17 +327,39 @@ export function TransChapSalesList() {
                   </Link>
                 }
                 action={
-                  <Link href={transChapReceiptHref(order.id)} className="trans-chap-panel__link">
-                    Open receipt
-                  </Link>
+                  <>
+                    {undo ? (
+                      <button
+                        type="button"
+                        className="trans-chap-panel__link trans-chap-panel__void"
+                        disabled={undoingId === order.id}
+                        onClick={() => void undoSale(order)}
+                      >
+                        {undoingId === order.id
+                          ? "Working…"
+                          : undo === "refund"
+                            ? "Refund"
+                            : "Void sale"}
+                      </button>
+                    ) : null}
+                    <Link href={transChapReceiptHref(order.id)} className="trans-chap-panel__link">
+                      Open receipt
+                    </Link>
+                  </>
                 }
               >
                 <p className="trans-chap-panel__lead">
-                  {sale.tone === "ok"
-                    ? "Payment received."
-                    : sale.tone === "wait"
-                      ? "Waiting for the customer to complete M-PESA."
-                      : "M-PESA didn’t go through."}
+                  {sale.label === "Voided"
+                    ? "This sale was voided. Stock came back."
+                    : sale.label === "Refunded"
+                      ? "This sale was refunded. Stock came back."
+                      : sale.label === "On credit"
+                        ? "On the customer’s tab. Not paid yet."
+                        : sale.tone === "ok"
+                          ? "Payment received."
+                          : sale.tone === "wait"
+                            ? "Waiting for the customer to complete M-PESA."
+                            : "M-PESA didn’t go through."}
                 </p>
                 <ul className="trans-chap-panel__lines">
                   {(order.items ?? []).map((line) => (
@@ -310,7 +383,7 @@ export function TransChapSalesList() {
                   </div>
                   <div>
                     <dt>Method</dt>
-                    <dd>{receipt.payMode === "mpesa" ? "M-PESA" : "Cash"}</dd>
+                    <dd>{transChapPayLabel(receipt.payMode)}</dd>
                   </div>
                   <div>
                     <dt>Customer</dt>
@@ -324,17 +397,15 @@ export function TransChapSalesList() {
                   ) : null}
                 </dl>
               </TransChapPanel>
+              </MotionItem>
             );
-          })
+          })}
+          </MotionList>
         )}
+        {truncated ? (
+          <p className="trans-chap-sales__empty">Showing the most recent 2,000 sales.</p>
+        ) : null}
       </div>
-      <Link
-        href="/trans-chap/make-a-sale/new"
-        className="trans-chap-fab"
-        aria-label="Make a new sale"
-      >
-        <i className="fa-solid fa-plus" aria-hidden />
-      </Link>
     </div>
   );
 }

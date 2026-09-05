@@ -208,6 +208,8 @@ def stk_push(
     transaction_desc: str,
     initiated_by_user_id: str | None = None,
     account_id: str | None = None,
+    shop_customer_id: str | None = None,
+    credit_collect_amount: int | None = None,
 ) -> MpesaTransaction:
     config = resolve_mpesa_config(db)
     sandbox = use_mpesa_sandbox(db)
@@ -324,6 +326,8 @@ def stk_push(
         checkout_request_id=body.get("CheckoutRequestID"),
         status="pending" if response.is_success else "failed",
         result_desc=body.get("ResponseDescription") or body.get("errorMessage"),
+        shop_customer_id=shop_customer_id,
+        credit_collect_amount=credit_collect_amount,
         callback_payload={
             "request": payload,
             "response": body,
@@ -467,6 +471,7 @@ def apply_callback(db: Session, payload: dict[str, Any]) -> MpesaTransaction | N
     if txn.status == "success":
         updated_order_ids = _sync_linked_orders_on_success(db, txn)
         _sync_linked_bookings_on_success(db, txn)
+        apply_credit_collection_if_paid(db, txn)
         try:
             from app.services import mpesa_payout_service
 
@@ -577,6 +582,41 @@ def _sync_linked_bookings_on_success(db: Session, txn: MpesaTransaction) -> list
     return updated
 
 
+def apply_credit_collection_if_paid(db: Session, txn: MpesaTransaction) -> None:
+    """Take a successful credit-collection STK off the customer's tab once."""
+    if txn.status != "success":
+        return
+    customer_id = getattr(txn, "shop_customer_id", None)
+    amount = getattr(txn, "credit_collect_amount", None)
+    if not customer_id or not amount or getattr(txn, "credit_collected_at", None):
+        return
+
+    from app.models import ShopCustomer
+    from app.services.customer_service import CustomerService, CustomerServiceError
+
+    customer = (
+        db.query(ShopCustomer)
+        .filter(ShopCustomer.id == customer_id)
+        .with_for_update()
+        .first()
+    )
+    if customer is None:
+        logger.warning("Credit collection txn=%s customer %s missing", txn.id, customer_id)
+        return
+    try:
+        CustomerService(db).collect_credit(customer, amount)
+    except CustomerServiceError as exc:
+        if "does not owe" not in str(exc):
+            logger.exception(
+                "Credit collection txn=%s could not be applied for customer=%s",
+                txn.id,
+                customer_id,
+            )
+            return
+    txn.credit_collected_at = _now_utc().replace(tzinfo=None)
+    txn.updated_at = _now_utc()
+
+
 def confirm_collection_manually(
     db: Session,
     *,
@@ -641,6 +681,7 @@ def confirm_collection_manually(
     db.flush()
     updated_order_ids = _sync_linked_orders_on_success(db, txn)
     _sync_linked_bookings_on_success(db, txn)
+    apply_credit_collection_if_paid(db, txn)
     db.commit()
     db.refresh(txn)
 

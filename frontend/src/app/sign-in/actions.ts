@@ -65,6 +65,8 @@ function loginErrorRedirect(
   redirect(`${fromPath}?${params.toString()}`);
 }
 
+const OTP_LENGTH = 6;
+
 export async function verifyLoginCodeAction(formData: FormData): Promise<{
   ok: false;
   message: string;
@@ -75,8 +77,8 @@ export async function verifyLoginCodeAction(formData: FormData): Promise<{
   const nextPath =
     nextRaw.startsWith("/") && !nextRaw.startsWith("//") ? nextRaw : null;
 
-  if (!identifier || code.length !== 4) {
-    return { ok: false, message: "Enter the 4-digit code." };
+  if (!identifier || code.length !== OTP_LENGTH) {
+    return { ok: false, message: `Enter the ${OTP_LENGTH}-digit code.` };
   }
 
   try {

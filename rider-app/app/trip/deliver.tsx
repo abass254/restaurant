@@ -5,6 +5,11 @@ import { ItemScanScreen } from '@/src/components/ItemScanScreen';
 import { useActiveDelivery } from '@/src/hooks/useActiveDelivery';
 import { deliveryItemsToTripItems, type TripItem } from '@/src/api';
 import { useTheme } from '@/src/ThemeContext';
+import {
+  merchantStageLabelForPhase,
+  riderActionTitleForPhase,
+  tripReferenceLabel,
+} from '@/src/deliveryWorkflow';
 
 export default function DeliverScreen() {
   const { order } = useLocalSearchParams<{ order: string }>();
@@ -52,8 +57,8 @@ export default function DeliverScreen() {
 
   return (
     <ItemScanScreen
-      title="Hand off to customer"
-      subtitle={`Order #${delivery.order_number} — scan each product as you hand it over`}
+      title={riderActionTitleForPhase('at_client')}
+      subtitle={`${merchantStageLabelForPhase('at_client')} · ${tripReferenceLabel(delivery)}`}
       items={items}
       onScan={onScan}
       pendingLabel="Still to hand off"

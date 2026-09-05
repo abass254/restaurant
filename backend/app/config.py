@@ -2,9 +2,23 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlparse
 
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.env_files import PROJECT_ROOT, dukai_env_files
+
+_PRODUCTION_ENVS = frozenset({"production", "prod"})
+
+
+def env_is_production(app_env: str) -> bool:
+    return (app_env or "").strip().lower() in _PRODUCTION_ENVS
+
+
+def effective_app_debug(app_env: str, app_debug: bool) -> bool:
+    """APP_ENV=production always wins over APP_DEBUG=true."""
+    if env_is_production(app_env):
+        return False
+    return bool(app_debug)
 
 
 class Settings(BaseSettings):
@@ -32,6 +46,9 @@ class Settings(BaseSettings):
     db_database: str = ""
     db_username: str = "dukai"
     db_password: str = ""
+    # Optional full SQLAlchemy URL (e.g. mysql://user:pass@host:3306/db).
+    # When set, overrides the DB_* fields above.
+    db_url: str = Field(default="", validation_alias="DATABASE_URL")
 
     cors_allowed_origins: str = "http://127.0.0.1:7000,http://localhost:7000"
     # Comma-separated frontend origins allowed in OAuth return redirects (e.g.
@@ -243,8 +260,21 @@ class Settings(BaseSettings):
         },
     ]
 
+    @staticmethod
+    def _normalize_database_url(url: str) -> str:
+        raw = url.strip()
+        if raw.startswith("mysql://"):
+            raw = "mysql+pymysql://" + raw[len("mysql://") :]
+        if raw.startswith("mysql+pymysql://") and "charset=" not in raw:
+            sep = "&" if "?" in raw else "?"
+            raw = f"{raw}{sep}charset=utf8mb4"
+        return raw
+
     @property
     def database_url(self) -> str:
+        if self.db_url.strip():
+            return self._normalize_database_url(self.db_url)
+
         if self.db_connection.lower() == "sqlite":
             db_path = self.db_database or str(PROJECT_ROOT / "database" / "database.sqlite")
             if not Path(db_path).is_absolute():
@@ -364,6 +394,15 @@ class Settings(BaseSettings):
     def instagram_oauth_start_url(self) -> str:
         """Same-origin OAuth entrypoint (relative path for multi-host deployments)."""
         return "/auth/instagram"
+
+    @property
+    def is_production(self) -> bool:
+        return env_is_production(self.app_env)
+
+    @model_validator(mode="after")
+    def _lock_debug_in_production(self) -> "Settings":
+        self.app_debug = effective_app_debug(self.app_env, self.app_debug)
+        return self
 
 
 @lru_cache

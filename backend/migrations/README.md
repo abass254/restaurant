@@ -13,6 +13,10 @@ Python script that:
 - Run with the project virtualenv: `python backend/migrations/<file>.py`
 - Migrations should always be safe to re-run.
 
+Deploy note: the `2026_08_29_*` deliveries / QA / login-code scripts must run
+before shipping the current `Delivery` / `QaIssue` models. `scripts/backend-migrate.sh`
+runs every file in filename order.
+
 ## Why not Alembic?
 
 We may switch to Alembic once we have ≥5 migrations. For now, plain scripts

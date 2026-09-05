@@ -6,7 +6,7 @@ export { toWhatsAppMsisdn };
 
 export const TRANS_CHAP_RECEIPT_KEY = "trans-chap:last-receipt";
 
-export type TransChapPayMode = "cash" | "mpesa";
+export type TransChapPayMode = "cash" | "mpesa" | "credit";
 export type TransChapPaymentStatus = "paid" | "pending" | "failed";
 
 export type TransChapReceiptLine = {
@@ -26,12 +26,26 @@ export type TransChapReceipt = {
   currency: string;
   payMode: TransChapPayMode;
   paymentStatus: TransChapPaymentStatus;
+  orderStatus: string | null;
+  allowedNextStatuses: string[];
   paidAt: string;
   customerName: string | null;
   customerPhone: string | null;
   mpesaReceiptNumber: string | null;
   mpesaMessage: string | null;
 };
+
+export function transChapPayLabel(payMode: TransChapPayMode): string {
+  if (payMode === "mpesa") return "M-PESA";
+  if (payMode === "credit") return "Credit";
+  return "Cash";
+}
+
+export function payModeFromMethod(method: string | null | undefined): TransChapPayMode {
+  if (method === "mpesa") return "mpesa";
+  if (method === "credit") return "credit";
+  return "cash";
+}
 
 export function transChapReceiptHref(orderId: string | null | undefined): string {
   if (!orderId) return "/trans-chap/make-a-sale/receipt";
@@ -52,7 +66,7 @@ export function loadTransChapReceipt(): TransChapReceipt | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<TransChapReceipt>;
     if (!parsed?.productName || !Number.isFinite(parsed.amount)) return null;
-    const payMode: TransChapPayMode = parsed.payMode === "mpesa" ? "mpesa" : "cash";
+    const payMode: TransChapPayMode = payModeFromMethod(parsed.payMode);
     const productName = parsed.productName;
     const amount = Number(parsed.amount);
     const items: TransChapReceiptLine[] =
@@ -90,6 +104,10 @@ export function loadTransChapReceipt(): TransChapReceipt | null {
       currency: parsed.currency || "KES",
       payMode,
       paymentStatus: normalizePaymentStatus(payMode, parsed.paymentStatus),
+      orderStatus: parsed.orderStatus ?? null,
+      allowedNextStatuses: Array.isArray(parsed.allowedNextStatuses)
+        ? parsed.allowedNextStatuses.filter((status) => typeof status === "string")
+        : [],
       paidAt: parsed.paidAt || new Date().toISOString(),
       customerName: parsed.customerName ?? null,
       customerPhone: parsed.customerPhone ?? null,
@@ -102,7 +120,15 @@ export function loadTransChapReceipt(): TransChapReceipt | null {
 }
 
 export function isTransChapReceiptPaid(receipt: TransChapReceipt): boolean {
+  if (receipt.orderStatus === "cancelled" || receipt.orderStatus === "refunded") {
+    return false;
+  }
+  if (receipt.payMode === "credit") return false;
   return receipt.payMode !== "mpesa" || receipt.paymentStatus === "paid";
+}
+
+export function isTransChapReceiptClosed(receipt: TransChapReceipt): boolean {
+  return receipt.orderStatus === "cancelled" || receipt.orderStatus === "refunded";
 }
 
 export function transChapReceiptMessage(receipt: TransChapReceipt): string {
@@ -112,10 +138,14 @@ export function transChapReceiptMessage(receipt: TransChapReceipt): string {
       ? receipt.mpesaReceiptNumber
         ? `Paid via M-PESA. Receipt ${receipt.mpesaReceiptNumber}.`
         : "Paid via M-PESA."
-      : "Paid in cash.";
+      : receipt.payMode === "credit"
+        ? "On credit. Pay later."
+        : "Paid in cash.";
   return [
     `${receipt.orderNumber} Confirmed.`,
-    `${total} paid to ${receipt.shopName} for ${receipt.productName}.`,
+    receipt.payMode === "credit"
+      ? `${total} on credit at ${receipt.shopName} for ${receipt.productName}.`
+      : `${total} paid to ${receipt.shopName} for ${receipt.productName}.`,
     receipt.customerName ? `Customer ${receipt.customerName}.` : "",
     paymentLine,
     "Thank you for shopping with us.",
@@ -136,7 +166,7 @@ export function receiptFromOrder(
   shopName: string,
   push?: OrderMpesaPushResult | null,
 ): TransChapReceipt {
-  const payMode: TransChapPayMode = order.payment_method === "mpesa" ? "mpesa" : "cash";
+  const payMode = payModeFromMethod(order.payment_method);
   const items: TransChapReceiptLine[] = (order.items ?? []).map((line) => ({
     name: line.product_name || "Sale",
     quantity: line.quantity || 1,
@@ -156,6 +186,8 @@ export function receiptFromOrder(
     currency: order.currency || "KES",
     payMode,
     paymentStatus: paymentStatusFromOrder(order, push),
+    orderStatus: order.status,
+    allowedNextStatuses: order.allowed_next_statuses ?? [],
     paidAt:
       order.paid_at ||
       order.placed_at ||
@@ -185,13 +217,14 @@ function normalizePaymentStatus(
   status: TransChapReceipt["paymentStatus"] | undefined,
 ): TransChapPaymentStatus {
   if (status === "paid" || status === "pending" || status === "failed") return status;
-  return payMode === "mpesa" ? "pending" : "paid";
+  return payMode === "mpesa" || payMode === "credit" ? "pending" : "paid";
 }
 
 function paymentStatusFromOrder(
   order: Order,
   push?: OrderMpesaPushResult | null,
 ): TransChapPaymentStatus {
+  if (order.payment_method === "credit") return "pending";
   if (order.payment_method !== "mpesa") return "paid";
   if (orderHasSuccessfulMpesa(order)) return "paid";
   const txn = order.mpesa_transaction;

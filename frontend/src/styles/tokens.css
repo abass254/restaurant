@@ -168,9 +168,10 @@ html[data-theme="light"] {
   --app-radius-lg: 24px;
   --app-radius-pill: 999px;
 
-  /* Card / table inset — generous breathing room */
-  --space-card: 1.5rem;
-  --space-card-sm: 1.15rem;
+  /* Card / table inset */
+  --space-card: 0.75rem; /* 12px — platform default */
+  --space-card-sm: 0.5rem; /* 8px — tighter nested tiles */
+  --space-card-lg: 1.5rem; /* 24px — generous sections when needed */
   --space-table-y: 1.1rem;
   --space-table-x: 1.35rem;
   --app-sidebar-bg: #ffffff;

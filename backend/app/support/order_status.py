@@ -113,6 +113,7 @@ SOURCE_INSTAGRAM: Final = "instagram"
 SOURCE_WHATSAPP: Final = "whatsapp"
 SOURCE_TIKTOK: Final = "tiktok"
 SOURCE_FACEBOOK: Final = "facebook"
+SOURCE_RIDER_REQUEST: Final = "rider_request"
 
 OrderSource = Literal[
     "walkin",
@@ -121,6 +122,7 @@ OrderSource = Literal[
     "whatsapp",
     "tiktok",
     "facebook",
+    "rider_request",
 ]
 
 ALL_SOURCES: Final[tuple[str, ...]] = (
@@ -130,6 +132,7 @@ ALL_SOURCES: Final[tuple[str, ...]] = (
     SOURCE_WHATSAPP,
     SOURCE_TIKTOK,
     SOURCE_FACEBOOK,
+    SOURCE_RIDER_REQUEST,
 )
 
 # Sources that can be selected directly in the POS workflow (i.e. orders
@@ -142,14 +145,16 @@ POS_SOURCES: Final[tuple[str, ...]] = (SOURCE_WALKIN, SOURCE_PHONE_CALL)
 PAYMENT_MPESA: Final = "mpesa"
 PAYMENT_CASH: Final = "cash"
 PAYMENT_CARD: Final = "card"
+PAYMENT_CREDIT: Final = "credit"
 PAYMENT_OTHER: Final = "other"
 
-PaymentMethod = Literal["mpesa", "cash", "card", "other"]
+PaymentMethod = Literal["mpesa", "cash", "card", "credit", "other"]
 
 ALL_PAYMENT_METHODS: Final[tuple[str, ...]] = (
     PAYMENT_MPESA,
     PAYMENT_CASH,
     PAYMENT_CARD,
+    PAYMENT_CREDIT,
     PAYMENT_OTHER,
 )
 

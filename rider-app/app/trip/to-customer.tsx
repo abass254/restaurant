@@ -4,6 +4,11 @@ import { TripStageLayout } from '@/src/components/TripStageLayout';
 import { FactRow } from '@/src/components/FactRow';
 import { useActiveDelivery } from '@/src/hooks/useActiveDelivery';
 import { useTheme } from '@/src/ThemeContext';
+import {
+  merchantStageLabelForPhase,
+  riderActionTitleForPhase,
+  tripReferenceLabel,
+} from '@/src/deliveryWorkflow';
 
 export default function ToCustomerScreen() {
   const { order } = useLocalSearchParams<{ order: string }>();
@@ -21,8 +26,10 @@ export default function ToCustomerScreen() {
 
   return (
     <TripStageLayout
-      stageTitle={`Deliver to ${delivery.customer_name || 'customer'}`}
-      subtitle={`Order #${delivery.order_number} · pull sheet down for more map`}
+      stageTitle={riderActionTitleForPhase('en_route_to_client', {
+        customerName: delivery.customer_name || 'customer',
+      })}
+      subtitle={`${merchantStageLabelForPhase('en_route_to_client')} · ${tripReferenceLabel(delivery)}`}
       mapVariant="customer"
       primaryLabel={acting ? 'Updating…' : 'Arrive at customer'}
       onPrimary={() => void goToPhase('at_client')}

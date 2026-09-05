@@ -4,6 +4,11 @@ import { TripStageLayout } from '@/src/components/TripStageLayout';
 import { FactRow } from '@/src/components/FactRow';
 import { useActiveDelivery } from '@/src/hooks/useActiveDelivery';
 import { useTheme } from '@/src/ThemeContext';
+import {
+  merchantStageLabelForPhase,
+  riderActionTitleForPhase,
+  tripReferenceLabel,
+} from '@/src/deliveryWorkflow';
 
 export default function ToStoreScreen() {
   const { order } = useLocalSearchParams<{ order: string }>();
@@ -23,11 +28,12 @@ export default function ToStoreScreen() {
   const storeName = delivery.store_name || 'Store';
   const payout = Math.round(delivery.delivery_fee || 0);
   const currency = delivery.currency || 'KES';
+  const phase = 'en_route_to_store';
 
   return (
     <TripStageLayout
-      stageTitle={`Head to ${storeName}`}
-      subtitle={`Order #${delivery.order_number} · pull sheet down for more map`}
+      stageTitle={riderActionTitleForPhase(phase, { storeName })}
+      subtitle={`${merchantStageLabelForPhase(phase)} · ${tripReferenceLabel(delivery)}`}
       mapVariant="store"
       primaryLabel={acting ? 'Updating…' : 'Arrive at store'}
       onPrimary={() => void goToPhase('at_store')}

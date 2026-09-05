@@ -4,12 +4,12 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TransChapProductField } from "@/components/trans-chap/TransChapProductField";
 import { apiFetch } from "@/lib/api";
-import { extractErrorMessage, showError } from "@/lib/alerts";
+import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import {
-  addInventoryQuantity,
   addLiteInventoryProduct,
   findInventoryByName,
+  receiveStock,
 } from "@/lib/trans-chap-product";
 import type { InventoryItem, InventoryResponse } from "@/lib/types";
 
@@ -32,6 +32,12 @@ export function TransChapStockUpForm() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!product.trim() || selectedItem) return;
+    const match = findInventoryByName(inventory, product);
+    if (match) setSelectedItem(match);
+  }, [inventory, product, selectedItem]);
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     const name = product.trim();
@@ -46,10 +52,14 @@ export function TransChapStockUpForm() {
         item = findInventoryByName(fresh.data, name) ?? null;
       }
       if (!item) {
-        await addLiteInventoryProduct(name, "", { stock_quantity: qty });
-      } else {
-        await addInventoryQuantity(item, qty);
+        item = await addLiteInventoryProduct(name, "", { stock_quantity: 0 });
       }
+      await receiveStock({
+        item,
+        quantity: qty,
+        reason: "adjustment",
+      });
+      await toastSuccess("Stock added");
       router.push("/trans-chap/stocks");
     } catch (err) {
       await showError("Could not add stock", extractErrorMessage(err));
@@ -60,8 +70,12 @@ export function TransChapStockUpForm() {
 
   return (
     <form className="auth-split__form trans-chap-form" onSubmit={(e) => void handleSubmit(e)}>
+      <p className="trans-chap-form__lead">
+        Add units you already have. Does not record a purchase or cost.
+      </p>
       <div className="trans-chap-form__fields">
         <TransChapProductField
+          fieldId="stock-up-product"
           value={product}
           amount=""
           selectedItem={selectedItem}
@@ -74,18 +88,18 @@ export function TransChapStockUpForm() {
         />
         <div className="auth-split__field">
           <label htmlFor="stock-up-qty">Quantity to add</label>
-          <input
-            id="stock-up-qty"
-            type="number"
-            required
-            min={1}
-            step={1}
-            inputMode="numeric"
-            placeholder="0"
-            className="auth-split__input"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-          />
+          <div className="trans-chap-input">
+            <input
+              id="stock-up-qty"
+              type="text"
+              required
+              inputMode="numeric"
+              placeholder="0"
+              className="auth-split__input"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+            />
+          </div>
         </div>
       </div>
       <div className="trans-chap-form__actions">

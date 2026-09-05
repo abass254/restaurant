@@ -27,8 +27,8 @@ cp .env.example .env
 
 Minimum values to set for a fresh install:
 
-- `DB_PASSWORD`, `DB_ROOT_PASSWORD` — pick strong values.
-- `SESSION_SECRET` — long random string.
+- `DB_PASSWORD`, `DB_ROOT_PASSWORD` — required; Compose will not start without them. Do not use `dukai`, `root`, or `password`.
+- `SESSION_SECRET` — long random string (Compose/`APP_ENV=production` refuses placeholders).
 - `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN` — from your Meta app.
 - `INSTAGRAM_REDIRECT_URI` — must match the Meta app's registered OAuth redirect URI.
 
@@ -41,7 +41,10 @@ CORS_ALLOWED_ORIGINS=https://your.domain
 INSTAGRAM_REDIRECT_URI=https://your.domain/auth/instagram/callback
 APP_DEBUG=false
 APP_ENV=production
+NEXT_PUBLIC_DEBUG=false
 ```
+
+`APP_ENV=production` forces debug off even if `APP_DEBUG=true`. Compose also sets `APP_DEBUG=false` on the backend container.
 
 ## 2. Build & start
 
@@ -77,8 +80,7 @@ docker compose exec backend python migrations/2026_05_26_140000_add_username_and
 
 ```bash
 curl http://localhost:7070/                 # frontend
-curl http://localhost:7070/test             # proxied to backend /test
-curl http://127.0.0.1:7071/up               # backend direct
+curl http://127.0.0.1:7071/up               # backend health
 ```
 
 `docker compose ps` shows the per-container healthcheck status.
@@ -109,6 +111,14 @@ Both survive `docker compose down`. Use `-v` to wipe them.
 **Backend can't reach MySQL.** The backend's `DB_HOST` is hardcoded to `db`
 (the compose service name) in `docker-compose.yml`. Don't override it in
 `.env`.
+
+**Compose exits: `DB_PASSWORD must be set`.** Docker no longer defaults MySQL
+to `dukai` / `root`. Put strong `DB_PASSWORD` and `DB_ROOT_PASSWORD` values
+in `.env`.
+
+**Backend exits: `SESSION_SECRET is missing or too weak`.** Replace the
+`.env.example` placeholder with a long random string. `APP_ENV=production`
+(Compose) will not start with `change-me-*` secrets.
 
 **Instagram OAuth loops or fails.** `INSTAGRAM_REDIRECT_URI` in `.env`
 must exactly match what's registered in the Meta app, including scheme, host,

@@ -169,7 +169,7 @@ def create_product(
 ):
     validate_csrf(request, session)
     user = require_user(db, session)
-    assert_merchant_section_any_access(user, "inventory", "services")
+    assert_merchant_section_any_access(user, "inventory", "pos", "services", "dashboard")
 
     def _clean(value: str | None) -> str | None:
         if value is None:

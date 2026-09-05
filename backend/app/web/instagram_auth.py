@@ -23,6 +23,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["instagram-auth"])
 
+OAUTH_NEXT_SESSION_KEY = "instagram_oauth_next"
+
+
+def _safe_oauth_next(raw: str | None) -> str:
+    path = (raw or "").strip()
+    if path.startswith("/trans-chap") and not path.startswith("//") and "://" not in path:
+        return path.split("#")[0][:200]
+    return "/settings"
+
 
 def _frontend_url(
     path: str = "",
@@ -88,6 +97,15 @@ def _hub_return_origin(request: Request) -> str | None:
     )
 
 
+def _oauth_done_path(session: dict, *, connected: bool = False) -> str:
+    raw = session.pop(OAUTH_NEXT_SESSION_KEY, None)
+    path = _safe_oauth_next(raw if isinstance(raw, str) else None)
+    if connected:
+        sep = "&" if "?" in path else "?"
+        return f"{path}{sep}connected=1"
+    return path
+
+
 def _clear_oauth_state(redirect: RedirectResponse, session: dict) -> None:
     session.pop(OAUTH_STATE_SESSION_KEY, None)
     redirect.delete_cookie(OAUTH_STATE_COOKIE, path="/")
@@ -96,10 +114,12 @@ def _clear_oauth_state(redirect: RedirectResponse, session: dict) -> None:
 @router.get("/auth/instagram")
 def instagram_redirect(
     request: Request,
+    next_path: str | None = Query(default=None, alias="next"),
     services: ServiceContainer = Depends(get_services),
     session: dict = Depends(get_request_session),
 ):
     return_origin = _safe_return_origin(request)
+    session[OAUTH_NEXT_SESSION_KEY] = _safe_oauth_next(next_path)
 
     user = get_current_user(services.db, session)
     if user is None:
@@ -169,7 +189,7 @@ def instagram_callback(
             error_description,
         )
         redirect = RedirectResponse(
-            _frontend_url("/settings", base=return_origin, error="cancelled"),
+            _frontend_url(_oauth_done_path(session), base=return_origin, error="cancelled"),
         )
         _clear_oauth_state(redirect, session)
         redirect.set_cookie(**save_session(request, session))
@@ -188,7 +208,7 @@ def instagram_callback(
 
     if not code or not state or not cookie_ok:
         redirect = RedirectResponse(
-            _frontend_url("/settings", base=return_origin, error="invalid_state"),
+            _frontend_url(_oauth_done_path(session), base=return_origin, error="invalid_state"),
         )
         _clear_oauth_state(redirect, session)
         redirect.set_cookie(**save_session(request, session))
@@ -218,13 +238,15 @@ def instagram_callback(
             if settings.app_debug
             else "Could not connect your Instagram account. Please try again."
         )
-        redirect = RedirectResponse(_frontend_url("/settings", base=return_origin, error=message))
+        redirect = RedirectResponse(
+            _frontend_url(_oauth_done_path(session), base=return_origin, error=message)
+        )
         _clear_oauth_state(redirect, session)
         redirect.set_cookie(**save_session(request, session))
         return redirect
 
     redirect = RedirectResponse(
-        _frontend_url("/settings?connected=1", base=return_origin),
+        _frontend_url(_oauth_done_path(session, connected=True), base=return_origin),
         status_code=302,
     )
     _clear_oauth_state(redirect, session)

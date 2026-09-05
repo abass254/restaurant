@@ -191,10 +191,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [pausedIds],
   );
 
+  const applyHeartbeat = useCallback((data: Awaited<ReturnType<typeof riderHeartbeat>>) => {
+    setOffers(data.offers || []);
+    setMe((prev) =>
+      prev
+        ? {
+            ...prev,
+            is_online: data.is_online,
+            last_seen_at: data.last_seen_at,
+            active_trip_id: data.active_trip_id,
+            active_trip_phase: data.active_trip_phase,
+            active_trip_route: data.active_trip_route,
+          }
+        : prev,
+    );
+  }, []);
+
   const setOnline = useCallback(async (online: boolean) => {
     const next = await setRiderPresence({ online });
     setMe(next);
-  }, []);
+    if (online) {
+      const data = await riderHeartbeat({});
+      applyHeartbeat(data);
+    } else {
+      setOffers([]);
+    }
+  }, [applyHeartbeat]);
 
   const logout = useCallback(async () => {
     await logoutRider();
@@ -221,7 +243,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  // Heartbeat while authenticated
+  // Heartbeat while authenticated — poll faster when online so offers aren't missed.
   useEffect(() => {
     if (!me?.rider_id) return;
     let cancelled = false;
@@ -230,19 +252,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try {
         const data = await riderHeartbeat({});
         if (cancelled) return;
-        setOffers(data.offers || []);
-        setMe((prev) =>
-          prev
-            ? {
-                ...prev,
-                is_online: data.is_online,
-                last_seen_at: data.last_seen_at,
-                active_trip_id: data.active_trip_id,
-                active_trip_phase: data.active_trip_phase,
-                active_trip_route: data.active_trip_route,
-              }
-            : prev,
-        );
+        applyHeartbeat(data);
       } catch (err) {
         if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
           if (!cancelled) {
@@ -254,12 +264,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     void beat();
-    const id = setInterval(() => void beat(), 8000);
+    const intervalMs = me.is_online ? 4000 : 20000;
+    const id = setInterval(() => void beat(), intervalMs);
     return () => {
       cancelled = true;
       clearInterval(id);
     };
-  }, [me?.rider_id]);
+  }, [me?.rider_id, me?.is_online, applyHeartbeat]);
 
   // Resume / follow active trip phases (not completed)
   useEffect(() => {

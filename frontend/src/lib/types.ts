@@ -313,6 +313,11 @@ export type PasswordResetInfo = {
   name: string;
 };
 
+export type ForgotPasswordResponse = {
+  message: string;
+  reset_link?: string | null;
+};
+
 export type PasswordResetResponse = {
   message: string;
 };
@@ -1055,6 +1060,7 @@ export type StockMovement = {
   quantity_after: number | null;
   reason: StockMovementReason | string;
   note: string | null;
+  unit_cost?: number | null;
   created_by: string | null;
   created_at: string | null;
   inventory_item?: InventoryItem | null;
@@ -1064,12 +1070,27 @@ export type StockMovementsCreatePayload = {
   direction: StockMovementDirection;
   reason: StockMovementReason;
   note?: string | null;
-  lines: Array<{ inventory_item_id: string; quantity: number }>;
+  record_only?: boolean;
+  lines: Array<{
+    inventory_item_id: string;
+    quantity: number;
+    unit_cost?: number | null;
+  }>;
 };
 
 export type StockMovementsResponse = {
   message: string;
   data: StockMovement[];
+};
+
+export type StockMovementsListResponse = {
+  data: StockMovement[];
+  meta: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
 };
 
 export type InventoryByCodeResponse = {
@@ -1166,11 +1187,12 @@ export type OrderSource =
   | "instagram"
   | "whatsapp"
   | "tiktok"
-  | "facebook";
+  | "facebook"
+  | "rider_request";
 
 export type OrderFulfillmentType = "pickup" | "delivery";
 
-export type OrderPaymentMethod = "mpesa" | "cash" | "card" | "other";
+export type OrderPaymentMethod = "mpesa" | "cash" | "card" | "credit" | "other";
 
 export type OrderStatus =
   | "placed"
@@ -1276,6 +1298,44 @@ export type OrderWorkflowAction = {
   requires_mpesa_receipt?: boolean;
 };
 
+/** Standalone or order-linked delivery trip (Tools → Delivery). */
+export type DeliveryRecord = {
+  id: string;
+  delivery_number: string;
+  order_id: string | null;
+  status: string;
+  pickup_address: string | null;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
+  delivery_address: string | null;
+  delivery_notes: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  delivery_fee: number;
+  currency: string;
+  assigned_rider_id: string | null;
+  assigned_rider_name?: string | null;
+  rider_trip_phase?: RiderTripPhase | null;
+  rider_search_expires_at?: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  cancelled_at?: string | null;
+  completed_at?: string | null;
+};
+
+export type DeliveriesListResponse = {
+  data: DeliveryRecord[];
+};
+
+export type DeliveryHailResponse = {
+  message: string;
+  data: DeliveryRecord & {
+    offers_created?: number;
+    online_riders?: number;
+    eligible_riders?: number;
+  };
+};
+
 export type Order = {
   id: string;
   account_id: string;
@@ -1288,6 +1348,9 @@ export type Order = {
   customer_email: string | null;
   delivery_address: string | null;
   delivery_notes: string | null;
+  pickup_address?: string | null;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
   subtotal: number;
   delivery_fee: number;
   discount: number;
@@ -1324,6 +1387,8 @@ export type Order = {
   assigned_rider_name?: string | null;
   rider_assigned_at?: string | null;
   rider_dispatched_at?: string | null;
+  rider_trip_phase?: string | null;
+  rider_search_expires_at?: string | null;
 };
 
 export type OrdersListResponse = {
@@ -1472,6 +1537,50 @@ export type PublicOrderDeliveryDetailsResponse = {
   data: PublicOrderTracking;
 };
 
+export type ShopCustomer = {
+  id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  address: string | null;
+  notes: string | null;
+  credit_limit: number;
+  outstanding_balance: number;
+  available_credit: number;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type ShopCustomersListResponse = {
+  data: ShopCustomer[];
+  total: number;
+  owing_total?: number;
+};
+
+export type ShopCustomerMutationResponse = {
+  message: string;
+  data: ShopCustomer;
+};
+
+export type CreditCollection = {
+  id: string;
+  status: string;
+  amount: number;
+  collected?: boolean;
+};
+
+export type CreditCollectResponse = {
+  message: string;
+  data: ShopCustomer;
+  collection: CreditCollection;
+};
+
+export type CreditCollectionStatusResponse = {
+  message: string | null;
+  data: ShopCustomer;
+  collection: CreditCollection;
+};
+
 export type RiderStatus = "invited" | "active" | "suspended" | "removed";
 
 export type RiderSummary = {
@@ -1588,7 +1697,10 @@ export type RiderDeliveryItem = {
 
 export type RiderDelivery = {
   id: string;
-  order_number: string;
+  delivery_number: string;
+  order_id?: string | null;
+  order_number?: string | null;
+  has_order?: boolean;
   status: OrderStatus | string;
   customer_name: string | null;
   customer_phone_masked: string | null;
@@ -1620,8 +1732,11 @@ export type RiderDeliveryMutationResponse = {
 
 export type RiderOffer = {
   id: string;
-  order_id: string;
-  order_number: string;
+  delivery_id: string;
+  delivery_number: string;
+  order_id?: string | null;
+  order_number?: string | null;
+  has_order?: boolean;
   expires_at: string;
   store_name: string;
   store_location: string | null;
@@ -1657,6 +1772,60 @@ export type RiderLoginCodeResponse = {
     channel?: "phone" | "email" | string;
     code_sent?: boolean;
   };
+};
+
+export type LoginCodeRecord = {
+  id: string;
+  audience: "merchant" | "rider" | string;
+  recipient_name: string | null;
+  recipient_masked: string | null;
+  channel: string | null;
+  delivery_status: string | null;
+  lifecycle_status: "active" | "used" | "expired" | string;
+  purpose: string | null;
+  created_at: string | null;
+  expires_at: string | null;
+  consumed_at: string | null;
+};
+
+export type LoginCodesListResponse = {
+  data: LoginCodeRecord[];
+};
+
+export type QaIssueRecord = {
+  id: string;
+  key: string;
+  issue_number: number;
+  summary: string;
+  description: string | null;
+  issue_type: string;
+  priority: string;
+  component: string;
+  status: string;
+  page_url: string | null;
+  steps_to_reproduce: string | null;
+  reporter_name: string | null;
+  reporter_email: string | null;
+  assignee_id: string | null;
+  assignee_name: string | null;
+  assignee_email: string | null;
+  account_name: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type QaIssuesListResponse = {
+  data: QaIssueRecord[];
+};
+
+export type QaAssigneeRecord = {
+  id: string;
+  name: string;
+  email?: string | null;
+};
+
+export type QaAssigneesListResponse = {
+  data: QaAssigneeRecord[];
 };
 
 export type RiderEarningsTrip = {

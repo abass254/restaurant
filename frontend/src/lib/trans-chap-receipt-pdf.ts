@@ -3,6 +3,7 @@ import { formatNairobiDateTime } from "@/lib/nairobi-time";
 import {
   formatKsh,
   isTransChapReceiptPaid,
+  transChapPayLabel,
   type TransChapReceipt,
   type TransChapReceiptLine,
 } from "@/lib/trans-chap-receipt";
@@ -29,6 +30,9 @@ function receiptLines(receipt: TransChapReceipt): TransChapReceiptLine[] {
 }
 
 function statusLabel(receipt: TransChapReceipt): string {
+  if (receipt.orderStatus === "cancelled") return "VOIDED";
+  if (receipt.orderStatus === "refunded") return "REFUNDED";
+  if (receipt.payMode === "credit") return "ON CREDIT";
   if (isTransChapReceiptPaid(receipt)) return "PAID";
   if (receipt.paymentStatus === "pending") return "WAITING FOR M-PESA";
   return "M-PESA FAILED";
@@ -107,7 +111,7 @@ export function buildTransChapReceiptPdf(receipt: TransChapReceipt): File {
   const rows: [string, string][] = [
     ["Ref", receipt.orderNumber],
     ["Date", formatNairobiDateTime(receipt.paidAt) || "—"],
-    ["Payment", receipt.payMode === "mpesa" ? "M-PESA" : "Cash"],
+    ["Payment", transChapPayLabel(receipt.payMode)],
     ["Customer", receipt.customerName?.trim() || "Walk-in"],
   ];
   if (receipt.mpesaReceiptNumber) {

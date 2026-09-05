@@ -15,6 +15,7 @@ from app.services.inventory_stock_service import (
     InsufficientStockError,
     UntrackedStockError,
     adjust_stock,
+    apply_unit_costs,
 )
 
 
@@ -93,6 +94,60 @@ def test_adjust_stock_in_increments_and_logs() -> None:
     assert movements[0].quantity_before == 2
     assert movements[0].quantity_after == 5
     assert movements[0].direction == "in"
+
+
+def test_adjust_stock_record_only_does_not_change_on_hand() -> None:
+    product = SimpleNamespace(name="Soap", product_type="product")
+    product.is_service = lambda: False  # type: ignore[attr-defined]
+    item = SimpleNamespace(
+        id="item-1",
+        account_id="acc-1",
+        stock_quantity=8,
+        is_active=True,
+        product=product,
+        updated_at=None,
+    )
+    db = _FakeDB(item)
+    movements = adjust_stock(
+        db,  # type: ignore[arg-type]
+        [("item-1", 3)],
+        direction="in",
+        account_id="acc-1",
+        reason="receive",
+        record_only=True,
+    )
+    assert item.stock_quantity == 8
+    assert movements[0].quantity == 3
+    assert movements[0].quantity_before == 8
+    assert movements[0].quantity_after == 8
+
+
+def test_apply_unit_costs_stamps_movement_and_buying_price() -> None:
+    item = SimpleNamespace(buying_price=10, updated_at=None)
+    movement = SimpleNamespace(
+        inventory_item_id="item-1",
+        unit_cost=None,
+        inventory_item=item,
+        created_at="now",
+    )
+    apply_unit_costs([movement], {"item-1": 42.499})
+    assert movement.unit_cost == 42.5
+    assert item.buying_price == 42.5
+    assert item.updated_at == "now"
+
+
+def test_apply_unit_costs_can_skip_buying_price() -> None:
+    item = SimpleNamespace(buying_price=10, updated_at=None)
+    movement = SimpleNamespace(
+        inventory_item_id="item-1",
+        unit_cost=None,
+        inventory_item=item,
+        created_at="now",
+    )
+    apply_unit_costs([movement], {"item-1": 42}, update_buying_price=False)
+    assert movement.unit_cost == 42
+    assert item.buying_price == 10
+    assert item.updated_at is None
 
 
 def test_adjust_stock_out_rejects_oversell() -> None:

@@ -18,8 +18,8 @@ export function TransChapPanel({
   open: boolean;
   title: string;
   subtitle?: string;
-  badge?: { label: string; tone: "ok" | "wait" | "fail" };
-  tone?: "sale" | "purchase";
+  badge?: { label: string; tone: "ok" | "wait" | "fail" | "credit" };
+  tone?: "sale" | "purchase" | "stock" | "credit";
   onToggle: () => void;
   action?: ReactNode;
   headAction?: ReactNode;

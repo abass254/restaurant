@@ -3,14 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuthUser } from "@/components/app/AuthProvider";
+import { AppRightRail } from "@/components/app/AppRightRail";
 import { AppSidebar } from "@/components/app/AppSidebar";
 import { AppTopBar } from "@/components/app/AppTopBar";
 import { OnboardingGate } from "@/components/app/OnboardingGate";
 import { MerchantSectionGate } from "@/components/app/MerchantSectionGate";
-import {
-  MerchantLocationBanner,
-  MerchantLocationGate,
-} from "@/components/app/MerchantLocationGate";
+import { MerchantLocationBanner } from "@/components/app/MerchantLocationGate";
 import { MerchantNotificationPoller } from "@/components/app/MerchantNotificationPoller";
 import { PageTransition } from "@/components/app/PageTransition";
 import { SessionTimeoutGuard } from "@/components/app/SessionTimeoutGuard";
@@ -67,8 +65,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <div
         className={[
           "fb-app",
-          "fb-app--no-rail",
-          isInbox ? "fb-app--messages" : "",
+          isInbox ? "fb-app--no-rail fb-app--messages" : "",
           isMobileNav ? "" : "fb-app--sidebar-desktop",
           mobileSidebarOpen ? "fb-app--sidebar-expanded" : "",
         ]
@@ -82,7 +79,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         />
         <OnboardingGate />
         <MerchantSectionGate />
-        <MerchantLocationGate />
         <div className="fb-app__body">
           <AppSidebar expanded={sidebarExpanded} />
           <div className="fb-app__content">
@@ -92,6 +88,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               <MerchantLocationBanner />
               <PageTransition>{children}</PageTransition>
             </div>
+            {isInbox ? null : <AppRightRail user={user} />}
           </div>
         </div>
         <div

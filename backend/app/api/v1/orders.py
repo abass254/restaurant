@@ -9,7 +9,7 @@ state-machine helpers.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
@@ -52,12 +52,17 @@ from app.services.order_tracking_service import (
     OrderTrackingUnavailable,
 )
 from app.services.order_completion_service import OrderCompletionError, OrderCompletionService
+from app.services.customer_service import CustomerService, CustomerServiceError
 from app.services.inventory_stock_service import (
     InsufficientStockError,
     deduct_stock,
     restore_stock_for_order,
 )
 from app.support.order_delivery_details import order_needs_delivery_details
+from app.support.account_location import (
+    STORE_LOCATION_REQUIRED_FOR_RIDERS,
+    account_has_store_coordinates,
+)
 from app.support.order_status import (
     ALL_FULFILLMENT_TYPES,
     ALL_PAYMENT_METHODS,
@@ -68,12 +73,14 @@ from app.support.order_status import (
     DELIVERED,
     FULFILLMENT_DELIVERY,
     OUT_FOR_DELIVERY,
+    PAYMENT_CREDIT,
     PAYMENT_MPESA,
     PAYMENT_RECEIVED,
     PICKED_UP,
     PLACED,
     READY,
     REFUNDED,
+    SOURCE_RIDER_REQUEST,
     TERMINAL_STATUSES,
     BEING_PREPARED,
     allowed_next_statuses,
@@ -191,7 +198,7 @@ class OrderCreate(BaseModel):
     delivery_address: str | None = Field(default=None, max_length=2000)
     delivery_notes: str | None = Field(default=None, max_length=2000)
 
-    payment_method: Literal["mpesa", "cash", "card", "other"] | None = None
+    payment_method: Literal["mpesa", "cash", "card", "credit", "other"] | None = None
 
     delivery_fee: float | None = Field(default=0, ge=0, le=99_999_999.99)
     discount: float | None = Field(default=0, ge=0, le=99_999_999.99)
@@ -214,7 +221,7 @@ class OrderUpdate(BaseModel):
     customer_email: str | None = Field(default=None, max_length=255)
     delivery_address: str | None = Field(default=None, max_length=2000)
     delivery_notes: str | None = Field(default=None, max_length=2000)
-    payment_method: Literal["mpesa", "cash", "card", "other"] | None = None
+    payment_method: Literal["mpesa", "cash", "card", "credit", "other"] | None = None
     delivery_fee: float | None = Field(default=None, ge=0, le=99_999_999.99)
     discount: float | None = Field(default=None, ge=0, le=99_999_999.99)
     notes: str | None = Field(default=None, max_length=4000)
@@ -249,11 +256,25 @@ class AssignRiderRequest(BaseModel):
     rider_id: str = Field(min_length=1, max_length=36)
 
 
+class HailRiderRequest(BaseModel):
+    """Pickup → drop-off rider request, not tied to a kitchen order."""
+
+    pickup_address: str = Field(min_length=1, max_length=2000)
+    delivery_address: str = Field(min_length=1, max_length=2000)
+    pickup_lat: float | None = Field(default=None, ge=-90, le=90)
+    pickup_lng: float | None = Field(default=None, ge=-180, le=180)
+    customer_name: str | None = Field(default=None, max_length=255)
+    customer_phone: str | None = Field(default=None, max_length=32)
+    delivery_notes: str | None = Field(default=None, max_length=2000)
+    delivery_fee: float | None = Field(default=150, ge=0, le=99_999_999.99)
+
+
 class TestDeliveryRequest(BaseModel):
     """Optional overrides for a dummy ready delivery offered to online riders."""
 
     customer_name: str | None = Field(default=None, max_length=255)
     customer_phone: str | None = Field(default=None, max_length=32)
+    pickup_address: str | None = Field(default=None, max_length=2000)
     delivery_address: str | None = Field(default=None, max_length=2000)
     delivery_notes: str | None = Field(default=None, max_length=2000)
     delivery_fee: float | None = Field(default=150, ge=0, le=99_999_999.99)
@@ -273,12 +294,27 @@ def list_orders(
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
 ):
-    user = _auth_orders_user(db, session, pos_ok=True)
+    user = require_user(db, session)
+    if fulfillment_type == FULFILLMENT_DELIVERY:
+        assert_merchant_section_any_access(
+            user, "orders", "pos", "dashboard", "delivery", "tools",
+        )
+    else:
+        user = _auth_orders_user(db, session, pos_ok=True)
     account_id = _require_shop(user)
+
+    from app.services.rider_trip_service import RiderTripService
+
+    trip_service = RiderTripService(db)
+    trip_service.repair_cancelled_hails_with_active_rider(account_id)
+    trip_service.expire_stale_rider_searches(account_id)
 
     query = (
         db.query(Order)
-        .options(selectinload(Order.items).selectinload(OrderItem.inventory_item))
+        .options(
+            selectinload(Order.items).selectinload(OrderItem.inventory_item),
+            joinedload(Order.assigned_rider),
+        )
         .filter(Order.account_id == account_id)
         .order_by(
             Order.created_at.is_(None),
@@ -450,30 +486,43 @@ def create_test_delivery(
 ):
     """Create a ready dummy delivery and fan out offers to online riders.
 
-    Used from Delivery settings so merchants can exercise the rider-app offer
-    flow without walking a real order through the kitchen.
+    Used from Delivery settings so merchants can test rider dispatch without
+    a real hail from Tools → Delivery.
     """
     validate_csrf(request, session)
     user = require_user(db, session)
-    assert_merchant_section_any_access(user, "delivery", "orders")
+    assert_merchant_section_any_access(user, "delivery", "orders", "tools")
     account_id = _require_shop(user)
     body = payload or TestDeliveryRequest()
 
     account = db.get(Account, account_id)
     if not account:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Shop not found.")
+    if not account_has_store_coordinates(account):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=STORE_LOCATION_REQUIRED_FOR_RIDERS,
+        )
 
     shop_location = (account.business_location or "").strip() or "Nairobi"
+    shop_name = (account.business_name or "").strip() or "the shop"
     customer_name = (body.customer_name or "").strip() or "Test Customer"
     customer_phone = (body.customer_phone or "").strip() or "+254700000001"
+    pickup_address = (body.pickup_address or "").strip() or shop_location
     delivery_address = (
         (body.delivery_address or "").strip()
         or f"Test drop-off near {shop_location}"
     )
-    delivery_notes = (
-        (body.delivery_notes or "").strip()
-        or "TEST ORDER — ring the gate, leave with security if needed."
+    note_parts: list[str] = [
+        f"Come to {shop_name} ({shop_location}) for pickup, then deliver to {delivery_address}."
+    ]
+    if pickup_address.lower() != shop_location.lower():
+        note_parts.append(f"Quoted pickup: {pickup_address}.")
+    extra_notes = (body.delivery_notes or "").strip()
+    note_parts.append(
+        extra_notes or "Ring the shop, then continue to the drop-off."
     )
+    delivery_notes = " ".join(note_parts)
     delivery_fee = _money(body.delivery_fee if body.delivery_fee is not None else 150)
     unit_price = Decimal("100.00")
     quantity = 1
@@ -503,7 +552,10 @@ def create_test_delivery(
         prepared_at=now,
         ready_at=now,
         stock_deducted=False,
-        notes="TEST ORDER — dummy dispatch from Delivery settings.",
+        notes="Rider request — come to the shop, then deliver to the drop-off.",
+        pickup_address=pickup_address,
+        pickup_lat=float(account.latitude),
+        pickup_lng=float(account.longitude),
         created_at=now,
         updated_at=now,
     )
@@ -587,14 +639,136 @@ def create_test_delivery(
     }
 
 
+@router.post("/hail-rider", status_code=status.HTTP_201_CREATED)
+def hail_rider(
+    request: Request,
+    payload: HailRiderRequest,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Deprecated alias — prefer POST /api/v1/deliveries/hail."""
+    from app.api.v1 import deliveries as deliveries_api
+
+    return deliveries_api.hail_rider(request, payload, db, session)
+
+
+@router.post("/{order_id}/retry-rider-search")
+def retry_rider_search(
+    order_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Look for a rider again on a timed-out Tools → Delivery hail."""
+    validate_csrf(request, session)
+    user = require_user(db, session)
+    assert_merchant_section_any_access(user, "delivery", "orders", "tools")
+    account_id = _require_shop(user)
+    order = _get_owned_order(db, account_id, order_id)
+
+    if order.source != SOURCE_RIDER_REQUEST:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only rider hails can be retried from Delivery.",
+        )
+    if order.assigned_rider_id:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail="This delivery already has a rider assigned.",
+        )
+    if order.status != CANCELLED:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail="Only timed-out hails can be retried.",
+        )
+
+    from app.services.rider_trip_service import (
+        RIDER_SEARCH_TTL_SECONDS,
+        RiderTripService,
+        rider_search_timeout_label,
+    )
+
+    now = datetime.utcnow()
+    order.status = READY
+    order.cancelled_at = None
+    order.rider_trip_phase = None
+    order.rider_search_expires_at = now + timedelta(seconds=RIDER_SEARCH_TTL_SECONDS)
+    order.ready_at = now
+    order.updated_at = now
+    db.add(
+        OrderStatusHistory(
+            order_id=order.id,
+            from_status=CANCELLED,
+            to_status=READY,
+            changed_by_user_id=user.id,
+            note="Looking for a rider again.",
+            created_at=now,
+        )
+    )
+    db.commit()
+    db.refresh(order)
+
+    trip_service = RiderTripService(db)
+    offers = trip_service.fan_out_offers_for_ready_order(order)
+
+    online_riders = (
+        db.query(Rider)
+        .filter(
+            Rider.account_id == account_id,
+            Rider.status == "active",
+            Rider.is_online.is_(True),
+        )
+        .all()
+    )
+    eligible_count = sum(
+        1 for rider in online_riders if trip_service._rider_eligible_for_offers(rider)
+    )
+
+    db.refresh(order, attribute_names=["items", "status_history"])
+
+    timeout_note = (
+        f" We'll stop looking after {rider_search_timeout_label()} if no one accepts."
+    )
+    if offers:
+        message = (
+            f"Looking for a rider again — offered to {len(offers)} online rider"
+            f"{'' if len(offers) == 1 else 's'}.{timeout_note}"
+        )
+    elif eligible_count == 0:
+        message = (
+            "Looking for a rider again. None are online right now — "
+            f"they'll get this as soon as they go online.{timeout_note}"
+        )
+    else:
+        message = f"Looking for a rider again.{timeout_note}"
+
+    return {
+        "message": message,
+        "data": {
+            "order": OrderOut.from_model(
+                order,
+                allowed_next=allowed_next_statuses(order.status, order.fulfillment_type),
+            ),
+            "offers_created": len(offers),
+            "online_riders": len(online_riders),
+            "eligible_riders": eligible_count,
+        },
+    }
+
+
 @router.get("/{order_id}")
 def get_order(
     order_id: str,
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
 ):
-    user = _auth_orders_user(db, session)
+    user = _auth_orders_user(db, session, pos_ok=True)
     account_id = _require_shop(user)
+    from app.services.rider_trip_service import RiderTripService
+
+    trip_service = RiderTripService(db)
+    trip_service.repair_cancelled_hails_with_active_rider(account_id)
+    trip_service.expire_stale_rider_searches(account_id)
     order = _get_owned_order(db, account_id, order_id)
     OrderCompletionService(db).check_pending_finalization(order, user_id=user.id)
     db.refresh(order)
@@ -662,6 +836,30 @@ def create_order(
                 },
             },
         )
+
+    if payload.payment_method == PAYMENT_CREDIT:
+        if not (payload.customer_name and payload.customer_name.strip()):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "errors": {
+                        "customer_name": [
+                            "Customer name is required for credit sales.",
+                        ],
+                    },
+                },
+            )
+        if not (payload.customer_phone and payload.customer_phone.strip()):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "errors": {
+                        "customer_phone": [
+                            "Customer phone is required for credit sales.",
+                        ],
+                    },
+                },
+            )
 
     # Resolve & snapshot every line up front so we either accept the whole
     # order or fail before writing anything.
@@ -812,6 +1010,24 @@ def create_order(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
+
+    if payload.payment_method == PAYMENT_CREDIT:
+        try:
+            customers = CustomerService(db)
+            customer = customers.get_or_create_for_sale(
+                str(account_id),
+                name=payload.customer_name or "",
+                phone=payload.customer_phone or "",
+            )
+            customers.charge_credit(customer, total)
+            order.customer_name = customer.name
+            order.customer_phone = customer.phone
+        except CustomerServiceError as exc:
+            db.rollback()
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
 
     db.commit()
     db.refresh(order)
@@ -995,7 +1211,7 @@ def transition_order(
     etc.) so reporting can avoid an extra join against status history.
     """
     validate_csrf(request, session)
-    user = _auth_orders_user(db, session)
+    user = _auth_orders_user(db, session, pos_ok=True)
     account_id = _require_shop(user)
 
     order = _get_owned_order(db, account_id, order_id)
@@ -1077,9 +1293,15 @@ def transition_order(
         order.completed_at = now
     if target == CANCELLED and not order.cancelled_at:
         order.cancelled_at = now
-        if order.stock_deducted:
-            restore_stock_for_order(db, order)
-            order.stock_deducted = False
+    if target in (CANCELLED, REFUNDED) and order.stock_deducted:
+        restore_stock_for_order(db, order)
+        order.stock_deducted = False
+    if target in (CANCELLED, REFUNDED) and order.payment_method == PAYMENT_CREDIT:
+        CustomerService(db).release_credit_for_order(
+            str(account_id),
+            phone=order.customer_phone,
+            amount=order.total,
+        )
 
     db.add(
         OrderStatusHistory(

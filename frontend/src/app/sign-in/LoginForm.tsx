@@ -33,7 +33,7 @@ type Props = {
   signInPath?: string;
 };
 
-const OTP_LENGTH = 4;
+const OTP_LENGTH = 6;
 
 function TransChapSignInBrand() {
   return (
@@ -174,7 +174,7 @@ export default function LoginForm({
   async function verifyCode(e?: FormEvent) {
     e?.preventDefault();
     if (code.length !== OTP_LENGTH) {
-      setError("Enter the 4-digit code.");
+      setError(`Enter the ${OTP_LENGTH}-digit code.`);
       return;
     }
     setBusy(true);
@@ -281,7 +281,7 @@ export default function LoginForm({
             <>
               <h1 className="auth-split__title">Sign in to your dashboard</h1>
               <p className="auth-split__subtitle">
-                Enter 4 Digit Code sent to
+                Enter {OTP_LENGTH}-digit code sent to
                 <br />
                 <strong>{maskedTarget || identifier}</strong>
               </p>
@@ -333,16 +333,14 @@ export default function LoginForm({
             </button>
           </form>
 
-          {embedded ? null : (
-            <button
-              type="button"
-              className="auth-otp__resend"
-              onClick={() => void requestCode()}
-              disabled={busy}
-            >
-              Resend Code
-            </button>
-          )}
+          <button
+            type="button"
+            className="auth-otp__resend"
+            onClick={() => void requestCode()}
+            disabled={busy}
+          >
+            Resend Code
+          </button>
         </div>
       </LoginFrame>
     );
@@ -418,19 +416,27 @@ export default function LoginForm({
         </form>
 
         {embedded ? (
-          <button
-            type="button"
-            className="auth-split__link auth-split__link--end"
-            onClick={switchToOtp}
-            style={{
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              font: "inherit",
-            }}
-          >
-            Use OTP instead
-          </button>
+          <>
+            <Link
+              href="/forgot-password?next=/trans-chap/sign-in"
+              className="auth-split__link auth-split__link--end"
+            >
+              Forgot password?
+            </Link>
+            <button
+              type="button"
+              className="auth-split__link auth-split__link--end"
+              onClick={switchToOtp}
+              style={{
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                font: "inherit",
+              }}
+            >
+              Use OTP instead
+            </button>
+          </>
         ) : (
           <>
             <Link href="/forgot-password" className="auth-split__link auth-split__link--end">
@@ -478,7 +484,7 @@ export default function LoginForm({
           {error}
         </p>
       ) : null}
-      {!embedded && info && !error ? (
+      {info && !error ? (
         <p className="auth-split__alert auth-split__alert--ok">{info}</p>
       ) : null}
 

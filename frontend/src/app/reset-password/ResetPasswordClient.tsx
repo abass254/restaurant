@@ -93,7 +93,7 @@ export default function ResetPasswordClient() {
         <h1 className="auth-split__title">This link can&apos;t be used</h1>
         <p className="auth-split__subtitle">{error}</p>
         <p className="auth-split__footer">
-          Ask your DukAI administrator to send a fresh reset link, then{" "}
+          <Link href="/forgot-password">Request a new reset link</Link>, then{" "}
           <Link href="/sign-in">return to login</Link>.
         </p>
       </AuthShell>

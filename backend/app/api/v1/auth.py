@@ -23,10 +23,17 @@ from app.core.session import (
     set_active_account_id,
     validate_csrf,
 )
+from app.core import auth_throttle
 from app.database import get_db
 from app.dependencies import get_request_session
 from app.models import User, UserMembership
 from app.schemas import UserOut, build_user_out
+from app.services.merchant_login_otp import (
+    LOGIN_CODE_LENGTH,
+    MerchantLoginOtpService,
+    MerchantOtpError,
+)
+from app.services.password_reset_service import request_password_reset
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -37,14 +44,14 @@ class LoginRequest(BaseModel):
 
 
 class OtpRequestCodeIn(BaseModel):
-    """Request a 4-digit login code via email or phone."""
+    """Request a login code via email or phone."""
 
     identifier: str = Field(min_length=3, max_length=255)
 
 
 class OtpVerifyCodeIn(BaseModel):
     identifier: str = Field(min_length=3, max_length=255)
-    code: str = Field(min_length=4, max_length=4)
+    code: str = Field(min_length=LOGIN_CODE_LENGTH, max_length=LOGIN_CODE_LENGTH)
 
 
 class SignupRequest(BaseModel):
@@ -86,6 +93,7 @@ def login(
     session: dict = Depends(get_request_session),
 ):
     validate_csrf(request, session)
+    auth_throttle.throttle_login(request, payload.email)
     user = (
         db.query(User)
         .options(
@@ -98,6 +106,7 @@ def login(
     )
 
     if not user or not user.password or not verify_password(payload.password, user.password):
+        auth_throttle.record_login_failure(str(payload.email))
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={
@@ -120,6 +129,7 @@ def login(
         user.id,
         active_account_id=_default_active_account_id(user),
     )
+    auth_throttle.record_login_success(str(payload.email))
     response.set_cookie(**save_session(request, session))
     return build_user_out(db, user)
 
@@ -131,9 +141,9 @@ def request_login_code(
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
 ):
-    """Send (or issue) a 4-digit OTP for merchant dashboard sign-in."""
+    """Send (or issue) a 6-digit OTP for merchant dashboard sign-in."""
     validate_csrf(request, session)
-    from app.services.merchant_login_otp import MerchantLoginOtpService, MerchantOtpError
+    auth_throttle.throttle_otp_request(request, payload.identifier)
 
     try:
         result = MerchantLoginOtpService(db).request_login_code(
@@ -157,7 +167,7 @@ def verify_login_code(
 ):
     """Verify a merchant OTP and create a dashboard session."""
     validate_csrf(request, session)
-    from app.services.merchant_login_otp import MerchantLoginOtpService, MerchantOtpError
+    auth_throttle.throttle_otp_verify(request, payload.identifier)
 
     try:
         user = MerchantLoginOtpService(db).verify_login_code(
@@ -165,6 +175,7 @@ def verify_login_code(
             code=payload.code,
         )
     except MerchantOtpError as exc:
+        auth_throttle.record_otp_verify_failure(payload.identifier)
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
@@ -175,6 +186,7 @@ def verify_login_code(
         user.id,
         active_account_id=_default_active_account_id(user),
     )
+    auth_throttle.record_otp_verify_success(payload.identifier)
     response.set_cookie(**save_session(request, session))
     return build_user_out(db, user)
 
@@ -250,6 +262,7 @@ def admin_login(
     sign in through the regular merchant login.
     """
     validate_csrf(request, session)
+    auth_throttle.throttle_login(request, payload.username)
 
     user = (
         db.query(User)
@@ -259,6 +272,7 @@ def admin_login(
     )
 
     if not user or not verify_password(payload.password, user.password):
+        auth_throttle.record_login_failure(payload.username)
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={
@@ -292,6 +306,7 @@ def admin_login(
         )
 
     login_user(session, user.id, active_account_id=_default_active_account_id(user))
+    auth_throttle.record_login_success(payload.username)
     response.set_cookie(**save_session(request, session))
     return build_user_out(db, user)
 
@@ -398,7 +413,16 @@ def change_password(
     )
 
 
-# --- Admin-initiated password reset (public, token-authed) -----------------
+# --- Self-serve forgot password + token reset -----------------------------
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+    reset_link: str | None = None
 
 
 class PasswordResetInfoOut(BaseModel):
@@ -435,10 +459,27 @@ def _resolve_reset_token(db: Session, token: str) -> User:
             status.HTTP_400_BAD_REQUEST,
             detail=(
                 "This password reset link has already been used or is no longer "
-                "valid. Ask an admin to send a new one."
+                "valid. Request a new one from the forgot password page."
             ),
         )
     return user
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+def forgot_password(
+    payload: ForgotPasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Email a password reset link when the address matches an active account.
+
+    The response is the same whether or not the email exists, to avoid account
+    enumeration. ``reset_link`` is only populated in debug when mail is not
+    delivered, so local development can still complete the flow.
+    """
+    validate_csrf(request, session)
+    return ForgotPasswordResponse(**request_password_reset(db, str(payload.email)))
 
 
 @router.get("/password-reset", response_model=PasswordResetInfoOut)

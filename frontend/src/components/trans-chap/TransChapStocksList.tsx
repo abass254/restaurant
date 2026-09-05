@@ -1,45 +1,48 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import { extractErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import { inventoryProductName } from "@/lib/trans-chap-product";
+import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
+import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
+import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
+import { MotionItem, MotionList } from "@/components/app/MotionList";
 import type { InventoryItem, InventoryResponse } from "@/lib/types";
 
-function productInitial(name: string): string {
-  const match = name.trim().match(/[A-Za-z0-9]/);
-  return (match?.[0] || "S").toUpperCase();
-}
-
-function stockLabel(item: InventoryItem): { label: string; tone: "ok" | "wait" | "fail" } {
+function stockBadge(item: InventoryItem): { label: string; tone: "ok" | "wait" | "fail" } {
   if (item.stock_quantity == null) {
-    return { label: "Stock not tracked", tone: "ok" };
+    return { label: "Not tracked", tone: "ok" };
   }
   if (item.stock_quantity <= 0) {
-    return { label: "Out of stock", tone: "fail" };
+    return { label: "Out", tone: "fail" };
   }
   if (item.is_low_stock) {
-    return { label: `${item.stock_quantity} left · low stock`, tone: "wait" };
+    return { label: `${item.stock_quantity} left`, tone: "wait" };
   }
-  const price =
-    item.selling_price != null ? ` · ${formatKsh(item.selling_price)}` : "";
-  return { label: `${item.stock_quantity} in stock${price}`, tone: "ok" };
+  return { label: `${item.stock_quantity} in stock`, tone: "ok" };
 }
 
 export function TransChapStocksList() {
+  const listId = useId();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
       const data = await apiFetch<InventoryResponse>(apiRoutes.inventory);
       setItems(data.data);
-    } catch {
+      setError(null);
+    } catch (err) {
       setItems([]);
+      setError(extractErrorMessage(err, "Could not load stock."));
     } finally {
       setLoading(false);
     }
@@ -73,47 +76,64 @@ export function TransChapStocksList() {
       </div>
       <div className="trans-chap-sales__list">
         {loading ? (
-          <p className="trans-chap-sales__empty">Loading stock…</p>
+          <TransChapListSkeleton />
+        ) : error && items.length === 0 ? (
+          <TransChapStatus tone="error">{error}</TransChapStatus>
         ) : items.length === 0 ? (
-          <p className="trans-chap-sales__empty">No stock yet. Tap + to stock up.</p>
+          <TransChapStatus
+            actionHref="/trans-chap/stocks/stock-up"
+            actionLabel="Stock up"
+          >
+            No stock yet.
+          </TransChapStatus>
         ) : filtered.length === 0 ? (
           <p className="trans-chap-sales__empty">No products match this search.</p>
         ) : (
-          filtered.map((item) => {
+          <MotionList as="div" className="trans-chap-sales__stagger">
+          {filtered.map((item) => {
             const name = inventoryProductName(item);
-            const status = stockLabel(item);
+            const open = openId === item.id;
+            const panelId = `${listId}-${item.id}`;
+            const price =
+              item.selling_price != null ? formatKsh(item.selling_price) : "No selling price";
             return (
-              <article key={item.id} className="trans-chap-sale">
-                <div className="trans-chap-sale__row">
-                  <span className="trans-chap-sale__avatar" aria-hidden>
-                    {productInitial(name)}
-                  </span>
-                  <span className="trans-chap-sale__main">
-                    <strong>{name}</strong>
-                    <span className={`trans-chap-sale__status is-${status.tone}`}>
-                      {status.label}
-                    </span>
-                  </span>
+              <MotionItem key={item.id} as="div">
+              <TransChapPanel
+                id={panelId}
+                open={open}
+                tone="stock"
+                title={name}
+                subtitle={price}
+                badge={stockBadge(item)}
+                onToggle={() => setOpenId(open ? null : item.id)}
+                action={
                   <Link
                     href={`/trans-chap/stocks/stock-up?product=${encodeURIComponent(name)}`}
-                    className="trans-chap-sale__add"
-                    aria-label={`Stock up ${name}`}
+                    className="trans-chap-panel__link"
                   >
-                    <i className="fa-solid fa-plus" aria-hidden />
+                    Stock up
                   </Link>
-                </div>
-              </article>
+                }
+              >
+                <dl className="trans-chap-panel__facts">
+                  <div>
+                    <dt>On hand</dt>
+                    <dd>
+                      {item.stock_quantity == null ? "Not tracked" : item.stock_quantity}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Selling price</dt>
+                    <dd>{price}</dd>
+                  </div>
+                </dl>
+              </TransChapPanel>
+              </MotionItem>
             );
-          })
+          })}
+          </MotionList>
         )}
       </div>
-      <Link
-        href="/trans-chap/stocks/stock-up"
-        className="trans-chap-fab"
-        aria-label="Stock up"
-      >
-        <i className="fa-solid fa-plus" aria-hidden />
-      </Link>
     </div>
   );
 }

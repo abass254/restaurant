@@ -160,7 +160,7 @@ export default function EarningsScreen() {
             <View style={styles.row}>
               <View style={styles.thumb} />
               <View style={styles.rowMeta}>
-                <Text style={styles.rowTitle}>#{e.order_number}</Text>
+                <Text style={styles.rowTitle}>{e.delivery_number}</Text>
                 <Text style={typography.caption}>
                   {e.delivery_address || formatTime(e.completed_at)}
                 </Text>

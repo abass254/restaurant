@@ -43,7 +43,7 @@
   background: var(--app-surface);
   border: 1px solid var(--app-border-light);
   border-radius: 14px;
-  padding: 14px;
+  padding: var(--space-card);
   display: flex;
   flex-direction: column;
   gap: 10px;

@@ -6,10 +6,7 @@ import { useAuthRefresh, useAuthUser } from "@/components/app/AuthProvider";
 import { BusinessLocationSection } from "@/components/app/BusinessLocationSection";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { apiFetch, resetCsrfCookie } from "@/lib/api";
-import {
-  accountHasLocationCoordinates,
-  accountNeedsLocationSetup,
-} from "@/lib/account-location";
+import { accountHasLocationCoordinates } from "@/lib/account-location";
 import { extractErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import {
@@ -22,7 +19,7 @@ import {
   type OnboardingStepId,
 } from "@/lib/onboarding";
 import type { AuthUser, BusinessAccount } from "@/lib/types";
-import { useGoogleMapsPublicConfig } from "@/lib/useGoogleMapsPublicConfig";
+import { useMapProviderConfig } from "@/lib/useMapProviderConfig";
 
 type ProductRow = {
   inventory_item_id: string;
@@ -104,21 +101,11 @@ function resolveResumeStep(draft: OnboardingDraft | null): OnboardingStepId {
   return "welcome";
 }
 
-const POST_LOCATION_STEPS = new Set<OnboardingStepId>(["catalog"]);
-
 function resolveStepWithLocation(
   resume: OnboardingStepId,
   account: BusinessAccount | null | undefined,
-  mapEnabled: boolean,
 ): OnboardingStepId {
-  const needsLocation = mapEnabled && accountNeedsLocationSetup(account);
-  if (needsLocation && POST_LOCATION_STEPS.has(resume)) {
-    return "location";
-  }
-  if (
-    resume === "location" &&
-    (!mapEnabled || accountHasLocationCoordinates(account))
-  ) {
+  if (resume === "location" && accountHasLocationCoordinates(account)) {
     return "catalog";
   }
   return resume;
@@ -132,7 +119,7 @@ export function OnboardingWizard() {
   const router = useRouter();
   const authUser = useAuthUser();
   const refreshUser = useAuthRefresh();
-  const { mapEnabled, loading: mapsLoading } = useGoogleMapsPublicConfig();
+  const { loading: mapsLoading } = useMapProviderConfig();
   const [stepId, setStepId] = useState<OnboardingStepId>("welcome");
   const [category, setCategory] = useState<string | null>(null);
   const [userName, setUserName] = useState("there");
@@ -158,9 +145,7 @@ export function OnboardingWizard() {
   );
   const firstName = userName.trim().split(/\s+/)[0] || "there";
   const businessAccount = shopAccountFromUser(authUser);
-  const locationReady =
-    !mapsLoading &&
-    (!mapEnabled || accountHasLocationCoordinates(businessAccount));
+  const locationReady = accountHasLocationCoordinates(businessAccount);
 
   const persist = useCallback((nextStep: OnboardingStepId, nextCategory: string | null) => {
     saveDraft({
@@ -183,16 +168,9 @@ export function OnboardingWizard() {
 
   const nextStep = useCallback(() => {
     const idx = steps.findIndex((s) => s.id === stepId);
-    let next = steps[idx + 1];
-    if (
-      next?.id === "location" &&
-      !mapsLoading &&
-      (!mapEnabled || accountHasLocationCoordinates(businessAccount))
-    ) {
-      next = steps[idx + 2];
-    }
+    const next = steps[idx + 1];
     if (next) goTo(next.id);
-  }, [businessAccount, goTo, mapEnabled, mapsLoading, stepId, steps]);
+  }, [goTo, stepId, steps]);
 
   const prevStep = useCallback(() => {
     const idx = steps.findIndex((s) => s.id === stepId);
@@ -334,11 +312,7 @@ export function OnboardingWizard() {
 
   useEffect(() => {
     if (bootstrapping || mapsLoading || locationAdjusted) return;
-    const adjusted = resolveStepWithLocation(
-      stepId,
-      businessAccount,
-      mapEnabled,
-    );
+    const adjusted = resolveStepWithLocation(stepId, businessAccount);
     if (adjusted !== stepId) {
       goTo(adjusted);
     }
@@ -348,7 +322,6 @@ export function OnboardingWizard() {
     businessAccount,
     goTo,
     locationAdjusted,
-    mapEnabled,
     mapsLoading,
     stepId,
   ]);
@@ -523,8 +496,9 @@ export function OnboardingWizard() {
                 </h1>
                 <p className="ob-lead">
                   Let&apos;s get {businessName || "your shop"} ready to sell.
-                  We&apos;ll walk through location and products — it only takes
-                  a few minutes.
+                  We&apos;ll walk through your shop location and products — it
+                  only takes a few minutes. You can skip the map pin until you
+                  connect riders.
                 </p>
                 <ul className="ob-welcome__list" aria-label="What you will set up">
                   <li>
@@ -534,8 +508,7 @@ export function OnboardingWizard() {
                     <div>
                       <strong>Location</strong>
                       <span>
-                        Pin your shop on the map for accurate delivery &amp;
-                        routes
+                        Optional now. Required later when you invite riders.
                       </span>
                     </div>
                   </li>
@@ -576,8 +549,9 @@ export function OnboardingWizard() {
               <>
                 <h1>Shop location</h1>
                 <p className="ob-lead">
-                  Pin your business on the map so delivery routes and fees work
-                  correctly. Save your location, then continue to products.
+                  Pin your store so riders can find you. You can skip this for
+                  now and set it later under Delivery when you connect the rider
+                  app.
                 </p>
                 {businessAccount ? (
                   <BusinessLocationSection
@@ -599,22 +573,14 @@ export function OnboardingWizard() {
                   <button
                     type="button"
                     className="btn btn-primary"
-                    disabled={busy || mapsLoading || (mapEnabled && !locationReady)}
-                    onClick={() => {
-                      if (mapEnabled && !locationReady) {
-                        setError(
-                          "Save your shop location on the map before continuing.",
-                        );
-                        return;
-                      }
-                      nextStep();
-                    }}
+                    disabled={busy || mapsLoading}
+                    onClick={() => nextStep()}
                   >
                     {mapsLoading
                       ? "Loading maps…"
-                      : mapEnabled && !locationReady
-                        ? "Save location to continue"
-                        : "Continue"}
+                      : locationReady
+                        ? "Continue"
+                        : "Skip for now"}
                   </button>
                 </div>
               </>

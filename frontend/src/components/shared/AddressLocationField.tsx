@@ -1,13 +1,15 @@
 "use client";
 
 import { LocationPicker } from "@/components/shared/LocationPicker";
+import { OpenLocationPicker } from "@/components/shared/OpenLocationPicker";
 import type { LatLng } from "@/lib/google-maps";
-import { useGoogleMapsPublicConfig } from "@/lib/useGoogleMapsPublicConfig";
+import { useMapProviderConfig } from "@/lib/useMapProviderConfig";
 
 type AddressLocationFieldProps = {
   value: string | null | undefined;
   onChange: (text: string) => void;
   onCoordsChange?: (coords: LatLng | null) => void;
+  coords?: LatLng | null;
   label?: string;
   placeholder?: string;
   required?: boolean;
@@ -19,6 +21,9 @@ type AddressLocationFieldProps = {
   allowMapPin?: boolean;
   hideHint?: boolean;
   showCurrentLocation?: boolean;
+  showStoreLocation?: boolean;
+  storeLabel?: string;
+  storeCoords?: LatLng | null;
   /** Plain-text control when Google Maps is unavailable. */
   fallback?: "input" | "textarea";
   fallbackRows?: number;
@@ -29,6 +34,7 @@ export function AddressLocationField({
   value,
   onChange,
   onCoordsChange,
+  coords = null,
   label = "Location",
   placeholder = "Search for a location",
   required = false,
@@ -38,11 +44,15 @@ export function AddressLocationField({
   allowMapPin = true,
   hideHint = false,
   showCurrentLocation = false,
+  showStoreLocation = false,
+  storeLabel = "",
+  storeCoords = null,
   fallback = "input",
   fallbackRows = 2,
   inputAutoComplete = "street-address",
 }: AddressLocationFieldProps) {
-  const { config, mapEnabled, loading } = useGoogleMapsPublicConfig();
+  const { provider, mapEnabled, mapConfig, googleConfig, loading } =
+    useMapProviderConfig();
   const safeValue = value ?? "";
 
   if (loading) {
@@ -52,7 +62,7 @@ export function AddressLocationField({
           rows={fallbackRows}
           value={safeValue}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Loading Google Maps…"
+          placeholder="Loading map…"
           aria-label={label}
           disabled
         />
@@ -62,15 +72,15 @@ export function AddressLocationField({
     return (
       <label className="sf-field">
         <span>{label}</span>
-        <input type="text" value={safeValue} placeholder="Loading Google Maps…" disabled />
+        <input type="text" value={safeValue} placeholder="Loading map…" disabled />
       </label>
     );
   }
 
-  if (mapEnabled && config) {
+  if (provider === "google" && mapEnabled && googleConfig) {
     return (
       <LocationPicker
-        config={config}
+        config={googleConfig}
         value={safeValue}
         onChange={onChange}
         onCoordsChange={onCoordsChange}
@@ -83,6 +93,33 @@ export function AddressLocationField({
         allowMapPin={allowMapPin}
         hideHint={hideHint}
         showCurrentLocation={showCurrentLocation}
+        showStoreLocation={showStoreLocation}
+        storeLabel={storeLabel}
+        storeCoords={storeCoords}
+      />
+    );
+  }
+
+  if (mapEnabled) {
+    return (
+      <OpenLocationPicker
+        config={mapConfig}
+        value={safeValue}
+        onChange={onChange}
+        onCoordsChange={onCoordsChange}
+        coords={coords}
+        label={label}
+        placeholder={placeholder}
+        required={required}
+        variant={variant === "waitlist" ? "inline" : variant}
+        disabled={disabled}
+        showMap={showMap}
+        allowMapPin={allowMapPin}
+        hideHint={hideHint}
+        showCurrentLocation={showCurrentLocation}
+        showStoreLocation={showStoreLocation}
+        storeLabel={storeLabel}
+        storeCoords={storeCoords}
       />
     );
   }

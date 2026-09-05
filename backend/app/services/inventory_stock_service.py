@@ -134,11 +134,15 @@ def adjust_stock(
     reason: StockReason,
     note: str | None = None,
     user_id: str | None = None,
+    record_only: bool = False,
 ) -> list[StockMovement]:
     """Apply manual stock-in / stock-out deltas and write movement rows.
 
     Unlike order deduct/restore, untracked (NULL qty) and service items raise
     ``UntrackedStockError`` so barcode tools fail loudly.
+
+    ``record_only`` writes the ledger without changing on-hand quantity —
+    used to backfill purchase history after stock was already increased.
     """
     totals = _aggregate_lines(lines)
     if not totals:
@@ -165,17 +169,20 @@ def adjust_stock(
             )
 
         before = int(item.stock_quantity)
-        if direction == "out":
+        if record_only:
+            after = before
+        elif direction == "out":
             if qty > before:
                 raise InsufficientStockError(name, qty, before)
             after = before - qty
         else:
             after = before + qty
 
-        item.stock_quantity = after
-        item.updated_at = now
-        if direction == "in" and after > 0 and not item.is_active:
-            item.is_active = True
+        if not record_only:
+            item.stock_quantity = after
+            item.updated_at = now
+            if direction == "in" and after > 0 and not item.is_active:
+                item.is_active = True
 
         movement = StockMovement(
             account_id=account_id,
@@ -189,10 +196,38 @@ def adjust_stock(
             created_by=user_id,
             created_at=now,
         )
+        movement.inventory_item = item
         db.add(movement)
         movements.append(movement)
 
     return movements
+
+
+def apply_unit_costs(
+    movements: list[StockMovement],
+    costs: dict[str, float],
+    *,
+    update_buying_price: bool = True,
+) -> None:
+    """Stamp purchase cost onto inbound movements and refresh buying price."""
+    for movement in movements:
+        raw = costs.get(movement.inventory_item_id)
+        if raw is None:
+            continue
+        try:
+            cost = round(float(raw), 2)
+        except (TypeError, ValueError):
+            continue
+        if cost < 0:
+            continue
+        movement.unit_cost = cost
+        if not update_buying_price:
+            continue
+        item = getattr(movement, "inventory_item", None)
+        if item is None:
+            continue
+        item.buying_price = cost
+        item.updated_at = movement.created_at or getattr(item, "updated_at", None)
 
 
 def lines_from_order(order: Order) -> list[tuple[str, int]]:

@@ -5,6 +5,11 @@ import { ItemScanScreen } from '@/src/components/ItemScanScreen';
 import { useActiveDelivery } from '@/src/hooks/useActiveDelivery';
 import { deliveryItemsToTripItems, type TripItem } from '@/src/api';
 import { useTheme } from '@/src/ThemeContext';
+import {
+  merchantStageLabelForPhase,
+  riderActionTitleForPhase,
+  tripReferenceLabel,
+} from '@/src/deliveryWorkflow';
 
 export default function PickupScreen() {
   const { order } = useLocalSearchParams<{ order: string }>();
@@ -52,8 +57,8 @@ export default function PickupScreen() {
 
   return (
     <ItemScanScreen
-      title="Pickup at store"
-      subtitle="Hold each product barcode in the camera above"
+      title={riderActionTitleForPhase('picking_up')}
+      subtitle={`${merchantStageLabelForPhase('picking_up')} · ${tripReferenceLabel(delivery)}`}
       items={items}
       onScan={onScan}
       pendingLabel="Still to pick"

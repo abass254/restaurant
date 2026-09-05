@@ -300,6 +300,7 @@ class StockMovementOut(BaseModel):
     quantity_after: int | None
     reason: str
     note: str | None
+    unit_cost: float | None = None
     created_by: str | None
     created_at: datetime | None
     inventory_item: InventoryItemOut | None = None
@@ -309,6 +310,11 @@ class StockMovementOut(BaseModel):
         item_out = None
         if include_item and getattr(movement, "inventory_item", None) is not None:
             item_out = InventoryItemOut.from_model(movement.inventory_item)
+        unit_cost = movement.unit_cost
+        try:
+            unit_cost_out = float(unit_cost) if unit_cost is not None else None
+        except (TypeError, ValueError):
+            unit_cost_out = None
         return cls(
             id=movement.id,
             account_id=movement.account_id,
@@ -319,6 +325,7 @@ class StockMovementOut(BaseModel):
             quantity_after=movement.quantity_after,
             reason=movement.reason,
             note=movement.note,
+            unit_cost=unit_cost_out,
             created_by=movement.created_by,
             created_at=movement.created_at,
             inventory_item=item_out,
@@ -436,6 +443,9 @@ class OrderOut(BaseModel):
 
     delivery_address: str | None
     delivery_notes: str | None
+    pickup_address: str | None = None
+    pickup_lat: float | None = None
+    pickup_lng: float | None = None
 
     subtotal: float
     delivery_fee: float
@@ -478,6 +488,8 @@ class OrderOut(BaseModel):
     assigned_rider_name: str | None = None
     rider_assigned_at: datetime | None = None
     rider_dispatched_at: datetime | None = None
+    rider_trip_phase: str | None = None
+    rider_search_expires_at: datetime | None = None
 
     @classmethod
     def from_model(
@@ -503,6 +515,9 @@ class OrderOut(BaseModel):
             customer_email=order.customer_email,
             delivery_address=order.delivery_address,
             delivery_notes=order.delivery_notes,
+            pickup_address=getattr(order, "pickup_address", None),
+            pickup_lat=getattr(order, "pickup_lat", None),
+            pickup_lng=getattr(order, "pickup_lng", None),
             subtotal=float(order.subtotal or 0),
             delivery_fee=float(order.delivery_fee or 0),
             discount=float(order.discount or 0),
@@ -533,6 +548,8 @@ class OrderOut(BaseModel):
             ),
             rider_assigned_at=getattr(order, "rider_assigned_at", None),
             rider_dispatched_at=getattr(order, "rider_dispatched_at", None),
+            rider_trip_phase=getattr(order, "rider_trip_phase", None),
+            rider_search_expires_at=getattr(order, "rider_search_expires_at", None),
             items_count=len(order.items) if order.items is not None else None,
             allowed_next_statuses=allowed_next,
         )
@@ -546,10 +563,11 @@ class OrderOut(BaseModel):
                 for step in workflow_steps(order)
             ]
         if include_items:
-            out.items = [OrderItemOut.from_model(i) for i in order.items]
+            out.items = [OrderItemOut.from_model(i) for i in (order.items or [])]
         if include_history:
             out.status_history = [
-                OrderStatusEventOut.model_validate(h) for h in order.status_history
+                OrderStatusEventOut.model_validate(h)
+                for h in (order.status_history or [])
             ]
         if order.mpesa_transaction is not None:
             out.mpesa_transaction = OrderMpesaTransactionOut.model_validate(
@@ -578,3 +596,57 @@ def attach_order_mpesa_settlement(
         payout_shortcode_type=getattr(profile, "shortcode_type", None),
     )
     return order_out
+
+
+class LoginCodeOut(BaseModel):
+    id: str
+    audience: str
+    recipient_name: str | None = None
+    recipient_masked: str | None = None
+    channel: str | None = None
+    delivery_status: str | None = None
+    lifecycle_status: str
+    purpose: str | None = None
+    created_at: str | None = None
+    expires_at: str | None = None
+    consumed_at: str | None = None
+
+
+class LoginCodesListResponse(BaseModel):
+    data: list[LoginCodeOut] = []
+
+
+class QaIssueOut(BaseModel):
+    id: str
+    key: str
+    issue_number: int
+    summary: str
+    description: str | None = None
+    issue_type: str
+    priority: str
+    component: str
+    status: str
+    page_url: str | None = None
+    steps_to_reproduce: str | None = None
+    reporter_name: str | None = None
+    reporter_email: str | None = None
+    assignee_id: str | None = None
+    assignee_name: str | None = None
+    assignee_email: str | None = None
+    account_name: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class QaIssuesListResponse(BaseModel):
+    data: list[QaIssueOut] = []
+
+
+class QaAssigneeOut(BaseModel):
+    id: str
+    name: str
+    email: str | None = None
+
+
+class QaAssigneesListResponse(BaseModel):
+    data: list[QaAssigneeOut] = []

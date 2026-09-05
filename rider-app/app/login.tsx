@@ -270,7 +270,7 @@ export default function LoginScreen() {
   };
 
   const canSubmit = sent
-    ? code.trim().length >= 4
+    ? code.trim().length >= 6
     : mode === 'phone'
       ? isValidPhoneInput(phone)
       : email.trim().includes('@');

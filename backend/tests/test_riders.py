@@ -12,11 +12,20 @@ from app.core.rider_invite_tokens import (
     mint_rider_invite_token,
     read_rider_invite_token,
 )
-from app.services.rider_service import RiderService, RiderServiceError, normalize_phone
+from app.services.rider_service import RiderService, RiderServiceError, normalize_phone, phone_lookup_candidates
 
 
 def test_normalize_phone_strips_spaces() -> None:
     assert normalize_phone("+254 712 345 678") == "+254712345678"
+
+
+def test_phone_lookup_candidates_cover_local_formats() -> None:
+    found = set(phone_lookup_candidates("0712345678"))
+    assert "+254712345678" in found
+    assert "254712345678" in found
+    assert "0712345678" in found
+    assert "712345678" in found
+    assert phone_lookup_candidates("") == []
 
 
 def test_rider_invite_token_round_trip() -> None:

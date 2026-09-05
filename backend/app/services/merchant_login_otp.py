@@ -13,12 +13,19 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import User, UserLoginCode, UserMembership
-from app.services.rider_service import normalize_phone
+from app.services.rider_service import normalize_phone, phone_lookup_candidates
+from app.support.otp_delivery import (
+    MAIL_SEND_FAILED,
+    PHONE_OTP_UNAVAILABLE,
+    allow_otp_echo,
+    phone_otp_allowed,
+    with_optional_login_code,
+)
 
 logger = logging.getLogger(__name__)
 
 LOGIN_CODE_TTL_SECONDS = 600
-LOGIN_CODE_LENGTH = 4
+LOGIN_CODE_LENGTH = 6
 
 
 class MerchantOtpError(ValueError):
@@ -60,7 +67,13 @@ class MerchantLoginOtpService:
     def __init__(self, db: Session):
         self.db = db
 
-    def _issue_code(self, user: User) -> str:
+    def _issue_code(
+        self,
+        user: User,
+        *,
+        channel: str,
+        purpose: str,
+    ) -> tuple[str, UserLoginCode]:
         code = "".join(secrets.choice("0123456789") for _ in range(LOGIN_CODE_LENGTH))
         now = _utc_now()
         prior = (
@@ -74,16 +87,19 @@ class MerchantLoginOtpService:
         for row in prior:
             row.consumed_at = now
 
-        self.db.add(
-            UserLoginCode(
-                user_id=user.id,
-                code_hash=hash_login_code(code),
-                expires_at=now + timedelta(seconds=LOGIN_CODE_TTL_SECONDS),
-                created_at=now,
-            )
+        row = UserLoginCode(
+            user_id=user.id,
+            code_hash=hash_login_code(code),
+            channel=channel,
+            delivery_status="created",
+            purpose=purpose,
+            expires_at=now + timedelta(seconds=LOGIN_CODE_TTL_SECONDS),
+            created_at=now,
         )
+        self.db.add(row)
         self.db.commit()
-        return code
+        self.db.refresh(row)
+        return code, row
 
     def _find_user(
         self,
@@ -104,23 +120,14 @@ class MerchantLoginOtpService:
         if not clean_phone:
             return None
 
-        candidates = {clean_phone, clean_phone.lstrip("+")}
-        if clean_phone.startswith("+254") and len(clean_phone) >= 13:
-            local = clean_phone[4:]
-            candidates.add(f"0{local}")
-            candidates.add(local)
-
-        users = (
+        candidates = phone_lookup_candidates(clean_phone)
+        if not candidates:
+            return None
+        return (
             self.db.query(User)
-            .filter(User.phone.is_not(None), User.phone != "")
-            .all()
+            .filter(User.phone.in_(candidates))
+            .first()
         )
-        for user in users:
-            stored = normalize_phone(user.phone or "")
-            raw = (user.phone or "").strip()
-            if stored in candidates or raw in candidates or normalize_phone(raw) == clean_phone:
-                return user
-        return None
 
     def request_login_code(
         self,
@@ -138,6 +145,9 @@ class MerchantLoginOtpService:
             raise MerchantOtpError("Enter a valid email or phone number.")
 
         channel = "email" if is_email else "phone"
+        if channel == "phone" and not phone_otp_allowed():
+            raise MerchantOtpError(PHONE_OTP_UNAVAILABLE)
+
         generic = {
             "message": (
                 "If an account exists, a login code will be sent."
@@ -166,7 +176,7 @@ class MerchantLoginOtpService:
         channel: str,
         purpose: str,
     ) -> dict[str, Any]:
-        code = self._issue_code(user)
+        code, row = self._issue_code(user, channel=channel, purpose=purpose)
         email_masked = _mask_email(user.email) if user.email else None
         phone_masked = _mask_phone(normalize_phone(user.phone or "")) if user.phone else None
         identifier = (
@@ -199,14 +209,22 @@ class MerchantLoginOtpService:
                 expires_in_seconds=LOGIN_CODE_TTL_SECONDS,
             )
             if not sent:
-                return {
-                    **base,
-                    "message": (
-                        f"Could not send the email. Use the {noun} code shown below."
-                    ),
-                    "login_code": code,
-                    "code_sent": False,
-                }
+                row.delivery_status = "failed"
+                self.db.commit()
+                if not allow_otp_echo():
+                    raise MerchantOtpError(MAIL_SEND_FAILED)
+                return with_optional_login_code(
+                    {
+                        **base,
+                        "message": (
+                            f"Could not send the email. Use the {noun} code shown below."
+                        ),
+                        "code_sent": False,
+                    },
+                    code,
+                )
+            row.delivery_status = "delivered"
+            self.db.commit()
             return {
                 **base,
                 "message": (
@@ -217,13 +235,15 @@ class MerchantLoginOtpService:
                 "code_sent": True,
             }
 
-        # No SMS provider yet — echo code so phone OTP stays usable in local/dev.
-        return {
-            **base,
-            "message": f"{noun.capitalize()} code created. Enter it to continue.",
-            "login_code": code,
-            "code_sent": False,
-        }
+        # Debug only: no SMS provider — echo the code locally.
+        return with_optional_login_code(
+            {
+                **base,
+                "message": f"{noun.capitalize()} code created. Enter it to continue.",
+                "code_sent": False,
+            },
+            code,
+        )
 
     def verify_login_code(
         self,
@@ -258,7 +278,7 @@ class MerchantLoginOtpService:
 
         raw_code = (code or "").strip()
         if not raw_code or len(raw_code) != LOGIN_CODE_LENGTH:
-            raise MerchantOtpError("Enter the 4-digit login code.")
+            raise MerchantOtpError(f"Enter the {LOGIN_CODE_LENGTH}-digit login code.")
 
         now = _utc_now()
         rows = (

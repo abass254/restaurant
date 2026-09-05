@@ -50,6 +50,23 @@ def normalize_phone(phone: str) -> str:
     return f"+{digits}"
 
 
+def phone_lookup_candidates(phone: str) -> list[str]:
+    """Formats to try for an indexed ``phone IN (...)`` lookup.
+
+    Covers stored ``+2547…``, ``2547…``, ``07…``, and 9-digit local values
+    without loading every user row.
+    """
+    clean = normalize_phone(phone)
+    if not clean:
+        return []
+    found = {clean, clean.lstrip("+")}
+    if clean.startswith("+254") and len(clean) >= 13:
+        local = clean[4:]
+        found.add(f"0{local}")
+        found.add(local)
+    return list(found)
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -388,7 +405,15 @@ class RiderService:
         self.db.commit()
         self.db.refresh(order)
 
+        from app.services.delivery_service import DeliveryService
         from app.services.rider_trip_service import RiderTripService
 
-        RiderTripService(self.db).cancel_offers_for_order(order.id)
+        delivery = DeliveryService(self.db).ensure_for_order(order)
+        delivery.assigned_rider_id = rider.id
+        delivery.rider_assigned_at = now
+        delivery.rider_trip_phase = order.rider_trip_phase
+        delivery.status = "active"
+        delivery.updated_at = now.replace(tzinfo=None)
+        self.db.commit()
+        RiderTripService(self.db).cancel_offers_for_delivery(delivery.id)
         return order

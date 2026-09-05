@@ -53,7 +53,8 @@ export function useActiveDelivery(orderId: string | undefined) {
             params: {
               order: orderId,
               payout: String(next.delivery_fee ?? next.total ?? 0),
-              orderNumber: next.order_number,
+              deliveryNumber: next.delivery_number,
+              orderNumber: next.order_number ?? '',
             },
           });
           return next;

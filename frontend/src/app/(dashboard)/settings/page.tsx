@@ -191,10 +191,10 @@ export default function SettingsPage() {
     { id: "business", label: "Business", icon: "fa-briefcase",
       status: business
         ? locationIncomplete
-          ? "Set map pin"
-          : "Ready"
+          ? "Optional"
+          : "Pinned"
         : undefined,
-      tone: business ? (locationIncomplete ? "warn" : "ok") : undefined,
+      tone: business ? (locationIncomplete ? undefined : "ok") : undefined,
     },
     {
       id: "channels",
@@ -216,7 +216,7 @@ export default function SettingsPage() {
       id: "inventory",
       label: "Inventory",
       icon: "fa-boxes-stacked",
-      status: hasInstagram ? "duKAi" : "—",
+      status: hasInstagram ? "Platform" : "—",
       tone: hasInstagram ? "ok" : undefined,
     },
     { id: "mpesa", label: "M-PESA", icon: "fa-mobile-screen" },
@@ -289,7 +289,9 @@ export default function SettingsPage() {
                   <dd>
                     {business?.business_location ?? "—"}
                     {locationIncomplete ? (
-                      <span className="settings-grid__sub">Map pin needed</span>
+                      <span className="settings-grid__sub">
+                        Needed when you connect riders
+                      </span>
                     ) : null}
                   </dd>
                 </div>
@@ -298,6 +300,14 @@ export default function SettingsPage() {
                 <Link href="/basics">
                   <i className="fa-solid fa-store" aria-hidden="true" /> Edit on Basics →
                 </Link>
+                {locationIncomplete ? (
+                  <>
+                    {" "}
+                    <Link href="/delivery#section-store-location">
+                      Pin for riders →
+                    </Link>
+                  </>
+                ) : null}
               </p>
             </div>
           </article>

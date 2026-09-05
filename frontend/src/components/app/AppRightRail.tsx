@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { OnlineRidersBadge } from "@/components/app/OnlineRidersBadge";
+import { userCanAccessSection } from "@/lib/merchant-permissions";
 import type { AuthUser } from "@/lib/types";
 
 function initials(name: string): string {
@@ -10,9 +14,19 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
+const SHORTCUTS = [
+  { href: "/orders", icon: "fa-receipt", label: "Orders", section: "orders" as const },
+  { href: "/inventory", icon: "fa-boxes-stacked", label: "Inventory", section: "inventory" as const },
+  { href: "/delivery", icon: "fa-motorcycle", label: "Delivery", section: "delivery" as const },
+  { href: "/settings", icon: "fa-gear", label: "Shop settings", section: "settings" as const },
+];
+
 export function AppRightRail({ user }: { user: AuthUser }) {
-  const business = user.account;
+  const business = user.active_account ?? user.account;
   const ig = user.instagram_account;
+  const shortcuts = SHORTCUTS.filter((item) =>
+    userCanAccessSection(user, item.section),
+  );
 
   return (
     <aside className="fb-rail" aria-label="Shortcuts">
@@ -27,57 +41,41 @@ export function AppRightRail({ user }: { user: AuthUser }) {
           </div>
         </div>
         {business ? (
-          <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--app-text-secondary)" }}>
+          <p className="fb-rail-card__meta">
             {business.business_name}
             {business.business_location ? ` · ${business.business_location}` : ""}
           </p>
         ) : null}
+        <OnlineRidersBadge />
       </div>
 
       <div className="fb-rail-card">
         <h3>Your shortcuts</h3>
         <ul className="fb-rail-links">
-          <li>
-            <Link href="/tickets">
-              <i className="fas fa-comment-dots" aria-hidden="true" />
-              Tickets
-            </Link>
-          </li>
-          <li>
-            <Link href="/settings">
-              <i className="fas fa-store" aria-hidden="true" />
-              Shop settings
-            </Link>
-          </li>
+          {shortcuts.map((item) => (
+            <li key={item.href}>
+              <Link href={item.href}>
+                <i className={`fas ${item.icon}`} aria-hidden="true" />
+                {item.label}
+              </Link>
+            </li>
+          ))}
           {ig?.username ? (
             <li>
-              <Link href="/settings">
-                <i className="fab fa-link" aria-hidden="true" />
+              <Link href="/settings#section-channels">
+                <i className="fab fa-instagram" aria-hidden="true" />
                 @{ig.username}
               </Link>
             </li>
           ) : (
             <li>
-              <Link href="/settings">
-                <i className="fab fa-link" aria-hidden="true" />
+              <Link href="/settings#section-channels">
+                <i className="fab fa-instagram" aria-hidden="true" />
                 Connect Instagram
               </Link>
             </li>
           )}
-          <li>
-            <Link href="/tools/onboarding">
-              <i className="fas fa-circle-check" aria-hidden="true" />
-              Setup checklist
-            </Link>
-          </li>
         </ul>
-      </div>
-
-      <div className="fb-rail-card">
-        <h3>Tip</h3>
-        <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--app-text-secondary)", lineHeight: 1.5 }}>
-          This shop uses one shared Instagram inbox for the whole platform. Open Inbox to see customer DMs.
-        </p>
       </div>
     </aside>
   );

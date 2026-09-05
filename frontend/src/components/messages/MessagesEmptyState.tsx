@@ -84,9 +84,8 @@ export function MessagesEmptyState() {
         </div>
         <h1>Let's get your inbox ready</h1>
         <p className="messages-empty__lead">
-          You don't have any messaging channels connected yet. Pick a platform
-          below and we'll guide you through linking it. Once a channel is
-          connected, all incoming conversations will land right here.
+          Connect Instagram to receive DMs, comments, and story replies in this
+          inbox.
         </p>
 
         <ol className="messages-empty__steps">
@@ -105,9 +104,11 @@ export function MessagesEmptyState() {
         </ol>
 
         <div className="messages-empty__channels">
-          {channels.map((channel) => (
-            <ChannelTile key={channel.platform} channel={channel} canManage={canManage} />
-          ))}
+          {channels
+            .filter((channel) => channel.platform === "instagram" || channel.connected)
+            .map((channel) => (
+              <ChannelTile key={channel.platform} channel={channel} canManage={canManage} />
+            ))}
         </div>
 
         <p className="messages-empty__footer">

@@ -290,27 +290,33 @@ class OrderCompletionService:
         # Keep within last_customer_status_notified (VARCHAR 64); longest status is 28 chars.
         status_key = f"cmp:{order.status}"
         if force or order.last_customer_status_notified != status_key:
-            conversation = (
-                self.db.query(InstagramConversation)
-                .filter(InstagramConversation.id == order.source_conversation_id)
-                .first()
-            )
-            if conversation and conversation.account:
-                account = conversation.account
-                confirm_chips = (
-                    completion_confirm_quick_replies_with_menu_back()
-                    if dm_offer_quick_replies(settings, account, db=self.db)
-                    else completion_confirm_quick_replies()
+            try:
+                conversation = (
+                    self.db.query(InstagramConversation)
+                    .filter(InstagramConversation.id == order.source_conversation_id)
+                    .first()
                 )
-                notify.messenger.send_to_conversation(
-                    account,
-                    conversation,
-                    body,
-                    quick_replies=confirm_chips,
+                if conversation and conversation.account:
+                    account = conversation.account
+                    confirm_chips = (
+                        completion_confirm_quick_replies_with_menu_back()
+                        if dm_offer_quick_replies(settings, account, db=self.db)
+                        else completion_confirm_quick_replies()
+                    )
+                    notify.messenger.send_to_conversation(
+                        account,
+                        conversation,
+                        body,
+                        quick_replies=confirm_chips,
+                    )
+                else:
+                    notify.messenger.send_for_order(order.id, body)
+                order.last_customer_status_notified = status_key
+            except Exception:
+                logger.exception(
+                    "Failed to send completion prompt for order %s",
+                    order.id,
                 )
-            else:
-                notify.messenger.send_for_order(order.id, body)
-            order.last_customer_status_notified = status_key
 
         from app.support.sales_session import STEP_AWAITING_COMPLETION_CONFIRM, merge_sales_session
 
@@ -320,11 +326,17 @@ class OrderCompletionService:
             .first()
         )
         if conversation:
-            merge_sales_session(
-                conversation,
-                step=STEP_AWAITING_COMPLETION_CONFIRM,
-                order_id=order.id,
-            )
+            try:
+                merge_sales_session(
+                    conversation,
+                    step=STEP_AWAITING_COMPLETION_CONFIRM,
+                    order_id=order.id,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to merge sales session for order %s completion prompt",
+                    order.id,
+                )
 
     def _notify_customer_waiting_for_shop(self, order: Order) -> None:
         if not order.source_conversation_id:

@@ -7,6 +7,11 @@ import { notifyRider } from '@/src/alerts';
 import { useActiveDelivery } from '@/src/hooks/useActiveDelivery';
 import { useTheme } from '@/src/ThemeContext';
 import { spacing, typography } from '@/src/theme';
+import {
+  merchantStageLabelForPhase,
+  riderActionTitleForPhase,
+  tripReferenceLabel,
+} from '@/src/deliveryWorkflow';
 
 export default function ArrivedScreen() {
   const { order } = useLocalSearchParams<{ order: string }>();
@@ -28,8 +33,8 @@ export default function ArrivedScreen() {
 
   return (
     <TripStageLayout
-      stageTitle="Arrived at store"
-      subtitle={`Order #${delivery.order_number}`}
+      stageTitle={riderActionTitleForPhase('at_store')}
+      subtitle={`${merchantStageLabelForPhase('at_store')} · ${tripReferenceLabel(delivery)}`}
       mapVariant="store"
       primaryLabel={acting ? 'Updating…' : 'Pickup'}
       onPrimary={() => void goToPhase('picking_up')}

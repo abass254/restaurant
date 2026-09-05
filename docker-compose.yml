@@ -10,9 +10,12 @@
 #
 # Quickstart:
 #
-#   cp .env.example .env                  # edit Meta credentials etc.
+#   cp .env.example .env                  # set SESSION_SECRET, DB_PASSWORD, DB_ROOT_PASSWORD
 #   docker compose up -d --build
 #   docker compose exec backend sh -c 'for f in migrations/*.py; do python "$f"; done'
+#
+# Compose requires DB_PASSWORD and DB_ROOT_PASSWORD. The backend refuses to
+# boot in production with placeholder SESSION_SECRET or weak MySQL passwords.
 #
 # Frontend + backend share the single repo-root `.env`.
 
@@ -25,8 +28,8 @@ services:
     environment:
       MYSQL_DATABASE: ${DB_DATABASE:-dukai}
       MYSQL_USER: ${DB_USERNAME:-dukai}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-dukai}
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Set a strong DB_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Set a strong DB_ROOT_PASSWORD in .env}
     command:
       - --default-authentication-plugin=caching_sha2_password
       - --character-set-server=utf8mb4
@@ -56,6 +59,7 @@ services:
       - .env
     environment:
       APP_ENV: production
+      APP_DEBUG: "false"
       APP_PORT: "7071"
       DB_CONNECTION: mysql
       DB_HOST: db

@@ -235,7 +235,7 @@ export default function OfferScreen() {
       <View style={styles.scrim} />
       <View style={styles.sheet}>
         <View style={styles.timerHeader}>
-          <Text style={styles.timerLabel}>New delivery · #{offer.order_number}</Text>
+          <Text style={styles.timerLabel}>New delivery · {offer.delivery_number}</Text>
           <Text style={styles.timerText}>{secondsLeft}s</Text>
         </View>
         <View
@@ -249,8 +249,9 @@ export default function OfferScreen() {
           {currency} {payout.toLocaleString()}
         </Text>
         <Text style={styles.meta}>
-          {offer.item_count} item{offer.item_count === 1 ? '' : 's'} · order total{' '}
-          {currency} {Math.round(offer.total || 0).toLocaleString()}
+          {offer.item_count > 0
+            ? `${offer.item_count} item${offer.item_count === 1 ? '' : 's'} · order total ${currency} ${Math.round(offer.total || 0).toLocaleString()}`
+            : `Ride · ${currency} ${Math.round(offer.payout_estimate || offer.total || 0).toLocaleString()}`}
         </Text>
 
         <View style={styles.strip}>

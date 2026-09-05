@@ -102,3 +102,14 @@ def test_graph_access_token_without_db_skips_refresh() -> None:
     account = MagicMock()
     account.access_token.return_value = "raw"
     assert graph_access_token(None, MagicMock(), MagicMock(), account) == "raw"
+
+
+def test_instagram_oauth_next_stays_on_trans_chap() -> None:
+    from app.web.instagram_auth import _oauth_done_path, _safe_oauth_next
+
+    assert _safe_oauth_next("/trans-chap/settings") == "/trans-chap/settings"
+    assert _safe_oauth_next("https://evil.example/trans-chap") == "/settings"
+    assert _safe_oauth_next("//evil.example") == "/settings"
+    session = {"instagram_oauth_next": "/trans-chap/settings"}
+    assert _oauth_done_path(session, connected=True) == "/trans-chap/settings?connected=1"
+    assert "instagram_oauth_next" not in session

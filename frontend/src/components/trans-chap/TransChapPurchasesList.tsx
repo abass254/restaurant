@@ -1,31 +1,43 @@
 "use client";
 
 import { useEffect, useId, useMemo, useState } from "react";
-import Link from "next/link";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
+import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
+import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
+import { MotionItem, MotionList } from "@/components/app/MotionList";
 import { formatNairobiDateTime, formatNairobiListTime } from "@/lib/nairobi-time";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import {
-  loadTransChapPurchases,
+  fetchTransChapPurchases,
   type TransChapPurchase,
 } from "@/lib/trans-chap-purchases";
 
-function accountId(user: { active_account?: { id: string } | null; account?: { id: string } | null }): string {
-  return user.active_account?.id || user.account?.id || "local";
-}
-
 export function TransChapPurchasesList() {
   const user = useAuthUser();
+  const accountId = user.active_account?.id || user.account?.id;
   const listId = useId();
-  const shopId = accountId(user);
   const [purchases, setPurchases] = useState<TransChapPurchase[]>([]);
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [truncated, setTruncated] = useState(false);
 
   useEffect(() => {
-    setPurchases(loadTransChapPurchases(shopId));
-  }, [shopId]);
+    let alive = true;
+    setLoading(true);
+    void fetchTransChapPurchases({ accountId }).then((result) => {
+      if (!alive) return;
+      setPurchases(result.purchases);
+      setError(result.error);
+      setTruncated(result.truncated);
+      setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [accountId]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -54,20 +66,28 @@ export function TransChapPurchasesList() {
         </label>
       </div>
       <div className="trans-chap-sales__list">
-        {purchases.length === 0 ? (
-          <p className="trans-chap-sales__empty">
-            No purchases yet. Tap + to record a purchase.
-          </p>
+        {loading ? (
+          <TransChapListSkeleton />
+        ) : error && purchases.length === 0 ? (
+          <TransChapStatus tone="error">{error}</TransChapStatus>
+        ) : purchases.length === 0 ? (
+          <TransChapStatus
+            actionHref="/trans-chap/purchases/new"
+            actionLabel="Record a purchase"
+          >
+            No purchases yet.
+          </TransChapStatus>
         ) : filtered.length === 0 ? (
           <p className="trans-chap-sales__empty">No purchases match this search.</p>
         ) : (
-          filtered.map((row) => {
+          <MotionList as="div" className="trans-chap-sales__stagger">
+          {filtered.map((row) => {
             const open = openId === row.id;
             const panelId = `${listId}-${row.id}`;
             const whenLabel = formatNairobiListTime(row.paidAt);
             return (
+              <MotionItem key={row.id} as="div">
               <TransChapPanel
-                key={row.id}
                 id={panelId}
                 open={open}
                 tone="purchase"
@@ -107,17 +127,15 @@ export function TransChapPurchasesList() {
                   </div>
                 </dl>
               </TransChapPanel>
+              </MotionItem>
             );
-          })
+          })}
+          </MotionList>
         )}
+        {truncated ? (
+          <p className="trans-chap-sales__empty">Showing the most recent 2,000 purchases.</p>
+        ) : null}
       </div>
-      <Link
-        href="/trans-chap/purchases/new"
-        className="trans-chap-fab"
-        aria-label="Record a new purchase"
-      >
-        <i className="fa-solid fa-plus" aria-hidden />
-      </Link>
     </div>
   );
 }

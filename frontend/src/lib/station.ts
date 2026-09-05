@@ -17,10 +17,12 @@ export const STATION_ACTIVE: OrderStatus[] = [
 ];
 
 export function isStationNeedsAction(order: Order): boolean {
+  if (order.source === "rider_request") return false;
   return STATION_NEEDS_ACTION.includes(order.status);
 }
 
 export function isStationActive(order: Order): boolean {
+  if (order.source === "rider_request") return false;
   return STATION_ACTIVE.includes(order.status);
 }
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.support.order_status import FULFILLMENT_DELIVERY, READY
+from app.support.order_status import FULFILLMENT_DELIVERY, READY, SOURCE_RIDER_REQUEST
 
 
 def order_has_delivery_details(order) -> bool:
@@ -14,9 +14,13 @@ def order_has_delivery_details(order) -> bool:
     if getattr(order, "fulfillment_type", None) != FULFILLMENT_DELIVERY:
         return True
 
+    address = str(getattr(order, "delivery_address", None) or "").strip()
+    # Rider hails are not kitchen tickets — drop-off is enough to start looking.
+    if getattr(order, "source", None) == SOURCE_RIDER_REQUEST:
+        return bool(address)
+
     name = str(getattr(order, "customer_name", None) or "").strip()
     phone = str(getattr(order, "customer_phone", None) or "").strip()
-    address = str(getattr(order, "delivery_address", None) or "").strip()
     return bool(name and phone and address)
 
 

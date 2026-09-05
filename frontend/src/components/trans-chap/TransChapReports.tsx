@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { FeedsAnalyticsDashboard } from "@/components/app/FeedsAnalyticsDashboard";
+import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { apiFetch } from "@/lib/api";
+import { extractErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { nairobiDateKey, parseIso } from "@/lib/nairobi-time";
-import { orderHasSuccessfulMpesa } from "@/lib/orders";
-import { loadTransChapPurchases } from "@/lib/trans-chap-purchases";
+import { fetchWalkinOrders, isCountedWalkinSale } from "@/lib/trans-chap-orders";
+import { fetchTransChapPurchases, type TransChapPurchase } from "@/lib/trans-chap-purchases";
 import { inventoryProductName } from "@/lib/trans-chap-product";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import {
@@ -17,7 +19,6 @@ import type {
   InventoryItem,
   InventoryResponse,
   Order,
-  OrdersListResponse,
 } from "@/lib/types";
 
 type WhenFilter = "today" | "week" | "all";
@@ -27,11 +28,6 @@ const WHEN_CHIPS: { id: WhenFilter; label: string }[] = [
   { id: "week", label: "7 days" },
   { id: "all", label: "All" },
 ];
-
-function isPaidSale(order: Order): boolean {
-  if (order.payment_method !== "mpesa") return true;
-  return orderHasSuccessfulMpesa(order);
-}
 
 function dateKeyFromIso(iso: string | null | undefined): string | null {
   const date = parseIso(iso);
@@ -55,13 +51,13 @@ function inPeriod(key: string | null, when: WhenFilter, todayKey: string): boole
 
 export function TransChapReports() {
   const user = useAuthUser();
-  const shopId = user.active_account?.id || user.account?.id || "local";
   const canSeeFeedAnalytics =
     userCanAccessSection(user, "feeds") && Boolean(user.instagram_account);
   const [orders, setOrders] = useState<Order[]>([]);
   const [items, setItems] = useState<InventoryItem[]>([]);
-  const [purchases, setPurchases] = useState<ReturnType<typeof loadTransChapPurchases>>([]);
+  const [purchases, setPurchases] = useState<TransChapPurchase[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [when, setWhen] = useState<WhenFilter>("today");
   const [section, setSection] = useState<"sales" | "feeds">(
     "sales",
@@ -70,33 +66,36 @@ export function TransChapReports() {
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const [sales, inventory] = await Promise.all([
-        apiFetch<OrdersListResponse>(`${apiRoutes.orders}?source=walkin&per_page=100`),
+      const [sales, inventory, bought] = await Promise.all([
+        fetchWalkinOrders(),
         apiFetch<InventoryResponse>(apiRoutes.inventory),
+        fetchTransChapPurchases({
+          accountId: user.active_account?.id || user.account?.id,
+        }),
       ]);
-      setOrders(sales.data);
+      setOrders(sales.orders);
       setItems(inventory.data);
-    } catch {
+      setPurchases(bought.purchases);
+      setError(sales.error || bought.error);
+    } catch (err) {
       setOrders([]);
       setItems([]);
+      setPurchases([]);
+      setError(extractErrorMessage(err, "Could not load report."));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user.account?.id, user.active_account?.id]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  useEffect(() => {
-    setPurchases(loadTransChapPurchases(shopId));
-  }, [shopId]);
-
   const todayKey = nairobiDateKey(new Date());
 
   const report = useMemo(() => {
     const paid = orders.filter((order) => {
-      if (!isPaidSale(order)) return false;
+      if (!isCountedWalkinSale(order)) return false;
       const key = dateKeyFromIso(order.paid_at || order.placed_at || order.created_at);
       return inPeriod(key, when, todayKey);
     });
@@ -105,10 +104,15 @@ export function TransChapReports() {
     );
 
     const salesTotal = paid.reduce((sum, order) => sum + order.total, 0);
-    const cashTotal = paid
-      .filter((order) => order.payment_method !== "mpesa")
+    const mpesaTotal = paid
+      .filter((order) => order.payment_method === "mpesa")
       .reduce((sum, order) => sum + order.total, 0);
-    const mpesaTotal = salesTotal - cashTotal;
+    const creditTotal = paid
+      .filter((order) => order.payment_method === "credit")
+      .reduce((sum, order) => sum + order.total, 0);
+    const cashTotal = paid
+      .filter((order) => order.payment_method !== "mpesa" && order.payment_method !== "credit")
+      .reduce((sum, order) => sum + order.total, 0);
     const purchaseTotal = bought.reduce((sum, row) => sum + row.total, 0);
     const units = paid.reduce(
       (sum, order) =>
@@ -140,6 +144,7 @@ export function TransChapReports() {
     return {
       salesTotal,
       cashTotal,
+      creditTotal,
       mpesaTotal,
       purchaseTotal,
       profit: salesTotal - purchaseTotal,
@@ -205,6 +210,8 @@ export function TransChapReports() {
 
           {loading ? (
             <p className="trans-chap-sales__empty">Loading report…</p>
+          ) : error && orders.length === 0 && purchases.length === 0 ? (
+            <TransChapStatus tone="error">{error}</TransChapStatus>
           ) : (
             <div className="trans-chap-reports__body">
               <section className="trans-chap-reports__kpis" aria-label="Totals">
@@ -222,22 +229,32 @@ export function TransChapReports() {
                     {report.purchaseCount} purchase{report.purchaseCount === 1 ? "" : "s"}
                   </small>
                 </article>
-                <article className="trans-chap-reports__kpi trans-chap-reports__kpi--wide">
-                  <span>Profit</span>
+                <article
+                  className={`trans-chap-reports__kpi trans-chap-reports__kpi--wide${
+                    report.profit < 0 ? " is-loss" : ""
+                  }`}
+                >
+                  <span>{report.profit < 0 ? "Loss" : "Profit"}</span>
                   <strong>{formatKsh(report.profit)}</strong>
-                  <small>Sales minus purchases in this period</small>
+                  <small>Sales minus restock spend in this period — not cost of goods sold</small>
                 </article>
               </section>
 
               <section className="trans-chap-reports__split" aria-label="How customers paid">
                 <article>
-                  <span>Cash</span>
-                  <strong>{formatKsh(report.cashTotal)}</strong>
-                </article>
-                <article>
                   <span>M-PESA</span>
                   <strong>{formatKsh(report.mpesaTotal)}</strong>
                 </article>
+                <article>
+                  <span>Credit</span>
+                  <strong>{formatKsh(report.creditTotal)}</strong>
+                </article>
+                {report.cashTotal > 0 ? (
+                  <article>
+                    <span>Cash</span>
+                    <strong>{formatKsh(report.cashTotal)}</strong>
+                  </article>
+                ) : null}
               </section>
 
               <section className="trans-chap-reports__block" aria-labelledby="trans-chap-top-products">

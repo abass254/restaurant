@@ -1,4 +1,5 @@
 import type { AuthUser } from "@/lib/types";
+import { isInternalToolsPath, isInternalToolsUser } from "@/lib/internal-tools-access";
 import {
   merchantNavLinks,
   type MerchantNavLink,
@@ -10,6 +11,7 @@ export const MERCHANT_SECTIONS = [
   "tickets",
   "inventory",
   "pos",
+  "customer",
   "orders",
   "delivery",
   "tools",
@@ -24,6 +26,7 @@ export const MERCHANT_SECTION_LABELS: Record<MerchantSection, string> = {
   tickets: "Tickets",
   inventory: "Inventory",
   pos: "POS",
+  customer: "Customers",
   orders: "Orders",
   delivery: "Delivery",
   tools: "Tools",
@@ -37,6 +40,7 @@ export const RETAIL_STAFF_SECTIONS: MerchantSection[] = [
   "tickets",
   "inventory",
   "pos",
+  "customer",
   "orders",
   "delivery",
   "tools",
@@ -50,6 +54,7 @@ const PATH_SECTION_MAP: Array<{ prefix: string; section: MerchantSection }> = [
   { prefix: "/messages", section: "tickets" },
   { prefix: "/inventory", section: "inventory" },
   { prefix: "/pos", section: "pos" },
+  { prefix: "/customer", section: "customer" },
   { prefix: "/orders", section: "orders" },
   { prefix: "/station", section: "orders" },
   { prefix: "/delivery", section: "delivery" },
@@ -147,6 +152,9 @@ export function firstAllowedPath(user: AuthUser): string {
 }
 
 export function userCanAccessPath(user: AuthUser, pathname: string): boolean {
+  if (isInternalToolsPath(pathname)) {
+    return isInternalToolsUser(user);
+  }
   if (isOwnerOnlyPath(pathname)) {
     return isShopOwner(user);
   }

@@ -1,0 +1,49 @@
+/* Shared app-card — used by @/components/app/Card */
+
+.app-card {
+  background: var(--app-surface);
+  border-radius: var(--app-radius-lg);
+  box-shadow: var(--app-shadow);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.app-card--pad {
+  padding: var(--space-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-card);
+}
+
+.app-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-card);
+  padding: var(--space-card);
+  border-bottom: 1px solid var(--app-border-light);
+}
+
+.app-card__body {
+  padding: var(--space-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-card);
+  min-width: 0;
+}
+
+.app-card__title {
+  margin: 0;
+  font-family: var(--app-font);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--app-text);
+  letter-spacing: -0.01em;
+}
+
+.app-card__subtitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--app-text-secondary);
+}

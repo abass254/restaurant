@@ -29,7 +29,7 @@ export default async function TransChapAppLayout({
   }
 
   if (user.require_change_password) {
-    redirect("/change-password");
+    redirect(`/change-password?next=${encodeURIComponent("/trans-chap")}`);
   }
 
   if (!userCanAccessSection(user, "dashboard")) {

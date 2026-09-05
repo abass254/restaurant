@@ -102,6 +102,10 @@ export const apiRoutes = {
   disconnectChannel: (platform: string) => `${apiUrl}/api/v1/channels/${platform}`,
   onboarding: `${apiUrl}/api/v1/onboarding`,
   onboardingRefresh: `${apiUrl}/api/v1/onboarding/refresh`,
+  loginCodes: `${apiUrl}/api/v1/login-codes`,
+  qaIssues: `${apiUrl}/api/v1/qa/issues`,
+  qaAssignees: `${apiUrl}/api/v1/qa/assignees`,
+  qaIssue: (id: string) => `${apiUrl}/api/v1/qa/issues/${encodeURIComponent(id)}`,
   messages: `${apiUrl}/api/v1/messages`,
   feeds: `${apiUrl}/api/v1/feeds`,
   feedsPost: `${apiUrl}/api/v1/feeds/post`,
@@ -159,8 +163,16 @@ export const apiRoutes = {
   shopCheckout: (token: string) =>
     `${apiUrl}/api/v1/shop/${encodeURIComponent(token)}/checkout`,
   orders: `${apiUrl}/api/v1/orders`,
+  deliveries: `${apiUrl}/api/v1/deliveries`,
+  delivery: (id: string) => `${apiUrl}/api/v1/deliveries/${encodeURIComponent(id)}`,
+  deliveryHail: `${apiUrl}/api/v1/deliveries/hail`,
+  deliveryRetryRiderSearch: (id: string) =>
+    `${apiUrl}/api/v1/deliveries/${encodeURIComponent(id)}/retry-rider-search`,
   order: (id: string) => `${apiUrl}/api/v1/orders/${id}`,
   orderTestDelivery: `${apiUrl}/api/v1/orders/test-delivery`,
+  orderHailRider: `${apiUrl}/api/v1/deliveries/hail`,
+  orderRetryRiderSearch: (id: string) =>
+    `${apiUrl}/api/v1/deliveries/${encodeURIComponent(id)}/retry-rider-search`,
   orderTransition: (id: string) => `${apiUrl}/api/v1/orders/${id}/transition`,
   orderMpesaStkPush: (id: string) =>
     `${apiUrl}/api/v1/orders/${id}/mpesa-stk-push`,
@@ -179,6 +191,15 @@ export const apiRoutes = {
     `${apiUrl}/api/v1/orders/${id}/confirm-handoff`,
   orderAssignRider: (id: string) =>
     `${apiUrl}/api/v1/orders/${id}/assign-rider`,
+  customers: `${apiUrl}/api/v1/customers`,
+  customersOwing: `${apiUrl}/api/v1/customers?owing=1`,
+  customer: (id: string) => `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}`,
+  customerUpdate: (id: string) =>
+    `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/update`,
+  customerCollect: (id: string) =>
+    `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/collect`,
+  customerCollection: (id: string, transactionId: string) =>
+    `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/collections/${encodeURIComponent(transactionId)}`,
   riders: `${apiUrl}/api/v1/riders`,
   riderSuspend: (id: string) => `${apiUrl}/api/v1/riders/${id}/suspend`,
   riderSetEmail: (id: string) => `${apiUrl}/api/v1/riders/${id}/email`,
@@ -204,14 +225,14 @@ export const apiRoutes = {
   riderOfferDecline: (offerId: string) =>
     `${apiUrl}/api/v1/rider/offers/${encodeURIComponent(offerId)}/decline`,
   riderDeliveries: `${apiUrl}/api/v1/rider/deliveries`,
-  riderDelivery: (orderId: string) =>
-    `${apiUrl}/api/v1/rider/deliveries/${encodeURIComponent(orderId)}`,
-  riderDeliveryTrip: (orderId: string) =>
-    `${apiUrl}/api/v1/rider/deliveries/${encodeURIComponent(orderId)}/trip`,
-  riderDeliveryDispatch: (orderId: string) =>
-    `${apiUrl}/api/v1/rider/deliveries/${encodeURIComponent(orderId)}/dispatch`,
-  riderDeliveryConfirm: (orderId: string) =>
-    `${apiUrl}/api/v1/rider/deliveries/${encodeURIComponent(orderId)}/confirm`,
+  riderDelivery: (deliveryId: string) =>
+    `${apiUrl}/api/v1/rider/deliveries/${encodeURIComponent(deliveryId)}`,
+  riderDeliveryTrip: (deliveryId: string) =>
+    `${apiUrl}/api/v1/rider/deliveries/${encodeURIComponent(deliveryId)}/trip`,
+  riderDeliveryDispatch: (deliveryId: string) =>
+    `${apiUrl}/api/v1/rider/deliveries/${encodeURIComponent(deliveryId)}/dispatch`,
+  riderDeliveryConfirm: (deliveryId: string) =>
+    `${apiUrl}/api/v1/rider/deliveries/${encodeURIComponent(deliveryId)}/confirm`,
   riderEarnings: (period: string) =>
     `${apiUrl}/api/v1/rider/earnings?period=${encodeURIComponent(period)}`,
   orderResendCompletionPrompt: (id: string) =>
@@ -244,6 +265,7 @@ export const apiRoutes = {
     `${apiUrl}/api/v1/admin/merchants/${merchantId}/users/${userId}/password`,
   adminMerchantUserPasswordResetLink: (merchantId: string, userId: string) =>
     `${apiUrl}/api/v1/admin/merchants/${merchantId}/users/${userId}/password/reset-link`,
+  forgotPassword: `${apiUrl}/api/v1/auth/forgot-password`,
   passwordResetInfo: (token: string) =>
     `${apiUrl}/api/v1/auth/password-reset?token=${encodeURIComponent(token)}`,
   passwordReset: `${apiUrl}/api/v1/auth/password-reset`,

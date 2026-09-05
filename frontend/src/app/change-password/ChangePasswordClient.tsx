@@ -10,7 +10,13 @@ import PasswordField from "@/app/sign-in/PasswordField";
 import { firstAllowedPath } from "@/lib/merchant-permissions";
 import type { AuthUser } from "@/lib/types";
 
-export default function ChangePasswordClient({ user }: { user: AuthUser }) {
+export default function ChangePasswordClient({
+  user,
+  nextPath,
+}: {
+  user: AuthUser;
+  nextPath?: string | null;
+}) {
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -34,7 +40,7 @@ export default function ChangePasswordClient({ user }: { user: AuthUser }) {
         method: "POST",
         body: JSON.stringify({ password }),
       });
-      router.replace(firstAllowedPath({ ...user, require_change_password: false }));
+      router.replace(nextPath || firstAllowedPath({ ...user, require_change_password: false }));
     } catch (err) {
       setError(
         err instanceof ApiError

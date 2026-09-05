@@ -56,6 +56,7 @@ export const SOURCE_LABELS: Record<OrderSource, string> = {
   whatsapp: "WhatsApp",
   tiktok: "TikTok",
   facebook: "Facebook",
+  rider_request: "Rider request",
 };
 
 export const SOURCE_ICONS: Record<OrderSource, string> = {
@@ -65,6 +66,7 @@ export const SOURCE_ICONS: Record<OrderSource, string> = {
   whatsapp: "fa-brands fa-whatsapp",
   tiktok: "fa-brands fa-tiktok",
   facebook: "fa-brands fa-facebook",
+  rider_request: "fa-solid fa-motorcycle",
 };
 
 export const FULFILLMENT_LABELS: Record<OrderFulfillmentType, string> = {
@@ -81,6 +83,7 @@ export const PAYMENT_LABELS: Record<OrderPaymentMethod, string> = {
   mpesa: "M-PESA",
   cash: "Cash",
   card: "Card",
+  credit: "Credit",
   other: "Other",
 };
 
@@ -121,6 +124,7 @@ export const ALL_SOURCES: OrderSource[] = [
   "whatsapp",
   "tiktok",
   "facebook",
+  "rider_request",
 ];
 
 /**
@@ -170,6 +174,7 @@ export const ALL_FULFILLMENT_TYPES: OrderFulfillmentType[] = [
 
 export const ALL_PAYMENT_METHODS: OrderPaymentMethod[] = [
   "mpesa",
+  "credit",
   "cash",
   "card",
   "other",

@@ -2,7 +2,12 @@
 
 import { FormEvent, useState } from "react";
 import { AddressLocationField } from "@/components/shared/AddressLocationField";
+import { useAuthUser } from "@/components/app/AuthProvider";
 import { apiFetch } from "@/lib/api";
+import {
+  accountHasLocationCoordinates,
+  STORE_LOCATION_REQUIRED_FOR_RIDERS,
+} from "@/lib/account-location";
 import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import type { LatLng } from "@/lib/google-maps";
@@ -25,6 +30,8 @@ const EMPTY_FORM: FormState = {
 };
 
 export function TestDeliveryDispatchSection() {
+  const user = useAuthUser();
+  const hasStorePin = accountHasLocationCoordinates(user.active_account ?? user.account);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [coords, setCoords] = useState<LatLng | null>(null);
   const [dispatching, setDispatching] = useState(false);
@@ -34,6 +41,14 @@ export function TestDeliveryDispatchSection() {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (!hasStorePin) {
+      await showError("Store location required", STORE_LOCATION_REQUIRED_FOR_RIDERS);
+      document.getElementById("section-store-location")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      return;
+    }
     setDispatching(true);
     try {
       const feeRaw = form.delivery_fee.trim();
@@ -82,6 +97,18 @@ export function TestDeliveryDispatchSection() {
           Create a ready dummy delivery and offer it to every online rider. Pin a drop-off
           on the map so the address looks real in the rider app.
         </p>
+        {!hasStorePin ? (
+          <div className="settings-location-form__alert" role="status">
+            <i className="fa-solid fa-location-dot" aria-hidden="true" />
+            <div>
+              <strong>Store pin required</strong>
+              <p className="settings-muted">
+                {STORE_LOCATION_REQUIRED_FOR_RIDERS}{" "}
+                <a href="#section-store-location">Set store location</a>
+              </p>
+            </div>
+          </div>
+        ) : null}
         <form
           className="settings-form settings-form--compact test-dispatch-form"
           onSubmit={(e) => void handleSubmit(e)}
@@ -160,7 +187,11 @@ export function TestDeliveryDispatchSection() {
             />
           </label>
           <div className="settings-actions">
-            <button type="submit" className="btn btn-primary btn-sm" disabled={dispatching}>
+            <button
+              type="submit"
+              className="btn btn-primary btn-sm"
+              disabled={dispatching || !hasStorePin}
+            >
               <i className="fa-solid fa-motorcycle" aria-hidden="true" />
               {dispatching ? "Dispatching…" : "Dispatch test order"}
             </button>

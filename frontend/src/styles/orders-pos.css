@@ -840,6 +840,35 @@ html[data-theme="dark"] .fb-app .pos-picker.is-active {
   grid-template-columns: 1.4fr 1fr;
 }
 
+.fb-app .pos-customer-pick,
+.fb-app .pos-customer-credit {
+  grid-column: 1 / -1;
+}
+
+.fb-app .pos-customer-pick {
+  display: grid;
+  gap: 4px;
+}
+
+.fb-app .pos-customer-pick select {
+  border: 1px solid var(--app-border-light);
+  border-radius: 8px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 6px 10px;
+  width: 100%;
+  height: 32px;
+  outline: none;
+}
+
+.fb-app .pos-customer-credit {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--app-text-muted);
+}
+
 .fb-app .pos-fields--delivery {
   grid-template-columns: 1fr;
 }

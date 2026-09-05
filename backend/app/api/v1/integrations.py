@@ -74,7 +74,7 @@ class DeliveryOrderCreateRequest(BaseModel):
     delivery_fee: float = Field(default=0, ge=0, le=99_999_999.99)
     discount: float = Field(default=0, ge=0, le=99_999_999.99)
     currency: str = Field(default="KES", min_length=2, max_length=8)
-    payment_method: Literal["mpesa", "cash", "card", "other"] | None = "cash"
+    payment_method: Literal["mpesa", "cash", "card", "credit", "other"] | None = "cash"
     source: Literal[
         "walkin",
         "phone_call",

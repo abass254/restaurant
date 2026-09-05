@@ -22,6 +22,8 @@ from app.web.google_auth import router as google_auth_router
 from app.web.meta_webhooks import router as meta_webhooks_router
 from app.web.mpesa_webhook import router as mpesa_webhook_router
 from app.web.webhooks import router as webhooks_router
+from app.core.boot_guards import assert_production_secrets, fastapi_docs_kwargs
+from app.core.http_error_logging import log_unhandled_error, register_http_error_logging
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +42,19 @@ Allow: /
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    assert_production_secrets(settings)
     logging.basicConfig(
         level=logging.DEBUG if settings.app_debug else logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",
     )
-    app = FastAPI(title=settings.app_name, debug=settings.app_debug)
+    app = FastAPI(
+        title=settings.app_name,
+        debug=settings.app_debug,
+        **fastapi_docs_kwargs(debug=settings.app_debug),
+    )
+
+    if settings.app_debug:
+        register_http_error_logging(app)
 
     app.add_middleware(
         CORSMiddleware,
@@ -88,9 +98,11 @@ def create_app() -> FastAPI:
     def robots_txt():
         return ROBOTS_TXT
 
-    @app.get("/test")
-    def test_connection():
-        return {"message": "Backend connection OK — FastAPI"}
+    if settings.app_debug:
+
+        @app.get("/test")
+        def test_connection():
+            return {"message": "Backend connection OK — FastAPI"}
 
     @app.get("/")
     def root():
@@ -98,7 +110,10 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):
-        logger.exception("Unhandled error on %s", request.url.path)
+        if settings.app_debug:
+            log_unhandled_error(request, exc)
+        else:
+            logger.exception("Unhandled error on %s", request.url.path)
         if settings.app_debug:
             return JSONResponse(
                 status_code=500,

@@ -3,21 +3,19 @@
 import { FormEvent, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TransChapProductField } from "@/components/trans-chap/TransChapProductField";
-import { useAuthUser } from "@/components/app/AuthProvider";
+import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
-import { extractErrorMessage, showError } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import {
-  addInventoryQuantity,
   addLiteInventoryProduct,
   findInventoryByName,
+  receiveStock,
 } from "@/lib/trans-chap-product";
-import { saveTransChapPurchase } from "@/lib/trans-chap-purchases";
+import { formatKsh } from "@/lib/trans-chap-receipt";
 import type { InventoryItem, InventoryResponse } from "@/lib/types";
 
 export function TransChapPurchaseForm() {
   const router = useRouter();
-  const user = useAuthUser();
   const [product, setProduct] = useState("");
   const [quantity, setQuantity] = useState("");
   const [unitCost, setUnitCost] = useState("");
@@ -25,7 +23,13 @@ export function TransChapPurchaseForm() {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [saving, setSaving] = useState(false);
-  const shopId = user.active_account?.id || user.account?.id || "local";
+
+  const qty = Number(quantity);
+  const cost = Number(unitCost);
+  const lineTotal =
+    Number.isInteger(qty) && qty > 0 && Number.isFinite(cost) && cost >= 0
+      ? qty * cost
+      : 0;
 
   const handleItemsChange = useCallback((items: InventoryItem[]) => {
     setInventory(items);
@@ -34,10 +38,10 @@ export function TransChapPurchaseForm() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     const name = product.trim();
-    const qty = Number(quantity);
-    const cost = Number(unitCost);
-    if (!name || !Number.isInteger(qty) || qty <= 0) return;
-    if (!Number.isFinite(cost) || cost < 0) return;
+    const parsedQty = Number(quantity);
+    const parsedCost = Number(unitCost);
+    if (!name || !Number.isInteger(parsedQty) || parsedQty <= 0) return;
+    if (!Number.isFinite(parsedCost) || parsedCost < 0) return;
 
     setSaving(true);
     try {
@@ -48,23 +52,18 @@ export function TransChapPurchaseForm() {
       }
       if (!item) {
         item = await addLiteInventoryProduct(name, "", {
-          buying_price: cost,
-          stock_quantity: qty,
+          buying_price: parsedCost,
+          stock_quantity: 0,
         });
-      } else {
-        item = await addInventoryQuantity(item, qty, { buying_price: cost });
       }
-
-      saveTransChapPurchase(shopId, {
-        id: `pur-${Date.now()}`,
-        productName: name,
-        inventoryItemId: item.id,
-        quantity: qty,
-        unitCost: cost,
-        total: qty * cost,
-        supplier: supplier.trim() || null,
-        paidAt: new Date().toISOString(),
+      await receiveStock({
+        item,
+        quantity: parsedQty,
+        reason: "receive",
+        unitCost: parsedCost,
+        note: supplier.trim() || null,
       });
+      await toastSuccess("Purchase saved");
       router.push("/trans-chap/purchases");
     } catch (err) {
       await showError("Could not save purchase", extractErrorMessage(err));
@@ -75,8 +74,12 @@ export function TransChapPurchaseForm() {
 
   return (
     <form className="auth-split__form trans-chap-form" onSubmit={(e) => void handleSubmit(e)}>
+      <p className="trans-chap-form__lead">
+        Stock you bought from a supplier. Adds to inventory and records the cost.
+      </p>
       <div className="trans-chap-form__fields">
         <TransChapProductField
+          fieldId="purchase-product"
           value={product}
           amount={unitCost}
           selectedItem={selectedItem}
@@ -89,45 +92,52 @@ export function TransChapPurchaseForm() {
         />
         <div className="auth-split__field">
           <label htmlFor="purchase-qty">Quantity</label>
-          <input
-            id="purchase-qty"
-            type="number"
-            required
-            min={1}
-            step={1}
-            inputMode="numeric"
-            placeholder="0"
-            className="auth-split__input"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-          />
+          <div className="trans-chap-input">
+            <input
+              id="purchase-qty"
+              type="text"
+              required
+              inputMode="numeric"
+              placeholder="0"
+              className="auth-split__input"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+            />
+          </div>
         </div>
         <div className="auth-split__field">
           <label htmlFor="purchase-cost">Unit cost</label>
-          <input
-            id="purchase-cost"
-            type="number"
-            required
-            min={0}
-            step="0.01"
-            inputMode="decimal"
-            placeholder="0"
-            className="auth-split__input"
-            value={unitCost}
-            onChange={(e) => setUnitCost(e.target.value)}
-          />
+          <div className="trans-chap-input">
+            <input
+              id="purchase-cost"
+              type="text"
+              required
+              inputMode="decimal"
+              placeholder="0"
+              className="auth-split__input"
+              value={unitCost}
+              onChange={(e) => setUnitCost(e.target.value)}
+            />
+          </div>
         </div>
+        {lineTotal > 0 ? (
+          <p className="trans-chap-form__total">
+            Total <strong>{formatKsh(lineTotal)}</strong>
+          </p>
+        ) : null}
         <div className="auth-split__field">
           <label htmlFor="purchase-supplier">Supplier</label>
-          <input
-            id="purchase-supplier"
-            type="text"
-            autoComplete="organization"
-            placeholder="Optional"
-            className="auth-split__input"
-            value={supplier}
-            onChange={(e) => setSupplier(e.target.value)}
-          />
+          <div className="trans-chap-input">
+            <input
+              id="purchase-supplier"
+              type="text"
+              autoComplete="organization"
+              placeholder="Optional"
+              className="auth-split__input"
+              value={supplier}
+              onChange={(e) => setSupplier(e.target.value)}
+            />
+          </div>
         </div>
       </div>
       <div className="trans-chap-form__actions">

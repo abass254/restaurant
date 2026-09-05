@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -16,17 +17,21 @@ from app.core.session import (
     save_session,
     validate_csrf,
 )
+from app.core import auth_throttle
 from app.database import get_db
 from app.dependencies import get_request_session
-from app.models import Account, Order, OrderStatusHistory, Rider
+from app.models import Account, Delivery, Order, OrderStatusHistory, Rider
+from app.services.delivery_service import DeliveryService
 from app.services.order_completion_service import OrderCompletionError, OrderCompletionService
-from app.services.rider_service import ACTIVE_DELIVERY_STATUSES, RiderServiceError
+from app.services.rider_service import RiderServiceError
 from app.services.rider_trip_service import (
     TRIP_EN_ROUTE_CLIENT,
     TRIP_PICKING_UP,
     RiderTripService,
+    trip_pickup_for_delivery,
     trip_route_for_phase,
 )
+from app.support.delivery_status import DELIVERY_ACTIVE
 from app.support.order_delivery_details import order_needs_delivery_details
 from app.support.datetime_utils import as_utc
 from app.support.order_status import (
@@ -39,6 +44,8 @@ from app.support.order_status import (
 
 router = APIRouter(prefix="/rider", tags=["rider-deliveries"])
 
+logger = logging.getLogger(__name__)
+
 
 class RiderDeliveryItemOut(BaseModel):
     product_name: str
@@ -47,7 +54,10 @@ class RiderDeliveryItemOut(BaseModel):
 
 class RiderDeliveryOut(BaseModel):
     id: str
-    order_number: str
+    delivery_number: str
+    order_id: str | None = None
+    order_number: str | None = None
+    has_order: bool = False
     status: str
     customer_name: str | None
     customer_phone_masked: str | None
@@ -101,54 +111,102 @@ def _mask_phone(phone: str | None) -> str | None:
     return f"{'*' * max(0, len(raw) - 4)}{raw[-4:]}"
 
 
-def _delivery_out(order: Order, account: Account | None = None) -> RiderDeliveryOut:
-    status_value = str(order.status or "")
-    phase = order.rider_trip_phase
+def _delivery_out(delivery: Delivery, account: Account | None = None) -> RiderDeliveryOut:
+    order = delivery.order
+    phase = delivery.rider_trip_phase
+    store_location, store_lat, store_lng = trip_pickup_for_delivery(delivery, account)
+    status_value = delivery.status
+    order_status = order.status if order else None
+    items = order.items if order else []
     return RiderDeliveryOut(
-        id=order.id,
-        order_number=order.order_number,
-        status=status_value,
-        customer_name=order.customer_name,
-        customer_phone_masked=_mask_phone(order.customer_phone),
-        customer_phone=order.customer_phone,
-        delivery_address=order.delivery_address,
-        delivery_notes=order.delivery_notes,
-        total=float(order.total or 0),
-        currency=order.currency or "KES",
-        delivery_fee=float(order.delivery_fee or 0),
+        id=delivery.id,
+        delivery_number=delivery.delivery_number,
+        order_id=delivery.order_id,
+        order_number=order.order_number if order else None,
+        has_order=order is not None,
+        status=order_status or status_value,
+        customer_name=delivery.customer_name,
+        customer_phone_masked=_mask_phone(delivery.customer_phone),
+        customer_phone=delivery.customer_phone,
+        delivery_address=delivery.delivery_address,
+        delivery_notes=delivery.delivery_notes,
+        total=float(order.total or 0) if order else float(delivery.delivery_fee or 0),
+        currency=delivery.currency or "KES",
+        delivery_fee=float(delivery.delivery_fee or 0),
         items=[
             RiderDeliveryItemOut(
                 product_name=item.product_name,
                 quantity=int(item.quantity or 0),
             )
-            for item in (order.items or [])
+            for item in items
         ],
-        can_dispatch=status_value == READY and not order_needs_delivery_details(order),
-        can_confirm=status_value in {OUT_FOR_DELIVERY, AWAITING_DELIVERY_CONFIRMATION}
-        and not order.merchant_delivery_confirmed_at,
+        can_dispatch=bool(
+            order
+            and order_status == READY
+            and not order_needs_delivery_details(order),
+        ),
+        can_confirm=bool(
+            order
+            and order_status in {OUT_FOR_DELIVERY, AWAITING_DELIVERY_CONFIRMATION}
+            and not order.merchant_delivery_confirmed_at,
+        )
+        or (not order and delivery.status == DELIVERY_ACTIVE),
         rider_trip_phase=phase,
         trip_route=trip_route_for_phase(phase) if phase else None,
         store_name=account.business_name if account else None,
-        store_location=account.business_location if account else None,
-        store_lat=account.latitude if account else None,
-        store_lng=account.longitude if account else None,
+        store_location=store_location,
+        store_lat=store_lat,
+        store_lng=store_lng,
     )
 
 
-def _get_assigned_order(db: Session, rider: Rider, order_id: str) -> Order:
+def _get_assigned_delivery(db: Session, rider: Rider, delivery_id: str) -> Delivery:
+    """Resolve a rider trip by delivery id or legacy kitchen order id."""
+    delivery = (
+        db.query(Delivery)
+        .options(selectinload(Delivery.order).selectinload(Order.items))
+        .filter(
+            Delivery.id == delivery_id,
+            Delivery.account_id == rider.account_id,
+            Delivery.assigned_rider_id == rider.id,
+        )
+        .first()
+    )
+    if delivery:
+        return delivery
+
     order = (
         db.query(Order)
         .options(selectinload(Order.items))
         .filter(
-            Order.id == order_id,
+            Order.id == delivery_id,
             Order.account_id == rider.account_id,
             Order.assigned_rider_id == rider.id,
         )
         .first()
     )
-    if not order:
+    if order:
+        delivery = DeliveryService(db).ensure_for_order(order)
+        if delivery.assigned_rider_id != rider.id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Delivery not found.")
+        db.refresh(delivery, attribute_names=["order"])
+        if delivery.order:
+            db.refresh(delivery.order, attribute_names=["items"])
+        return delivery
+
+    delivery = (
+        db.query(Delivery)
+        .options(selectinload(Delivery.order).selectinload(Order.items))
+        .filter(
+            Delivery.order_id == delivery_id,
+            Delivery.account_id == rider.account_id,
+            Delivery.assigned_rider_id == rider.id,
+        )
+        .first()
+    )
+    if not delivery:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Delivery not found.")
-    return order
+    return delivery
 
 
 def _account_for(db: Session, rider: Rider) -> Account | None:
@@ -173,6 +231,7 @@ def rider_request_login_code(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Enter a phone number or email to continue.",
         )
+    auth_throttle.throttle_otp_request(request, email or phone or "")
     try:
         result = RiderTripService(db).request_login_code(
             phone=phone,
@@ -192,6 +251,8 @@ def rider_verify_login_code(
     session: dict = Depends(get_request_session),
 ):
     validate_csrf(request, session)
+    ident = (payload.email or payload.phone or "").strip()
+    auth_throttle.throttle_otp_verify(request, ident)
     try:
         rider = RiderTripService(db).verify_login_code(
             phone=payload.phone,
@@ -199,9 +260,11 @@ def rider_verify_login_code(
             code=payload.code,
         )
     except RiderServiceError as exc:
+        auth_throttle.record_otp_verify_failure(ident)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
 
     login_rider(session, rider.id)
+    auth_throttle.record_otp_verify_success(ident)
     csrf = ensure_csrf_token(session)
     cookie = save_session(request, session)
     response.set_cookie(**cookie)
@@ -315,13 +378,13 @@ def rider_accept_offer(
     validate_csrf(request, session)
     rider = require_rider(db, session)
     try:
-        order = RiderTripService(db).accept_offer(rider, offer_id)
+        delivery_row = RiderTripService(db).accept_offer(rider, offer_id)
     except RiderServiceError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     account = _account_for(db, rider)
     return {
         "message": "Delivery accepted.",
-        "data": _delivery_out(order, account),
+        "data": _delivery_out(delivery_row, account),
     }
 
 
@@ -351,34 +414,34 @@ def list_rider_deliveries(
 ):
     rider = require_rider(db, session)
     account = _account_for(db, rider)
-    orders = (
-        db.query(Order)
-        .options(selectinload(Order.items))
+    deliveries = (
+        db.query(Delivery)
+        .options(selectinload(Delivery.order).selectinload(Order.items))
         .filter(
-            Order.account_id == rider.account_id,
-            Order.assigned_rider_id == rider.id,
-            Order.status.in_(tuple(ACTIVE_DELIVERY_STATUSES)),
+            Delivery.account_id == rider.account_id,
+            Delivery.assigned_rider_id == rider.id,
+            Delivery.status == DELIVERY_ACTIVE,
         )
-        .order_by(Order.updated_at.desc())
+        .order_by(Delivery.updated_at.desc())
         .all()
     )
-    return {"data": [_delivery_out(order, account) for order in orders]}
+    return {"data": [_delivery_out(row, account) for row in deliveries]}
 
 
-@router.get("/deliveries/{order_id}")
+@router.get("/deliveries/{delivery_id}")
 def get_rider_delivery(
-    order_id: str,
+    delivery_id: str,
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
 ):
     rider = require_rider(db, session)
-    order = _get_assigned_order(db, rider, order_id)
-    return {"data": _delivery_out(order, _account_for(db, rider))}
+    delivery = _get_assigned_delivery(db, rider, delivery_id)
+    return {"data": _delivery_out(delivery, _account_for(db, rider))}
 
 
-@router.post("/deliveries/{order_id}/trip")
+@router.post("/deliveries/{delivery_id}/trip")
 def rider_advance_trip(
-    order_id: str,
+    delivery_id: str,
     payload: TripAdvanceRequest,
     request: Request,
     db: Session = Depends(get_db),
@@ -388,17 +451,18 @@ def rider_advance_trip(
     rider = require_rider(db, session)
     service = RiderTripService(db)
     phase = payload.phase.strip()
+    delivery = _get_assigned_delivery(db, rider, delivery_id)
+    resolved_id = delivery.id
 
-    # Leaving store after pickup: dispatch then set en_route_to_client.
     if phase == TRIP_EN_ROUTE_CLIENT:
-        order = _get_assigned_order(db, rider, order_id)
-        current = order.rider_trip_phase or ""
+        current = delivery.rider_trip_phase or ""
         if current != TRIP_PICKING_UP:
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
                 detail=f"Cannot move trip from {current} to {phase}.",
             )
-        if order.status == READY:
+        order = delivery.order
+        if order and order.status == READY:
             if order_needs_delivery_details(order):
                 raise HTTPException(
                     status.HTTP_409_CONFLICT,
@@ -416,6 +480,8 @@ def rider_advance_trip(
             order.dispatched_at = order.dispatched_at or now
             order.rider_dispatched_at = now
             order.updated_at = now
+            delivery.rider_dispatched_at = now
+            delivery.updated_at = now
             db.add(
                 OrderStatusHistory(
                     order_id=order.id,
@@ -433,34 +499,40 @@ def rider_advance_trip(
                 notify_order_status_change(db, order.id)
 
         try:
-            order = service.advance_trip(rider, order_id, to_phase=phase)
+            delivery = service.advance_trip(rider, resolved_id, to_phase=phase)
         except RiderServiceError as exc:
             raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
         return {
             "message": "Heading to customer.",
-            "data": _delivery_out(order, _account_for(db, rider)),
+            "data": _delivery_out(delivery, _account_for(db, rider)),
         }
 
     try:
-        order = service.advance_trip(rider, order_id, to_phase=phase)
+        delivery = service.advance_trip(rider, resolved_id, to_phase=phase)
     except RiderServiceError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return {
         "message": "Trip updated.",
-        "data": _delivery_out(order, _account_for(db, rider)),
+        "data": _delivery_out(delivery, _account_for(db, rider)),
     }
 
 
-@router.post("/deliveries/{order_id}/dispatch")
+@router.post("/deliveries/{delivery_id}/dispatch")
 def rider_dispatch_delivery(
-    order_id: str,
+    delivery_id: str,
     request: Request,
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
 ):
     validate_csrf(request, session)
     rider = require_rider(db, session)
-    order = _get_assigned_order(db, rider, order_id)
+    delivery = _get_assigned_delivery(db, rider, delivery_id)
+    order = delivery.order
+    if not order:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail="This trip has no kitchen order to dispatch.",
+        )
 
     if order.status != READY:
         raise HTTPException(
@@ -484,9 +556,12 @@ def rider_dispatch_delivery(
     order.status = OUT_FOR_DELIVERY
     order.dispatched_at = order.dispatched_at or now
     order.rider_dispatched_at = now
-    if order.rider_trip_phase in (None, "en_route_to_store", "at_store", "picking_up"):
+    if delivery.rider_trip_phase in (None, "en_route_to_store", "at_store", "picking_up"):
+        delivery.rider_trip_phase = TRIP_EN_ROUTE_CLIENT
         order.rider_trip_phase = TRIP_EN_ROUTE_CLIENT
+    delivery.rider_dispatched_at = now
     order.updated_at = now
+    delivery.updated_at = now
     db.add(
         OrderStatusHistory(
             order_id=order.id,
@@ -498,7 +573,7 @@ def rider_dispatch_delivery(
         ),
     )
     db.commit()
-    db.refresh(order)
+    db.refresh(delivery)
 
     if order.source_conversation_id:
         from app.services.order_notification_service import notify_order_status_change
@@ -507,38 +582,49 @@ def rider_dispatch_delivery(
 
     return {
         "message": "Delivery started.",
-        "data": _delivery_out(order, _account_for(db, rider)),
+        "data": _delivery_out(delivery, _account_for(db, rider)),
     }
 
 
-@router.post("/deliveries/{order_id}/confirm")
+@router.post("/deliveries/{delivery_id}/confirm")
 def rider_confirm_delivery(
-    order_id: str,
+    delivery_id: str,
     request: Request,
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
 ):
     validate_csrf(request, session)
     rider = require_rider(db, session)
-    order = _get_assigned_order(db, rider, order_id)
-    completion = OrderCompletionService(db)
-    try:
-        completion.merchant_confirm_handoff(order, user_id=None)
-    except OrderCompletionError as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    delivery = _get_assigned_delivery(db, rider, delivery_id)
+    order = delivery.order
+    trip_service = RiderTripService(db)
 
-    db.refresh(order)
-    RiderTripService(db).mark_trip_completed(order)
-    db.refresh(order)
+    if order:
+        completion = OrderCompletionService(db)
+        try:
+            completion.merchant_confirm_handoff(order, user_id=None)
+        except OrderCompletionError as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        db.refresh(order)
+        trip_service.mark_trip_completed(delivery)
+        db.refresh(delivery)
+        if order.source_conversation_id:
+            try:
+                from app.services.order_notification_service import notify_order_status_change
 
-    if order.source_conversation_id:
-        from app.services.order_notification_service import notify_order_status_change
-
-        notify_order_status_change(db, order.id)
+                notify_order_status_change(db, order.id)
+            except Exception:
+                logger.exception(
+                    "notify_order_status_change failed after rider confirm for order %s",
+                    order.id,
+                )
+    else:
+        trip_service.mark_trip_completed(delivery)
+        db.refresh(delivery)
 
     return {
         "message": "Delivery confirmed.",
-        "data": _delivery_out(order, _account_for(db, rider)),
+        "data": _delivery_out(delivery, _account_for(db, rider)),
     }
 
 

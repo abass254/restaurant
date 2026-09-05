@@ -43,6 +43,8 @@ import type {
   OrderMutationResponse,
   OrderPaymentMethod,
   OrderSource,
+  ShopCustomer,
+  ShopCustomersListResponse,
 } from "@/lib/types";
 
 type CartLine = {
@@ -108,6 +110,8 @@ export default function PosPage() {
     useState<OrderPaymentMethod | "">("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [customers, setCustomers] = useState<ShopCustomer[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryCoords, setDeliveryCoords] = useState<{ lat: number; lng: number } | null>(
     null,
@@ -141,6 +145,14 @@ export default function PosPage() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    void apiFetch<ShopCustomersListResponse>(apiRoutes.customers)
+      .then((res) => setCustomers(res.data))
+      .catch(() => {
+        /* POS still works with typed name and phone. */
+      });
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -426,6 +438,28 @@ export default function PosPage() {
     setDiscount("");
     setNotes("");
     setPaymentMethod("");
+    setSelectedCustomerId("");
+  }
+
+  const selectedCustomer = useMemo(
+    () => customers.find((customer) => customer.id === selectedCustomerId) ?? null,
+    [customers, selectedCustomerId],
+  );
+
+  function applyCustomer(customerId: string) {
+    setSelectedCustomerId(customerId);
+    if (!customerId) {
+      setCustomerName("");
+      setCustomerPhone("");
+      return;
+    }
+    const customer = customers.find((row) => row.id === customerId);
+    if (!customer) return;
+    setCustomerName(customer.name);
+    setCustomerPhone(customer.phone);
+    if (customer.address) {
+      setDeliveryAddress(customer.address);
+    }
   }
 
   const itemCount = useMemo(
@@ -460,6 +494,20 @@ export default function PosPage() {
       await showError(
         "Customer phone required",
         "Enter the customer's M-PESA phone number so we can send them the payment prompt.",
+      );
+      return;
+    }
+    if (paymentMethod === "credit" && !customerName.trim()) {
+      await showError(
+        "Customer name required",
+        "Credit sales need the customer's name so we can put it on their tab.",
+      );
+      return;
+    }
+    if (paymentMethod === "credit" && !customerPhone.trim()) {
+      await showError(
+        "Customer phone required",
+        "Credit sales need a phone number so we can find this customer next time.",
       );
       return;
     }
@@ -846,30 +894,65 @@ export default function PosPage() {
             </div>
 
             <div className="pos-fields pos-fields--customer">
+              {customers.length > 0 ? (
+                <label className="pos-customer-pick">
+                  <span className="pos-label">Customer</span>
+                  <select
+                    value={selectedCustomerId}
+                    onChange={(event) => applyCustomer(event.target.value)}
+                    aria-label="Saved customer"
+                  >
+                    <option value="">Walk-in / new customer</option>
+                    {customers.map((customer) => (
+                      <option key={customer.id} value={customer.id}>
+                        {customer.name} · {customer.phone}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <input
                 type="text"
                 value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Customer name (optional)"
+                onChange={(e) => {
+                  setCustomerName(e.target.value);
+                  setSelectedCustomerId("");
+                }}
+                placeholder={
+                  paymentMethod === "credit"
+                    ? "Customer name (required)"
+                    : "Customer name (optional)"
+                }
                 aria-label="Customer name"
               />
               <input
                 type="tel"
                 value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
+                onChange={(e) => {
+                  setCustomerPhone(e.target.value);
+                  setSelectedCustomerId("");
+                }}
                 placeholder={
                   paymentMethod === "mpesa"
                     ? "M-PESA phone (required) · 2547…"
-                    : "Phone"
+                    : paymentMethod === "credit"
+                      ? "Credit phone (required) · 2547…"
+                      : "Phone"
                 }
                 aria-label="Customer phone"
-                aria-required={paymentMethod === "mpesa"}
+                aria-required={paymentMethod === "mpesa" || paymentMethod === "credit"}
                 className={
-                  paymentMethod === "mpesa" && !customerPhone.trim()
+                  (paymentMethod === "mpesa" || paymentMethod === "credit") && !customerPhone.trim()
                     ? "pos-input--required"
                     : undefined
                 }
               />
+              {selectedCustomer && selectedCustomer.credit_limit > 0 ? (
+                <p className="pos-customer-credit">
+                  Available credit {formatMoney(selectedCustomer.available_credit)} of{" "}
+                  {formatMoney(selectedCustomer.credit_limit)}
+                </p>
+              ) : null}
             </div>
 
             <AnimatePresence initial={false}>

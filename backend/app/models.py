@@ -91,7 +91,7 @@ class User(Base):
     facebook_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     google_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     onboarded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     user_role: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Comma-separated merchant dashboard section keys for ``staff`` users.
     # Ignored for ``system_admin`` (full access).
@@ -152,6 +152,9 @@ class UserLoginCode(Base):
     id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
     user_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("users.id"))
     code_hash: Mapped[str] = mapped_column(String(64))
+    channel: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    delivery_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    purpose: Mapped[str | None] = mapped_column(String(16), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -423,6 +426,34 @@ class ChannelCustomer(Base):
         return self.consent_status == "accepted" and bool(self.phone)
 
 
+class ShopCustomer(Base):
+    """Walk-in / account customer for a shop, including a credit limit."""
+
+    __tablename__ = "shop_customers"
+    __table_args__ = (
+        UniqueConstraint(
+            "account_id",
+            "phone",
+            name="shop_customers_account_phone_unique",
+        ),
+        Index("shop_customers_account_name_index", "account_id", "name"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    account_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("accounts.id"))
+    name: Mapped[str] = mapped_column(String(255))
+    phone: Mapped[str] = mapped_column(String(32))
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    credit_limit: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
+    outstanding_balance: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    account: Mapped[Account] = relationship()
+
+
 class AutoReplyRule(Base):
     __tablename__ = "auto_reply_rules"
 
@@ -679,6 +710,13 @@ class MpesaTransaction(Base):
         ForeignKey("bookings.id"),
         nullable=True,
     )
+    shop_customer_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("shop_customers.id"),
+        nullable=True,
+    )
+    credit_collect_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    credit_collected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -834,6 +872,7 @@ class StockMovement(Base):
     quantity_after: Mapped[int | None] = mapped_column(Integer, nullable=True)
     reason: Mapped[str] = mapped_column(String(32))
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    unit_cost: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
     created_by: Mapped[str | None] = mapped_column(
         String(PK_LEN),
         ForeignKey("users.id"),
@@ -886,6 +925,9 @@ class Order(Base):
 
     delivery_address: Mapped[str | None] = mapped_column(Text, nullable=True)
     delivery_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pickup_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pickup_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pickup_lng: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     subtotal: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
     delivery_fee: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
@@ -927,6 +969,7 @@ class Order(Base):
     rider_assigned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     rider_dispatched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     rider_trip_phase: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    rider_search_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     prep_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -958,6 +1001,84 @@ class Order(Base):
         foreign_keys="MpesaTransaction.order_id",
         order_by="MpesaTransaction.created_at.desc()",
     )
+    delivery_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("deliveries.id"),
+        nullable=True,
+    )
+    linked_delivery: Mapped[Delivery | None] = relationship(
+        back_populates="order",
+        primaryjoin="Order.id == Delivery.order_id",
+        foreign_keys="Delivery.order_id",
+        uselist=False,
+        viewonly=False,
+    )
+
+
+class Delivery(Base):
+    """A pickup → drop-off trip. Optional link to a kitchen order."""
+
+    __tablename__ = "deliveries"
+    __table_args__ = (
+        Index("deliveries_delivery_number_unique", "delivery_number", unique=True),
+        Index("deliveries_account_id_status_index", "account_id", "status"),
+        Index("deliveries_account_id_created_at_index", "account_id", "created_at"),
+        Index("deliveries_order_id_index", "order_id"),
+        Index("deliveries_assigned_rider_id_index", "assigned_rider_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    account_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("accounts.id"))
+    order_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("orders.id"),
+        nullable=True,
+    )
+    delivery_number: Mapped[str] = mapped_column(String(32))
+
+    pickup_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pickup_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pickup_lng: Mapped[float | None] = mapped_column(Float, nullable=True)
+    delivery_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delivery_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    customer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    customer_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    delivery_fee: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
+    currency: Mapped[str] = mapped_column(String(8), default="KES")
+
+    status: Mapped[str] = mapped_column(String(32), default="searching")
+    assigned_rider_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("riders.id"),
+        nullable=True,
+    )
+    rider_assigned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    rider_dispatched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    rider_trip_phase: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    rider_search_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    merchant_delivery_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    customer_delivery_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    account: Mapped[Account] = relationship()
+    order: Mapped[Order | None] = relationship(
+        foreign_keys=[order_id],
+        back_populates="linked_delivery",
+    )
+    assigned_rider: Mapped[Rider | None] = relationship(foreign_keys=[assigned_rider_id])
+    offers: Mapped[list[DeliveryOffer]] = relationship(back_populates="delivery")
 
 
 class OrderItem(Base):
@@ -1235,17 +1356,22 @@ class RiderInvite(Base):
 
 
 class DeliveryOffer(Base):
-    """Timed offer of a ready order to an online fleet rider."""
+    """Timed offer of a delivery to an online fleet rider."""
 
     __tablename__ = "delivery_offers"
     __table_args__ = (
         Index("delivery_offers_rider_status_index", "rider_id", "status"),
-        Index("delivery_offers_order_status_index", "order_id", "status"),
+        Index("delivery_offers_delivery_status_index", "delivery_id", "status"),
     )
 
     id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
     account_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("accounts.id"))
-    order_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("orders.id"))
+    delivery_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("deliveries.id"))
+    order_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("orders.id"),
+        nullable=True,
+    )
     rider_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("riders.id"))
     status: Mapped[str] = mapped_column(String(20), default="pending")
     expires_at: Mapped[datetime] = mapped_column(DateTime)
@@ -1253,7 +1379,8 @@ class DeliveryOffer(Base):
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    order: Mapped[Order] = relationship()
+    delivery: Mapped[Delivery] = relationship(back_populates="offers")
+    order: Mapped[Order | None] = relationship()
     rider: Mapped[Rider] = relationship()
 
 
@@ -1266,6 +1393,8 @@ class RiderLoginCode(Base):
     id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
     rider_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("riders.id"))
     code_hash: Mapped[str] = mapped_column(String(64))
+    channel: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    delivery_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -1464,3 +1593,37 @@ class Booking(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class QaIssue(Base):
+    """Internal QA issue raised from the merchant dashboard."""
+
+    __tablename__ = "qa_issues"
+    __table_args__ = (Index("qa_issues_issue_number_index", "issue_number"),)
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    issue_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    account_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("accounts.id"),
+        nullable=True,
+    )
+    reporter_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("users.id"))
+    assignee_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    summary: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    issue_type: Mapped[str] = mapped_column(String(32), default="bug")
+    priority: Mapped[str] = mapped_column(String(16), default="medium")
+    component: Mapped[str] = mapped_column(String(64), default="general")
+    status: Mapped[str] = mapped_column(String(32), default="open")
+    page_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    steps_to_reproduce: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    reporter: Mapped[User] = relationship(foreign_keys=[reporter_id])
+    assignee: Mapped[User | None] = relationship(foreign_keys=[assignee_id])

@@ -9,13 +9,16 @@ import { extractErrorMessage, promptWhatsAppPhone, showError, toastSuccess } fro
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
+import { promptAndUndoWalkinSale, walkinUndoAction } from "@/lib/trans-chap-orders";
 import {
   formatKsh,
+  isTransChapReceiptClosed,
   isTransChapReceiptPaid,
   loadTransChapReceipt,
   receiptFromOrder,
   saveTransChapReceipt,
   toWhatsAppMsisdn,
+  transChapPayLabel,
   whatsappReceiptUrl,
   type TransChapReceipt,
 } from "@/lib/trans-chap-receipt";
@@ -36,6 +39,7 @@ export function TransChapReceiptView() {
   const [downloading, setDownloading] = useState(false);
   const [openingWhatsApp, setOpeningWhatsApp] = useState(false);
   const [resending, setResending] = useState(false);
+  const [undoing, setUndoing] = useState(false);
 
   function applyReceipt(next: TransChapReceipt) {
     setReceipt(next);
@@ -85,7 +89,9 @@ export function TransChapReceiptView() {
   }, [router, shopName]);
 
   useEffect(() => {
-    if (!receipt?.orderId || isTransChapReceiptPaid(receipt)) return;
+    if (!receipt?.orderId || isTransChapReceiptPaid(receipt) || isTransChapReceiptClosed(receipt)) {
+      return;
+    }
     let cancelled = false;
     const currentShop = receipt.shopName;
     const orderId = receipt.orderId;
@@ -106,7 +112,8 @@ export function TransChapReceiptView() {
           };
           if (
             current.paymentStatus === merged.paymentStatus &&
-            current.mpesaReceiptNumber === merged.mpesaReceiptNumber
+            current.mpesaReceiptNumber === merged.mpesaReceiptNumber &&
+            current.orderStatus === merged.orderStatus
           ) {
             return current;
           }
@@ -129,7 +136,7 @@ export function TransChapReceiptView() {
       window.clearInterval(intervalId);
       window.removeEventListener("focus", onFocus);
     };
-  }, [receipt?.orderId, receipt?.paymentStatus, receipt?.shopName]);
+  }, [receipt?.orderId, receipt?.orderStatus, receipt?.paymentStatus, receipt?.shopName]);
 
   async function openWhatsApp() {
     if (!receipt) return;
@@ -211,6 +218,26 @@ export function TransChapReceiptView() {
     }
   }
 
+  async function undoSale() {
+    if (!receipt?.orderId) return;
+    setUndoing(true);
+    try {
+      const updated = await promptAndUndoWalkinSale({
+        id: receipt.orderId,
+        status: receipt.orderStatus ?? "",
+        allowed_next_statuses: receipt.allowedNextStatuses,
+        payment_method: receipt.payMode,
+      });
+      if (!updated) return;
+      applyReceipt(receiptFromOrder(updated, receipt.shopName));
+      await toastSuccess(updated.status === "refunded" ? "Sale refunded" : "Sale voided");
+    } catch (err) {
+      await showError("Could not undo sale", extractErrorMessage(err));
+    } finally {
+      setUndoing(false);
+    }
+  }
+
   if (!receipt) {
     return (
       <p className="trans-chap-sales__empty">
@@ -220,13 +247,31 @@ export function TransChapReceiptView() {
   }
 
   const paid = isTransChapReceiptPaid(receipt);
-  const waiting = receipt.payMode === "mpesa" && receipt.paymentStatus === "pending";
-  const failed = receipt.payMode === "mpesa" && receipt.paymentStatus === "failed";
-  const paymentMethod = receipt.payMode === "mpesa" ? "M-PESA" : "Cash";
+  const closed = isTransChapReceiptClosed(receipt);
+  const onCredit = !closed && receipt.payMode === "credit";
+  const waiting = !closed && receipt.payMode === "mpesa" && receipt.paymentStatus === "pending";
+  const paymentMethod = transChapPayLabel(receipt.payMode);
   const lines = receipt.items?.length
     ? receipt.items
     : [{ name: receipt.productName, quantity: 1, unitPrice: receipt.amount, lineTotal: receipt.amount }];
-  const status = paid ? "Paid" : waiting ? "Waiting" : "Failed";
+  const undo = receipt.orderId
+    ? walkinUndoAction({
+        status: receipt.orderStatus ?? "",
+        allowed_next_statuses: receipt.allowedNextStatuses,
+      })
+    : null;
+  const status = closed
+    ? receipt.orderStatus === "refunded"
+      ? "Refunded"
+      : "Voided"
+    : paid
+      ? "Paid"
+      : onCredit
+        ? "On credit"
+        : waiting
+          ? "Waiting"
+          : "Failed";
+  const statusTone = paid ? "ok" : onCredit ? "credit" : waiting ? "wait" : "fail";
 
   return (
     <div className="trans-chap-receipt">
@@ -238,10 +283,23 @@ export function TransChapReceiptView() {
             <span>Receipt</span>
           </div>
         </header>
-        <p className={`trans-chap-slip__status is-${paid ? "ok" : waiting ? "wait" : "fail"}`}>
+        <p className={`trans-chap-slip__status is-${statusTone}`}>
           {status}
         </p>
-        {!paid ? (
+        {closed ? (
+          <p className="trans-chap-slip__note">
+            Stock came back.
+            {receipt.payMode === "mpesa"
+              ? " M-PESA was not reversed — return the money yourself if needed."
+              : receipt.payMode === "credit"
+                ? " This amount came off the customer’s tab."
+                : ""}
+          </p>
+        ) : onCredit ? (
+          <p className="trans-chap-slip__note">
+            This sale is on the customer’s tab. It is not paid yet.
+          </p>
+        ) : !paid ? (
           <p className="trans-chap-slip__note">
             {waiting
               ? receipt.mpesaMessage || "Ask the customer to enter their PIN on the prompt."
@@ -297,13 +355,13 @@ export function TransChapReceiptView() {
       </article>
 
       <div className="trans-chap-slip__actions">
-        {paid ? (
+        {closed ? null : paid || onCredit ? (
           <div className="trans-chap-slip__choices">
             <button
               type="button"
               className="trans-chap-slip__wa"
               onClick={() => void openWhatsApp()}
-              disabled={openingWhatsApp || downloading}
+              disabled={openingWhatsApp || downloading || undoing}
             >
               <i className="fa-brands fa-whatsapp" aria-hidden />
               {openingWhatsApp ? "Opening…" : "WhatsApp"}
@@ -312,7 +370,7 @@ export function TransChapReceiptView() {
               type="button"
               className="trans-chap-slip__pdf"
               onClick={() => void downloadPdf()}
-              disabled={downloading || openingWhatsApp}
+              disabled={downloading || openingWhatsApp || undoing}
             >
               <i className="fa-solid fa-file-pdf" aria-hidden />
               {downloading ? "Saving…" : "Download PDF"}
@@ -323,12 +381,22 @@ export function TransChapReceiptView() {
             type="button"
             className="trans-chap-slip__retry"
             onClick={() => void resendMpesaPrompt()}
-            disabled={resending}
+            disabled={resending || undoing}
           >
             <i className="fa-solid fa-rotate-right" aria-hidden />
             {resending ? "Sending…" : waiting ? "Resend prompt" : "Send prompt again"}
           </button>
         )}
+        {undo && !closed ? (
+          <button
+            type="button"
+            className="trans-chap-receipt__void"
+            onClick={() => void undoSale()}
+            disabled={undoing || resending}
+          >
+            {undoing ? "Working…" : undo === "refund" ? "Refund sale" : "Void sale"}
+          </button>
+        ) : null}
         <Link href="/trans-chap/make-a-sale/new" className="trans-chap-receipt__again">
           Make another sale
         </Link>

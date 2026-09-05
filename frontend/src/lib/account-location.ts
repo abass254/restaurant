@@ -1,5 +1,8 @@
 import type { BusinessAccount } from "@/lib/types";
 
+export const STORE_LOCATION_REQUIRED_FOR_RIDERS =
+  "Pin your store location before connecting riders. They use it to find your shop.";
+
 export function accountHasLocationCoordinates(
   account: BusinessAccount | null | undefined,
 ): boolean {

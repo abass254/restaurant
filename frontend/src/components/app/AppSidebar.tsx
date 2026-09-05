@@ -3,19 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, LayoutGroup, useReducedMotion } from "motion/react";
-import { apiFetch } from "@/lib/api";
-import { apiRoutes } from "@/lib/config";
 import {
   formatNavBadgeCount,
   navLinkIsActive,
   type MerchantNavLink,
 } from "@/lib/merchant-nav";
 import { filterNavLinksForUser } from "@/lib/merchant-permissions";
+import { logoutToSignIn } from "@/lib/logout";
 import { useNavCounts } from "@/lib/use-nav-counts";
 import { springSoft } from "@/lib/motion";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { MerchantSwitcher } from "@/components/app/MerchantSwitcher";
-import { ThemeToggle } from "@/components/app/ThemeToggle";
 
 function initials(name: string): string {
   return name
@@ -112,18 +110,8 @@ export function AppSidebar({ expanded = false }: { expanded?: boolean } = {}) {
   const counts = useNavCounts();
   const user = useAuthUser();
   const navLinks = filterNavLinksForUser(user);
-  const otherHrefs = new Set(["/settings", "/basics"]);
-  const primaryLinks = navLinks.filter((link) => !otherHrefs.has(link.href));
-  const otherLinks = navLinks.filter((link) => otherHrefs.has(link.href));
-
-  async function logout() {
-    try {
-      await apiFetch(apiRoutes.logout, { method: "POST" });
-    } catch {
-      /* ignore */
-    }
-    window.location.href = "/sign-in";
-  }
+  const workLinks = navLinks.filter((link) => (link.group ?? "work") === "work");
+  const moreLinks = navLinks.filter((link) => link.group === "more");
 
   return (
     <aside
@@ -144,19 +132,19 @@ export function AppSidebar({ expanded = false }: { expanded?: boolean } = {}) {
       <LayoutGroup id="sidebar-active">
         <ul className="fb-sidebar__nav">
           <NavItems
-            links={primaryLinks}
+            links={workLinks}
             pathname={pathname}
             counts={counts}
             expanded={expanded}
             reduce={reduce}
           />
-          {otherLinks.length > 0 ? (
+          {moreLinks.length > 0 ? (
             <>
               <li className="fb-sidebar__group-label" aria-hidden="true">
-                Other
+                More
               </li>
               <NavItems
-                links={otherLinks}
+                links={moreLinks}
                 pathname={pathname}
                 counts={counts}
                 expanded={expanded}
@@ -169,14 +157,10 @@ export function AppSidebar({ expanded = false }: { expanded?: boolean } = {}) {
 
       <div className="fb-sidebar__footer">
         <div className="fb-sidebar__divider" />
-        <div className="fb-sidebar__theme">
-          <ThemeToggle />
-          <span className="fb-sidebar__theme-label">Theme</span>
-        </div>
         <button
           type="button"
           className="fb-sidebar__link fb-sidebar__logout"
-          onClick={() => void logout()}
+          onClick={() => void logoutToSignIn()}
           title={expanded ? undefined : "Log out"}
           aria-label="Log out"
         >

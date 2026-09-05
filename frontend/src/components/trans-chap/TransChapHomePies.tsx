@@ -1,14 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
+import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
+import { TransChapTodaySkeleton } from "@/components/trans-chap/TransChapSkeleton";
+import { MotionFade } from "@/components/app/MotionList";
 import { useAuthUser } from "@/components/app/AuthProvider";
-import { apiFetch } from "@/lib/api";
-import { apiRoutes } from "@/lib/config";
+import { fetchWalkinOrders, isCountedWalkinSale } from "@/lib/trans-chap-orders";
+import { fetchTransChapPurchases } from "@/lib/trans-chap-purchases";
+import { fetchOwingCustomers } from "@/lib/trans-chap-credit";
+import { formatKsh } from "@/lib/trans-chap-receipt";
 import { nairobiDateKey, parseIso } from "@/lib/nairobi-time";
-import { orderHasSuccessfulMpesa } from "@/lib/orders";
-import { loadTransChapPurchases } from "@/lib/trans-chap-purchases";
-import type { Order, OrdersListResponse } from "@/lib/types";
 
 type Slice = {
   name: string;
@@ -16,132 +18,119 @@ type Slice = {
   fill: string;
 };
 
-function isPaidSale(order: Order): boolean {
-  if (order.payment_method !== "mpesa") return true;
-  return orderHasSuccessfulMpesa(order);
-}
-
 function isToday(iso: string | null | undefined, todayKey: string): boolean {
   const date = parseIso(iso);
   return date ? nairobiDateKey(date) === todayKey : false;
 }
 
-function compactKsh(amount: number): string {
-  return `Ksh${Math.round(amount).toLocaleString("en-KE")}`;
-}
-
-function MiniPie({
-  title,
-  slices,
-  center,
-}: {
-  title: string;
-  slices: Slice[];
-  center: string;
-}) {
-  const drawn = slices.some((slice) => slice.value > 0)
-    ? slices.filter((slice) => slice.value > 0)
-    : [{ name: "None", value: 1, fill: "var(--app-border)" }];
-
-  return (
-    <article className="trans-chap-dash__pie">
-      <h3>{title}</h3>
-      <div className="trans-chap-dash__pie-chart">
-        <ResponsiveContainer width="100%" height={132}>
-          <PieChart>
-            <Pie
-              data={drawn}
-              dataKey="value"
-              nameKey="name"
-              innerRadius={34}
-              outerRadius={52}
-              paddingAngle={drawn.length > 1 ? 3 : 0}
-              stroke="none"
-            >
-              {drawn.map((slice) => (
-                <Cell key={slice.name} fill={slice.fill} />
-              ))}
-            </Pie>
-          </PieChart>
-        </ResponsiveContainer>
-        <p className="trans-chap-dash__pie-center" aria-hidden>
-          {center}
-        </p>
-      </div>
-      <ul className="trans-chap-dash__pie-legend">
-        {slices.map((slice) => (
-          <li key={slice.name}>
-            <i style={{ background: slice.fill }} aria-hidden />
-            <span>{slice.name}</span>
-            <strong>{compactKsh(slice.value)}</strong>
-          </li>
-        ))}
-      </ul>
-    </article>
-  );
-}
-
 export function TransChapHomePies() {
   const user = useAuthUser();
-  const shopId = user.active_account?.id || user.account?.id || "local";
+  const accountId = user.active_account?.id || user.account?.id;
   const [salesTotal, setSalesTotal] = useState(0);
+  const [cashTotal, setCashTotal] = useState(0);
+  const [creditTotal, setCreditTotal] = useState(0);
+  const [mpesaTotal, setMpesaTotal] = useState(0);
   const [purchaseTotal, setPurchaseTotal] = useState(0);
+  const [owingTotal, setOwingTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
+    setLoading(true);
     const todayKey = nairobiDateKey(new Date());
-    try {
-      const sales = await apiFetch<OrdersListResponse>(
-        `${apiRoutes.orders}?source=walkin&per_page=100`,
-      );
-      const paidToday = sales.data.filter((order) => {
-        if (!isPaidSale(order)) return false;
-        return isToday(order.paid_at || order.placed_at || order.created_at, todayKey);
-      });
-      setSalesTotal(paidToday.reduce((sum, order) => sum + order.total, 0));
-    } catch {
-      setSalesTotal(0);
-    }
-    const boughtToday = loadTransChapPurchases(shopId).filter((row) =>
-      isToday(row.paidAt, todayKey),
+    const [sales, purchases, owing] = await Promise.all([
+      fetchWalkinOrders(),
+      fetchTransChapPurchases({ accountId }),
+      fetchOwingCustomers(),
+    ]);
+    const paidToday = sales.orders.filter((order) => {
+      if (!isCountedWalkinSale(order)) return false;
+      return isToday(order.paid_at || order.placed_at || order.created_at, todayKey);
+    });
+    const mpesa = paidToday
+      .filter((order) => order.payment_method === "mpesa")
+      .reduce((sum, order) => sum + order.total, 0);
+    const credit = paidToday
+      .filter((order) => order.payment_method === "credit")
+      .reduce((sum, order) => sum + order.total, 0);
+    const cash = paidToday
+      .filter((order) => order.payment_method !== "mpesa" && order.payment_method !== "credit")
+      .reduce((sum, order) => sum + order.total, 0);
+    const salesSum = paidToday.reduce((sum, order) => sum + order.total, 0);
+    setSalesTotal(salesSum);
+    setCashTotal(cash);
+    setCreditTotal(credit);
+    setMpesaTotal(mpesa);
+    setPurchaseTotal(
+      purchases.purchases
+        .filter((row) => isToday(row.paidAt, todayKey))
+        .reduce((sum, row) => sum + row.total, 0),
     );
-    setPurchaseTotal(boughtToday.reduce((sum, row) => sum + row.total, 0));
-  }, [shopId]);
+    setOwingTotal(owing.owingTotal);
+    setError(sales.error || purchases.error);
+    setLoading(false);
+  }, [accountId]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  const profit = Math.max(0, salesTotal - purchaseTotal);
-  const expense = purchaseTotal;
-
-  const salesVsPurchases = useMemo<Slice[]>(
-    () => [
-      { name: "Sales", value: salesTotal, fill: "var(--trans-chap-sale)" },
-      { name: "Purchases", value: purchaseTotal, fill: "var(--trans-chap-cash)" },
-    ],
-    [purchaseTotal, salesTotal],
+  const profit = salesTotal - purchaseTotal;
+  const paySlices = useMemo<Slice[]>(
+    () =>
+      [
+        { name: "M-PESA", value: mpesaTotal, fill: "var(--trans-chap-mpesa)" },
+        { name: "Credit", value: creditTotal, fill: "var(--trans-chap-credit)" },
+        { name: "Cash", value: cashTotal, fill: "var(--trans-chap-cash)" },
+      ].filter((slice) => slice.value > 0),
+    [cashTotal, creditTotal, mpesaTotal],
   );
 
-  const profitVsExpense = useMemo<Slice[]>(
-    () => [
-      { name: "Profit", value: profit, fill: "var(--trans-chap-mpesa)" },
-      { name: "Expense", value: expense, fill: "#c45c6a" },
-    ],
-    [expense, profit],
-  );
+  if (loading) {
+    return <TransChapTodaySkeleton />;
+  }
+
+  if (error && salesTotal === 0 && purchaseTotal === 0) {
+    return <TransChapStatus tone="error">{error}</TransChapStatus>;
+  }
 
   return (
-    <section className="trans-chap-dash__pies" aria-label="Today’s sales and purchases">
-      <MiniPie
-        title="Sales vs purchases"
-        slices={salesVsPurchases}
-        center={compactKsh(salesTotal)}
-      />
-      <MiniPie
-        title="Profit vs expense"
-        slices={profitVsExpense}
-        center={compactKsh(profit)}
-      />
-    </section>
+    <MotionFade as="section" className="trans-chap-dash__today" aria-label="Today">
+      <h3>Today</h3>
+      <div className="trans-chap-dash__kpis">
+        <article>
+          <span>Sales</span>
+          <strong>{formatKsh(salesTotal)}</strong>
+        </article>
+        <article>
+          <span>Purchases</span>
+          <strong>{formatKsh(purchaseTotal)}</strong>
+        </article>
+        <article className={profit < 0 ? "is-loss" : undefined}>
+          <span>{profit < 0 ? "Loss" : "Profit"}</span>
+          <strong>{formatKsh(profit)}</strong>
+        </article>
+      </div>
+      {paySlices.length ? (
+        <ul className="trans-chap-dash__pay" aria-label="How customers paid">
+          {paySlices.map((slice) => (
+            <li key={slice.name}>
+              <i style={{ background: slice.fill }} aria-hidden />
+              <span>{slice.name}</span>
+              <strong>{formatKsh(slice.value)}</strong>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {owingTotal > 0 ? (
+        <p className="trans-chap-dash__today-note">
+          <Link href="/trans-chap/credit">{formatKsh(owingTotal)} still on the tab. Collect</Link>
+        </p>
+      ) : (
+        <p className="trans-chap-dash__today-note">
+          Profit is sales minus restock. Credit is on the tab, not in the drawer.
+        </p>
+      )}
+    </MotionFade>
   );
 }

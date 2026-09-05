@@ -1,9 +1,9 @@
-"""Short-lived signed tokens for admin-initiated password resets.
+"""Short-lived signed tokens for password resets.
 
-When a super admin sends a merchant user a reset link, we mint a signed
-``itsdangerous`` token (same mechanism as the storefront/upload links) and
-email a ``<frontend>/reset-password?token=<token>`` URL. The recipient opens
-a public page and chooses their own password.
+Used by both self-serve forgot-password and admin/staff-initiated reset emails.
+We mint a signed ``itsdangerous`` token and email a
+``<frontend>/reset-password?token=<token>`` URL. The recipient opens a public
+page and chooses their own password.
 
 Single-use semantics
 ---------------------
@@ -11,7 +11,7 @@ No new DB table is needed. The token carries the user id plus a *fingerprint*
 of the password hash that was active when the link was minted. The reset
 endpoint only accepts a token whose fingerprint still matches the user's
 current password — so the moment the user resets (the hash changes) the link
-dies, and minting a fresh link automatically invalidates any older ones.
+dies. Admin flows that set a temporary password also invalidate older links.
 """
 
 from __future__ import annotations

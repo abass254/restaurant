@@ -1,8 +1,11 @@
-"""Session Bearer + mobile CSRF helpers for Expo rider clients."""
+"""Session Bearer + CSRF helpers for Expo rider clients."""
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock
+
+import pytest
+from fastapi import HTTPException
 
 from app.core.session import (
     decode_session_token,
@@ -33,15 +36,36 @@ def test_get_session_prefers_bearer_over_cookie() -> None:
     assert loaded.get("rider_id") == "rider-bearer"
 
 
-def test_validate_csrf_skips_for_bearer_and_mobile() -> None:
+def test_validate_csrf_skips_for_bearer() -> None:
     bearer_req = MagicMock()
     bearer_req.method = "POST"
     bearer_req.headers = {"Authorization": "Bearer abc"}
     validate_csrf(bearer_req, {})
-
-    mobile_req = MagicMock()
-    mobile_req.method = "POST"
-    mobile_req.headers = {"X-Rider-Client": "expo"}
-    validate_csrf(mobile_req, {})
-    assert is_rider_mobile_client(mobile_req)
     assert request_uses_bearer_auth(bearer_req)
+
+
+def test_validate_csrf_skips_without_session_cookie() -> None:
+    req = MagicMock()
+    req.method = "POST"
+    req.headers = {"X-Rider-Client": "expo"}
+    req.cookies.get.return_value = None
+    validate_csrf(req, {})
+    assert is_rider_mobile_client(req)
+
+
+def test_validate_csrf_ignores_rider_client_header_when_cookie_present() -> None:
+    req = MagicMock()
+    req.method = "POST"
+    req.headers = {"X-Rider-Client": "expo"}
+    req.cookies.get.return_value = "session-cookie"
+    with pytest.raises(HTTPException) as exc:
+        validate_csrf(req, {"csrf_token": "expected"})
+    assert exc.value.status_code == 403
+
+
+def test_validate_csrf_accepts_matching_header() -> None:
+    req = MagicMock()
+    req.method = "POST"
+    req.headers = {"X-XSRF-TOKEN": "expected"}
+    req.cookies.get.return_value = "session-cookie"
+    validate_csrf(req, {"csrf_token": "expected"})

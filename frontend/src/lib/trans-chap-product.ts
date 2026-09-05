@@ -4,6 +4,7 @@ import type {
   CatalogProductMutationResponse,
   InventoryItem,
   InventoryItemMutationResponse,
+  StockMovementsResponse,
 } from "@/lib/types";
 
 export function inventoryProductName(item: InventoryItem): string {
@@ -81,4 +82,49 @@ export async function addInventoryQuantity(
     },
   );
   return inventory.data;
+}
+
+export async function ensureTrackedStock(item: InventoryItem): Promise<InventoryItem> {
+  if (item.stock_quantity != null) return item;
+  const inventory = await apiFetch<InventoryItemMutationResponse>(
+    apiRoutes.inventoryItem(item.id),
+    {
+      method: "PATCH",
+      body: JSON.stringify({ stock_quantity: 0 }),
+    },
+  );
+  return inventory.data;
+}
+
+export async function receiveStock(options: {
+  item: InventoryItem;
+  quantity: number;
+  reason: "receive" | "adjustment";
+  unitCost?: number | null;
+  note?: string | null;
+  recordOnly?: boolean;
+}): Promise<InventoryItem> {
+  const item = await ensureTrackedStock(options.item);
+  const line: {
+    inventory_item_id: string;
+    quantity: number;
+    unit_cost?: number;
+  } = {
+    inventory_item_id: item.id,
+    quantity: options.quantity,
+  };
+  if (options.unitCost != null && Number.isFinite(options.unitCost)) {
+    line.unit_cost = options.unitCost;
+  }
+  const result = await apiFetch<StockMovementsResponse>(apiRoutes.inventoryStockMovements, {
+    method: "POST",
+    body: JSON.stringify({
+      direction: "in",
+      reason: options.reason,
+      note: options.note?.trim() || null,
+      record_only: Boolean(options.recordOnly),
+      lines: [line],
+    }),
+  });
+  return result.data[0]?.inventory_item ?? item;
 }

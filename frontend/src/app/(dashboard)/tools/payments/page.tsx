@@ -16,6 +16,7 @@ import { apiRoutes } from "@/lib/config";
 import { MPESA_MAX_KES, MPESA_MIN_PAYOUT_KES } from "@/lib/mpesa-limits";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { Skeleton } from "@/components/app/Skeleton";
+import { ListLoadError } from "@/components/app/ListLoadError";
 import { MotionModal } from "@/components/app/MotionModal";
 import { buildMpesaFlowSteps, MpesaFlowStatus } from "@/components/app/MpesaFlowStatus";
 import { MpesaMoneyFlow } from "@/components/app/MpesaMoneyFlow";
@@ -110,6 +111,7 @@ export default function PaymentsPage() {
   const [usingDevSampleData, setUsingDevSampleData] = useState(false);
   const [transactions, setTransactions] = useState<MpesaTransaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filterText, setFilterText] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -123,11 +125,14 @@ export default function PaymentsPage() {
       const useSamples = devMode && data.transactions.length === 0;
       setTransactions(useSamples ? DEV_MPESA_TRANSACTIONS : data.transactions);
       setUsingDevSampleData((prev) => prev || Boolean(data.dev_sample_data) || useSamples);
+      setLoadError(null);
     } catch (err) {
-      console.error(err);
       if (devMode) {
         setTransactions(DEV_MPESA_TRANSACTIONS);
         setUsingDevSampleData(true);
+        setLoadError(null);
+      } else {
+        setLoadError(extractErrorMessage(err, "Could not load payments."));
       }
     } finally {
       setLoading(false);
@@ -287,6 +292,15 @@ export default function PaymentsPage() {
 
       {loading ? (
         <PaymentsSkeleton />
+      ) : loadError && transactions.length === 0 ? (
+        <ListLoadError
+          title="Could not load payments"
+          message={loadError}
+          onRetry={() => {
+            setLoading(true);
+            void reload();
+          }}
+        />
       ) : filtered.length === 0 ? (
         <div className="inventory-empty">
           <i className="fa-solid fa-mobile-screen-button" aria-hidden="true" />

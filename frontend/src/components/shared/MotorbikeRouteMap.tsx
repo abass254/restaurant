@@ -21,8 +21,8 @@ import type { GoogleMapsPublicConfig } from "@/lib/types";
 export type RouteQuoteState = {
   distanceKm: number | null;
   durationMinutes: number | null;
-  travelMode: RoadRouteResult["travelMode"] | null;
-  source: RoadRouteResult["source"] | null;
+  travelMode: string | null;
+  source: string | null;
   loading: boolean;
   error: string | null;
 };

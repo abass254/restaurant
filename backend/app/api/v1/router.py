@@ -7,11 +7,14 @@ from app.api.v1 import (
     auto_reply,
     channels,
     conversation_starters,
+    customers,
+    deliveries,
     feeds,
     google_maps,
     integrations,
     inventory,
     kra,
+    login_codes,
     mapbox,
     messages,
     messaging_settings,
@@ -23,6 +26,7 @@ from app.api.v1 import (
     orders,
     platform,
     products,
+    qa,
     registration,
     rider_deliveries,
     riders,
@@ -50,6 +54,8 @@ router.include_router(feeds.router)
 router.include_router(auto_reply.router)
 router.include_router(mpesa.router)
 router.include_router(kra.router)
+router.include_router(login_codes.router)
+router.include_router(qa.router)
 router.include_router(google_maps.router)
 router.include_router(ai_agent.router)
 router.include_router(mapbox.router)
@@ -58,6 +64,7 @@ router.include_router(platform.router)
 router.include_router(products.router)
 router.include_router(inventory.router)
 router.include_router(orders.router)
+router.include_router(deliveries.router)
 router.include_router(order_payment.router)
 router.include_router(integrations.router)
 router.include_router(riders.router)
@@ -65,5 +72,6 @@ router.include_router(rider_deliveries.router)
 router.include_router(store_status.router)
 router.include_router(storefront.router)
 router.include_router(staff.router)
+router.include_router(customers.router)
 router.include_router(admin.router)
 router.include_router(meta.router)

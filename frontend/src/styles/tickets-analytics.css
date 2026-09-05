@@ -4,6 +4,7 @@
 
 .tickets-subnav {
   display: inline-flex;
+  flex-wrap: wrap;
   gap: 0.35rem;
   padding: 0.25rem;
   margin: 0 0 1.25rem;

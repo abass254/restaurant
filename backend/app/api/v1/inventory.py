@@ -33,7 +33,7 @@ from app.core.upload_tokens import (
 from app.core.uploads import delete_upload, save_generated_image, save_upload
 from app.database import get_db
 from app.dependencies import ServiceContainer, get_request_session, get_services
-from app.models import InventoryItem, Product, User
+from app.models import InventoryItem, Product, StockMovement, User
 from app.schemas import InventoryItemOut, StockMovementOut
 from app.services.image_generation_service import (
     ImageGenerationDisabled,
@@ -46,6 +46,7 @@ from app.services.inventory_stock_service import (
     InsufficientStockError,
     UntrackedStockError,
     adjust_stock,
+    apply_unit_costs,
 )
 from app.services.feed_post_link_service import add_post_link
 from app.services.platform_instagram import require_merchant_instagram_account
@@ -68,9 +69,15 @@ def _require_shop(user: User) -> int:
     return active_account_id(user)
 
 
-def _auth_inventory_user(db: Session, session: dict, *, pos_read_ok: bool = False) -> User:
+def _auth_inventory_user(
+    db: Session,
+    session: dict,
+    *,
+    pos_read_ok: bool = False,
+    pos_write_ok: bool = False,
+) -> User:
     user = require_user(db, session)
-    if pos_read_ok:
+    if pos_read_ok or pos_write_ok:
         assert_merchant_section_any_access(
             user, "inventory", "pos", "services", "dashboard",
         )
@@ -101,12 +108,14 @@ class InventoryUpdate(BaseModel):
 class StockMovementLineIn(BaseModel):
     inventory_item_id: str = Field(min_length=1, max_length=64)
     quantity: int = Field(ge=1, le=1_000_000)
+    unit_cost: float | None = Field(default=None, ge=0, le=99_999_999.99)
 
 
 class StockMovementsCreate(BaseModel):
     direction: Literal["in", "out"]
     reason: Literal["receive", "adjustment", "damage", "other"] = "receive"
     note: str | None = Field(default=None, max_length=500)
+    record_only: bool = False
     lines: list[StockMovementLineIn] = Field(min_length=1, max_length=200)
 
 
@@ -257,6 +266,52 @@ def get_inventory_by_code(
     return {"data": InventoryItemOut.from_model(matched[0])}
 
 
+@router.get("/stock-movements")
+def list_stock_movements(
+    direction: Literal["in", "out"] | None = Query(default=None),
+    reason: Literal["receive", "adjustment", "damage", "other"] | None = Query(
+        default=None,
+    ),
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    user = _auth_inventory_user(db, session, pos_read_ok=True)
+    account_id = _require_shop(user)
+
+    query = db.query(StockMovement).filter(StockMovement.account_id == account_id)
+    if direction:
+        query = query.filter(StockMovement.direction == direction)
+    if reason:
+        query = query.filter(StockMovement.reason == reason)
+
+    total = query.count()
+    rows = (
+        query.options(
+            joinedload(StockMovement.inventory_item).joinedload(InventoryItem.product),
+        )
+        .order_by(
+            StockMovement.created_at.is_(None),
+            StockMovement.created_at.desc(),
+            StockMovement.id.desc(),
+        )
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    last_page = max(1, (total + per_page - 1) // per_page)
+    return {
+        "data": [StockMovementOut.from_model(row, include_item=True) for row in rows],
+        "meta": {
+            "current_page": page,
+            "last_page": last_page,
+            "per_page": per_page,
+            "total": total,
+        },
+    }
+
+
 @router.post("/stock-movements", status_code=status.HTTP_201_CREATED)
 def create_stock_movements(
     payload: StockMovementsCreate,
@@ -266,12 +321,17 @@ def create_stock_movements(
 ):
     """Commit a stock-in or stock-out session as atomic delta adjustments."""
     validate_csrf(request, session)
-    user = _auth_inventory_user(db, session)
+    user = _auth_inventory_user(db, session, pos_write_ok=True)
     account_id = _require_shop(user)
 
     reason = payload.reason
     if payload.direction == "out" and reason == "receive":
         reason = "adjustment"
+    if payload.record_only and (payload.direction != "in" or reason != "receive"):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="History-only stock rows can only be recorded as purchases.",
+        )
 
     lines = [(line.inventory_item_id, line.quantity) for line in payload.lines]
     try:
@@ -283,6 +343,7 @@ def create_stock_movements(
             reason=reason,
             note=payload.note,
             user_id=str(user.id),
+            record_only=payload.record_only,
         )
     except InsufficientStockError as exc:
         raise HTTPException(
@@ -299,6 +360,18 @@ def create_stock_movements(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
+
+    costs = {
+        line.inventory_item_id: line.unit_cost
+        for line in payload.lines
+        if line.unit_cost is not None
+    }
+    if costs:
+        apply_unit_costs(
+            movements,
+            costs,
+            update_buying_price=not payload.record_only,
+        )
 
     db.commit()
     for movement in movements:
@@ -336,7 +409,7 @@ def create_inventory_item(
     session: dict = Depends(get_request_session),
 ):
     validate_csrf(request, session)
-    user = _auth_inventory_user(db, session)
+    user = _auth_inventory_user(db, session, pos_write_ok=True)
     account_id = _require_shop(user)
 
     product = db.get(Product, payload.product_id)
@@ -400,7 +473,7 @@ def update_inventory_item(
     session: dict = Depends(get_request_session),
 ):
     validate_csrf(request, session)
-    user = _auth_inventory_user(db, session)
+    user = _auth_inventory_user(db, session, pos_write_ok=True)
     account_id = _require_shop(user)
 
     item = _get_owned_item(db, account_id, item_id)

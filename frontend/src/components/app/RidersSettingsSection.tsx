@@ -15,6 +15,7 @@ import type {
   RiderSummary,
   RidersListResponse,
 } from "@/lib/types";
+import { accountHasLocationCoordinates, STORE_LOCATION_REQUIRED_FOR_RIDERS } from "@/lib/account-location";
 import { useAuthUser } from "./AuthProvider";
 import { FleetPresenceMap } from "./FleetPresenceMap";
 import { MotionModal } from "./MotionModal";
@@ -109,6 +110,10 @@ export function RidersSettingsSection() {
 
   async function handleInvite(event: FormEvent) {
     event.preventDefault();
+    if (!shopCoords) {
+      await showError("Store location required", STORE_LOCATION_REQUIRED_FOR_RIDERS);
+      return;
+    }
     const email = inviteForm.email.trim();
     if (!email) {
       await showError("Email required", "Save an email so the rider can sign in later.");
@@ -233,11 +238,14 @@ export function RidersSettingsSection() {
   const offlineActiveCount = Math.max(0, activeCount - onlineCount);
   const busyCount = riders.reduce((sum, r) => sum + (r.active_deliveries_count || 0), 0);
 
+  const shopAccount = user.active_account ?? user.account;
+  const hasStorePin = accountHasLocationCoordinates(shopAccount);
   const shopCoords = useMemo(() => {
-    const account = user.active_account ?? user.account;
-    if (account?.latitude == null || account?.longitude == null) return null;
-    return { lat: account.latitude, lng: account.longitude };
-  }, [user.account, user.active_account]);
+    if (!hasStorePin || shopAccount?.latitude == null || shopAccount?.longitude == null) {
+      return null;
+    }
+    return { lat: shopAccount.latitude, lng: shopAccount.longitude };
+  }, [hasStorePin, shopAccount?.latitude, shopAccount?.longitude]);
 
   const sortedRiders = useMemo(() => {
     return [...riders].sort((a, b) => {
@@ -262,8 +270,21 @@ export function RidersSettingsSection() {
       <div className="settings-card__body">
         <p className="settings-muted">
           Invite riders to your private delivery fleet. Presence updates every few seconds
-          while this page is open.
+          while this page is open. A store pin is required so they can navigate to pickup.
         </p>
+
+        {!hasStorePin ? (
+          <div className="settings-location-form__alert" role="status">
+            <i className="fa-solid fa-location-dot" aria-hidden="true" />
+            <div>
+              <strong>Pin your store first</strong>
+              <p className="settings-muted">
+                {STORE_LOCATION_REQUIRED_FOR_RIDERS}{" "}
+                <a href="#section-store-location">Set store location</a>
+              </p>
+            </div>
+          </div>
+        ) : null}
 
         <div className="fleet-presence" aria-live="polite">
           <div className="fleet-presence__stat fleet-presence__stat--online">
@@ -288,7 +309,16 @@ export function RidersSettingsSection() {
           <button
             type="button"
             className="btn btn-primary btn-sm"
-            onClick={() => setShowInvite(true)}
+            onClick={() => {
+              if (!hasStorePin) {
+                document.getElementById("section-store-location")?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "start",
+                });
+                return;
+              }
+              setShowInvite(true);
+            }}
           >
             <i className="fa-solid fa-user-plus" aria-hidden="true" />
             Invite rider

@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { PrimaryButton } from '@/src/components/PrimaryButton';
 import { notifyRider } from '@/src/alerts';
 import { useApp } from '@/src/AppContext';
+import { DELIVERY_STAGE_LABELS } from '@/src/deliveryWorkflow';
 import { colors, radius, spacing, typography } from '@/src/theme';
 
 export default function CompleteScreen() {
@@ -30,7 +31,9 @@ export default function CompleteScreen() {
         <Ionicons name="checkmark" size={48} color="#fff" />
       </View>
       <Text style={styles.title}>Delivery complete</Text>
-      <Text style={styles.sub}>Nice work — payout added to today&apos;s earnings.</Text>
+      <Text style={styles.sub}>
+        {DELIVERY_STAGE_LABELS.delivered} — payout added to today&apos;s earnings.
+      </Text>
 
       <View style={styles.card}>
         <Text style={typography.caption}>You earned</Text>

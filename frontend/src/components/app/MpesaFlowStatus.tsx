@@ -2,7 +2,7 @@ type FlowTone = "idle" | "current" | "success" | "failed";
 type FlowLink = "idle" | "done" | "progress" | "failed";
 
 export type MpesaFlowStep = {
-  key: "client" | "hub" | "merchant";
+  key: string;
   icon: string;
   label: string;
   tone: FlowTone;
@@ -16,6 +16,7 @@ type MpesaFlowStatusProps = {
   className?: string;
   /** Horizontal row of icons (default) or vertical stack. */
   layout?: "row" | "column";
+  ariaLabel?: string;
 };
 
 function toneClass(tone: FlowTone): string {
@@ -26,6 +27,7 @@ export function MpesaFlowStatus({
   steps,
   className,
   layout = "row",
+  ariaLabel = "Payment flow status",
 }: MpesaFlowStatusProps) {
   const rootClass = [
     "mpesa-flow-status",
@@ -36,7 +38,7 @@ export function MpesaFlowStatus({
     .join(" ");
 
   return (
-    <ol className={rootClass} aria-label="Payment flow status">
+    <ol className={rootClass} aria-label={ariaLabel}>
       {steps.map((step) => {
         const stepClass = [
           "mpesa-flow-status__step",
@@ -254,6 +256,127 @@ export function buildMpesaFlowSteps(txn: CollectionLike): MpesaFlowStep[] {
       label: "Merchant",
       tone: merchantTone,
       tooltip: merchantTip,
+    },
+  ];
+}
+
+type RiderFlowOrder = {
+  status: string;
+  assigned_rider_id?: string | null;
+  assigned_rider_name?: string | null;
+  rider_trip_phase?: string | null;
+  delivery_disputed_at?: string | null;
+  delivery_address?: string | null;
+};
+
+/** Build Shop → Rider → Customer step states for a delivery row. */
+export function buildRiderFlowSteps(order: RiderFlowOrder): MpesaFlowStep[] {
+  const status = order.status;
+  const phase = (order.rider_trip_phase || "").trim();
+  const rider = (order.assigned_rider_name || "").trim() || "Rider";
+  const dropoff = (order.delivery_address || "").trim() || "the drop-off";
+  const failed = status === "cancelled" || status === "refunded";
+  const disputed = Boolean(order.delivery_disputed_at);
+  const delivered = status === "delivered" || status === "picked_up" || phase === "completed";
+  const atCustomer =
+    status === "awaiting_delivery_confirmation" || phase === "at_client";
+  const toCustomer =
+    status === "out_for_delivery" || phase === "en_route_to_client";
+  const atShop = phase === "at_store" || phase === "picking_up";
+  const toShop = phase === "en_route_to_store" || Boolean(order.assigned_rider_id && !toCustomer && !atCustomer && !delivered && !atShop);
+
+  let shopTone: FlowTone = "current";
+  let shopTip = "Looking for a rider to come to the shop.";
+  let shopLink: FlowLink = "progress";
+  let riderTone: FlowTone = "idle";
+  let riderTip = "Waiting for pickup.";
+  let riderLink: FlowLink = "idle";
+  let customerTone: FlowTone = "idle";
+  let customerTip = `Drop-off: ${dropoff}.`;
+
+  if (delivered) {
+    shopTone = "success";
+    shopTip = "Picked up from the shop.";
+    shopLink = "done";
+    riderTone = "success";
+    riderTip = `${rider} completed the trip.`;
+    riderLink = "done";
+    customerTone = disputed ? "failed" : "success";
+    customerTip = disputed ? "Delivery was disputed." : "Delivered.";
+  } else if (atCustomer) {
+    shopTone = "success";
+    shopTip = "Picked up from the shop.";
+    shopLink = "done";
+    riderTone = "success";
+    riderTip = `${rider} arrived at drop-off.`;
+    riderLink = "progress";
+    customerTone = disputed ? "failed" : "current";
+    customerTip = disputed
+      ? "Delivery was disputed."
+      : "Waiting for delivery confirmation.";
+  } else if (toCustomer) {
+    shopTone = "success";
+    shopTip = "Picked up from the shop.";
+    shopLink = "done";
+    riderTone = "current";
+    riderTip = `${rider} is heading to ${dropoff}.`;
+    riderLink = "progress";
+    customerTone = "idle";
+    customerTip = `Drop-off: ${dropoff}.`;
+  } else if (atShop) {
+    shopTone = "current";
+    shopTip = `${rider} is at the shop.`;
+    shopLink = "progress";
+    riderTone = "idle";
+    riderTip = "Next: head to the customer.";
+  } else if (toShop) {
+    shopTone = "current";
+    shopTip = `${rider} is on the way to the shop.`;
+    shopLink = "progress";
+    riderTone = "idle";
+    riderTip = "Waiting for pickup.";
+  }
+
+  if (failed) {
+    const failTip =
+      status === "refunded" ? "This delivery was refunded." : "This delivery was cancelled.";
+    if (delivered || atCustomer || toCustomer) {
+      riderTone = riderTone === "idle" ? "failed" : riderTone;
+      customerTone = "failed";
+      customerTip = failTip;
+      riderLink = "failed";
+    } else {
+      shopTone = "failed";
+      shopTip = failTip;
+      shopLink = "failed";
+      riderTone = "idle";
+      riderLink = "idle";
+    }
+  }
+
+  return [
+    {
+      key: "shop",
+      icon: "fa-store",
+      label: "Shop",
+      tone: shopTone,
+      tooltip: shopTip,
+      link: shopLink,
+    },
+    {
+      key: "rider",
+      icon: "fa-motorcycle",
+      label: "Rider",
+      tone: riderTone,
+      tooltip: riderTip,
+      link: riderLink,
+    },
+    {
+      key: "customer",
+      icon: "fa-flag-checkered",
+      label: "Customer",
+      tone: customerTone,
+      tooltip: customerTip,
     },
   ];
 }

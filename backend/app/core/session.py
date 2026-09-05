@@ -105,7 +105,12 @@ def xsrf_cookie_value(token: str) -> str:
 
 
 def is_rider_mobile_client(request: Request) -> bool:
-    """Expo / native rider clients send this header instead of cookie CSRF."""
+    """Expo / native rider clients send this header for diagnostics.
+
+    It is not a CSRF exemption — browsers can set custom headers. Native
+    clients authenticate with Bearer tokens after login; cookie sessions
+    always require a matching CSRF token.
+    """
     value = (request.headers.get("X-Rider-Client") or "").strip().lower()
     return value in {"expo", "rider-app", "mobile"}
 
@@ -114,8 +119,13 @@ def validate_csrf(request: Request, session: dict[str, Any]) -> None:
     if request.method in {"GET", "HEAD", "OPTIONS"}:
         return
 
-    # Bearer sessions are not cookie-CSRF vulnerable; mobile login bootstraps without cookies.
-    if request_uses_bearer_auth(request) or is_rider_mobile_client(request):
+    # Bearer sessions are not cookie-CSRF vulnerable.
+    if request_uses_bearer_auth(request):
+        return
+
+    settings = get_settings()
+    if not request.cookies.get(settings.session_cookie_name):
+        # No cookie session exists yet (native login bootstrap).
         return
 
     expected = session.get(SESSION_CSRF_KEY)

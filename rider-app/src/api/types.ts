@@ -38,7 +38,10 @@ export type RiderDeliveryItem = {
 
 export type RiderDelivery = {
   id: string;
-  order_number: string;
+  delivery_number: string;
+  order_id?: string | null;
+  order_number?: string | null;
+  has_order?: boolean;
   status: string;
   customer_name: string | null;
   customer_phone_masked: string | null;
@@ -61,11 +64,16 @@ export type RiderDelivery = {
 
 export type RiderOffer = {
   id: string;
-  order_id: string;
-  order_number: string;
+  delivery_id: string;
+  delivery_number: string;
+  order_id?: string | null;
+  order_number?: string | null;
+  has_order?: boolean;
   expires_at: string;
   store_name: string;
   store_location: string | null;
+  store_lat?: number | null;
+  store_lng?: number | null;
   delivery_address: string | null;
   item_count: number;
   payout_estimate: number;
@@ -94,7 +102,8 @@ export type RiderLoginCode = {
 
 export type RiderEarningsTrip = {
   id: string;
-  order_number: string;
+  delivery_number: string;
+  order_number?: string | null;
   completed_at: string | null;
   delivery_fee: number;
   total: number;

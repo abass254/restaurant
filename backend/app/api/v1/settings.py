@@ -6,7 +6,10 @@ from pydantic import BaseModel, Field
 from app.config import get_settings
 from app.core.session import require_user, validate_csrf
 from app.core.uploads import delete_upload, save_logo_upload
-from app.support.merchant_permissions import assert_merchant_section_access
+from app.support.merchant_permissions import (
+    assert_merchant_section_access,
+    assert_merchant_section_any_access,
+)
 from app.dependencies import ServiceContainer, get_request_session, get_services
 from app.models import RETAIL_BUSINESS_CATEGORIES, Account
 from app.schemas import AccountOut, InstagramAccountOut, UserOut, build_user_out
@@ -247,7 +250,7 @@ def update_business_location(
 ):
     validate_csrf(request, session)
     user = require_user(services.db, session)
-    assert_merchant_section_access(user, "settings")
+    assert_merchant_section_any_access(user, "settings", "delivery")
     account_id = require_merchant_account_id(user)
     account = services.db.get(Account, account_id)
     if account is None:

@@ -5,7 +5,18 @@ import { getServerUser } from "@/lib/server-auth";
 import { firstAllowedPath } from "@/lib/merchant-permissions";
 import ChangePasswordClient from "./ChangePasswordClient";
 
-export default async function ChangePasswordPage() {
+function safeNextPath(raw: string | undefined): string | null {
+  if (raw?.startsWith("/trans-chap") && !raw.startsWith("//")) {
+    return raw;
+  }
+  return null;
+}
+
+type PageProps = {
+  searchParams: Promise<{ next?: string }>;
+};
+
+export default async function ChangePasswordPage({ searchParams }: PageProps) {
   let user;
   try {
     user = await getServerUser();
@@ -20,9 +31,12 @@ export default async function ChangePasswordPage() {
     redirect("/sign-in");
   }
 
+  const params = await searchParams;
+  const nextPath = safeNextPath(params.next);
+
   if (!user.require_change_password) {
-    redirect(firstAllowedPath(user));
+    redirect(nextPath || firstAllowedPath(user));
   }
 
-  return <ChangePasswordClient user={user} />;
+  return <ChangePasswordClient user={user} nextPath={nextPath} />;
 }

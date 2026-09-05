@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useOptionalAuthUser } from "@/components/app/AuthProvider";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
 import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import { formatNavBadgeCount } from "@/lib/merchant-nav";
 import {
@@ -12,6 +11,7 @@ import {
   type MerchantSection,
 } from "@/lib/merchant-permissions";
 import { useNavCounts } from "@/lib/use-nav-counts";
+import { migrateLegacyTransChapPurchases } from "@/lib/trans-chap-purchases";
 
 const NAV: Array<{
   href: string;
@@ -87,6 +87,9 @@ function headerMeta(pathname: string): { title: string; backHref: string | null 
   if (pathname.startsWith("/trans-chap/stocks")) {
     return { title: "Stocks", backHref: "/trans-chap" };
   }
+  if (pathname.startsWith("/trans-chap/credit")) {
+    return { title: "On tab", backHref: "/trans-chap" };
+  }
   if (pathname.startsWith("/trans-chap/reports")) {
     return { title: "Reports", backHref: "/trans-chap" };
   }
@@ -138,20 +141,26 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
 
   const items = useMemo(
     () =>
-      NAV.filter(
-        (item) =>
-          !item.section || (user != null && userCanAccessSection(user, item.section)),
-      ),
-    [user],
+      NAV.filter((item) => {
+        if (item.section && (user == null || !userCanAccessSection(user, item.section))) {
+          return false;
+        }
+        if (item.requiresInstagram && !instagramConnected) return false;
+        return true;
+      }),
+    [instagramConnected, user],
   );
 
   const createActions = useMemo(
     () =>
-      CREATE_ACTIONS.filter(
-        (action) =>
-          !action.section || (user != null && userCanAccessSection(user, action.section)),
-      ),
-    [user],
+      CREATE_ACTIONS.filter((action) => {
+        if (action.section && (user == null || !userCanAccessSection(user, action.section))) {
+          return false;
+        }
+        if (action.requiresInstagram && !instagramConnected) return false;
+        return true;
+      }),
+    [instagramConnected, user],
   );
 
   const canAccessChats =
@@ -166,6 +175,12 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
       void navigator.serviceWorker.register("/sw.js").catch(() => undefined);
     }
   }, []);
+
+  useEffect(() => {
+    const accountId = user?.active_account?.id || user?.account?.id;
+    if (!accountId) return;
+    void migrateLegacyTransChapPurchases(accountId);
+  }, [user?.account?.id, user?.active_account?.id]);
 
   useEffect(() => {
     setCreateOpen(false);
@@ -210,19 +225,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
         <i className={`fa-solid ${item.icon}`} aria-hidden />
       </span>
     );
-    if (disabled) {
-      return (
-        <span
-          key={item.href}
-          className="is-disabled"
-          aria-disabled="true"
-          title="Connect Instagram to use this"
-        >
-          {icon}
-          {item.label}
-        </span>
-      );
-    }
+    if (disabled) return null;
     return (
       <Link
         key={item.href}
@@ -249,7 +252,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                   </Link>
                 ) : (
                   <Link href="/trans-chap" className="trans-chap-header__icon" aria-label="Trans Chap home">
-                    <DukAiLogoMark size={42} color="currentColor" accentColor="#e85d04" />
+                    <i className="fa-solid fa-house" aria-hidden />
                   </Link>
                 )}
               </div>
@@ -281,15 +284,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                       ) : null}
                     </span>
                   </Link>
-                ) : (
-                  <span
-                    className="trans-chap-header__icon is-disabled"
-                    aria-disabled="true"
-                    title="Connect Instagram to use chats"
-                  >
-                    <i className="fa-solid fa-comments" aria-hidden />
-                  </span>
-                )}
+                ) : null}
                 <Link
                   href="/trans-chap/settings"
                   className={`trans-chap-header__icon${
@@ -358,7 +353,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                 </button>
               </div>
               {renderNavLink(purchasesItem)}
-              {renderNavLink(feedsItem)}
+              {feedsItem ? renderNavLink(feedsItem) : <span className="mobile-nav__spacer" aria-hidden />}
             </nav>
           ) : null}
         </div>

@@ -111,6 +111,44 @@ export async function confirmAction(
   return result.isConfirmed;
 }
 
+export async function promptVoidReason(
+  title: string,
+  text: string,
+  confirmText: string,
+) {
+  const result = await dukaiSwal.fire({
+    icon: "warning",
+    title,
+    text,
+    input: "textarea",
+    inputLabel: "Reason",
+    inputPlaceholder: "e.g. Wrong item, customer changed mind…",
+    inputAttributes: {
+      maxlength: "1000",
+      "aria-label": "Reason",
+    },
+    showCancelButton: true,
+    confirmButtonText: confirmText,
+    preConfirm: (value) => {
+      const reason = String(value ?? "").trim();
+      if (!reason) {
+        dukaiSwal.showValidationMessage("Enter a reason.");
+        return false;
+      }
+      if (reason.length < 3) {
+        dukaiSwal.showValidationMessage("Reason must be at least 3 characters.");
+        return false;
+      }
+      return reason;
+    },
+  });
+
+  if (!result.isConfirmed || !result.value) {
+    return null;
+  }
+  return String(result.value).trim();
+}
+
 export async function promptRejectReason(
   title = "Reject this order?",
   text = "Tell the customer why this order is being rejected.",

@@ -7,7 +7,8 @@ import { TransChapInstallPanel } from "@/components/trans-chap/TransChapInstallP
 import { TransChapMpesaSettings } from "@/components/trans-chap/TransChapMpesaSettings";
 import { apiFetch } from "@/lib/api";
 import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
-import { apiRoutes } from "@/lib/config";
+import { apiRoutes, instagramAuthPath, resolveSameOriginUrl } from "@/lib/config";
+import { isShopOwner } from "@/lib/merchant-permissions";
 import type { MerchantMpesaConfigResponse, SettingsResponse } from "@/lib/types";
 
 const SIGN_IN_PATH = "/trans-chap/sign-in";
@@ -27,7 +28,7 @@ export default function TransChapSettingsPage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [mpesaReady, setMpesaReady] = useState<boolean | null>(null);
   const [hasInstagram, setHasInstagram] = useState(Boolean(user.instagram_account));
-  const [canManageInstagram, setCanManageInstagram] = useState(false);
+  const [canManageInstagram, setCanManageInstagram] = useState(isShopOwner(user));
   const [autoRepliesEnabled, setAutoRepliesEnabled] = useState(
     Boolean(user.instagram_account?.auto_replies_enabled),
   );
@@ -51,6 +52,12 @@ export default function TransChapSettingsPage() {
       cancelled = true;
     };
   }, [pane]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("connected") !== "1") return;
+    void toastSuccess("Instagram connected");
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -175,39 +182,64 @@ export default function TransChapSettingsPage() {
       <section className="ios-settings__group" aria-label="Messaging">
         <h3 className="ios-settings__caption">Messaging</h3>
         <div className="ios-settings__card">
-          <div
-            className={`ios-settings__row ios-settings__row--static${
-              !hasInstagram ? " is-disabled" : ""
-            }`}
-          >
-            <span className="ios-settings__icon ios-settings__icon--ai" aria-hidden>
-              <i className="fa-solid fa-robot" />
-            </span>
-            <span className="ios-settings__label">AI Auto-Reply</span>
-            <span className="ios-settings__trailing">
-              {!hasInstagram ? (
-                <span className="ios-settings__value">Connect IG</span>
-              ) : canManageInstagram ? (
-                <button
-                  type="button"
-                  role="switch"
-                  className={`theme-switch${autoRepliesEnabled ? " is-on" : ""}`}
-                  aria-checked={autoRepliesEnabled}
-                  aria-label="AI auto-reply"
-                  disabled={autoRepliesSaving}
-                  onClick={() => void handleAutoRepliesToggle(!autoRepliesEnabled)}
-                >
-                  <span className="theme-switch__thumb" aria-hidden />
-                </button>
-              ) : (
+          {!hasInstagram ? (
+            canManageInstagram ? (
+              <a
+                href={resolveSameOriginUrl(
+                  `${instagramAuthPath}?next=${encodeURIComponent("/trans-chap/settings")}`,
+                )}
+                className="ios-settings__row"
+              >
+                <span className="ios-settings__icon ios-settings__icon--ai" aria-hidden>
+                  <i className="fa-brands fa-instagram" />
+                </span>
+                <span className="ios-settings__label">Connect Instagram</span>
+                <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+              </a>
+            ) : (
+              <div className="ios-settings__row ios-settings__row--static is-disabled">
+                <span className="ios-settings__icon ios-settings__icon--ai" aria-hidden>
+                  <i className="fa-brands fa-instagram" />
+                </span>
+                <span className="ios-settings__label">Instagram</span>
                 <span className="ios-settings__value">Admin only</span>
-              )}
-            </span>
-          </div>
+              </div>
+            )
+          ) : (
+            <div
+              className={`ios-settings__row ios-settings__row--static${
+                !canManageInstagram ? " is-disabled" : ""
+              }`}
+            >
+              <span className="ios-settings__icon ios-settings__icon--ai" aria-hidden>
+                <i className="fa-solid fa-robot" />
+              </span>
+              <span className="ios-settings__label">AI Auto-Reply</span>
+              <span className="ios-settings__trailing">
+                {canManageInstagram ? (
+                  <button
+                    type="button"
+                    role="switch"
+                    className={`theme-switch${autoRepliesEnabled ? " is-on" : ""}`}
+                    aria-checked={autoRepliesEnabled}
+                    aria-label="AI auto-reply"
+                    disabled={autoRepliesSaving}
+                    onClick={() => void handleAutoRepliesToggle(!autoRepliesEnabled)}
+                  >
+                    <span className="theme-switch__thumb" aria-hidden />
+                  </button>
+                ) : (
+                  <span className="ios-settings__value">Admin only</span>
+                )}
+              </span>
+            </div>
+          )}
         </div>
         <p className="ios-settings__footer">
           {!hasInstagram
-            ? "Connect Instagram to enable chats, feeds, and AI auto-reply."
+            ? canManageInstagram
+              ? "Connect Instagram to enable chats, feeds, and AI auto-reply."
+              : "Ask a shop admin to connect Instagram for chats and feeds."
             : autoRepliesEnabled
               ? "DukAI replies to matching customer DMs automatically."
               : "Automatic replies are off. Customers won’t get AI responses."}

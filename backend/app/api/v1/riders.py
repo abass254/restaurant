@@ -20,8 +20,15 @@ from app.models import Account
 from app.services.platform_instagram import require_merchant_account_id
 from app.services.rider_invite_email import send_rider_invite_email
 from app.services.rider_service import RiderService, RiderServiceError
+from app.support.account_location import (
+    STORE_LOCATION_REQUIRED_FOR_RIDERS,
+    account_has_store_coordinates,
+)
 from app.support.datetime_utils import as_utc
-from app.support.merchant_permissions import assert_merchant_section_access
+from app.support.merchant_permissions import (
+    assert_merchant_section_access,
+    assert_merchant_section_any_access,
+)
 
 router = APIRouter(prefix="/riders", tags=["riders"])
 
@@ -130,7 +137,7 @@ def list_riders(
     session: dict = Depends(get_request_session),
 ):
     user = require_user(db, session)
-    assert_merchant_section_access(user, "delivery")
+    assert_merchant_section_any_access(user, "delivery", "tools")
     account_id = require_merchant_account_id(user)
     rows = RiderService(db).list_riders(account_id)
     return {"data": [_rider_out(row) for row in rows]}
@@ -147,6 +154,14 @@ def create_rider_invite(
     user = require_user(db, session)
     assert_merchant_section_access(user, "delivery")
     account_id = require_merchant_account_id(user)
+    account = db.get(Account, account_id)
+    if account is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Shop not found.")
+    if not account_has_store_coordinates(account):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=STORE_LOCATION_REQUIRED_FOR_RIDERS,
+        )
 
     email = str(payload.email).strip().lower() if payload.email else None
     if payload.send_invite_email and not email:

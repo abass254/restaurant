@@ -8,23 +8,26 @@ import { accountHasLocationCoordinates } from "@/lib/account-location";
 import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import type { LatLng } from "@/lib/google-maps";
-import { useGoogleMapsPublicConfig } from "@/lib/useGoogleMapsPublicConfig";
+import { useMapProviderConfig } from "@/lib/useMapProviderConfig";
 import type { BusinessAccount } from "@/lib/types";
 
 type BusinessLocationSectionProps = {
   account: BusinessAccount | null;
   onSaved?: () => void;
   hideSignedInAs?: boolean;
+  /** Rider connection needs a pin; Basics keeps it optional. */
+  requiredForRiders?: boolean;
 };
 
 export function BusinessLocationSection({
   account,
   onSaved,
   hideSignedInAs = false,
+  requiredForRiders = false,
 }: BusinessLocationSectionProps) {
   const user = useAuthUser();
   const refreshUser = useAuthRefresh();
-  const { mapEnabled, loading: mapsLoading } = useGoogleMapsPublicConfig();
+  const { mapEnabled, loading: mapsLoading } = useMapProviderConfig();
   const [location, setLocation] = useState(account?.business_location ?? "");
   const [coords, setCoords] = useState<LatLng | null>(() =>
     account?.latitude != null && account?.longitude != null
@@ -53,18 +56,10 @@ export function BusinessLocationSection({
       return;
     }
 
-    if (mapEnabled && !coords) {
-      await showError(
-        "Pin your shop on the map",
-        "Search for your address or drop the pin so we can save accurate coordinates.",
-      );
-      return;
-    }
-
     if (!coords) {
       await showError(
-        "Google Maps required",
-        "A platform Google Maps API key is needed before you can save shop coordinates.",
+        "Pin your shop on the map",
+        "Search for your address or drop the pin so riders can find your store.",
       );
       return;
     }
@@ -80,7 +75,7 @@ export function BusinessLocationSection({
         }),
       });
       await refreshUser();
-      await toastSuccess("Business location saved");
+      await toastSuccess("Store location saved");
       onSaved?.();
     } catch (err) {
       await showError("Could not save location", extractErrorMessage(err));
@@ -95,42 +90,46 @@ export function BusinessLocationSection({
         <div className="settings-location-form__alert" role="status">
           <i className="fa-solid fa-location-crosshairs" aria-hidden="true" />
           <div>
-            <strong>Set your shop location on the map</strong>
+            <strong>
+              {requiredForRiders
+                ? "Store location is required for the rider app"
+                : "Set your store location"}
+            </strong>
             <p className="settings-muted">
-              Delivery fees and route previews need your exact coordinates. Pick your
-              business address below.
+              {requiredForRiders
+                ? "Riders use this pin to navigate to your shop for pickup. Search or drop a pin, then save."
+                : "Optional for most shops. You will need a map pin before inviting riders or dispatching deliveries."}
             </p>
           </div>
         </div>
       ) : null}
 
       {mapsLoading ? (
-        <p className="settings-muted">Loading Google Maps…</p>
+        <p className="settings-muted">Loading map…</p>
       ) : mapEnabled ? (
         <AddressLocationField
           value={location}
           onChange={setLocation}
           onCoordsChange={setCoords}
-          label="Business location"
+          coords={coords}
+          label="Store location"
           placeholder="Search for your shop location"
           required
           variant="inline"
           allowMapPin
+          showCurrentLocation
         />
       ) : (
-        <div className="settings-location-form__blocked">
-          <p className="settings-muted">
-            Google Maps is not configured yet. Ask your platform admin to add an API key
-            under Settings → Google Maps so you can pin your shop location.
-          </p>
-          <dl className="settings-grid settings-grid--compact">
-            <div className="settings-grid__cell">
-              <dt>Current address</dt>
-              <dd>{account?.business_location ?? "—"}</dd>
-            </div>
-          </dl>
-        </div>
+        <p className="settings-muted">
+          Maps are unavailable right now. Try again in a moment.
+        </p>
       )}
+
+      {coords ? (
+        <p className="settings-muted settings-location-form__coords">
+          Pin: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+        </p>
+      ) : null}
 
       {mapEnabled ? (
         <div className="settings-actions">

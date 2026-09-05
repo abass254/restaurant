@@ -107,7 +107,7 @@ export default function BasicsPage() {
           <h1 className="settings-shell__title">Basics</h1>
           <p className="settings-shell__lead">
             Update your store name, category, logo, location, and how DukAI
-            pays you. Delivery and customer-facing pages use these details.
+            pays you. Store location is optional until you connect the rider app.
           </p>
         </div>
       </header>
@@ -241,7 +241,7 @@ export default function BasicsPage() {
                 className="fa-solid fa-location-dot settings-card__icon"
                 aria-hidden="true"
               />
-              <h2>Location</h2>
+              <h2>Store location</h2>
             </div>
           </header>
           <div className="settings-card__body">
