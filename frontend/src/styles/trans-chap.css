@@ -1,4 +1,4 @@
-/* Trans Chap uses the auth form column (560px), without the hero panel. */
+/* Trans Chap: phone chrome is a 560px column; tablets use a full-width sidebar shell. */
 
 .trans-chap-root.auth-split {
     --trans-chap-pad: 2rem;
@@ -233,8 +233,16 @@ html[data-theme="dark"] .trans-chap-app {
     background: var(--app-surface);
 }
 
+.trans-chap-app__content:has(.trans-chap-receipt) {
+    background: color-mix(in srgb, var(--app-text) 7%, var(--app-surface));
+}
+
 .trans-chap-app__content:has(.trans-chap-form) {
     padding-inline: 0;
+}
+
+.trans-chap-app__content:has(.trans-chap-form--scan) {
+    overflow: hidden;
 }
 
 .trans-chap-form {
@@ -243,6 +251,10 @@ html[data-theme="dark"] .trans-chap-app {
     display: flex;
     flex-direction: column;
     gap: var(--trans-chap-pad);
+}
+
+.trans-chap-form--scan {
+    gap: 0;
 }
 
 .trans-chap-form__fields {
@@ -387,6 +399,265 @@ html[data-theme="dark"] .trans-chap-app {
 .trans-chap-basket__remove:hover {
     color: #e11d48;
     background: color-mix(in srgb, #e11d48 12%, var(--app-bg));
+}
+
+.trans-chap-sale-scan {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.trans-chap-sale-scan__camera {
+    flex: 0 0 33%;
+    min-height: 140px;
+    position: relative;
+    overflow: hidden;
+    background: #0b0b0b;
+}
+
+.trans-chap-sale-scan__camera .barcode-camera__frame {
+    inset: 22% 10%;
+}
+
+.trans-chap-sale-scan__list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    padding: 0.75rem 1rem;
+}
+
+.trans-chap-sale-scan__list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.trans-chap-sale-scan__list-head p {
+    margin: 0;
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-sale-scan__manual,
+.trans-chap-sale-scan__back {
+    appearance: none;
+    border: 0;
+    background: none;
+    color: var(--app-primary);
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 750;
+    cursor: pointer;
+    padding: 0;
+}
+
+.trans-chap-sale-scan__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--app-text);
+    text-align: left;
+}
+
+.trans-chap-sale-scan__search input {
+    width: 100%;
+    min-height: 44px;
+    border: 1px solid var(--app-border);
+    border-radius: 12px;
+    padding: 0 0.85rem;
+    font: inherit;
+    background: var(--app-bg);
+    color: var(--app-text);
+}
+
+.trans-chap-sale-scan__search ul {
+    list-style: none;
+    margin: 0.4rem 0 0;
+    padding: 0.3rem;
+    border: 1px solid var(--app-border);
+    border-radius: 12px;
+    background: var(--app-surface);
+}
+
+.trans-chap-sale-scan__search button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    padding: 0.55rem 0.6rem;
+    border-radius: 10px;
+    cursor: pointer;
+}
+
+.trans-chap-sale-scan__search button:hover {
+    background: var(--app-surface-hover);
+}
+
+.trans-chap-sale-scan__search em {
+    font-style: normal;
+    color: var(--app-text-secondary);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.trans-chap-sale-scan__empty {
+    margin: auto 0;
+    color: var(--app-text-secondary);
+    font-size: 0.92rem;
+    line-height: 1.45;
+    text-align: center;
+}
+
+.trans-chap-sale-scan__items {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.trans-chap-sale-scan__item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 0.7rem 0.75rem;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--app-text) 4%, var(--app-bg));
+    border: 1px solid transparent;
+}
+
+.trans-chap-sale-scan__item.is-fresh {
+    border-color: color-mix(in srgb, var(--app-primary) 45%, transparent);
+}
+
+.trans-chap-sale-scan__item-main {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.trans-chap-sale-scan__item-main strong {
+    font-size: 0.95rem;
+    font-weight: 750;
+}
+
+.trans-chap-sale-scan__item-main em {
+    font-style: normal;
+    font-size: 0.88rem;
+    font-weight: 800;
+}
+
+.trans-chap-sale-scan__item-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.trans-chap-sale-scan__qty {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    border: 1px solid var(--app-border);
+    border-radius: 999px;
+    padding: 0.1rem;
+}
+
+.trans-chap-sale-scan__qty button {
+    width: 32px;
+    height: 32px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 1.1rem;
+    cursor: pointer;
+}
+
+.trans-chap-sale-scan__qty span {
+    min-width: 1.4rem;
+    text-align: center;
+    font-size: 0.88rem;
+    font-weight: 800;
+}
+
+.trans-chap-sale-scan__price {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-left: auto;
+    min-height: 36px;
+    padding: 0 0.55rem;
+    border: 1px solid var(--app-border);
+    border-radius: 10px;
+    background: var(--app-surface);
+    color: var(--app-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.trans-chap-sale-scan__price input {
+    width: 4.5rem;
+    border: 0;
+    background: transparent;
+    color: var(--app-text);
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 800;
+}
+
+.trans-chap-sale-scan__remove {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--app-text-secondary);
+    cursor: pointer;
+}
+
+.trans-chap-sale-scan__remove:hover {
+    color: #e11d48;
+    background: color-mix(in srgb, #e11d48 12%, var(--app-bg));
+}
+
+.trans-chap-sale-scan__bar {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    padding: 0.75rem 1rem 1rem;
+    border-top: 1px solid var(--app-border);
+    background: var(--app-surface);
+}
+
+.trans-chap-sale-scan__hint {
+    margin: 0;
+    color: var(--app-text-secondary);
+    font-size: 0.82rem;
+}
+
+.trans-chap-sale-scan__bar .auth-split__btn {
+    width: 100%;
 }
 
 .trans-chap-status {
@@ -638,6 +909,7 @@ html[data-theme="dark"] .trans-chap-app {
 }
 
 .trans-chap-app .mobile-nav__create-btn {
+    position: relative;
     display: grid;
     place-items: center;
     width: 52px;
@@ -655,6 +927,18 @@ html[data-theme="dark"] .trans-chap-app {
 .trans-chap-app .mobile-nav__create-btn.is-open {
     background: var(--app-text);
     box-shadow: 0 8px 20px color-mix(in srgb, var(--app-text) 25%, transparent);
+}
+
+.trans-chap-app .mobile-nav__create-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 .trans-chap-app .mobile-nav__create-menu {
@@ -1496,6 +1780,10 @@ html[data-theme="dark"] .theme-switch:not(.is-on) {
     color: var(--app-danger, #b42318);
 }
 
+.trans-chap-app .stock-scan-sheet__allow {
+    background: var(--app-primary, #e8412a);
+}
+
 .trans-chap-suggest {
     list-style: none;
     margin: 0.5rem 0 0;
@@ -1588,115 +1876,304 @@ html[data-theme="dark"] .theme-switch:not(.is-on) {
 }
 
 .trans-chap-receipt {
+    --slip-stage: color-mix(in srgb, var(--app-text) 7%, var(--app-surface));
+    --slip-paper: #f6eee3;
+    --slip-paper-2: #efe3d2;
+    --slip-ink: #1c1410;
+    --slip-muted: #6e6156;
+    --slip-rule: #d4c4b0;
+    --slip-accent: #e8412a;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 1.15rem;
     flex: 1;
     min-height: 0;
     overflow: auto;
-    padding-bottom: 0.35rem;
+    padding: 0.7rem 0.1rem 1.1rem;
 }
 
 .trans-chap-slip {
-    padding: 1.15rem 1.1rem 1.2rem;
-    border-radius: 18px;
-    border: 1px solid var(--app-border);
-    background: var(--app-bg);
-    color: var(--app-text);
-    box-shadow: 0 8px 22px color-mix(in srgb, var(--app-text) 6%, transparent);
+    position: relative;
+    width: 100%;
+    max-width: 22.5rem;
+    margin: 0 auto;
+    padding: 1.45rem 1.15rem 1.25rem;
+    color: var(--slip-ink);
+    color-scheme: light;
+    background-color: var(--slip-paper);
+    background-image:
+        radial-gradient(circle at 10px 0, var(--slip-stage) 6px, transparent 6.5px),
+        radial-gradient(circle at 10px 10px, var(--slip-stage) 6px, transparent 6.5px),
+        repeating-linear-gradient(
+            180deg,
+            rgba(80, 50, 20, 0.045) 0 1px,
+            transparent 1px 4px
+        ),
+        linear-gradient(180deg, var(--slip-paper) 0%, var(--slip-paper-2) 100%);
+    background-repeat: repeat-x, repeat-x, repeat, no-repeat;
+    background-size: 20px 10px, 20px 10px, auto, auto;
+    background-position: top, bottom, 0 0, 0 0;
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.55) inset,
+        0 18px 36px rgba(28, 16, 8, 0.16);
+    animation: trans-chap-print 0.5s var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.trans-chap-slip::after {
+    content: "";
+    position: absolute;
+    inset: 16px 0 auto;
+    height: 3px;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        var(--slip-accent) 12%,
+        var(--slip-accent) 88%,
+        transparent
+    );
+    opacity: 0.9;
+    pointer-events: none;
+}
+
+@keyframes trans-chap-print {
+    from {
+        transform: translateY(-14px);
+        opacity: 0;
+    }
+    to {
+        transform: none;
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .trans-chap-slip {
+        animation: none;
+    }
 }
 
 .trans-chap-slip__brand {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 0.35rem;
-    margin: 0 0 0.85rem;
+    gap: 0.15rem;
+    margin: 0.15rem 0 0.85rem;
+    text-align: center;
 }
 
 .trans-chap-slip__brand svg {
     flex-shrink: 0;
-    margin-inline: -0.35rem;
-}
-
-.trans-chap-slip__brand div {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: 0.08rem;
+    margin-bottom: 0.2rem;
 }
 
 .trans-chap-slip__brand strong {
-    font-size: 1.05rem;
+    max-width: 100%;
+    font-size: 1.12rem;
     font-weight: 800;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
 }
 
 .trans-chap-slip__brand span {
-    color: var(--app-text-secondary);
+    color: var(--slip-muted);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+.trans-chap-slip__stamp {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    min-width: 6.4rem;
+    margin: 0 auto 0.85rem;
+    padding: 0.28rem 0.7rem;
+    border: 2px solid currentColor;
+    border-radius: 6px;
+    box-shadow: inset 0 0 0 1px currentColor;
     font-size: 0.72rem;
     font-weight: 800;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
+    transform: rotate(-7deg);
 }
 
-.trans-chap-slip__status {
-    margin: 0 0 0.55rem;
-    font-size: 0.78rem;
+.trans-chap-slip__stamp.is-ok {
+    color: #15803d;
+}
+
+.trans-chap-slip__stamp.is-wait {
+    color: #b45309;
+    animation: trans-chap-stamp-pulse 1.4s ease-in-out infinite;
+}
+
+.trans-chap-slip__stamp.is-credit {
+    color: #c2410c;
+}
+
+.trans-chap-slip__stamp.is-fail {
+    color: #be123c;
+}
+
+.trans-chap-slip.is-closed .trans-chap-slip__stamp {
+    transform: rotate(-12deg);
+}
+
+@keyframes trans-chap-stamp-pulse {
+    50% {
+        opacity: 0.45;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .trans-chap-slip__stamp.is-wait {
+        animation: none;
+    }
+}
+
+.trans-chap-slip__hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.08rem;
+    margin: 0;
+}
+
+.trans-chap-slip__hero span {
+    color: var(--slip-muted);
+    font-size: 0.72rem;
     font-weight: 800;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
 }
 
-.trans-chap-slip__status.is-ok {
-    color: var(--trans-chap-cash);
+.trans-chap-slip__hero strong {
+    font-size: clamp(1.85rem, 8vw, 2.35rem);
+    font-weight: 800;
+    letter-spacing: -0.045em;
+    line-height: 1.05;
+    font-variant-numeric: tabular-nums;
 }
 
-.trans-chap-slip__status.is-wait {
-    color: #d97706;
+.trans-chap-slip__payline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin: 0.35rem 0 0.7rem;
+    color: var(--slip-muted);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-align: center;
 }
 
-.trans-chap-slip__status.is-credit {
-    color: var(--trans-chap-credit);
-}
-
-.trans-chap-slip__status.is-fail {
-    color: #e11d48;
+.trans-chap-slip__payline span {
+    width: 4px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--slip-accent);
 }
 
 .trans-chap-slip__note {
     margin: 0 0 0.75rem;
-    color: var(--app-text-secondary);
-    font-size: 0.82rem;
-    font-weight: 600;
+    padding: 0.55rem 0.65rem;
+    border-radius: 10px;
+    background: rgba(28, 20, 16, 0.05);
+    color: var(--slip-ink);
+    font-size: 0.8rem;
+    font-weight: 650;
     line-height: 1.4;
+    text-align: center;
+}
+
+.trans-chap-slip.is-waiting .trans-chap-slip__note {
+    background: rgba(180, 83, 9, 0.1);
+}
+
+.trans-chap-slip__mpesa {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+    margin: 0 0 0.35rem;
+    padding: 0.55rem 0.7rem 0.65rem;
+    border: 1.5px dashed var(--slip-ink);
+    border-radius: 8px;
+}
+
+.trans-chap-slip__mpesa span {
+    color: var(--slip-muted);
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+.trans-chap-slip__mpesa strong {
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-variant-numeric: tabular-nums;
+}
+
+.trans-chap-slip__cut {
+    height: 1px;
+    margin: 0.85rem 0;
+    background: repeating-linear-gradient(
+        90deg,
+        var(--slip-rule) 0 7px,
+        transparent 7px 12px
+    );
 }
 
 .trans-chap-slip__lines {
     list-style: none;
     margin: 0;
-    padding: 0.75rem 0;
-    border-top: 1px dashed var(--app-border);
-    border-bottom: 1px dashed var(--app-border);
+    padding: 0;
 }
 
 .trans-chap-slip__lines li {
+    padding: 0.32rem 0;
+}
+
+.trans-chap-slip__lines li div {
     display: flex;
     align-items: baseline;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.28rem 0;
+    gap: 0.4rem;
 }
 
 .trans-chap-slip__lines span {
     min-width: 0;
-    font-size: 0.92rem;
-    font-weight: 700;
+    font-size: 0.9rem;
+    font-weight: 750;
+    overflow-wrap: anywhere;
+}
+
+.trans-chap-slip__dots {
+    flex: 1;
+    min-width: 0.75rem;
+    height: 0;
+    border-bottom: 1px dotted var(--slip-rule);
 }
 
 .trans-chap-slip__lines em {
     flex-shrink: 0;
     font-style: normal;
     font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.trans-chap-slip__lines small {
+    display: block;
+    margin-top: 0.08rem;
+    color: var(--slip-muted);
+    font-size: 0.72rem;
+    font-weight: 650;
 }
 
 .trans-chap-slip__total {
@@ -1704,59 +2181,135 @@ html[data-theme="dark"] .theme-switch:not(.is-on) {
     align-items: baseline;
     justify-content: space-between;
     gap: 0.75rem;
-    margin: 0.85rem 0 0.35rem;
+    margin: 0.55rem 0 0;
+    padding-top: 0.55rem;
+    border-top: 2px solid var(--slip-ink);
 }
 
 .trans-chap-slip__total span {
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     font-weight: 800;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--app-text-secondary);
 }
 
 .trans-chap-slip__total strong {
-    font-size: 1.45rem;
+    font-size: 1.2rem;
     font-weight: 800;
     letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
 }
 
 .trans-chap-slip__meta {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.7rem 0.85rem;
+    grid-template-columns: 1fr;
+    gap: 0.38rem;
     margin: 0.85rem 0 0;
-    padding-top: 0.85rem;
-    border-top: 1px dashed var(--app-border);
+}
+
+.trans-chap-slip__meta div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
 }
 
 .trans-chap-slip__meta dt {
     margin: 0;
-    color: var(--app-text-secondary);
-    font-size: 0.68rem;
+    color: var(--slip-muted);
+    font-size: 0.72rem;
     font-weight: 700;
 }
 
 .trans-chap-slip__meta dd {
-    margin: 0.18rem 0 0;
-    font-size: 0.82rem;
-    font-weight: 700;
+    margin: 0;
+    text-align: right;
+    font-size: 0.8rem;
+    font-weight: 750;
     line-height: 1.3;
     overflow-wrap: anywhere;
 }
 
+.trans-chap-slip__foot {
+    display: grid;
+    grid-template-columns: 72px 1fr;
+    align-items: end;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    padding-top: 0.85rem;
+    border-top: 1px dashed var(--slip-rule);
+}
+
+.trans-chap-slip__qr {
+    display: grid;
+    place-items: center;
+    width: 72px;
+    height: 72px;
+}
+
+.trans-chap-slip__qr svg {
+    display: block;
+}
+
+.trans-chap-slip__bars {
+    display: flex;
+    align-items: stretch;
+    height: 28px;
+    margin-bottom: 0.55rem;
+}
+
+.trans-chap-slip__bars .is-bar {
+    background: var(--slip-ink);
+}
+
+.trans-chap-slip__bars .is-gap {
+    background: transparent;
+}
+
 .trans-chap-slip__thanks {
-    margin: 1rem 0 0;
-    color: var(--app-text-secondary);
-    font-size: 0.78rem;
+    margin: 0;
+    color: var(--slip-muted);
+    font-size: 0.72rem;
     font-weight: 650;
-    text-align: center;
+    line-height: 1.35;
+}
+
+.trans-chap-slip__thanks strong {
+    display: block;
+    margin-bottom: 0.12rem;
+    color: var(--slip-ink);
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+.trans-chap-slip.is-sharing {
+    animation: none;
+    box-shadow: none;
+    background-image:
+        repeating-linear-gradient(
+            180deg,
+            rgba(80, 50, 20, 0.045) 0 1px,
+            transparent 1px 4px
+        ),
+        linear-gradient(180deg, var(--slip-paper) 0%, var(--slip-paper-2) 100%);
+    background-repeat: repeat, no-repeat;
+    background-size: auto, auto;
+    background-position: 0 0, 0 0;
+}
+
+.trans-chap-slip.is-sharing::after {
+    inset: 8px 0 auto;
 }
 
 .trans-chap-slip__actions {
     display: flex;
     flex-direction: column;
     gap: 0.85rem;
+    width: 100%;
+    max-width: 22.5rem;
+    margin: 0 auto;
 }
 
 .trans-chap-slip__choices {
@@ -1787,36 +2340,25 @@ html[data-theme="dark"] .theme-switch:not(.is-on) {
     color: #fff;
 }
 
-.trans-chap-slip__pdf,
-.trans-chap-slip__retry {
+.trans-chap-slip__pdf {
     border: 1px solid var(--app-border);
     background: var(--app-bg);
     color: var(--app-text);
 }
 
-html[data-theme="dark"] .trans-chap-slip__status.is-wait {
-    color: #fbbf24;
+.trans-chap-slip__retry {
+    border: 0;
+    background: var(--trans-chap-mpesa, #00a651);
+    color: #fff;
 }
 
-html[data-theme="dark"] .trans-chap-slip__status.is-credit {
-    color: #fb923c;
-}
-
-html[data-theme="dark"] .trans-chap-slip__status.is-fail {
-    color: #fb7185;
+html[data-theme="dark"] .trans-chap-receipt {
+    --slip-stage: color-mix(in srgb, var(--app-text) 7%, var(--app-surface));
 }
 
 @media (prefers-color-scheme: dark) {
-    html:not([data-theme="light"]) .trans-chap-slip__status.is-wait {
-        color: #fbbf24;
-    }
-
-    html:not([data-theme="light"]) .trans-chap-slip__status.is-credit {
-        color: #fb923c;
-    }
-
-    html:not([data-theme="light"]) .trans-chap-slip__status.is-fail {
-        color: #fb7185;
+    html:not([data-theme="light"]) .trans-chap-receipt {
+        --slip-stage: color-mix(in srgb, var(--app-text) 7%, var(--app-surface));
     }
 }
 
@@ -1825,6 +2367,28 @@ html[data-theme="dark"] .trans-chap-slip__status.is-fail {
 .trans-chap-slip__retry:disabled {
     opacity: 0.7;
     cursor: wait;
+}
+
+@media print {
+    .trans-chap-slip__actions {
+        display: none;
+    }
+
+    .trans-chap-slip {
+        box-shadow: none;
+        animation: none;
+        max-width: none;
+        --slip-stage: #fff;
+        background-image:
+            repeating-linear-gradient(
+                180deg,
+                rgba(80, 50, 20, 0.04) 0 1px,
+                transparent 1px 4px
+            ),
+            linear-gradient(180deg, var(--slip-paper), var(--slip-paper-2));
+        background-repeat: repeat, no-repeat;
+        background-size: auto, auto;
+    }
 }
 
 .trans-chap-receipt__again {
@@ -3972,4 +4536,258 @@ html[data-theme="dark"] .trans-chap-sale__add {
 .trans-chap-app--new-post .trans-chap-app__content {
     padding: 0;
     background: #000;
+}
+
+/* Tablet / desktop machines: full-width shell with a left rail. */
+html[data-trans-chap-machine="tablet"] .trans-chap-root.auth-split {
+    --trans-chap-pad: 1.5rem;
+    --trans-chap-gutter-x: 1.35rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-app,
+html[data-trans-chap-machine="tablet"] .trans-chap-app.mobile-root {
+    max-width: none;
+    width: 100%;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-app:has(.mobile-nav) {
+    display: grid;
+    grid-template-columns: 13.75rem minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+        "rail header"
+        "rail main";
+    overflow: hidden;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-app:has(.mobile-nav) .trans-chap-header {
+    grid-area: header;
+    grid-template-columns: 7.5rem minmax(0, 1fr) 7.5rem;
+    padding-left: 1.15rem;
+    padding-right: 1.15rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-app:has(.mobile-nav) .trans-chap-app__content {
+    grid-area: main;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-app:has(.mobile-nav) .mobile-nav {
+    grid-area: rail;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-app .mobile-nav--create {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0.2rem;
+    height: 100%;
+    padding: max(0.85rem, env(safe-area-inset-top)) 0.75rem max(0.85rem, env(safe-area-inset-bottom));
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+    border-right: 1px solid var(--app-border);
+    background: color-mix(in srgb, var(--app-primary) 6%, var(--app-surface));
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-app .mobile-nav--create > a,
+html[data-trans-chap-machine="tablet"] .trans-chap-app .mobile-nav--create > span.is-disabled,
+html[data-trans-chap-machine="tablet"] .trans-chap-app .mobile-nav--create > .mobile-nav__spacer {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 0.75rem;
+    min-height: 48px;
+    padding: 0.65rem 0.8rem;
+    font-size: 0.92rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-app .mobile-nav a i {
+    font-size: 1.05rem;
+    width: 1.35rem;
+    text-align: center;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-app .mobile-nav__create {
+    order: -1;
+    align-items: stretch;
+    justify-content: flex-start;
+    min-height: 0;
+    margin-bottom: 0.55rem;
+    padding: 0 0 0.7rem;
+    border-bottom: 1px solid var(--app-border);
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-app .mobile-nav__create-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    height: 44px;
+    margin: 0;
+    border-radius: 12px;
+    font-size: 0.92rem;
+    font-weight: 750;
+    box-shadow: none;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-app .mobile-nav__create-label {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: nowrap;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-app .mobile-nav__create-menu {
+    top: 0;
+    bottom: auto;
+    left: calc(100% + 0.55rem);
+    transform: none;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-app:has(.chat-app--thread-open) .trans-chap-header,
+html[data-trans-chap-machine="tablet"] .trans-chap-app:has(.chat-app--thread-open) .mobile-nav {
+    display: revert;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-app:has(.chat-app--thread-open) .trans-chap-header {
+    display: grid;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-app:has(.chat-app--thread-open) .mobile-nav--create {
+    display: flex;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-home.trans-chap-dash {
+    display: grid;
+    grid-template-columns: minmax(280px, 1.05fr) minmax(280px, 0.95fr);
+    align-items: start;
+    gap: 1.35rem 1.75rem;
+    max-width: 1080px;
+    margin-inline: auto;
+    width: 100%;
+    padding: 0.85rem 0.35rem 1.5rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__hello {
+    grid-column: 1 / -1;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__hello h2 {
+    font-size: 1.55rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__today {
+    grid-column: 1;
+    grid-row: 2 / span 2;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__section {
+    grid-column: 2;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__grid,
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__grid--quad {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-sales {
+    max-width: 1080px;
+    margin-inline: auto;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-sales__stagger,
+html[data-trans-chap-machine="tablet"] .trans-chap-sales__list:not(:has(.trans-chap-sales__stagger)) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    gap: 0.85rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-sales__empty,
+html[data-trans-chap-machine="tablet"] .trans-chap-sales__stagger .trans-chap-status,
+html[data-trans-chap-machine="tablet"] .trans-chap-sales__list > .trans-chap-status,
+html[data-trans-chap-machine="tablet"] .trans-chap-sales__list > .trans-chap-sales__empty {
+    grid-column: 1 / -1;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-reports__body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+    gap: 0.85rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-reports__kpis,
+html[data-trans-chap-machine="tablet"] .trans-chap-reports__split {
+    grid-column: 1 / -1;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-reports__kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-reports__kpi--wide {
+    grid-column: auto;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-reports__split {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+html[data-trans-chap-machine="tablet"] .ios-settings,
+html[data-trans-chap-machine="tablet"] .trans-chap-settings {
+    max-width: 560px;
+    margin-inline: auto;
+    width: 100%;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-form:not(.trans-chap-form--scan) {
+    max-width: 560px;
+    margin-inline: auto;
+    width: 100%;
+    padding-top: 0.75rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-sale-scan {
+    display: grid;
+    grid-template-columns: minmax(280px, 44%) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas:
+        "camera list"
+        "camera bar";
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-sale-scan__camera {
+    grid-area: camera;
+    flex: none;
+    min-height: 0;
+    height: 100%;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-sale-scan__list {
+    grid-area: list;
+    flex: none;
+    padding: 1rem 1.15rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-sale-scan__bar {
+    grid-area: bar;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-root--signin .trans-chap-app,
+html[data-trans-chap-machine="tablet"] .trans-chap-root--signin .trans-chap-app.mobile-root {
+    max-width: 440px;
+    margin-inline: auto;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-header__center h1 {
+    font-size: 1.12rem;
 }

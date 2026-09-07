@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { TransChapMachineScript } from "@/components/trans-chap/TransChapMachineScript";
 import "@/styles/station.css";
 import "@/styles/app-dashboard.css";
 import "@/styles/messages-chat.css";
@@ -35,5 +36,10 @@ export default function TransChapRootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return children;
+  return (
+    <>
+      <TransChapMachineScript />
+      {children}
+    </>
+  );
 }

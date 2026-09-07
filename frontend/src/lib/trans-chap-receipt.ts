@@ -154,11 +154,15 @@ export function transChapReceiptMessage(receipt: TransChapReceipt): string {
     .join("\n");
 }
 
-export function formatKsh(amount: number): string {
-  return `Ksh${amount.toLocaleString("en-KE", {
+export function formatKesDigits(amount: number): string {
+  return amount.toLocaleString("en-KE", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  })}`;
+  });
+}
+
+export function formatKsh(amount: number): string {
+  return `Ksh${formatKesDigits(amount)}`;
 }
 
 export function receiptFromOrder(
@@ -201,15 +205,10 @@ export function receiptFromOrder(
 }
 
 /** Opens WhatsApp (or WhatsApp Web) with this number as the chat recipient. */
-export function whatsappReceiptUrl(
-  phone: string,
-  receipt: TransChapReceipt,
-  dialCode = "254",
-): string | null {
+export function whatsappChatUrl(phone: string, dialCode = "254"): string | null {
   const msisdn = toWhatsAppMsisdn(phone, dialCode);
   if (!msisdn) return null;
-  const text = encodeURIComponent(transChapReceiptMessage(receipt));
-  return `https://wa.me/${msisdn}?text=${text}`;
+  return `https://wa.me/${msisdn}`;
 }
 
 function normalizePaymentStatus(

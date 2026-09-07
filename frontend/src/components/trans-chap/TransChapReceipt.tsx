@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthUser } from "@/components/app/AuthProvider";
-import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
+import { QRCodeSVG } from "qrcode.react";
+import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
 import { extractErrorMessage, promptWhatsAppPhone, showError, toastSuccess } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
 import { promptAndUndoWalkinSale, walkinUndoAction } from "@/lib/trans-chap-orders";
 import {
-  formatKsh,
+  formatKesDigits,
   isTransChapReceiptClosed,
   isTransChapReceiptPaid,
   loadTransChapReceipt,
@@ -19,10 +20,12 @@ import {
   saveTransChapReceipt,
   toWhatsAppMsisdn,
   transChapPayLabel,
-  whatsappReceiptUrl,
+  transChapReceiptMessage,
+  whatsappChatUrl,
   type TransChapReceipt,
 } from "@/lib/trans-chap-receipt";
 import { buildTransChapReceiptPdf, saveReceiptFile } from "@/lib/trans-chap-receipt-pdf";
+import { captureReceiptPng, shareReceiptAttachment } from "@/lib/trans-chap-receipt-share";
 import type { OrderDetailResponse, OrderMutationResponse } from "@/lib/types";
 
 const ORDER_POLL_MS = 4_000;
@@ -40,6 +43,7 @@ export function TransChapReceiptView() {
   const [openingWhatsApp, setOpeningWhatsApp] = useState(false);
   const [resending, setResending] = useState(false);
   const [undoing, setUndoing] = useState(false);
+  const slipRef = useRef<HTMLElement>(null);
 
   function applyReceipt(next: TransChapReceipt) {
     setReceipt(next);
@@ -142,12 +146,25 @@ export function TransChapReceiptView() {
     if (!receipt) return;
     setOpeningWhatsApp(true);
     try {
+      let file: File;
+      try {
+        if (!slipRef.current) throw new Error("missing slip");
+        file = await captureReceiptPng(slipRef.current, receipt.orderNumber);
+      } catch {
+        file = buildTransChapReceiptPdf(receipt);
+      }
+
+      const shared = await shareReceiptAttachment(file);
+      if (shared === "shared" || shared === "cancelled") return;
+
+      saveReceiptFile(file);
+
       let phone = receipt.customerPhone?.trim() || "";
       let prompted = false;
       if (!toWhatsAppMsisdn(phone)) {
         const entered = await promptWhatsAppPhone(
           "Customer WhatsApp number",
-          "Enter the customer's WhatsApp number to open their chat with this receipt.",
+          "The receipt was saved. Enter the customer's WhatsApp number so you can attach it in their chat.",
           phone,
         );
         if (!entered) return;
@@ -156,7 +173,7 @@ export function TransChapReceiptView() {
         applyReceipt({ ...receipt, customerPhone: phone });
       }
 
-      const url = whatsappReceiptUrl(phone, { ...receipt, customerPhone: phone });
+      const url = whatsappChatUrl(phone);
       if (!url) {
         await showError(
           "Invalid WhatsApp number",
@@ -164,13 +181,15 @@ export function TransChapReceiptView() {
         );
         return;
       }
-      // After an async prompt, popup blockers often stop window.open — navigate instead.
+      void toastSuccess("Receipt saved — attach it in the chat");
       if (prompted) {
         window.location.assign(url);
         return;
       }
       const opened = window.open(url, "_blank", "noopener,noreferrer");
       if (!opened) window.location.assign(url);
+    } catch (err) {
+      await showError("Could not share receipt", extractErrorMessage(err));
     } finally {
       setOpeningWhatsApp(false);
     }
@@ -273,77 +292,91 @@ export function TransChapReceiptView() {
           : "Failed";
   const statusTone = paid ? "ok" : onCredit ? "credit" : waiting ? "wait" : "fail";
 
+  const customer = receipt.customerName?.trim() || "Walk-in";
+  const note = closed
+    ? `Stock came back.${
+        receipt.payMode === "mpesa"
+          ? " M-PESA was not reversed — return the money yourself if needed."
+          : receipt.payMode === "credit"
+            ? " This amount came off the customer’s tab."
+            : ""
+      }`
+    : onCredit
+      ? "This sale is on the customer’s tab. It is not paid yet."
+      : !paid
+        ? waiting
+          ? receipt.mpesaMessage || "Ask the customer to enter their PIN on the prompt."
+          : receipt.mpesaMessage || "The prompt didn't reach the phone. Send it again."
+        : null;
+
   return (
     <div className="trans-chap-receipt">
-      <article className="trans-chap-slip">
+      <article
+        ref={slipRef}
+        className={`trans-chap-slip${closed ? " is-closed" : ""}${waiting ? " is-waiting" : ""}`}
+      >
         <header className="trans-chap-slip__brand">
-          <TransChapLogoMark size={42} color="currentColor" accentColor="#e8412a" />
-          <div>
-            <strong>{receipt.shopName}</strong>
-            <span>Receipt</span>
-          </div>
+          <DukAiLogoMark size={36} color="currentColor" accentColor="#e85d04" />
+          <strong>{receipt.shopName}</strong>
+          <span>Till receipt</span>
         </header>
-        <p className={`trans-chap-slip__status is-${statusTone}`}>
+
+        <p className={`trans-chap-slip__stamp is-${statusTone}`} aria-label={`Status: ${status}`}>
           {status}
         </p>
-        {closed ? (
-          <p className="trans-chap-slip__note">
-            Stock came back.
-            {receipt.payMode === "mpesa"
-              ? " M-PESA was not reversed — return the money yourself if needed."
-              : receipt.payMode === "credit"
-                ? " This amount came off the customer’s tab."
-                : ""}
-          </p>
-        ) : onCredit ? (
-          <p className="trans-chap-slip__note">
-            This sale is on the customer’s tab. It is not paid yet.
-          </p>
-        ) : !paid ? (
-          <p className="trans-chap-slip__note">
-            {waiting
-              ? receipt.mpesaMessage || "Ask the customer to enter their PIN on the prompt."
-              : receipt.mpesaMessage || "The prompt didn't reach the phone. Send it again."}
+
+        <p className="trans-chap-slip__hero">
+          <span>Ksh</span>
+          <strong>{formatKesDigits(receipt.amount)}</strong>
+        </p>
+        <p className="trans-chap-slip__payline">
+          {paymentMethod}
+          <span aria-hidden="true" />
+          {customer}
+        </p>
+
+        {note ? <p className="trans-chap-slip__note">{note}</p> : null}
+
+        {receipt.mpesaReceiptNumber ? (
+          <p className="trans-chap-slip__mpesa">
+            <span>M-PESA code</span>
+            <strong>{receipt.mpesaReceiptNumber}</strong>
           </p>
         ) : null}
+
+        <div className="trans-chap-slip__cut" aria-hidden="true" />
+
         <ul className="trans-chap-slip__lines">
           {lines.map((line, index) => (
             <li key={`${line.name}-${index}`}>
-              <span>
-                {line.name}
-                {line.quantity > 1 ? ` × ${line.quantity}` : ""}
-              </span>
-              <em>{formatKsh(line.lineTotal)}</em>
+              <div>
+                <span>{line.name}</span>
+                <span className="trans-chap-slip__dots" />
+                <em>{formatKesDigits(line.lineTotal)}</em>
+              </div>
+              {line.quantity > 1 ? (
+                <small>
+                  {line.quantity} × {formatKesDigits(line.unitPrice)}
+                </small>
+              ) : null}
             </li>
           ))}
         </ul>
+
         <p className="trans-chap-slip__total">
           <span>Total</span>
-          <strong>{formatKsh(receipt.amount)}</strong>
+          <strong>{formatKesDigits(receipt.amount)}</strong>
         </p>
+
         <dl className="trans-chap-slip__meta">
           <div>
             <dt>Ref</dt>
             <dd>{receipt.orderNumber}</dd>
           </div>
           <div>
-            <dt>Date</dt>
+            <dt>When</dt>
             <dd>{formatNairobiDateTime(receipt.paidAt) || "—"}</dd>
           </div>
-          <div>
-            <dt>Payment</dt>
-            <dd>{paymentMethod}</dd>
-          </div>
-          <div>
-            <dt>Customer</dt>
-            <dd>{receipt.customerName?.trim() || "Walk-in"}</dd>
-          </div>
-          {receipt.mpesaReceiptNumber ? (
-            <div>
-              <dt>M-PESA code</dt>
-              <dd>{receipt.mpesaReceiptNumber}</dd>
-            </div>
-          ) : null}
           {receipt.customerPhone ? (
             <div>
               <dt>Phone</dt>
@@ -351,7 +384,25 @@ export function TransChapReceiptView() {
             </div>
           ) : null}
         </dl>
-        <footer className="trans-chap-slip__thanks">Thank you for shopping with us</footer>
+
+        <div className="trans-chap-slip__foot">
+          <span className="trans-chap-slip__qr">
+            <QRCodeSVG
+              value={transChapReceiptMessage(receipt)}
+              size={72}
+              bgColor="#f6eee3"
+              fgColor="#1c1410"
+              level="M"
+            />
+          </span>
+          <div>
+            <SlipBars value={receipt.orderNumber} />
+            <p className="trans-chap-slip__thanks">
+              <strong>Asante</strong>
+              Thank you for shopping with us
+            </p>
+          </div>
+        </div>
       </article>
 
       <div className="trans-chap-slip__actions">
@@ -364,7 +415,7 @@ export function TransChapReceiptView() {
               disabled={openingWhatsApp || downloading || undoing}
             >
               <i className="fa-brands fa-whatsapp" aria-hidden />
-              {openingWhatsApp ? "Opening…" : "WhatsApp"}
+              {openingWhatsApp ? "Sharing…" : "WhatsApp"}
             </button>
             <button
               type="button"
@@ -401,6 +452,21 @@ export function TransChapReceiptView() {
           Make another sale
         </Link>
       </div>
+    </div>
+  );
+}
+
+function SlipBars({ value }: { value: string }) {
+  const seed = `${value}${value}${value}`.replace(/\s+/g, "").slice(0, 28);
+  const units = Array.from(seed).flatMap((ch) => {
+    const n = ch.charCodeAt(0);
+    return [1 + (n % 4), 1 + (Math.floor(n / 3) % 2)];
+  });
+  return (
+    <div className="trans-chap-slip__bars" aria-hidden="true">
+      {units.map((flex, index) => (
+        <span key={index} className={index % 2 ? "is-gap" : "is-bar"} style={{ flex }} />
+      ))}
     </div>
   );
 }

@@ -22,6 +22,20 @@ export function findInventoryByName(
   );
 }
 
+export async function updateInventorySellingPrice(
+  itemId: string,
+  sellingPrice: number,
+): Promise<InventoryItem> {
+  const inventory = await apiFetch<InventoryItemMutationResponse>(
+    apiRoutes.inventoryItem(itemId),
+    {
+      method: "PATCH",
+      body: JSON.stringify({ selling_price: sellingPrice }),
+    },
+  );
+  return inventory.data;
+}
+
 /** Create a catalog product and shop inventory row from a name and amount. */
 export async function addLiteInventoryProduct(
   name: string,
@@ -29,8 +43,10 @@ export async function addLiteInventoryProduct(
   extras?: {
     buying_price?: number | null;
     stock_quantity?: number | null;
+    sku?: string | null;
   },
 ): Promise<InventoryItem> {
+  const sku = extras?.sku?.trim() || undefined;
   const created = await apiFetch<CatalogProductMutationResponse>(
     apiRoutes.products,
     {
@@ -38,6 +54,7 @@ export async function addLiteInventoryProduct(
       body: JSON.stringify({
         name: name.trim(),
         product_type: "product",
+        ...(sku ? { sku } : {}),
       }),
     },
   );

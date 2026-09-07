@@ -1026,6 +1026,66 @@ html[data-theme="dark"] .mobile-root {
   object-fit: cover;
 }
 
+.barcode-camera {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #0b0b0b;
+}
+
+.barcode-camera__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.barcode-camera__frame {
+  position: absolute;
+  inset: 18% 12%;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 12px;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+
+.barcode-camera__gate {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1;
+}
+
+.barcode-camera__allow {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.85rem 1.35rem;
+  font: inherit;
+  font-weight: 700;
+  color: #fff;
+  background: #e8412a;
+  cursor: pointer;
+}
+
+.barcode-camera__allow:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.barcode-camera__error {
+  margin: 0;
+  max-width: 22rem;
+  color: #fecaca;
+  font-size: 0.82rem;
+  text-align: center;
+  line-height: 1.4;
+}
+
 .stock-scan-sheet__frame {
   position: absolute;
   inset: 18% 12%;
@@ -1033,6 +1093,32 @@ html[data-theme="dark"] .mobile-root {
   border-radius: 12px;
   box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.28);
   pointer-events: none;
+}
+
+.stock-scan-sheet__gate {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1;
+}
+
+.stock-scan-sheet__allow {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.85rem 1.35rem;
+  font: inherit;
+  font-weight: 700;
+  color: #fff;
+  background: #e8412a;
+  cursor: pointer;
+}
+
+.stock-scan-sheet__allow:disabled {
+  opacity: 0.7;
+  cursor: wait;
 }
 
 .stock-scan-sheet__hint,

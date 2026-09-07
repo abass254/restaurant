@@ -12,6 +12,7 @@ import {
 } from "@/lib/merchant-permissions";
 import { useNavCounts } from "@/lib/use-nav-counts";
 import { migrateLegacyTransChapPurchases } from "@/lib/trans-chap-purchases";
+import { detectTransChapMachine, syncTransChapMachine } from "@/lib/trans-chap-machine";
 
 const NAV: Array<{
   href: string;
@@ -174,6 +175,19 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
     if ("serviceWorker" in navigator) {
       void navigator.serviceWorker.register("/sw.js").catch(() => undefined);
     }
+  }, []);
+
+  useEffect(() => {
+    const sync = () => {
+      syncTransChapMachine(detectTransChapMachine());
+    };
+    sync();
+    window.addEventListener("resize", sync);
+    window.addEventListener("orientationchange", sync);
+    return () => {
+      window.removeEventListener("resize", sync);
+      window.removeEventListener("orientationchange", sync);
+    };
   }, []);
 
   useEffect(() => {
@@ -350,6 +364,9 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                   onClick={() => setCreateOpen((open) => !open)}
                 >
                   <i className={`fa-solid ${createOpen ? "fa-xmark" : "fa-plus"}`} aria-hidden />
+                  <span className="mobile-nav__create-label" aria-hidden="true">
+                    {createOpen ? "Close" : "Create"}
+                  </span>
                 </button>
               </div>
               {renderNavLink(purchasesItem)}
