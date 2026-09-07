@@ -221,9 +221,10 @@ export async function promptMpesaReceipt(
 }
 
 export async function promptWhatsAppPhone(
-  title = "Customer WhatsApp number",
-  text = "Enter the WhatsApp number so we can open their chat with the receipt.",
+  title = "Send receipt on WhatsApp",
+  text = "Enter the WhatsApp number to send this receipt to.",
   initialValue = "",
+  onConfirm?: (phone: string) => void,
 ) {
   const result = await dukaiSwal.fire({
     icon: "question",
@@ -253,7 +254,9 @@ export async function promptWhatsAppPhone(
         dukaiSwal.showValidationMessage("Enter a valid phone number, e.g. 0712 345 678.");
         return false;
       }
-      return `+${msisdn}`;
+      const normalized = `+${msisdn}`;
+      onConfirm?.(normalized);
+      return normalized;
     },
   });
 

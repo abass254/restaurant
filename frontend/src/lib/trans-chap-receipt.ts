@@ -205,10 +205,13 @@ export function receiptFromOrder(
 }
 
 /** Opens WhatsApp (or WhatsApp Web) with this number as the chat recipient. */
-export function whatsappChatUrl(phone: string, dialCode = "254"): string | null {
+export function whatsappChatUrl(phone: string, dialCode = "254", text?: string): string | null {
   const msisdn = toWhatsAppMsisdn(phone, dialCode);
   if (!msisdn) return null;
-  return `https://wa.me/${msisdn}`;
+  const base = `https://wa.me/${msisdn}`;
+  const message = text?.trim();
+  if (!message) return base;
+  return `${base}?text=${encodeURIComponent(message)}`;
 }
 
 function normalizePaymentStatus(

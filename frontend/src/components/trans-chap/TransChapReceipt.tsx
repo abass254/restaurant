@@ -18,14 +18,13 @@ import {
   loadTransChapReceipt,
   receiptFromOrder,
   saveTransChapReceipt,
-  toWhatsAppMsisdn,
   transChapPayLabel,
   transChapReceiptMessage,
   whatsappChatUrl,
   type TransChapReceipt,
 } from "@/lib/trans-chap-receipt";
 import { buildTransChapReceiptPdf, saveReceiptFile } from "@/lib/trans-chap-receipt-pdf";
-import { captureReceiptPng, shareReceiptAttachment } from "@/lib/trans-chap-receipt-share";
+import { openExternalUrl, startFileShare } from "@/lib/trans-chap-receipt-share";
 import type { OrderDetailResponse, OrderMutationResponse } from "@/lib/types";
 
 const ORDER_POLL_MS = 4_000;
@@ -146,48 +145,41 @@ export function TransChapReceiptView() {
     if (!receipt) return;
     setOpeningWhatsApp(true);
     try {
-      let file: File;
-      try {
-        if (!slipRef.current) throw new Error("missing slip");
-        file = await captureReceiptPng(slipRef.current, receipt.orderNumber);
-      } catch {
-        file = buildTransChapReceiptPdf(receipt);
+      const file = buildTransChapReceiptPdf(receipt);
+      const caption = transChapReceiptMessage(receipt);
+      let sharePromise: Promise<void> | null = null;
+
+      const openChatWithPdf = (phone: string) => {
+        saveReceiptFile(file);
+        const url = whatsappChatUrl(phone, "254", caption);
+        if (url) openExternalUrl(url);
+      };
+
+      const entered = await promptWhatsAppPhone(
+        "Send receipt on WhatsApp",
+        "Enter the WhatsApp number, then choose WhatsApp so the PDF receipt is attached.",
+        receipt.customerPhone ?? "",
+        (phone) => {
+          sharePromise = startFileShare(file);
+          if (!sharePromise) openChatWithPdf(phone);
+        },
+      );
+      if (!entered) return;
+
+      applyReceipt({ ...receipt, customerPhone: entered });
+
+      if (sharePromise) {
+        try {
+          await sharePromise;
+          void toastSuccess("Receipt PDF attached — choose that number in WhatsApp");
+          return;
+        } catch (err) {
+          if (err instanceof Error && err.name === "AbortError") return;
+          openChatWithPdf(entered);
+        }
       }
 
-      const shared = await shareReceiptAttachment(file);
-      if (shared === "shared" || shared === "cancelled") return;
-
-      saveReceiptFile(file);
-
-      let phone = receipt.customerPhone?.trim() || "";
-      let prompted = false;
-      if (!toWhatsAppMsisdn(phone)) {
-        const entered = await promptWhatsAppPhone(
-          "Customer WhatsApp number",
-          "The receipt was saved. Enter the customer's WhatsApp number so you can attach it in their chat.",
-          phone,
-        );
-        if (!entered) return;
-        phone = entered;
-        prompted = true;
-        applyReceipt({ ...receipt, customerPhone: phone });
-      }
-
-      const url = whatsappChatUrl(phone);
-      if (!url) {
-        await showError(
-          "Invalid WhatsApp number",
-          "Enter a valid phone number, e.g. 0712 345 678.",
-        );
-        return;
-      }
-      void toastSuccess("Receipt saved — attach it in the chat");
-      if (prompted) {
-        window.location.assign(url);
-        return;
-      }
-      const opened = window.open(url, "_blank", "noopener,noreferrer");
-      if (!opened) window.location.assign(url);
+      void toastSuccess("Receipt PDF saved — attach it in the chat");
     } catch (err) {
       await showError("Could not share receipt", extractErrorMessage(err));
     } finally {

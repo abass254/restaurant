@@ -28,22 +28,32 @@ export async function captureReceiptPng(node: HTMLElement, orderNumber: string):
   }
 }
 
-export async function shareReceiptAttachment(
-  file: File,
-): Promise<"shared" | "cancelled" | "unsupported"> {
-  const data: ShareData = { files: [file] };
-  if (
-    typeof navigator.share !== "function" ||
-    typeof navigator.canShare !== "function" ||
-    !navigator.canShare(data)
-  ) {
-    return "unsupported";
-  }
+export function canShareFiles(file: File): boolean {
+  const data: ShareData = { files: [file], title: file.name };
   try {
-    await navigator.share(data);
-    return "shared";
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") return "cancelled";
-    throw err;
+    return typeof navigator.canShare === "function" && navigator.canShare(data);
+  } catch {
+    return false;
   }
+}
+
+/**
+ * Start a native share with the file attached. Must run inside a click handler.
+ * Files-only: Android WhatsApp drops the PDF if `text` is sent alongside it.
+ */
+export function startFileShare(file: File): Promise<void> | null {
+  const data: ShareData = { files: [file], title: file.name };
+  if (!canShareFiles(file) || typeof navigator.share !== "function") return null;
+  return navigator.share(data);
+}
+
+/** Open a URL from a click handler without replacing the current page. */
+export function openExternalUrl(url: string) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
