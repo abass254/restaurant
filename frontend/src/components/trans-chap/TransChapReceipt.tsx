@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { QRCodeSVG } from "qrcode.react";
 import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
-import { extractErrorMessage, promptEmail, promptWhatsAppPhone, showError, toastSuccess } from "@/lib/alerts";
+import { extractErrorMessage, promptEmail, promptPendingStk, promptWhatsAppPhone, showError, toastSuccess } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
@@ -240,8 +240,31 @@ export function TransChapReceiptView() {
       await showError("Sale not on the server", "Make the sale again to send an M-PESA prompt.");
       return;
     }
+    const choice = await promptPendingStk();
+    if (!choice) return;
     setResending(true);
     try {
+      if (choice === "check") {
+        const data = await apiFetch<OrderMutationResponse>(
+          apiRoutes.orderMpesaCheck(receipt.orderId),
+          { method: "POST", body: "{}" },
+        );
+        const next = receiptFromOrder(data.data, receipt.shopName);
+        const updated = {
+          ...receipt,
+          ...next,
+          customerPhone: receipt.customerPhone,
+          customerEmail: receipt.customerEmail,
+        };
+        saveTransChapReceipt(updated);
+        setReceipt(updated);
+        if (data.outcome === "paid") {
+          await toastSuccess("Customer already paid");
+        } else {
+          await showError("Still waiting", data.message);
+        }
+        return;
+      }
       const data = await apiFetch<OrderMutationResponse>(
         apiRoutes.orderMpesaStkPush(receipt.orderId),
         { method: "POST", body: "{}" },
@@ -264,7 +287,10 @@ export function TransChapReceiptView() {
         );
       }
     } catch (err) {
-      await showError("Couldn't send M-PESA prompt", extractErrorMessage(err));
+      await showError(
+        choice === "check" ? "Could not check M-PESA" : "Couldn't send M-PESA prompt",
+        extractErrorMessage(err),
+      );
     } finally {
       setResending(false);
     }

@@ -1794,6 +1794,14 @@ select.admin-input {
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
+.admin-app .mpesa-flow-status__badge--action {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
 .admin-app .mpesa-flow-status__badge:hover,
 .admin-app .mpesa-flow-status__badge:focus-visible {
   transform: scale(1.08);

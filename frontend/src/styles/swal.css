@@ -14,8 +14,74 @@
   border-radius: 14px !important;
 }
 
+.dukai-swal-toast .dukai-swal-title {
+  font-size: 0.9375rem !important;
+  font-weight: 650 !important;
+  line-height: 1.35 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  text-align: left !important;
+}
+
+.dukai-swal-toast .dukai-swal-toast-icon,
+.dukai-swal-toast .swal2-icon {
+  width: 2rem !important;
+  min-width: 2rem !important;
+  height: 2rem !important;
+  margin: 0 0.7rem 0 0 !important;
+  border: none !important;
+  border-radius: 999px !important;
+  background: var(--color-primary-subtle, color-mix(in srgb, var(--color-primary) 16%, transparent)) !important;
+  color: var(--color-primary) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.dukai-swal-toast .swal2-icon.swal2-success {
+  background: color-mix(in srgb, var(--color-success-text) 16%, transparent) !important;
+  color: var(--color-success-text) !important;
+}
+
+.dukai-swal-toast .swal2-icon.swal2-error {
+  background: color-mix(in srgb, var(--app-danger, #e41e3f) 16%, transparent) !important;
+  color: var(--app-danger, #e41e3f) !important;
+}
+
+.dukai-swal-toast .swal2-icon.swal2-info {
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent) !important;
+  color: var(--color-primary) !important;
+}
+
+.dukai-swal-toast .swal2-icon .swal2-icon-content {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 0.85rem !important;
+  font-weight: 700 !important;
+  color: inherit !important;
+}
+
+.dukai-swal-toast .swal2-success-ring,
+.dukai-swal-toast [class^="swal2-success-line"],
+.dukai-swal-toast .swal2-success-circular-line-left,
+.dukai-swal-toast .swal2-success-circular-line-right,
+.dukai-swal-toast .swal2-success-fix,
+.dukai-swal-toast .swal2-x-mark,
+.dukai-swal-toast .swal2-icon-content .swal2-icon-content {
+  display: none !important;
+}
+
 .dukai-swal-toast--loading.dukai-swal-popup {
-  padding: 0.65rem 0.9rem !important;
+  width: auto !important;
+  padding: 0.65rem 1.05rem !important;
+  border-radius: 999px !important;
+}
+
+.swal2-container.swal2-bottom.dukai-swal-toast-container--loading {
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: max(4.5rem, calc(10vh + env(safe-area-inset-bottom, 0px))) !important;
 }
 
 .dukai-swal-toast-loading {

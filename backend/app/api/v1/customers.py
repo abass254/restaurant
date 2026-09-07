@@ -121,10 +121,7 @@ def list_customers(
     session: dict = Depends(get_request_session),
 ):
     user = require_user(db, session)
-    if owing:
-        assert_merchant_section_any_access(user, *TILL_CUSTOMER_SECTIONS)
-    else:
-        assert_merchant_section_access(user, "customer")
+    assert_merchant_section_any_access(user, *TILL_CUSTOMER_SECTIONS)
     account_id = require_merchant_account_id(user)
     rows = CustomerService(db).list_customers(account_id, query=q, owing=owing)
     payload: dict[str, object] = {
@@ -150,7 +147,7 @@ def create_customer(
 ):
     validate_csrf(request, session)
     user = require_user(db, session)
-    assert_merchant_section_access(user, "customer")
+    assert_merchant_section_any_access(user, *TILL_CUSTOMER_SECTIONS)
     account_id = require_merchant_account_id(user)
     try:
         customer = CustomerService(db).create_customer(

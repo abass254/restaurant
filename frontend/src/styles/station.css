@@ -1058,6 +1058,7 @@ html[data-theme="dark"] .mobile-root {
   padding: 1rem;
   background: rgba(0, 0, 0, 0.45);
   z-index: 1;
+  overflow: auto;
 }
 
 .barcode-camera__allow {
@@ -1070,6 +1071,8 @@ html[data-theme="dark"] .mobile-root {
   color: #fff;
   background: #e8412a;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .barcode-camera__allow:disabled {

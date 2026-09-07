@@ -1,4 +1,5 @@
 import Swal from "sweetalert2";
+import type { SweetAlertOptions } from "sweetalert2";
 import { ApiError } from "@/lib/api";
 import { notifyNavigationComplete } from "@/lib/navigation-loading";
 import { toWhatsAppMsisdn } from "@/lib/whatsapp-phone";
@@ -17,6 +18,91 @@ const dukaiSwal = Swal.mixin({
   cancelButtonText: "Cancel",
   reverseButtons: true,
 });
+
+function isTransChapUi(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.location.pathname.startsWith("/trans-chap");
+}
+
+function transChapHost(): HTMLElement | undefined {
+  if (typeof document === "undefined") return undefined;
+  return document.querySelector<HTMLElement>(".trans-chap-app") ?? undefined;
+}
+
+function withDialogOptions(options: SweetAlertOptions): SweetAlertOptions {
+  if (!isTransChapUi()) return options;
+  const host = transChapHost();
+  return {
+    ...options,
+    ...(host ? { target: host } : {}),
+    position: "bottom",
+    width: "100%",
+    scrollbarPadding: false,
+    customClass: {
+      container: "trans-chap-swal",
+      popup: "dukai-swal-popup trans-chap-swal-popup",
+      title: "dukai-swal-title trans-chap-swal-title",
+      htmlContainer: "dukai-swal-text trans-chap-swal-text",
+      confirmButton: "dukai-swal-btn dukai-swal-btn--confirm",
+      cancelButton: "dukai-swal-btn dukai-swal-btn--cancel",
+      denyButton: "dukai-swal-btn dukai-swal-btn--cancel",
+      actions: "trans-chap-swal-actions",
+      input: "trans-chap-swal-input",
+      validationMessage: "trans-chap-swal-validation",
+      ...options.customClass,
+    },
+    showClass: {
+      popup: "trans-chap-swal-sheet-in",
+      backdrop: "swal2-backdrop-show",
+      icon: "swal2-icon-show",
+    },
+    hideClass: {
+      popup: "trans-chap-swal-sheet-out",
+      backdrop: "swal2-backdrop-hide",
+      icon: "swal2-icon-hide",
+    },
+  };
+}
+
+function fireDialog(options: SweetAlertOptions) {
+  return dukaiSwal.fire(withDialogOptions(options));
+}
+
+const TOAST_ICON_HTML = {
+  success: '<i class="fa-solid fa-check" aria-hidden="true"></i>',
+  error: '<i class="fa-solid fa-xmark" aria-hidden="true"></i>',
+  info: '<i class="fa-solid fa-info" aria-hidden="true"></i>',
+} as const;
+
+function toastMixin(extra: SweetAlertOptions = {}) {
+  const mobile = isTransChapUi();
+  const host = mobile ? transChapHost() : undefined;
+  const { customClass, ...rest } = extra;
+  return Swal.mixin({
+    toast: true,
+    position: mobile ? "top" : "top-end",
+    showConfirmButton: false,
+    buttonsStyling: false,
+    ...(host ? { target: host } : {}),
+    customClass: {
+      ...(mobile ? { container: "trans-chap-swal trans-chap-swal--toast" } : {}),
+      popup: mobile
+        ? "dukai-swal-toast dukai-swal-popup trans-chap-swal-toast"
+        : "dukai-swal-toast dukai-swal-popup",
+      title: mobile ? "dukai-swal-title trans-chap-swal-toast-title" : "dukai-swal-title",
+      htmlContainer: "dukai-swal-text",
+      icon: "dukai-swal-toast-icon",
+      ...customClass,
+    },
+    ...(mobile
+      ? {
+          showClass: { popup: "trans-chap-swal-toast-in" },
+          hideClass: { popup: "trans-chap-swal-toast-out" },
+        }
+      : {}),
+    ...rest,
+  });
+}
 
 export function extractErrorMessage(err: unknown, fallback = "Something went wrong."): string {
   if (err instanceof ApiError && err.message && !err.message.startsWith("Request failed (")) {
@@ -64,7 +150,7 @@ export function extractErrorMessage(err: unknown, fallback = "Something went wro
 }
 
 export async function showError(title: string, text?: string) {
-  return dukaiSwal.fire({
+  return fireDialog({
     icon: "error",
     title,
     text,
@@ -72,7 +158,7 @@ export async function showError(title: string, text?: string) {
 }
 
 export async function showSuccess(title: string, text?: string) {
-  return dukaiSwal.fire({
+  return fireDialog({
     icon: "success",
     title,
     text,
@@ -80,7 +166,7 @@ export async function showSuccess(title: string, text?: string) {
 }
 
 export async function showWarning(title: string, text?: string) {
-  return dukaiSwal.fire({
+  return fireDialog({
     icon: "warning",
     title,
     text,
@@ -88,7 +174,7 @@ export async function showWarning(title: string, text?: string) {
 }
 
 export async function showInfo(title: string, text?: string) {
-  return dukaiSwal.fire({
+  return fireDialog({
     icon: "info",
     title,
     text,
@@ -100,7 +186,7 @@ export async function confirmAction(
   text: string,
   confirmText = "Yes, continue",
 ) {
-  const result = await dukaiSwal.fire({
+  const result = await fireDialog({
     icon: "question",
     title,
     text,
@@ -111,12 +197,28 @@ export async function confirmAction(
   return result.isConfirmed;
 }
 
+export async function promptPendingStk(): Promise<"resend" | "check" | null> {
+  const result = await fireDialog({
+    icon: "question",
+    title: "M-PESA is still waiting",
+    text: "The customer hasn’t finished on their phone. Check if they already paid, or send the prompt again.",
+    showCancelButton: true,
+    showDenyButton: true,
+    confirmButtonText: "Send prompt again",
+    denyButtonText: "Check if paid",
+    cancelButtonText: "Close",
+  });
+  if (result.isConfirmed) return "resend";
+  if (result.isDenied) return "check";
+  return null;
+}
+
 export async function promptVoidReason(
   title: string,
   text: string,
   confirmText: string,
 ) {
-  const result = await dukaiSwal.fire({
+  const result = await fireDialog({
     icon: "warning",
     title,
     text,
@@ -153,7 +255,7 @@ export async function promptRejectReason(
   title = "Reject this order?",
   text = "Tell the customer why this order is being rejected.",
 ) {
-  const result = await dukaiSwal.fire({
+  const result = await fireDialog({
     icon: "warning",
     title,
     text,
@@ -190,7 +292,7 @@ export async function promptMpesaReceipt(
   title = "Confirm M-PESA payment",
   text = "Enter the M-PESA transaction code from the customer's SMS.",
 ) {
-  const result = await dukaiSwal.fire({
+  const result = await fireDialog({
     icon: "question",
     title,
     text,
@@ -226,7 +328,7 @@ export async function promptWhatsAppPhone(
   initialValue = "",
   onConfirm?: (phone: string) => void,
 ) {
-  const result = await dukaiSwal.fire({
+  const result = await fireDialog({
     icon: "question",
     title,
     text,
@@ -271,7 +373,7 @@ export async function promptEmail(
   text = "Enter the customer's email address.",
   initialValue = "",
 ) {
-  const result = await dukaiSwal.fire({
+  const result = await fireDialog({
     icon: "question",
     title,
     text,
@@ -321,7 +423,7 @@ export async function promptMpesaTransactionEdit(
   initial: MpesaTxnDraft,
 ): Promise<MpesaTxnDraft | null> {
   const safeAmount = Number.isFinite(initial.amount) ? initial.amount : 1;
-  const result = await dukaiSwal.fire({
+  const result = await fireDialog({
     title: "Edit M-PESA attempt",
     html: `
       <div class="dukai-mpesa-edit">
@@ -408,56 +510,25 @@ export async function promptMpesaTransactionEdit(
 }
 
 export async function toastSuccess(title: string, durationMs = 3200) {
-  const Toast = Swal.mixin({
-    toast: true,
-    position: "top-end",
-    showConfirmButton: false,
+  return toastMixin({
     timer: durationMs,
     timerProgressBar: true,
     showCloseButton: durationMs >= 10000,
-    customClass: {
-      popup: "dukai-swal-toast dukai-swal-popup",
-      title: "dukai-swal-title",
-    },
-    buttonsStyling: false,
-  });
-
-  return Toast.fire({ icon: "success", title });
+  }).fire({ icon: "success", iconHtml: TOAST_ICON_HTML.success, title });
 }
 
 export async function toastError(title: string) {
-  const Toast = Swal.mixin({
-    toast: true,
-    position: "top-end",
-    showConfirmButton: false,
+  return toastMixin({
     timer: 4000,
     timerProgressBar: true,
-    customClass: {
-      popup: "dukai-swal-toast dukai-swal-popup",
-      title: "dukai-swal-title",
-    },
-    buttonsStyling: false,
-  });
-
-  return Toast.fire({ icon: "error", title });
+  }).fire({ icon: "error", iconHtml: TOAST_ICON_HTML.error, title });
 }
 
 export async function toastInfo(title: string, text?: string, durationMs = 4200) {
-  const Toast = Swal.mixin({
-    toast: true,
-    position: "top-end",
-    showConfirmButton: false,
+  return toastMixin({
     timer: durationMs,
     timerProgressBar: true,
-    customClass: {
-      popup: "dukai-swal-toast dukai-swal-popup",
-      title: "dukai-swal-title",
-      htmlContainer: "dukai-swal-text",
-    },
-    buttonsStyling: false,
-  });
-
-  return Toast.fire({ icon: "info", title, text });
+  }).fire({ icon: "info", iconHtml: TOAST_ICON_HTML.info, title, text });
 }
 
 let loadingToastOpen = false;
@@ -471,22 +542,57 @@ function closeLoadingToastOnly() {
 export async function toastLoading(title = "Loading…") {
   closeLoadingToastOnly();
 
-  const Toast = Swal.mixin({
-    toast: true,
-    position: "top-end",
-    showConfirmButton: false,
+  const mobile = isTransChapUi();
+  const label = title.replace(/[<>&"]/g, (ch) =>
+    ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[ch] ?? ch,
+  );
+  loadingToastOpen = true;
+
+  if (mobile) {
+    const host = transChapHost();
+    return Swal.fire({
+      toast: false,
+      ...(host ? { target: host } : {}),
+      position: "center",
+      width: "auto",
+      backdrop: true,
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      allowEnterKey: false,
+      showConfirmButton: false,
+      showCancelButton: false,
+      buttonsStyling: false,
+      scrollbarPadding: false,
+      customClass: {
+        container: "trans-chap-swal trans-chap-swal--loading",
+        popup: "dukai-swal-popup trans-chap-swal-popup trans-chap-swal-popup--loading",
+        htmlContainer: "trans-chap-swal-loading",
+      },
+      showClass: {
+        popup: "trans-chap-swal-loading-in",
+        backdrop: "swal2-backdrop-show",
+      },
+      hideClass: {
+        popup: "trans-chap-swal-loading-out",
+        backdrop: "swal2-backdrop-hide",
+      },
+      html: `<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span>${label}</span>`,
+    });
+  }
+
+  const Toast = toastMixin({
     timer: undefined,
     timerProgressBar: false,
+    position: "bottom",
     customClass: {
+      container: "dukai-swal-toast-container dukai-swal-toast-container--loading",
       popup: "dukai-swal-toast dukai-swal-popup dukai-swal-toast--loading",
       htmlContainer: "dukai-swal-toast-loading",
     },
-    buttonsStyling: false,
   });
 
-  loadingToastOpen = true;
   return Toast.fire({
-    html: `<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span>${title}</span>`,
+    html: `<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span>${label}</span>`,
   });
 }
 

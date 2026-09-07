@@ -11,7 +11,7 @@ import {
 import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
 import { apiFetch } from "@/lib/api";
-import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
+import { extractErrorMessage, promptPendingStk, showError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { MPESA_MAX_KES, MPESA_MIN_PAYOUT_KES } from "@/lib/mpesa-limits";
 import { useAuthUser } from "@/components/app/AuthProvider";
@@ -33,6 +33,7 @@ import type {
   MpesaStkPushResponse,
   MpesaTransaction,
   MpesaTransactionsResponse,
+  OrderMutationResponse,
 } from "@/lib/types";
 import { formatNairobiDateTime, formatNairobiTime } from "@/lib/nairobi-time";
 
@@ -114,6 +115,7 @@ export default function PaymentsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filterText, setFilterText] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
+  const [stkBusyId, setStkBusyId] = useState<string | null>(null);
 
   const devMode = mode === "dev" || mpesaUsesDarajaSandbox;
   const effectiveConfig =
@@ -226,6 +228,54 @@ export default function PaymentsPage() {
   function handleNewTransaction(t: MpesaTransaction) {
     setUsingDevSampleData(false);
     setTransactions((prev) => [t, ...prev.filter((x) => x.id !== t.id)]);
+  }
+
+  async function handlePendingStk(txn: MpesaTransaction) {
+    if (txn.status === "success") return;
+    const choice = await promptPendingStk();
+    if (!choice) return;
+    setStkBusyId(txn.id);
+    try {
+      if (choice === "check") {
+        const data = await apiFetch<MpesaStkPushResponse>(apiRoutes.mpesaTransactionCheck(txn.id), {
+          method: "POST",
+          body: "{}",
+        });
+        handleNewTransaction(data.transaction);
+        if (data.outcome === "paid") {
+          await toastSuccess("Customer already paid");
+        } else {
+          await showError("Still waiting", data.message);
+        }
+        return;
+      }
+      if (txn.order_id) {
+        const data = await apiFetch<OrderMutationResponse>(apiRoutes.orderMpesaStkPush(txn.order_id), {
+          method: "POST",
+          body: "{}",
+        });
+        await toastSuccess(data.mpesa_push?.status === "sent" ? "M-PESA prompt sent" : data.message);
+        await reload();
+        return;
+      }
+      const data = await apiFetch<MpesaStkPushResponse>(apiRoutes.mpesaTransactionRetryStk(txn.id), {
+        method: "POST",
+        body: "{}",
+      });
+      handleNewTransaction(data.transaction);
+      if (data.outcome === "paid") {
+        await toastSuccess("Customer already paid");
+      } else {
+        await toastSuccess("M-PESA prompt sent");
+      }
+    } catch (err) {
+      await showError(
+        choice === "check" ? "Could not check M-PESA" : "Couldn't send M-PESA prompt",
+        extractErrorMessage(err),
+      );
+    } finally {
+      setStkBusyId(null);
+    }
   }
 
   return (
@@ -389,7 +439,22 @@ export default function PaymentsPage() {
                           payout_shortcode_type:
                             t.payout_destination_type ?? t.payout_shortcode_type,
                         })}
+                        onStepAction={
+                          t.status === "pending" || t.status === "failed" || t.status === "cancelled"
+                            ? () => void handlePendingStk(t)
+                            : undefined
+                        }
                       />
+                      {t.status === "pending" || t.status === "failed" || t.status === "cancelled" ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          disabled={stkBusyId === t.id}
+                          onClick={() => void handlePendingStk(t)}
+                        >
+                          {stkBusyId === t.id ? "Working…" : "Prompt"}
+                        </button>
+                      ) : null}
                     </td>
                   </motion.tr>
                 );

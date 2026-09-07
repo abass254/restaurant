@@ -928,6 +928,7 @@ export type MpesaTransaction = {
   payout_receipt_number?: string | null;
   payout_result_desc?: string | null;
   payout_completed_at?: string | null;
+  order_id?: string | null;
 };
 
 export type MpesaTransactionsResponse = {
@@ -938,6 +939,7 @@ export type MpesaTransactionsResponse = {
 export type MpesaStkPushResponse = {
   message: string;
   transaction: MpesaTransaction;
+  outcome?: "paid" | "failed" | "pending" | "resent";
 };
 
 export type ProductType = "product" | "service";
@@ -1409,6 +1411,7 @@ export type OrderMutationResponse = {
   message: string;
   data: Order;
   mpesa_push?: OrderMpesaPushResult;
+  outcome?: "paid" | "failed" | "pending" | "resent";
   recipient?: string;
 };
 

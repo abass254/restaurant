@@ -46,6 +46,7 @@ from app.services.mpesa_service import (
     MpesaApiError,
     MpesaConfigurationMissing,
 )
+from app.support.mpesa_merchant_copy import merchant_safe_stk_error
 from app.services.order_tracking_service import (
     OrderTrackingError,
     OrderTrackingService,
@@ -1510,6 +1511,58 @@ def resend_completion_prompt(
     }
 
 
+def _order_mpesa_transaction(order: Order):
+    txn = order.mpesa_transaction
+    if txn is not None:
+        return txn
+    rows = list(order.mpesa_transactions or [])
+    pending = next((row for row in rows if row.status == "pending"), None)
+    return pending or (rows[0] if rows else None)
+
+
+@router.post("/{order_id}/mpesa-check")
+def check_mpesa_stk_push(
+    order_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Ask Safaricom whether a waiting STK already completed."""
+    validate_csrf(request, session)
+    user = _auth_orders_user(db, session, pos_ok=True)
+    account_id = _require_shop(user)
+    order = _get_owned_order(db, account_id, order_id)
+    txn = _order_mpesa_transaction(order)
+    if txn is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No M-PESA prompt has been sent for this sale yet.",
+        )
+    try:
+        outcome = mpesa_service.refresh_pending_stk(db, txn)
+    except MpesaApiError as exc:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail=merchant_safe_stk_error(str(exc)),
+        ) from exc
+
+    db.refresh(order, attribute_names=["items", "status_history", "mpesa_transaction", "mpesa_transactions"])
+    if outcome == "paid":
+        message = "The customer already paid. This sale is now complete."
+    elif outcome == "failed":
+        message = txn.result_desc or "The M-PESA prompt did not go through. Send it again."
+    else:
+        message = "Still waiting. Ask the customer to finish on their phone, or send the prompt again."
+    return {
+        "message": message,
+        "outcome": outcome,
+        "data": OrderOut.from_model(
+            order,
+            allowed_next=allowed_next_statuses(order.status, order.fulfillment_type),
+        ),
+    }
+
+
 @router.post("/{order_id}/mpesa-stk-push")
 def resend_mpesa_stk_push(
     order_id: str,
@@ -1524,7 +1577,7 @@ def resend_mpesa_stk_push(
     Refuses on terminal/post-payment orders to avoid double-charging.
     """
     validate_csrf(request, session)
-    user = _auth_orders_user(db, session)
+    user = _auth_orders_user(db, session, pos_ok=True)
     account_id = _require_shop(user)
 
     order = _get_owned_order(db, account_id, order_id)

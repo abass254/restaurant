@@ -23,7 +23,7 @@ type DashTile = {
 };
 
 const LOOKUP_TILES: DashTile[] = [
-  { href: "/trans-chap/stocks", label: "Stocks", icon: "fa-boxes-stacked", tone: "stock" },
+  { href: "/trans-chap/stocks", label: "Inventory", icon: "fa-boxes-stacked", tone: "stock" },
   { href: "/trans-chap/reports", label: "Reports", icon: "fa-chart-column", tone: "records" },
   {
     href: "/trans-chap/chats",

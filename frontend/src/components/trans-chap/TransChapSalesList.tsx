@@ -3,23 +3,27 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuthUser } from "@/components/app/AuthProvider";
+import { TransChapFab } from "@/components/trans-chap/TransChapFab";
 import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { MotionItem, MotionList } from "@/components/app/MotionList";
-import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
-import { formatNairobiDateTime, formatNairobiListTime, nairobiDateKey, parseIso } from "@/lib/nairobi-time";
+import { extractErrorMessage, promptPendingStk, showError, toastSuccess } from "@/lib/alerts";
+import { apiFetch } from "@/lib/api";
+import { apiRoutes } from "@/lib/config";
+import { formatNairobiDateTime, nairobiDateKey, parseIso } from "@/lib/nairobi-time";
 import {
   orderHasPendingMpesa,
   orderHasSuccessfulMpesa,
 } from "@/lib/orders";
+import { buildMpesaFlowSteps, MpesaFlowStatus } from "@/components/app/MpesaFlowStatus";
 import {
   fetchWalkinOrders,
   promptAndUndoWalkinSale,
   walkinUndoAction,
 } from "@/lib/trans-chap-orders";
 import { formatKsh, receiptFromOrder, transChapPayLabel, transChapReceiptHref } from "@/lib/trans-chap-receipt";
-import type { Order } from "@/lib/types";
+import type { Order, OrderMutationResponse } from "@/lib/types";
 
 type WhenFilter = "all" | "today" | "week";
 type MethodFilter = "all" | "credit" | "mpesa";
@@ -137,6 +141,7 @@ export function TransChapSalesList() {
   const [status, setStatus] = useState<StatusFilter>("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [undoingId, setUndoingId] = useState<string | null>(null);
+  const [stkBusyId, setStkBusyId] = useState<string | null>(null);
   const shopName =
     user.active_account?.business_name ||
     user.account?.business_name ||
@@ -174,6 +179,47 @@ export function TransChapSalesList() {
       await showError("Could not undo sale", extractErrorMessage(err));
     } finally {
       setUndoingId(null);
+    }
+  }
+
+  async function handlePendingStk(order: Order) {
+    const choice = await promptPendingStk();
+    if (!choice) return;
+    setStkBusyId(order.id);
+    try {
+      if (choice === "check") {
+        const data = await apiFetch<OrderMutationResponse>(apiRoutes.orderMpesaCheck(order.id), {
+          method: "POST",
+          body: "{}",
+        });
+        setOrders((prev) => prev.map((row) => (row.id === data.data.id ? data.data : row)));
+        if (data.outcome === "paid") {
+          await toastSuccess("Customer already paid");
+        } else {
+          await showError("Still waiting", data.message);
+        }
+        return;
+      }
+      const data = await apiFetch<OrderMutationResponse>(apiRoutes.orderMpesaStkPush(order.id), {
+        method: "POST",
+        body: "{}",
+      });
+      setOrders((prev) => prev.map((row) => (row.id === data.data.id ? data.data : row)));
+      if (data.mpesa_push?.status === "sent") {
+        await toastSuccess("M-PESA prompt sent");
+      } else {
+        await showError(
+          "Prompt didn't go through",
+          data.mpesa_push?.message ?? data.message,
+        );
+      }
+    } catch (err) {
+      await showError(
+        choice === "check" ? "Could not check M-PESA" : "Couldn't send M-PESA prompt",
+        extractErrorMessage(err),
+      );
+    } finally {
+      setStkBusyId(null);
     }
   }
 
@@ -300,13 +346,16 @@ export function TransChapSalesList() {
             const extra = (order.items?.length ?? 0) > 1
               ? ` +${(order.items?.length ?? 0) - 1}`
               : "";
+            const qty = (order.items ?? []).reduce(
+              (sum, line) => sum + (line.quantity || 0),
+              0,
+            );
             const sale = saleStatus(order);
             const undo = walkinUndoAction(order);
             const open = openId === order.id;
             const panelId = `${listId}-${order.id}`;
             const receipt = receiptFromOrder(order, shopName);
             const paidAt = formatNairobiDateTime(receipt.paidAt);
-            const whenLabel = formatNairobiListTime(receipt.paidAt);
             return (
               <MotionItem key={order.id} as="div">
               <TransChapPanel
@@ -314,7 +363,8 @@ export function TransChapSalesList() {
                 open={open}
                 tone="sale"
                 title={`${product}${extra}`}
-                subtitle={`${formatKsh(order.total)}${whenLabel ? ` · ${whenLabel}` : ""}`}
+                qty={`Qty ${qty}`}
+                price={formatKsh(order.total)}
                 badge={sale}
                 onToggle={() => setOpenId(open ? null : order.id)}
                 headAction={
@@ -328,6 +378,16 @@ export function TransChapSalesList() {
                 }
                 action={
                   <>
+                    {sale.tone === "wait" || (order.payment_method === "mpesa" && sale.tone === "fail" && order.status !== "cancelled" && order.status !== "refunded") ? (
+                      <button
+                        type="button"
+                        className="trans-chap-panel__link"
+                        disabled={stkBusyId === order.id || undoingId === order.id}
+                        onClick={() => void handlePendingStk(order)}
+                      >
+                        {stkBusyId === order.id ? "Working…" : "M-PESA prompt"}
+                      </button>
+                    ) : null}
                     {undo ? (
                       <button
                         type="button"
@@ -358,9 +418,19 @@ export function TransChapSalesList() {
                         : sale.tone === "ok"
                           ? "Payment received."
                           : sale.tone === "wait"
-                            ? "Waiting for the customer to complete M-PESA."
+                            ? "Waiting for the customer to complete M-PESA. Tap the person to check or send the prompt again."
                             : "M-PESA didn’t go through."}
                 </p>
+                {order.payment_method === "mpesa" && order.mpesa_transaction ? (
+                  <MpesaFlowStatus
+                    steps={buildMpesaFlowSteps(order.mpesa_transaction)}
+                    onStepAction={
+                      sale.tone === "wait" || sale.tone === "fail"
+                        ? () => void handlePendingStk(order)
+                        : undefined
+                    }
+                  />
+                ) : null}
                 <ul className="trans-chap-panel__lines">
                   {(order.items ?? []).map((line) => (
                     <li key={line.id || `${line.product_name}-${line.quantity}`}>
@@ -406,6 +476,13 @@ export function TransChapSalesList() {
           <p className="trans-chap-sales__empty">Showing the most recent 2,000 sales.</p>
         ) : null}
       </div>
+      <TransChapFab
+        label="New sale"
+        options={[
+          { href: "/trans-chap/make-a-sale/new", label: "Scan", icon: "fa-barcode" },
+          { href: "/trans-chap/make-a-sale/new?mode=select", label: "Select", icon: "fa-list" },
+        ]}
+      />
     </div>
   );
 }

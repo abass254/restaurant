@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { AuthProvider } from "@/components/app/AuthProvider";
 import { BackendUnavailablePanel } from "@/components/app/BackendUnavailablePanel";
 import { SessionTimeoutGuard } from "@/components/app/SessionTimeoutGuard";
@@ -39,7 +40,9 @@ export default async function TransChapAppLayout({
   return (
     <AuthProvider user={user}>
       <SessionTimeoutGuard loginPath={SIGN_IN_PATH} />
-      <TransChapShell>{children}</TransChapShell>
+      <Suspense>
+        <TransChapShell>{children}</TransChapShell>
+      </Suspense>
     </AuthProvider>
   );
 }

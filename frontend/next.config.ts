@@ -24,6 +24,19 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Permissions-Policy",
+            value: "camera=(self), microphone=(self)",
+          },
+        ],
+      },
+    ];
+  },
   // @ffmpeg/ffmpeg loads core via blob URLs; avoid bundling Node polyfills.
   webpack: (config) => {
     config.resolve.fallback = {

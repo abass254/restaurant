@@ -180,6 +180,12 @@ export const apiRoutes = {
   orderTransition: (id: string) => `${apiUrl}/api/v1/orders/${id}/transition`,
   orderMpesaStkPush: (id: string) =>
     `${apiUrl}/api/v1/orders/${id}/mpesa-stk-push`,
+  orderMpesaCheck: (id: string) =>
+    `${apiUrl}/api/v1/orders/${id}/mpesa-check`,
+  mpesaTransactionCheck: (id: string) =>
+    `${apiUrl}/api/v1/mpesa/transactions/${encodeURIComponent(id)}/check`,
+  mpesaTransactionRetryStk: (id: string) =>
+    `${apiUrl}/api/v1/mpesa/transactions/${encodeURIComponent(id)}/retry-stk`,
   orderSendReceiptEmail: (id: string) =>
     `${apiUrl}/api/v1/orders/${id}/send-receipt-email`,
   orderMpesaTransaction: (orderId: string, transactionId: string) =>

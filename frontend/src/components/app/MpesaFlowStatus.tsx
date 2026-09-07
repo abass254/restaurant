@@ -9,6 +9,7 @@ export type MpesaFlowStep = {
   tooltip: string;
   /** Connector from this step toward the next (omitted on the last step). */
   link?: FlowLink;
+  actionable?: boolean;
 };
 
 type MpesaFlowStatusProps = {
@@ -17,6 +18,7 @@ type MpesaFlowStatusProps = {
   /** Horizontal row of icons (default) or vertical stack. */
   layout?: "row" | "column";
   ariaLabel?: string;
+  onStepAction?: (step: MpesaFlowStep) => void;
 };
 
 function toneClass(tone: FlowTone): string {
@@ -28,6 +30,7 @@ export function MpesaFlowStatus({
   className,
   layout = "row",
   ariaLabel = "Payment flow status",
+  onStepAction,
 }: MpesaFlowStatusProps) {
   const rootClass = [
     "mpesa-flow-status",
@@ -48,17 +51,32 @@ export function MpesaFlowStatus({
 
         return (
           <li key={step.key} className={stepClass}>
-            <span
-              className={toneClass(step.tone)}
-              tabIndex={0}
-              aria-label={`${step.label}: ${step.tooltip}`}
-            >
-              <i className={`fa-solid ${step.icon}`} aria-hidden="true" />
-              <span className="mpesa-flow-status__tip" role="tooltip">
-                <strong>{step.label}</strong>
-                <span>{step.tooltip}</span>
+            {step.actionable && onStepAction ? (
+              <button
+                type="button"
+                className={`${toneClass(step.tone)} mpesa-flow-status__badge--action`}
+                aria-label={`${step.label}: ${step.tooltip}. Tap to check or send the prompt again.`}
+                onClick={() => onStepAction(step)}
+              >
+                <i className={`fa-solid ${step.icon}`} aria-hidden="true" />
+                <span className="mpesa-flow-status__tip" role="tooltip">
+                  <strong>{step.label}</strong>
+                  <span>{step.tooltip}</span>
+                </span>
+              </button>
+            ) : (
+              <span
+                className={toneClass(step.tone)}
+                tabIndex={0}
+                aria-label={`${step.label}: ${step.tooltip}`}
+              >
+                <i className={`fa-solid ${step.icon}`} aria-hidden="true" />
+                <span className="mpesa-flow-status__tip" role="tooltip">
+                  <strong>{step.label}</strong>
+                  <span>{step.tooltip}</span>
+                </span>
               </span>
-            </span>
+            )}
             {link ? (
               <span
                 className={`mpesa-flow-status__link mpesa-flow-status__link--${link}`}
@@ -241,6 +259,7 @@ export function buildMpesaFlowSteps(txn: CollectionLike): MpesaFlowStep[] {
       tone: clientTone,
       tooltip: clientTip,
       link: clientLink,
+      actionable: clientTone === "current" || clientTone === "failed",
     },
     {
       key: "hub",

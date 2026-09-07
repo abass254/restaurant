@@ -2,11 +2,12 @@
 
 import { useEffect, useId, useMemo, useState } from "react";
 import { useAuthUser } from "@/components/app/AuthProvider";
+import { TransChapFab } from "@/components/trans-chap/TransChapFab";
 import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { MotionItem, MotionList } from "@/components/app/MotionList";
-import { formatNairobiDateTime, formatNairobiListTime } from "@/lib/nairobi-time";
+import { formatNairobiDateTime } from "@/lib/nairobi-time";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import {
   fetchTransChapPurchases,
@@ -84,7 +85,6 @@ export function TransChapPurchasesList() {
           {filtered.map((row) => {
             const open = openId === row.id;
             const panelId = `${listId}-${row.id}`;
-            const whenLabel = formatNairobiListTime(row.paidAt);
             return (
               <MotionItem key={row.id} as="div">
               <TransChapPanel
@@ -92,8 +92,8 @@ export function TransChapPurchasesList() {
                 open={open}
                 tone="purchase"
                 title={row.productName}
-                subtitle={`${formatKsh(row.total)}${whenLabel ? ` · ${whenLabel}` : ""}`}
-                badge={{ label: `${row.quantity} bought`, tone: "ok" }}
+                qty={`Qty ${row.quantity}`}
+                price={formatKsh(row.total)}
                 onToggle={() => setOpenId(open ? null : row.id)}
               >
                 <p className="trans-chap-panel__lead">
@@ -136,6 +136,13 @@ export function TransChapPurchasesList() {
           <p className="trans-chap-sales__empty">Showing the most recent 2,000 purchases.</p>
         ) : null}
       </div>
+      <TransChapFab
+        label="New purchase"
+        options={[
+          { href: "/trans-chap/purchases/new", label: "Single", icon: "fa-cube" },
+          { href: "/trans-chap/purchases/new?mode=bulk", label: "Bulk", icon: "fa-layer-group" },
+        ]}
+      />
     </div>
   );
 }

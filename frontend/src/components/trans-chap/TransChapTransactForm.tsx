@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { TransChapSaleScan } from "@/components/trans-chap/TransChapSaleScan";
+import { TransChapSaleCatalog } from "@/components/trans-chap/TransChapSaleCatalog";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { apiFetch } from "@/lib/api";
 import { extractErrorMessage, showError, toastInfo, toastSuccess } from "@/lib/alerts";
@@ -11,10 +11,14 @@ import { findInventoryByBarcode } from "@/lib/barcode";
 import { apiRoutes } from "@/lib/config";
 import {
   addLiteInventoryProduct,
+  canSellInventoryItem,
   findInventoryByName,
   inventoryProductName,
-  updateInventorySellingPrice,
 } from "@/lib/trans-chap-product";
+import {
+  ensureShopCustomer,
+  fetchShopCustomers,
+} from "@/lib/trans-chap-customers";
 import { formatKsh, receiptFromOrder, saveTransChapReceipt, toWhatsAppMsisdn, transChapReceiptHref } from "@/lib/trans-chap-receipt";
 import type {
   InventoryItem,
@@ -22,9 +26,11 @@ import type {
   MerchantMpesaConfigResponse,
   OrderCreatePayload,
   OrderMutationResponse,
+  ShopCustomer,
 } from "@/lib/types";
 
 type PayMode = "credit" | "mpesa";
+type Stage = "catalog" | "customer" | "pay";
 
 type BasketLine = {
   key: string;
@@ -67,19 +73,20 @@ function mergeBasketLine(
 export function TransChapTransactForm() {
   const router = useRouter();
   const user = useAuthUser();
-  const [stage, setStage] = useState<"scan" | "pay">("scan");
+  const [stage, setStage] = useState<Stage>("catalog");
   const [payMode, setPayMode] = useState<PayMode>("mpesa");
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
+  const [customers, setCustomers] = useState<ShopCustomer[]>([]);
+  const [savingCustomer, setSavingCustomer] = useState(false);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [inventoryLoading, setInventoryLoading] = useState(true);
   const [basket, setBasket] = useState<BasketLine[]>([]);
   const [lastScannedKey, setLastScannedKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [mpesaReady, setMpesaReady] = useState<boolean | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
   const inventoryRef = useRef<InventoryItem[]>([]);
-  const basketRef = useRef<BasketLine[]>([]);
-  const priceSaveRef = useRef<Set<string>>(new Set());
 
   const shopName =
     user.active_account?.business_name ||
@@ -89,14 +96,22 @@ export function TransChapTransactForm() {
     () => basket.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0),
     [basket],
   );
+  const customerMatches = useMemo(() => {
+    const nameNeedle = customerName.trim().toLowerCase();
+    const phoneDigits = phone.replace(/\D/g, "");
+    if (!nameNeedle && phoneDigits.length < 3) return [];
+    return customers
+      .filter((row) => {
+        if (nameNeedle && row.name.toLowerCase().includes(nameNeedle)) return true;
+        const rowDigits = row.phone.replace(/\D/g, "");
+        return phoneDigits.length >= 3 && rowDigits.includes(phoneDigits);
+      })
+      .slice(0, 6);
+  }, [customerName, customers, phone]);
 
   useEffect(() => {
     inventoryRef.current = inventory;
   }, [inventory]);
-
-  useEffect(() => {
-    basketRef.current = basket;
-  }, [basket]);
 
   useEffect(() => {
     let alive = true;
@@ -117,68 +132,11 @@ export function TransChapTransactForm() {
     };
   }, []);
 
-  const replaceInventoryItem = useCallback((item: InventoryItem) => {
-    setInventory((prev) => {
-      const index = prev.findIndex((entry) => entry.id === item.id);
-      if (index === -1) return [item, ...prev];
-      const next = [...prev];
-      next[index] = item;
-      return next;
-    });
-  }, []);
-
-  const commitPrice = useCallback(
-    async (key: string, unitPrice: number) => {
-      if (!(unitPrice > 0)) return;
-      const line = basketRef.current.find((entry) => entry.key === key);
-      if (!line) return;
-      const saveKey = `${key}:${unitPrice}`;
-      if (priceSaveRef.current.has(saveKey)) return;
-
-      try {
-        if (line.inventoryItemId) {
-          const existing = inventoryRef.current.find(
-            (entry) => entry.id === line.inventoryItemId,
-          );
-          if (existing?.selling_price === unitPrice) return;
-          priceSaveRef.current.add(saveKey);
-          const updated = await updateInventorySellingPrice(
-            line.inventoryItemId,
-            unitPrice,
-          );
-          replaceInventoryItem(updated);
-          return;
-        }
-
-        const compactName = line.productName.trim();
-        const sku =
-          /^[a-zA-Z0-9-]{4,40}$/.test(compactName) && /\d/.test(compactName)
-            ? compactName
-            : undefined;
-        priceSaveRef.current.add(saveKey);
-        const created = await addLiteInventoryProduct(compactName, String(unitPrice), {
-          sku,
-        });
-        replaceInventoryItem(created);
-        setBasket((prev) =>
-          prev.map((entry) =>
-            entry.key === key
-              ? { ...entry, inventoryItemId: created.id, unitPrice }
-              : entry,
-          ),
-        );
-      } catch (err) {
-        priceSaveRef.current.delete(saveKey);
-        await showError("Could not save price", extractErrorMessage(err));
-      }
-    },
-    [replaceInventoryItem],
-  );
-
-  const addProduct = useCallback((name: string, item: InventoryItem | null) => {
-    const unitPrice =
-      item?.selling_price != null && item.selling_price > 0 ? item.selling_price : 0;
-    const key = basketKey(name, item?.id ?? null);
+  const addItem = useCallback((item: InventoryItem) => {
+    if (!canSellInventoryItem(item)) return;
+    const name = inventoryProductName(item);
+    const unitPrice = item.selling_price ?? 0;
+    const key = basketKey(name, item.id);
     setBasket((prev) => mergeBasketLine(prev, { name, qty: 1, unitPrice }, item));
     setLastScannedKey(key);
   }, []);
@@ -187,20 +145,25 @@ export function TransChapTransactForm() {
     const scanned = code.trim();
     if (!scanned) return;
     const item = findInventoryByBarcode(inventoryRef.current, scanned) ?? null;
-    if (item) {
-      addProduct(inventoryProductName(item), item);
-      void toastSuccess(inventoryProductName(item));
+    if (!item) {
+      void toastInfo("Unknown barcode", `${scanned} isn’t in active inventory.`);
       return;
     }
-    addProduct(scanned, null);
-    void toastInfo(
-      "Unknown barcode",
-      `${scanned} isn’t in inventory. Set a price if you still want to sell it.`,
-    );
-  }, [addProduct]);
+    if (!canSellInventoryItem(item)) {
+      void showError(
+        "Can’t sell this item",
+        inventoryProductName(item) + " is out of stock or has no selling price.",
+      );
+      return;
+    }
+    addItem(item);
+    void toastSuccess(inventoryProductName(item));
+  }, [addItem]);
 
   useEffect(() => {
-    const pay = new URLSearchParams(window.location.search).get("pay");
+    const params = new URLSearchParams(window.location.search);
+    setSelectMode(params.get("mode") === "select" || params.get("mode") === "single");
+    const pay = params.get("pay");
     if (pay === "mpesa" || pay === "credit" || pay === "cash") {
       setPayMode(pay === "cash" ? "credit" : pay);
     }
@@ -220,6 +183,55 @@ export function TransChapTransactForm() {
         setPayMode((current) => (current === "mpesa" ? "credit" : current));
       });
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    fetchShopCustomers()
+      .then((rows) => {
+        if (!alive) return;
+        setCustomers(rows);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setCustomers([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  function pickCustomer(row: ShopCustomer) {
+    setCustomerName(row.name);
+    setPhone(row.phone);
+  }
+
+  async function continueCustomer(event: FormEvent) {
+    event.preventDefault();
+    const name = customerName.trim();
+    if (!name) return;
+    if (!toWhatsAppMsisdn(phone)) {
+      await showError(
+        "Phone needed",
+        "Enter a valid phone so we can save this person as your customer.",
+      );
+      return;
+    }
+    setSavingCustomer(true);
+    try {
+      const customer = await ensureShopCustomer(name, phone, customers);
+      setCustomers((prev) => {
+        if (prev.some((row) => row.id === customer.id)) return prev;
+        return [customer, ...prev];
+      });
+      setCustomerName(customer.name);
+      setPhone(customer.phone);
+      setStage("pay");
+    } catch (err) {
+      await showError("Could not save customer", extractErrorMessage(err));
+    } finally {
+      setSavingCustomer(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -328,27 +340,32 @@ export function TransChapTransactForm() {
   return (
     <form
       className={
-        stage === "scan"
+        stage === "catalog"
           ? "trans-chap-form trans-chap-form--scan"
           : "auth-split__form trans-chap-form"
       }
       onSubmit={(e) => {
-        if (stage === "scan") {
+        if (stage === "catalog") {
           e.preventDefault();
+          return;
+        }
+        if (stage === "customer") {
+          void continueCustomer(e);
           return;
         }
         void handleSubmit(e);
       }}
     >
-      {stage === "scan" ? (
-        <TransChapSaleScan
-          active
+      {stage === "catalog" ? (
+        <TransChapSaleCatalog
+          scan={!selectMode}
+          active={!selectMode}
           basket={basket}
           inventory={inventory}
           inventoryLoading={inventoryLoading}
           lastScannedKey={lastScannedKey}
           onScan={handleScan}
-          onAddProduct={addProduct}
+          onAdd={addItem}
           onQty={(key, quantity) => {
             if (quantity <= 0) {
               setBasket((prev) => prev.filter((line) => line.key !== key));
@@ -358,28 +375,77 @@ export function TransChapTransactForm() {
               prev.map((line) => (line.key === key ? { ...line, quantity } : line)),
             );
           }}
-          onPrice={(key, unitPrice) => {
-            setBasket((prev) =>
-              prev.map((line) => (line.key === key ? { ...line, unitPrice } : line)),
-            );
-          }}
-          onCommitPrice={(key, unitPrice) => {
-            void commitPrice(key, unitPrice);
-          }}
-          onRemove={(key) => {
-            setBasket((prev) => prev.filter((line) => line.key !== key));
-          }}
-          onContinue={() => {
-            void (async () => {
-              await Promise.all(
-                basket
-                  .filter((line) => line.unitPrice > 0)
-                  .map((line) => commitPrice(line.key, line.unitPrice)),
-              );
-              setStage("pay");
-            })();
-          }}
+          onContinue={() => setStage("customer")}
         />
+      ) : stage === "customer" ? (
+        <>
+          <p className="trans-chap-form__lead">
+            Who is this sale for? We’ll save them as a customer.
+          </p>
+          <div className="trans-chap-form__fields">
+            <button
+              type="button"
+              className="trans-chap-sale-scan__back"
+              onClick={() => setStage("catalog")}
+            >
+              <i className="fa-solid fa-chevron-left" aria-hidden />
+              {basket.length} item{basket.length === 1 ? "" : "s"} · {formatKsh(saleTotal)}
+            </button>
+            <div className="auth-split__field">
+              <label htmlFor="transact-customer-name">Name</label>
+              <div className="trans-chap-input">
+                <input
+                  id="transact-customer-name"
+                  type="text"
+                  required
+                  autoComplete="name"
+                  placeholder="Customer name"
+                  className="auth-split__input"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="auth-split__field">
+              <label htmlFor="transact-customer-phone">Phone</label>
+              <div className="trans-chap-input">
+                <input
+                  id="transact-customer-phone"
+                  type="tel"
+                  required
+                  autoComplete="tel"
+                  inputMode="tel"
+                  placeholder="2547…"
+                  className="auth-split__input"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+              </div>
+            </div>
+            {customerMatches.length > 0 ? (
+              <ul className="trans-chap-suggest" role="listbox" aria-label="Saved customers">
+                {customerMatches.map((row) => (
+                  <li key={row.id} role="option">
+                    <button
+                      type="button"
+                      className="trans-chap-suggest__item"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => pickCustomer(row)}
+                    >
+                      <span className="trans-chap-suggest__name">{row.name}</span>
+                      <span className="trans-chap-suggest__meta">{row.phone}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+          <div className="trans-chap-form__actions">
+            <button type="submit" className="auth-split__btn" disabled={savingCustomer}>
+              {savingCustomer ? "Saving customer…" : "Continue to pay"}
+            </button>
+          </div>
+        </>
       ) : (
         <>
           <p className="trans-chap-form__lead">Choose how they pay.</p>
@@ -387,10 +453,10 @@ export function TransChapTransactForm() {
             <button
               type="button"
               className="trans-chap-sale-scan__back"
-              onClick={() => setStage("scan")}
+              onClick={() => setStage("customer")}
             >
               <i className="fa-solid fa-chevron-left" aria-hidden />
-              {basket.length} item{basket.length === 1 ? "" : "s"} · {formatKsh(saleTotal)}
+              {customerName.trim() || "Customer"} · {formatKsh(saleTotal)}
             </button>
             <div className="auth-split__field">
               <span id="transact-pay-mode-label">How they pay</span>
@@ -425,80 +491,6 @@ export function TransChapTransactForm() {
                 Set your M-PESA details in Settings before taking M-PESA.{" "}
                 <Link href="/trans-chap/settings">Set M-PESA details</Link>
               </p>
-            ) : null}
-
-            {payMode === "mpesa" && mpesaReady !== false ? (
-              <div className="trans-chap-form__block">
-                <p className="trans-chap-form__block-title">Customer</p>
-                <div className="auth-split__field">
-                  <label htmlFor="transact-mpesa-phone">M-PESA number</label>
-                  <div className="trans-chap-input">
-                    <input
-                      id="transact-mpesa-phone"
-                      type="tel"
-                      required
-                      autoComplete="tel"
-                      inputMode="tel"
-                      placeholder="2547…"
-                      className="auth-split__input"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="auth-split__field">
-                  <label htmlFor="transact-mpesa-name">Name</label>
-                  <div className="trans-chap-input">
-                    <input
-                      id="transact-mpesa-name"
-                      type="text"
-                      autoComplete="name"
-                      placeholder="Optional"
-                      className="auth-split__input"
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {payMode === "credit" ? (
-              <div className="trans-chap-form__block">
-                <p className="trans-chap-form__block-title">Customer</p>
-                <p className="trans-chap-form__lead">Goes on their tab. They pay later.</p>
-                <div className="auth-split__field">
-                  <label htmlFor="transact-credit-name">Name</label>
-                  <div className="trans-chap-input">
-                    <input
-                      id="transact-credit-name"
-                      type="text"
-                      autoComplete="name"
-                      required
-                      placeholder="Required"
-                      className="auth-split__input"
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="auth-split__field">
-                  <label htmlFor="transact-credit-phone">Phone</label>
-                  <div className="trans-chap-input">
-                    <input
-                      id="transact-credit-phone"
-                      type="tel"
-                      required
-                      autoComplete="tel"
-                      inputMode="tel"
-                      placeholder="2547…"
-                      className="auth-split__input"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
             ) : null}
           </div>
 

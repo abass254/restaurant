@@ -12,6 +12,12 @@ type NativeBarcodeDetector = {
   detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue: string }>>;
 };
 
+type LegacyGetUserMedia = (
+  constraints: MediaStreamConstraints,
+  success: (stream: MediaStream) => void,
+  error: (err: Error) => void,
+) => void;
+
 const NATIVE_FORMATS = [
   "ean_13",
   "ean_8",
@@ -25,15 +31,9 @@ const NATIVE_FORMATS = [
   "data_matrix",
 ];
 
+/** Simple constraints first so Android Chrome shows the permission prompt. */
 const CAMERA_CONSTRAINTS: MediaStreamConstraints[] = [
-  {
-    audio: false,
-    video: {
-      facingMode: { ideal: "environment" },
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
-    },
-  },
+  { audio: false, video: { facingMode: { ideal: "environment" } } },
   { audio: false, video: { facingMode: "environment" } },
   { audio: false, video: true },
 ];
@@ -78,6 +78,25 @@ function createZxingReader() {
   });
 }
 
+function getUserMediaFn(): ((constraints: MediaStreamConstraints) => Promise<MediaStream>) | null {
+  if (typeof navigator === "undefined") return null;
+  const devices = navigator.mediaDevices;
+  if (devices?.getUserMedia) {
+    return devices.getUserMedia.bind(devices);
+  }
+  const legacy = navigator as Navigator & {
+    getUserMedia?: LegacyGetUserMedia;
+    webkitGetUserMedia?: LegacyGetUserMedia;
+    mozGetUserMedia?: LegacyGetUserMedia;
+  };
+  const fn = legacy.getUserMedia || legacy.webkitGetUserMedia || legacy.mozGetUserMedia;
+  if (!fn) return null;
+  return (constraints) =>
+    new Promise((resolve, reject) => {
+      fn.call(navigator, constraints, resolve, reject);
+    });
+}
+
 function cameraErrorMessage(err: unknown): string {
   if (typeof window !== "undefined" && !window.isSecureContext) {
     return "Camera needs HTTPS. Open this site with https:// — a phone on http://192.168… will not show a permission prompt.";
@@ -97,14 +116,15 @@ function cameraErrorMessage(err: unknown): string {
   if (name === "NotReadableError") {
     return "The camera is in use by another app. Close it and try again.";
   }
-  if (!navigator.mediaDevices?.getUserMedia) {
+  if (!getUserMediaFn()) {
     return "This browser cannot open the camera.";
   }
   return message || "Could not open the camera.";
 }
 
 async function requestCameraStream(): Promise<MediaStream> {
-  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+  const gum = getUserMediaFn();
+  if (!gum) {
     throw new Error("This browser cannot open the camera.");
   }
   if (typeof window !== "undefined" && !window.isSecureContext) {
@@ -113,7 +133,7 @@ async function requestCameraStream(): Promise<MediaStream> {
   let lastError: unknown;
   for (const constraints of CAMERA_CONSTRAINTS) {
     try {
-      return await navigator.mediaDevices.getUserMedia(constraints);
+      return await gum(constraints);
     } catch (err) {
       lastError = err;
     }
@@ -126,10 +146,28 @@ async function requestCameraStream(): Promise<MediaStream> {
 async function playVideo(video: HTMLVideoElement, stream: MediaStream) {
   video.setAttribute("playsinline", "true");
   video.setAttribute("webkit-playsinline", "true");
+  video.autoplay = true;
   video.muted = true;
+  video.defaultMuted = true;
   video.playsInline = true;
+  video.controls = false;
   video.srcObject = stream;
-  await video.play().catch(() => undefined);
+
+  if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    await new Promise<void>((resolve) => {
+      const done = () => resolve();
+      video.addEventListener("loadedmetadata", done, { once: true });
+      video.addEventListener("canplay", done, { once: true });
+      window.setTimeout(done, 1200);
+    });
+  }
+
+  try {
+    await video.play();
+  } catch {
+    await new Promise((resolve) => window.setTimeout(resolve, 60));
+    await video.play();
+  }
 }
 
 type BarcodeCameraProps = {
@@ -143,6 +181,7 @@ export function BarcodeCamera({ active, onScan, className }: BarcodeCameraProps)
   const streamRef = useRef<MediaStream | null>(null);
   const stopScanRef = useRef<(() => void) | null>(null);
   const startingRef = useRef(false);
+  const generationRef = useRef(0);
   const lastCodeRef = useRef("");
   const lastAtRef = useRef(0);
   const onScanRef = useRef(onScan);
@@ -164,7 +203,7 @@ export function BarcodeCamera({ active, onScan, className }: BarcodeCameraProps)
     onScanRef.current(text);
   }, []);
 
-  const stop = useCallback(() => {
+  const releaseStream = useCallback(() => {
     stopScanRef.current?.();
     stopScanRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -172,27 +211,54 @@ export function BarcodeCamera({ active, onScan, className }: BarcodeCameraProps)
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-    setLive(false);
   }, []);
 
+  const stop = useCallback(() => {
+    generationRef.current += 1;
+    startingRef.current = false;
+    releaseStream();
+    setLive(false);
+    setStarting(false);
+  }, [releaseStream]);
+
   const startCamera = useCallback(async () => {
-    if (startingRef.current) return;
+    if (startingRef.current || streamRef.current) return;
     startingRef.current = true;
+    const generation = generationRef.current;
+
+    // Ask for the camera in the same user-gesture turn as the tap.
+    // setState before getUserMedia drops the prompt on Android Chrome.
+    let stream: MediaStream;
+    try {
+      stream = await requestCameraStream();
+    } catch (err) {
+      if (generation !== generationRef.current) return;
+      startingRef.current = false;
+      setStarting(false);
+      setError(cameraErrorMessage(err));
+      return;
+    }
+
+    if (generation !== generationRef.current) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+
     setError(null);
     setStarting(true);
-    stop();
+    releaseStream();
+    streamRef.current = stream;
+
     try {
       const video = videoRef.current;
       if (!video) {
         throw new Error("Camera preview is not ready. Close and try again.");
       }
-      const stream = await requestCameraStream();
-      if (!videoRef.current) {
+      await playVideo(video, stream);
+      if (generation !== generationRef.current) {
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
-      streamRef.current = stream;
-      await playVideo(video, stream);
       setLive(true);
 
       const detector = createNativeDetector();
@@ -229,22 +295,28 @@ export function BarcodeCamera({ active, onScan, className }: BarcodeCameraProps)
           emitScan(result.getText());
         },
       );
+      if (generation !== generationRef.current) {
+        controls.stop();
+        return;
+      }
       stopScanRef.current = () => controls.stop();
     } catch (err) {
-      stop();
+      if (generation !== generationRef.current) return;
+      releaseStream();
+      setLive(false);
       setError(cameraErrorMessage(err));
     } finally {
-      startingRef.current = false;
-      setStarting(false);
+      if (generation === generationRef.current) {
+        startingRef.current = false;
+        setStarting(false);
+      }
     }
-  }, [emitScan, stop]);
+  }, [emitScan, releaseStream]);
 
   useEffect(() => {
     if (!active) {
-      startingRef.current = false;
       stop();
       setError(null);
-      setStarting(false);
     }
     return () => {
       stop();
@@ -261,6 +333,9 @@ export function BarcodeCamera({ active, onScan, className }: BarcodeCameraProps)
         muted
         playsInline
         autoPlay
+        controls={false}
+        disablePictureInPicture
+        disableRemotePlayback
       />
       <div className="barcode-camera__frame" aria-hidden="true" />
       {!live ? (
@@ -269,6 +344,10 @@ export function BarcodeCamera({ active, onScan, className }: BarcodeCameraProps)
             type="button"
             className="barcode-camera__allow"
             disabled={starting}
+            onPointerDown={(event) => {
+              if (event.pointerType === "mouse" && event.button !== 0) return;
+              void startCamera();
+            }}
             onClick={() => void startCamera()}
           >
             {starting ? "Starting camera…" : "Allow camera"}

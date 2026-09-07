@@ -2371,6 +2371,14 @@ html[data-theme="dark"] .fb-app .settings-pill--warn {
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
+.fb-app .mpesa-flow-status__badge--action {
+  margin: 0;
+  padding: 0;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+}
+
 .fb-app .mpesa-flow-status__badge:hover,
 .fb-app .mpesa-flow-status__badge:focus-visible {
   transform: scale(1.08);

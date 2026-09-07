@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TransChapProductField } from "@/components/trans-chap/TransChapProductField";
 import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
@@ -9,6 +9,7 @@ import { apiRoutes } from "@/lib/config";
 import {
   addLiteInventoryProduct,
   findInventoryByName,
+  isHotelMenuItem,
   receiveStock,
 } from "@/lib/trans-chap-product";
 import { formatKsh } from "@/lib/trans-chap-receipt";
@@ -23,6 +24,7 @@ export function TransChapPurchaseForm() {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [saving, setSaving] = useState(false);
+  const [bulk, setBulk] = useState(false);
 
   const qty = Number(quantity);
   const cost = Number(unitCost);
@@ -33,6 +35,10 @@ export function TransChapPurchaseForm() {
 
   const handleItemsChange = useCallback((items: InventoryItem[]) => {
     setInventory(items);
+  }, []);
+
+  useEffect(() => {
+    setBulk(new URLSearchParams(window.location.search).get("mode") === "bulk");
   }, []);
 
   async function handleSubmit(event: FormEvent) {
@@ -50,6 +56,13 @@ export function TransChapPurchaseForm() {
         const fresh = await apiFetch<InventoryResponse>(apiRoutes.inventory);
         item = findInventoryByName(fresh.data, name) ?? null;
       }
+      if (item && isHotelMenuItem(item)) {
+        await showError(
+          "Hotel menu",
+          "Menu dishes can’t be purchased as stock. Add them from Hotel menu.",
+        );
+        return;
+      }
       if (!item) {
         item = await addLiteInventoryProduct(name, "", {
           buying_price: parsedCost,
@@ -63,8 +76,16 @@ export function TransChapPurchaseForm() {
         unitCost: parsedCost,
         note: supplier.trim() || null,
       });
-      await toastSuccess("Purchase saved");
-      router.push("/trans-chap/purchases");
+      if (bulk) {
+        setProduct("");
+        setQuantity("");
+        setUnitCost("");
+        setSelectedItem(null);
+        await toastSuccess("Purchase saved. Add another?");
+      } else {
+        await toastSuccess("Purchase saved");
+        router.push("/trans-chap/purchases");
+      }
     } catch (err) {
       await showError("Could not save purchase", extractErrorMessage(err));
     } finally {
@@ -75,7 +96,9 @@ export function TransChapPurchaseForm() {
   return (
     <form className="auth-split__form trans-chap-form" onSubmit={(e) => void handleSubmit(e)}>
       <p className="trans-chap-form__lead">
-        Stock you bought from a supplier. Adds to inventory and records the cost.
+        {bulk
+          ? "Record several supplier deliveries, one after another. Go back to Purchases when you’re done."
+          : "Stock you bought from a supplier. Adds to inventory and records the cost."}
       </p>
       <div className="trans-chap-form__fields">
         <TransChapProductField
@@ -142,7 +165,7 @@ export function TransChapPurchaseForm() {
       </div>
       <div className="trans-chap-form__actions">
         <button type="submit" className="auth-split__btn" disabled={saving}>
-          {saving ? "Saving purchase…" : "Save purchase"}
+          {saving ? "Saving purchase…" : bulk ? "Save & continue" : "Save purchase"}
         </button>
       </div>
     </form>

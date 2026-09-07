@@ -366,6 +366,128 @@ def stk_push(
     return txn
 
 
+def refresh_pending_stk(db: Session, txn: MpesaTransaction) -> str:
+    """Ask Daraja whether a waiting STK already finished, and apply the result.
+
+    Returns ``paid``, ``failed``, or ``pending``.
+    """
+    if txn.status == "success" and bool((txn.mpesa_receipt_number or "").strip()):
+        return "paid"
+    checkout_id = (txn.checkout_request_id or "").strip()
+    if not checkout_id:
+        return "pending" if txn.status == "pending" else "failed"
+
+    try:
+        body = query_status(db, checkout_id)
+    except MpesaApiError as exc:
+        message = str(exc).lower()
+        if "being processed" in message or "500.001.1001" in message:
+            return "pending"
+        raise
+
+    raw_code = body.get("ResultCode")
+    try:
+        code = int(raw_code) if raw_code is not None and str(raw_code) != "" else None
+    except (TypeError, ValueError):
+        code = None
+    if code is None:
+        return "pending" if txn.status == "pending" else "failed"
+
+    txn.result_code = code
+    txn.result_desc = _stk_result_desc(code, body.get("ResultDesc"))[:500]
+    txn.updated_at = _now_utc()
+    payload = txn.callback_payload if isinstance(txn.callback_payload, dict) else {}
+    txn.callback_payload = {**payload, "stk_query": body}
+
+    if code == 0:
+        txn.status = "success"
+        txn.completed_at = _now_utc()
+        db.flush()
+        updated_order_ids = _sync_linked_orders_on_success(db, txn)
+        _sync_linked_bookings_on_success(db, txn)
+        apply_credit_collection_if_paid(db, txn)
+        try:
+            from app.services import mpesa_payout_service
+
+            mpesa_payout_service.queue_payout_for_collection(db, txn)
+        except Exception:
+            logger.exception(
+                "M-PESA merchant payout failed after STK query txn=%s",
+                txn.id,
+            )
+        db.commit()
+        db.refresh(txn)
+        if updated_order_ids:
+            from app.services.order_notification_service import notify_order_status_change
+
+            for order_id in updated_order_ids:
+                notify_order_status_change(
+                    db,
+                    order_id,
+                    receipt=txn.mpesa_receipt_number,
+                    force=True,
+                )
+        return "paid"
+
+    txn.status = "cancelled" if code in (1032, 1037) else "failed"
+    txn.completed_at = _now_utc()
+    db.commit()
+    db.refresh(txn)
+    return "failed"
+
+
+def retry_stk_transaction(
+    db: Session,
+    txn: MpesaTransaction,
+    *,
+    initiated_by_user_id: str | None = None,
+) -> tuple[MpesaTransaction, str, str]:
+    """Complete a waiting STK if Safaricom already has it, otherwise send a new prompt."""
+    if txn.status == "success" and bool((txn.mpesa_receipt_number or "").strip()):
+        raise MpesaApiError("This payment is already complete.")
+
+    outcome = "failed"
+    if txn.status == "pending":
+        outcome = refresh_pending_stk(db, txn)
+        if outcome == "paid":
+            return txn, "paid", "The customer already paid. This sale is now complete."
+
+    new_txn = stk_push(
+        db,
+        phone_number=txn.phone_number,
+        amount=int(txn.amount),
+        account_reference=txn.account_reference,
+        transaction_desc=txn.transaction_desc or "Payment",
+        initiated_by_user_id=initiated_by_user_id,
+        account_id=txn.account_id,
+        shop_customer_id=txn.shop_customer_id,
+        credit_collect_amount=txn.credit_collect_amount,
+    )
+
+    if txn.status == "pending" and txn.id != new_txn.id:
+        txn.status = "cancelled"
+        txn.result_desc = "Prompt resent. Previous M-PESA prompt was replaced."
+        txn.completed_at = _now_utc()
+        txn.updated_at = _now_utc()
+        db.add(txn)
+
+    if txn.order_id:
+        from app.models import Order
+        from app.support.mpesa_order_link import link_mpesa_transaction_to_order
+
+        order = db.query(Order).filter(Order.id == txn.order_id).first()
+        if order is not None:
+            link_mpesa_transaction_to_order(db, order, new_txn)
+
+    db.commit()
+    db.refresh(new_txn)
+    return (
+        new_txn,
+        "resent",
+        f"STK push sent to {new_txn.phone_number}. Ask the customer to check their phone.",
+    )
+
+
 def query_status(db: Session, checkout_request_id: str) -> dict[str, Any]:
     """Manually query the live status of a previous STK push (in case callback is missed)."""
     config = resolve_mpesa_config(db)

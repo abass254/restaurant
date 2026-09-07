@@ -11,6 +11,7 @@ import {
   addLiteInventoryProduct,
   findInventoryByName,
   inventoryProductName,
+  isHotelMenuItem,
 } from "@/lib/trans-chap-product";
 import type { InventoryItem, InventoryResponse } from "@/lib/types";
 
@@ -25,6 +26,8 @@ type Props = {
   onItemsChange?: (items: InventoryItem[]) => void;
   fillAmountFrom?: "selling" | "buying" | "none";
   suggestMeta?: "price" | "stock";
+  showScan?: boolean;
+  autoScan?: boolean;
 };
 
 export function TransChapProductField({
@@ -38,6 +41,8 @@ export function TransChapProductField({
   onItemsChange,
   fillAmountFrom = "selling",
   suggestMeta = "price",
+  showScan = true,
+  autoScan = false,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const itemsRef = useRef<InventoryItem[]>([]);
@@ -70,6 +75,11 @@ export function TransChapProductField({
   }, [onItemsChange]);
 
   useEffect(() => {
+    if (!autoScan || loading) return;
+    setScannerOpen(true);
+  }, [autoScan, loading]);
+
+  useEffect(() => {
     itemsRef.current = items;
   }, [items]);
 
@@ -85,8 +95,12 @@ export function TransChapProductField({
 
   const query = value.trim().toLowerCase();
   const matches = useMemo(() => {
+    const source =
+      suggestMeta === "stock"
+        ? items.filter((item) => !isHotelMenuItem(item))
+        : items;
     const list = query
-      ? items.filter((item) => {
+      ? source.filter((item) => {
           const name = inventoryProductName(item).toLowerCase();
           const code = (item.product?.product_code ?? "").toLowerCase();
           const sku = (item.product?.sku ?? "").toLowerCase();
@@ -94,9 +108,9 @@ export function TransChapProductField({
             name.includes(query) || code.includes(query) || sku.includes(query)
           );
         })
-      : items;
+      : source;
     return list.slice(0, 8);
-  }, [items, query]);
+  }, [items, query, suggestMeta]);
 
   const isNewProduct =
     value.trim().length > 0 &&
@@ -172,7 +186,7 @@ export function TransChapProductField({
           role="combobox"
           required
           autoComplete="off"
-          placeholder="Search, type, or scan a SKU"
+          placeholder={showScan ? "Search, type, or scan a SKU" : "Search or pick a product"}
           className="auth-split__input"
           value={value}
           aria-expanded={open}
@@ -190,6 +204,7 @@ export function TransChapProductField({
           }}
         />
         </div>
+        {showScan ? (
         <button
           type="button"
           className="trans-chap-product__scan"
@@ -203,6 +218,7 @@ export function TransChapProductField({
         >
           <i className="fa-solid fa-barcode" aria-hidden="true" />
         </button>
+        ) : null}
       </div>
 
       {open ? (
@@ -268,12 +284,14 @@ export function TransChapProductField({
         </p>
       ) : null}
 
+      {showScan ? (
       <BarcodeScannerSheet
         open={scannerOpen}
         onClose={() => setScannerOpen(false)}
         onScan={handleScan}
         title="Scan product SKU"
       />
+      ) : null}
     </div>
   );
 }

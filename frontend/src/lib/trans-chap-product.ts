@@ -11,6 +11,17 @@ export function inventoryProductName(item: InventoryItem): string {
   return item.product?.name?.trim() || "Product";
 }
 
+export function isHotelMenuItem(item: InventoryItem): boolean {
+  return item.product?.category === "food_beverage";
+}
+
+export function canSellInventoryItem(item: InventoryItem): boolean {
+  if (!item.is_active) return false;
+  if (item.selling_price == null || item.selling_price <= 0) return false;
+  if (item.stock_quantity != null && item.stock_quantity <= 0) return false;
+  return true;
+}
+
 export function findInventoryByName(
   items: InventoryItem[],
   name: string,
@@ -36,6 +47,20 @@ export async function updateInventorySellingPrice(
   return inventory.data;
 }
 
+export async function updateInventoryActive(
+  itemId: string,
+  isActive: boolean,
+): Promise<InventoryItem> {
+  const inventory = await apiFetch<InventoryItemMutationResponse>(
+    apiRoutes.inventoryItem(itemId),
+    {
+      method: "PATCH",
+      body: JSON.stringify({ is_active: isActive }),
+    },
+  );
+  return inventory.data;
+}
+
 /** Create a catalog product and shop inventory row from a name and amount. */
 export async function addLiteInventoryProduct(
   name: string,
@@ -44,9 +69,11 @@ export async function addLiteInventoryProduct(
     buying_price?: number | null;
     stock_quantity?: number | null;
     sku?: string | null;
+    category?: string | null;
   },
 ): Promise<InventoryItem> {
   const sku = extras?.sku?.trim() || undefined;
+  const category = extras?.category?.trim() || undefined;
   const created = await apiFetch<CatalogProductMutationResponse>(
     apiRoutes.products,
     {
@@ -55,6 +82,7 @@ export async function addLiteInventoryProduct(
         name: name.trim(),
         product_type: "product",
         ...(sku ? { sku } : {}),
+        ...(category ? { category } : {}),
       }),
     },
   );

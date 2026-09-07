@@ -455,6 +455,91 @@ def trigger_stk_push(
     }
 
 
+@router.post("/transactions/{transaction_id}/check")
+def check_transaction_stk(
+    transaction_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    validate_csrf(request, session)
+    user = require_user(db, session)
+    assert_merchant_section_any_access(user, "settings", "pos", "orders", "dashboard")
+    _require_merchant(user)
+    txn = (
+        db.query(MpesaTransaction)
+        .filter(
+            MpesaTransaction.id == transaction_id,
+            MpesaTransaction.account_id == active_account_id(user),
+        )
+        .first()
+    )
+    if not txn:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Transaction not found.")
+    try:
+        outcome = mpesa_service.refresh_pending_stk(db, txn)
+    except MpesaApiError as exc:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail=merchant_safe_stk_error(str(exc)),
+        ) from exc
+    if outcome == "paid":
+        message = "The customer already paid. This payment is now complete."
+    elif outcome == "failed":
+        message = txn.result_desc or "The M-PESA prompt did not go through. Send it again."
+    else:
+        message = "Still waiting. Ask the customer to finish on their phone, or send the prompt again."
+    return {
+        "message": message,
+        "outcome": outcome,
+        "transaction": _serialize_transaction(db, txn),
+    }
+
+
+@router.post("/transactions/{transaction_id}/retry-stk")
+def retry_transaction_stk(
+    transaction_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    validate_csrf(request, session)
+    user = require_user(db, session)
+    assert_merchant_section_any_access(user, "settings", "pos", "orders", "dashboard")
+    _require_merchant(user)
+    txn = (
+        db.query(MpesaTransaction)
+        .filter(
+            MpesaTransaction.id == transaction_id,
+            MpesaTransaction.account_id == active_account_id(user),
+        )
+        .first()
+    )
+    if not txn:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Transaction not found.")
+    try:
+        next_txn, outcome, message = mpesa_service.retry_stk_transaction(
+            db,
+            txn,
+            initiated_by_user_id=user.id,
+        )
+    except MpesaConfigurationMissing as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=merchant_safe_stk_error(str(exc)),
+        ) from exc
+    except MpesaApiError as exc:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail=merchant_safe_stk_error(str(exc)),
+        ) from exc
+    return {
+        "message": message,
+        "outcome": outcome,
+        "transaction": _serialize_transaction(db, next_txn),
+    }
+
+
 @router.get("/transactions")
 def list_transactions(
     db: Session = Depends(get_db),
