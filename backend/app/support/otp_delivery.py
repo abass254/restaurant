@@ -8,6 +8,7 @@ from app.config import get_settings
 
 PHONE_OTP_UNAVAILABLE = "Phone login is not available. Use your email address."
 MAIL_SEND_FAILED = "Could not send the login code. Try again shortly."
+SMS_SEND_FAILED = "Could not send the login code by SMS. Try again shortly."
 
 
 def allow_otp_echo() -> bool:
@@ -15,9 +16,17 @@ def allow_otp_echo() -> bool:
     return bool(get_settings().app_debug)
 
 
+def sms_configured() -> bool:
+    settings = get_settings()
+    return bool(
+        (settings.africastalking_username or "").strip()
+        and (settings.africastalking_api_key or "").strip()
+    )
+
+
 def phone_otp_allowed() -> bool:
-    """Phone OTP has no SMS provider; local debug may echo the code instead."""
-    return allow_otp_echo()
+    """Phone OTP is allowed when Africa's Talking is configured, or in debug echo."""
+    return sms_configured() or allow_otp_echo()
 
 
 def echoed_login_code(code: str) -> str | None:

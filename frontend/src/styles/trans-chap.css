@@ -2319,6 +2319,7 @@ html[data-theme="dark"] .theme-switch:not(.is-on) {
 }
 
 .trans-chap-slip__wa,
+.trans-chap-slip__email,
 .trans-chap-slip__pdf,
 .trans-chap-slip__retry {
     display: inline-flex;
@@ -2340,7 +2341,14 @@ html[data-theme="dark"] .theme-switch:not(.is-on) {
     color: #fff;
 }
 
+.trans-chap-slip__email {
+    border: 0;
+    background: #2563eb;
+    color: #fff;
+}
+
 .trans-chap-slip__pdf {
+    grid-column: 1 / -1;
     border: 1px solid var(--app-border);
     background: var(--app-bg);
     color: var(--app-text);
@@ -2363,6 +2371,7 @@ html[data-theme="dark"] .trans-chap-receipt {
 }
 
 .trans-chap-slip__wa:disabled,
+.trans-chap-slip__email:disabled,
 .trans-chap-slip__pdf:disabled,
 .trans-chap-slip__retry:disabled {
     opacity: 0.7;

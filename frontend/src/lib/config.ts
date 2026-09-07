@@ -103,6 +103,10 @@ export const apiRoutes = {
   onboarding: `${apiUrl}/api/v1/onboarding`,
   onboardingRefresh: `${apiUrl}/api/v1/onboarding/refresh`,
   loginCodes: `${apiUrl}/api/v1/login-codes`,
+  whatsappToolsStatus: `${apiUrl}/api/v1/whatsapp-tools/status`,
+  whatsappToolsSend: `${apiUrl}/api/v1/whatsapp-tools/send-message`,
+  smsToolsStatus: `${apiUrl}/api/v1/sms-tools/status`,
+  smsToolsSend: `${apiUrl}/api/v1/sms-tools/send-message`,
   qaIssues: `${apiUrl}/api/v1/qa/issues`,
   qaAssignees: `${apiUrl}/api/v1/qa/assignees`,
   qaIssue: (id: string) => `${apiUrl}/api/v1/qa/issues/${encodeURIComponent(id)}`,
@@ -176,6 +180,8 @@ export const apiRoutes = {
   orderTransition: (id: string) => `${apiUrl}/api/v1/orders/${id}/transition`,
   orderMpesaStkPush: (id: string) =>
     `${apiUrl}/api/v1/orders/${id}/mpesa-stk-push`,
+  orderSendReceiptEmail: (id: string) =>
+    `${apiUrl}/api/v1/orders/${id}/send-receipt-email`,
   orderMpesaTransaction: (orderId: string, transactionId: string) =>
     `${apiUrl}/api/v1/orders/${orderId}/mpesa-transactions/${transactionId}`,
   orderMetaOptions: `${apiUrl}/api/v1/orders/meta/options`,

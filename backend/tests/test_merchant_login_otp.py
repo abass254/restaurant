@@ -60,8 +60,9 @@ def test_email_send_failure_echoes_code_in_debug(_send, _echo) -> None:
     assert result["login_code"] == "123456"
 
 
+@patch("app.services.merchant_login_otp.sms_configured", return_value=False)
 @patch("app.services.merchant_login_otp.phone_otp_allowed", return_value=True)
-def test_phone_otp_echoes_code_in_debug(_phone_ok) -> None:
+def test_phone_otp_echoes_code_in_debug(_phone_ok, _sms) -> None:
     db = MagicMock()
     service = MerchantLoginOtpService(db)
     service._find_user = MagicMock(return_value=_user())  # type: ignore[method-assign]
@@ -69,6 +70,38 @@ def test_phone_otp_echoes_code_in_debug(_phone_ok) -> None:
     result = service.request_login_code(identifier="0700000001")
     assert result["login_code"] == "654321"
     assert result["code_sent"] is False
+
+
+@patch("app.services.merchant_login_otp.sms_configured", return_value=True)
+@patch("app.services.merchant_login_otp.phone_otp_allowed", return_value=True)
+@patch("app.services.login_otp_sms.send_login_otp_sms", return_value=True)
+def test_phone_otp_sends_sms_without_echoing_code(_send, _phone_ok, _sms) -> None:
+    db = MagicMock()
+    service = MerchantLoginOtpService(db)
+    service._find_user = MagicMock(return_value=_user())  # type: ignore[method-assign]
+    row = MagicMock()
+    service._issue_code = MagicMock(return_value=("654321", row))  # type: ignore[method-assign]
+    with patch("app.services.merchant_login_otp.allow_otp_echo", return_value=False):
+        result = service.request_login_code(identifier="0700000001")
+    assert result["login_code"] is None
+    assert result["code_sent"] is True
+    assert row.delivery_status == "delivered"
+    _send.assert_called_once()
+
+
+@patch("app.services.merchant_login_otp.sms_configured", return_value=True)
+@patch("app.services.merchant_login_otp.phone_otp_allowed", return_value=True)
+@patch("app.services.login_otp_sms.send_login_otp_sms", return_value=False)
+@patch("app.services.merchant_login_otp.allow_otp_echo", return_value=False)
+def test_phone_otp_sms_failure_raises_when_not_debug(_echo, _send, _phone_ok, _sms) -> None:
+    from app.support.otp_delivery import SMS_SEND_FAILED
+
+    db = MagicMock()
+    service = MerchantLoginOtpService(db)
+    service._find_user = MagicMock(return_value=_user())  # type: ignore[method-assign]
+    service._issue_code = MagicMock(return_value=("654321", MagicMock()))  # type: ignore[method-assign]
+    with pytest.raises(MerchantOtpError, match=SMS_SEND_FAILED):
+        service.request_login_code(identifier="0700000001")
 
 
 def test_find_user_by_phone_does_not_scan_all_rows() -> None:

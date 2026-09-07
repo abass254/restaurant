@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
@@ -13,6 +15,7 @@ from app.services.email_templates import render_branded_email
 from app.services.instagram_api import InstagramApiService
 from app.services.order_dm_templates import format_order_ref
 from app.services.order_tracking_service import OrderTrackingService
+from app.services.wasender_service import WasenderApiService
 from app.support.order_status import (
     AWAITING_DELIVERY_CONFIRMATION,
     AWAITING_PAYMENT,
@@ -21,6 +24,11 @@ from app.support.order_status import (
     CANCELLED,
     DELIVERED,
     OUT_FOR_DELIVERY,
+    PAYMENT_CARD,
+    PAYMENT_CASH,
+    PAYMENT_CREDIT,
+    PAYMENT_MPESA,
+    PAYMENT_OTHER,
     PAYMENT_RECEIVED,
     PICKED_UP,
     PLACED,
@@ -169,8 +177,148 @@ def _message_for_status(
     return f"Order {ref} update: {label}."
 
 
+NAIROBI = ZoneInfo("Africa/Nairobi")
+UTC = ZoneInfo("UTC")
+
+PAYMENT_METHOD_LABELS = {
+    PAYMENT_MPESA: "M-PESA",
+    PAYMENT_CASH: "Cash",
+    PAYMENT_CARD: "Card",
+    PAYMENT_CREDIT: "Credit",
+    PAYMENT_OTHER: "Other",
+}
+
+
+def _format_money(amount: object, currency: str = "KES") -> str:
+    return f"{currency} {float(amount or 0):,.2f}"
+
+
+def _format_nairobi(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    aware = value.replace(tzinfo=UTC) if value.tzinfo is None else value
+    return aware.astimezone(NAIROBI).strftime("%d %b %Y, %I:%M %p")
+
+
+def _shop_name_for_order(order: Order, db: Session) -> str:
+    account = order.account or db.query(Account).filter(Account.id == order.account_id).first()
+    name = (account.business_name if account else None) or ""
+    return name.strip() or "DukAI"
+
+
+def _mpesa_receipt_for_order(order: Order) -> str | None:
+    txn = getattr(order, "mpesa_transaction", None)
+    code = str(getattr(txn, "mpesa_receipt_number", None) or "").strip()
+    if code:
+        return code
+    for item in getattr(order, "mpesa_transactions", None) or []:
+        code = str(getattr(item, "mpesa_receipt_number", None) or "").strip()
+        if code:
+            return code
+    return None
+
+
+def build_customer_receipt_email(
+    order: Order,
+    *,
+    shop_name: str,
+    settings: Settings | None = None,
+) -> tuple[str, str, str]:
+    """Return (subject, text, html) for a customer receipt email."""
+    cfg = settings or get_settings()
+    currency = order.currency or "KES"
+    ref = order.order_number
+    status = STATUS_LABELS.get(order.status, (order.status or "").replace("_", " ").title())
+    pay_label = PAYMENT_METHOD_LABELS.get(
+        order.payment_method or "",
+        (order.payment_method or "—").replace("_", " ").title(),
+    )
+    when = _format_nairobi(order.paid_at or order.placed_at or order.created_at)
+    receipt = _mpesa_receipt_for_order(order)
+    customer = (order.customer_name or "").strip() or "Walk-in"
+    total = _format_money(order.total, currency)
+    tracking_url = OrderTrackingService.tracking_url(order.id, cfg)
+
+    details: list[tuple[str, str]] = [
+        ("Shop", shop_name),
+        ("Order", ref),
+        ("Status", status),
+        ("Payment", pay_label),
+    ]
+    if when:
+        details.append(("When", when))
+    if receipt:
+        details.append(("M-PESA receipt", receipt))
+    details.append(("Customer", customer))
+    if (order.customer_phone or "").strip():
+        details.append(("Phone", order.customer_phone.strip()))
+
+    line_items: list[tuple[str, str]] = []
+    for item in order.items or []:
+        name = (item.product_name or "Item").strip() or "Item"
+        qty = int(item.quantity or 1)
+        label = name if qty <= 1 else f"{qty} × {name}"
+        line_items.append((label, _format_money(item.line_total, currency)))
+    if not line_items:
+        line_items.append(("Sale", total))
+    if float(order.delivery_fee or 0):
+        line_items.append(("Delivery", _format_money(order.delivery_fee, currency)))
+    if float(order.discount or 0):
+        line_items.append(("Discount", f"-{_format_money(order.discount, currency)}"))
+
+    subject = f"Receipt from {shop_name} — {ref}"
+    intro = (
+        f"Thanks for shopping at {shop_name}. Here's your receipt for order {ref}."
+    )
+    text_lines = [
+        intro,
+        "",
+        f"Shop: {shop_name}",
+        f"Order: {ref}",
+        f"Status: {status}",
+        f"Payment: {pay_label}",
+    ]
+    if when:
+        text_lines.append(f"When: {when}")
+    if receipt:
+        text_lines.append(f"M-PESA receipt: {receipt}")
+    text_lines.append(f"Customer: {customer}")
+    if (order.customer_phone or "").strip():
+        text_lines.append(f"Phone: {order.customer_phone.strip()}")
+    text_lines.append("")
+    for label, amount in line_items:
+        text_lines.append(f"{label}: {amount}")
+    text_lines.extend(["", f"Total: {total}", "", "Asante — thank you for shopping with us."])
+    if tracking_url:
+        text_lines.extend(["", f"Track your order: {tracking_url}"])
+
+    html = render_branded_email(
+        title=subject,
+        heading=f"Receipt · {ref}",
+        intro=intro,
+        details=details,
+        line_items=line_items,
+        total_label="Total",
+        total_value=total,
+        cta_label="Track order" if tracking_url else None,
+        cta_url=tracking_url,
+        footer_note=f"Sent by {shop_name} via DukAI.",
+    )
+    return subject, "\n".join(text_lines), html
+
+
 # Statuses worth emailing the merchant about (avoid emailing on every step).
 MERCHANT_EMAIL_STATUSES = frozenset({PLACED, PAYMENT_RECEIVED, CANCELLED})
+
+# Customer WhatsApp via Wasender — paid / completed, plus till cash/card placed.
+CUSTOMER_WHATSAPP_STATUSES = frozenset({PAYMENT_RECEIVED, DELIVERED, PICKED_UP})
+TILL_PAID_METHODS = frozenset({PAYMENT_CASH, PAYMENT_CARD})
+
+
+def should_send_customer_whatsapp(order: Order, status: str) -> bool:
+    if status in CUSTOMER_WHATSAPP_STATUSES:
+        return True
+    return status == PLACED and (order.payment_method or "") in TILL_PAID_METHODS
 
 
 class OrderNotificationService:
@@ -183,6 +331,73 @@ class OrderNotificationService:
             InstagramApiService(self.settings),
         )
         self.email = EmailService(self.settings)
+        self.whatsapp = WasenderApiService(self.settings)
+
+    def notify_customer_whatsapp(
+        self,
+        order: Order,
+        new_status: str,
+        *,
+        receipt: str | None = None,
+        force: bool = False,
+    ) -> bool:
+        """Best-effort WhatsApp to order.customer_phone. Never raises."""
+        if not self.whatsapp.order_notify_enabled:
+            return False
+        if not should_send_customer_whatsapp(order, new_status):
+            return False
+        if not force and order.last_customer_whatsapp_notified == new_status:
+            return False
+        phone = (order.customer_phone or "").strip()
+        if not phone:
+            return False
+
+        body = _message_for_status(
+            order,
+            new_status,
+            receipt=receipt,
+            settings=self.settings,
+        )
+        if not body:
+            return False
+
+        result = self.whatsapp.send_text(to=phone, text=body)
+        if not result.ok:
+            logger.info(
+                "Customer WhatsApp not sent order_id=%s status=%s error=%s",
+                order.id,
+                new_status,
+                result.error,
+            )
+            return False
+
+        order.last_customer_whatsapp_notified = new_status
+        self.db.commit()
+        return True
+
+    def notify_customer_receipt_email(
+        self,
+        order: Order,
+        to_email: str,
+    ) -> bool:
+        """Send the customer a branded receipt. Never raises."""
+        to = (to_email or "").strip()
+        if not to:
+            return False
+        shop_name = _shop_name_for_order(order, self.db)
+        subject, text, html = build_customer_receipt_email(
+            order,
+            shop_name=shop_name,
+            settings=self.settings,
+        )
+        return self.email.send_email(
+            to=to,
+            to_name=(order.customer_name or "").strip() or None,
+            subject=subject,
+            text=text,
+            html=html,
+            category="customer-receipt",
+        )
 
     def notify_status_change(
         self,
@@ -194,6 +409,17 @@ class OrderNotificationService:
     ) -> bool:
         if new_status not in NOTIFY_STATUSES:
             return False
+
+        try:
+            self.notify_customer_whatsapp(
+                order,
+                new_status,
+                receipt=receipt,
+                force=force,
+            )
+        except Exception:
+            logger.exception("Customer WhatsApp notification failed order_id=%s", order.id)
+
         if not order.source_conversation_id:
             return False
         if not force and order.last_customer_status_notified == new_status:

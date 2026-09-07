@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlparse
 
-from pydantic import Field, model_validator
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.env_files import PROJECT_ROOT, dukai_env_files
@@ -215,6 +215,37 @@ class Settings(BaseSettings):
     mail_from_address: str = "hello@demomailtrap.co"
     mail_from_name: str = "DUKAI PLATFORM"
     mail_timeout_seconds: float = 20.0
+
+    # --- WhatsApp (WasenderAPI, interim unofficial session gateway) ----------
+    # Master switch for automatic customer order alerts. The Tools tester can
+    # still send when WASENDER_API_KEY is set, even if this is false.
+    wasender_enabled: bool = False
+    wasender_api_key: str = ""
+    wasender_api_url: str = "https://www.wasenderapi.com"
+    wasender_timeout_seconds: float = 15.0
+
+    # --- SMS (Africa's Talking) ---------------------------------------------
+    # Phone OTPs for merchant + rider login. Sandbox username is always
+    # "sandbox"; live uses the app username from the AT dashboard.
+    africastalking_username: str = Field(
+        default="",
+        validation_alias=AliasChoices("AFRICASTALKING_USERNAME", "AT_USERNAME"),
+    )
+    africastalking_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("AFRICASTALKING_API_KEY", "AT_API_KEY"),
+    )
+    # Optional registered sender ID / shortcode. Leave empty to use AT default.
+    africastalking_sender_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("AFRICASTALKING_SENDER_ID", "AT_SENDER_ID"),
+    )
+    # true → api.sandbox.africastalking.com (local/UAT). false → live API.
+    africastalking_sandbox: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("AFRICASTALKING_SANDBOX", "AT_SANDBOX"),
+    )
+    africastalking_timeout_seconds: float = 15.0
 
     instagram_oauth_authorize_url: str = "https://www.instagram.com/oauth/authorize"
     instagram_oauth_token_url: str = "https://api.instagram.com/oauth/access_token"

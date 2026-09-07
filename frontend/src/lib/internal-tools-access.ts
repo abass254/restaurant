@@ -19,8 +19,21 @@ export function isQaPath(pathname: string): boolean {
   return pathname === "/tools/qa" || pathname.startsWith("/tools/qa/");
 }
 
+export function isWhatsappToolsPath(pathname: string): boolean {
+  return pathname === "/tools/whatsapp" || pathname.startsWith("/tools/whatsapp/");
+}
+
+export function isSmsToolsPath(pathname: string): boolean {
+  return pathname === "/tools/sms" || pathname.startsWith("/tools/sms/");
+}
+
 export function isInternalToolsPath(pathname: string): boolean {
-  return isLoginCodesPath(pathname) || isQaPath(pathname);
+  return (
+    isLoginCodesPath(pathname) ||
+    isQaPath(pathname) ||
+    isWhatsappToolsPath(pathname) ||
+    isSmsToolsPath(pathname)
+  );
 }
 
 export const QA_ISSUE_TYPES = [

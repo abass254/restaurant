@@ -65,6 +65,26 @@ def test_request_login_code_phone_rejected_when_not_debug() -> None:
             service.request_login_code(phone="+254700000099")
 
 
+@patch("app.services.rider_trip_service.sms_configured", return_value=True)
+@patch("app.services.rider_trip_service.phone_otp_allowed", return_value=True)
+@patch("app.services.login_otp_sms.send_login_otp_sms", return_value=True)
+def test_request_login_code_phone_sends_sms(_send, _phone_ok, _sms) -> None:
+    db = MagicMock()
+    rider = MagicMock()
+    rider.account_id = "acc-1"
+    rider.name = "Amina"
+    db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [rider]
+    db.get.return_value = MagicMock(business_name="Kiosk")
+    service = RiderTripService(db)
+    login_row = MagicMock()
+    service._issue_login_code = MagicMock(return_value=("654321", login_row))  # type: ignore[method-assign]
+    result = service.request_login_code(phone="+254700000001")
+    assert result["code_sent"] is True
+    assert result["login_code"] is None
+    assert login_row.delivery_status == "delivered"
+    _send.assert_called_once()
+
+
 def test_request_login_code_requires_phone_or_email() -> None:
     service = RiderTripService(MagicMock())
     with pytest.raises(RiderServiceError, match="Phone number or email"):

@@ -974,6 +974,7 @@ class Order(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     prep_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_customer_status_notified: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_customer_whatsapp_notified: Mapped[str | None] = mapped_column(String(64), nullable=True)
     external_order_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     external_sync_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
 

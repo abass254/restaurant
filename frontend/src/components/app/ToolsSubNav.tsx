@@ -19,6 +19,8 @@ const paymentsTab = {
 
 const internalTabs = [
   { href: "/tools/login-codes", label: "Login codes", icon: "fa-key" },
+  { href: "/tools/whatsapp", label: "WhatsApp", icon: "fa-brands fa-whatsapp" },
+  { href: "/tools/sms", label: "SMS", icon: "fa-comment-sms" },
   { href: "/tools/qa", label: "QA", icon: "fa-bug" },
 ];
 
@@ -44,7 +46,7 @@ export function ToolsSubNav() {
             className={`tickets-subnav__link${active ? " is-active" : ""}`}
             aria-current={active ? "page" : undefined}
           >
-            <i className={`fa-solid ${tab.icon}`} aria-hidden="true" />
+            <i className={tab.icon.startsWith("fa-brands") ? tab.icon : `fa-solid ${tab.icon}`} aria-hidden="true" />
             {tab.label}
           </Link>
         );

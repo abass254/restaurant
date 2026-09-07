@@ -1409,6 +1409,7 @@ export type OrderMutationResponse = {
   message: string;
   data: Order;
   mpesa_push?: OrderMpesaPushResult;
+  recipient?: string;
 };
 
 export type OrderMetaOptionsResponse = {
@@ -1790,6 +1791,31 @@ export type LoginCodeRecord = {
 
 export type LoginCodesListResponse = {
   data: LoginCodeRecord[];
+};
+
+export type WhatsappToolsStatus = {
+  enabled: boolean;
+  configured: boolean;
+  ready: boolean;
+};
+
+export type WhatsappTestSendResponse = {
+  sent: boolean;
+  message: string;
+  message_id: string | null;
+};
+
+export type SmsToolsStatus = {
+  configured: boolean;
+  sandbox: boolean;
+  sender_id_set: boolean;
+  ready: boolean;
+};
+
+export type SmsTestSendResponse = {
+  sent: boolean;
+  message: string;
+  message_id: string | null;
 };
 
 export type QaIssueRecord = {

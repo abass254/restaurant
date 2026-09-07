@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { QRCodeSVG } from "qrcode.react";
 import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
-import { extractErrorMessage, promptWhatsAppPhone, showError, toastSuccess } from "@/lib/alerts";
+import { extractErrorMessage, promptEmail, promptWhatsAppPhone, showError, toastSuccess } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
@@ -40,6 +40,7 @@ export function TransChapReceiptView() {
   const [missing, setMissing] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [openingWhatsApp, setOpeningWhatsApp] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
   const [resending, setResending] = useState(false);
   const [undoing, setUndoing] = useState(false);
   const slipRef = useRef<HTMLElement>(null);
@@ -111,6 +112,7 @@ export function TransChapReceiptView() {
             ...current,
             ...next,
             customerPhone: current.customerPhone,
+            customerEmail: current.customerEmail,
             mpesaMessage: next.mpesaMessage || current.mpesaMessage,
           };
           if (
@@ -187,6 +189,40 @@ export function TransChapReceiptView() {
     }
   }
 
+  async function sendEmail() {
+    if (!receipt) return;
+    if (!receipt.orderId) {
+      await showError("Sale not on the server", "Make the sale again to email the receipt.");
+      return;
+    }
+    const entered = await promptEmail(
+      "Send receipt by email",
+      "We'll email this till receipt to the customer.",
+      receipt.customerEmail ?? "",
+    );
+    if (!entered) return;
+
+    setSendingEmail(true);
+    try {
+      const data = await apiFetch<OrderMutationResponse>(
+        apiRoutes.orderSendReceiptEmail(receipt.orderId),
+        { method: "POST", body: JSON.stringify({ email: entered }) },
+      );
+      applyReceipt({
+        ...receipt,
+        ...receiptFromOrder(data.data, receipt.shopName),
+        customerPhone: receipt.customerPhone,
+        customerEmail: data.recipient ?? entered,
+      });
+      await toastSuccess(data.message || `Receipt sent to ${entered}`);
+    } catch (err) {
+      applyReceipt({ ...receipt, customerEmail: entered });
+      await showError("Could not email receipt", extractErrorMessage(err));
+    } finally {
+      setSendingEmail(false);
+    }
+  }
+
   async function downloadPdf() {
     if (!receipt) return;
     setDownloading(true);
@@ -211,7 +247,12 @@ export function TransChapReceiptView() {
         { method: "POST", body: "{}" },
       );
       const next = receiptFromOrder(data.data, receipt.shopName, data.mpesa_push);
-      const updated = { ...receipt, ...next, customerPhone: receipt.customerPhone };
+      const updated = {
+        ...receipt,
+        ...next,
+        customerPhone: receipt.customerPhone,
+        customerEmail: receipt.customerEmail,
+      };
       saveTransChapReceipt(updated);
       setReceipt(updated);
       if (data.mpesa_push?.status === "sent") {
@@ -404,16 +445,25 @@ export function TransChapReceiptView() {
               type="button"
               className="trans-chap-slip__wa"
               onClick={() => void openWhatsApp()}
-              disabled={openingWhatsApp || downloading || undoing}
+              disabled={openingWhatsApp || sendingEmail || downloading || undoing}
             >
               <i className="fa-brands fa-whatsapp" aria-hidden />
               {openingWhatsApp ? "Sharing…" : "WhatsApp"}
             </button>
             <button
               type="button"
+              className="trans-chap-slip__email"
+              onClick={() => void sendEmail()}
+              disabled={openingWhatsApp || sendingEmail || downloading || undoing}
+            >
+              <i className="fa-solid fa-envelope" aria-hidden />
+              {sendingEmail ? "Sending…" : "Email"}
+            </button>
+            <button
+              type="button"
               className="trans-chap-slip__pdf"
               onClick={() => void downloadPdf()}
-              disabled={downloading || openingWhatsApp || undoing}
+              disabled={downloading || openingWhatsApp || sendingEmail || undoing}
             >
               <i className="fa-solid fa-file-pdf" aria-hidden />
               {downloading ? "Saving…" : "Download PDF"}

@@ -209,7 +209,7 @@ export default function LoginScreen() {
         if (mode === 'phone' && !data.login_code) {
           setInfo(
             data.message ||
-              'If this phone is onboarded, a login code will appear here.',
+              'If this phone is onboarded, a login code will be sent by SMS.',
           );
         }
       }

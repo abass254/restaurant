@@ -17,8 +17,10 @@ from app.services.rider_service import normalize_phone, phone_lookup_candidates
 from app.support.otp_delivery import (
     MAIL_SEND_FAILED,
     PHONE_OTP_UNAVAILABLE,
+    SMS_SEND_FAILED,
     allow_otp_echo,
     phone_otp_allowed,
+    sms_configured,
     with_optional_login_code,
 )
 
@@ -151,7 +153,7 @@ class MerchantLoginOtpService:
         generic = {
             "message": (
                 "If an account exists, a login code will be sent."
-                if channel == "email"
+                if channel == "email" or sms_configured()
                 else "If an account exists, a login code is ready."
             ),
             "expires_in_seconds": LOGIN_CODE_TTL_SECONDS,
@@ -234,6 +236,42 @@ class MerchantLoginOtpService:
                 ),
                 "code_sent": True,
             }
+
+        if channel == "phone" and sms_configured() and (user.phone or "").strip():
+            from app.services.login_otp_sms import send_login_otp_sms
+
+            sent = send_login_otp_sms(
+                to_phone=normalize_phone(user.phone or ""),
+                code=code,
+                expires_in_seconds=LOGIN_CODE_TTL_SECONDS,
+                kind="signup" if purpose == "signup" else "login",
+            )
+            if sent:
+                row.delivery_status = "delivered"
+                self.db.commit()
+                return {
+                    **base,
+                    "message": (
+                        "Verification code sent by SMS."
+                        if purpose == "signup"
+                        else "Login code sent by SMS."
+                    ),
+                    "code_sent": True,
+                }
+            row.delivery_status = "failed"
+            self.db.commit()
+            if not allow_otp_echo():
+                raise MerchantOtpError(SMS_SEND_FAILED)
+            return with_optional_login_code(
+                {
+                    **base,
+                    "message": (
+                        f"Could not send the SMS. Use the {noun} code shown below."
+                    ),
+                    "code_sent": False,
+                },
+                code,
+            )
 
         # Debug only: no SMS provider — echo the code locally.
         return with_optional_login_code(

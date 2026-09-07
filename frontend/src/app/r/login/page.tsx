@@ -185,7 +185,7 @@ export default function RiderLoginPage() {
               <p className="rider-muted">
                 {channel === "email"
                   ? "Email could not be delivered — use this code:"
-                  : "Your login code (SMS not configured yet):"}
+                  : "Use this login code:"}
               </p>
               <div className="rider-code-pill">{echoCode}</div>
             </>

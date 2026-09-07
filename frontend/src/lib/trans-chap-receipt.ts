@@ -31,6 +31,7 @@ export type TransChapReceipt = {
   paidAt: string;
   customerName: string | null;
   customerPhone: string | null;
+  customerEmail: string | null;
   mpesaReceiptNumber: string | null;
   mpesaMessage: string | null;
 };
@@ -111,6 +112,7 @@ export function loadTransChapReceipt(): TransChapReceipt | null {
       paidAt: parsed.paidAt || new Date().toISOString(),
       customerName: parsed.customerName ?? null,
       customerPhone: parsed.customerPhone ?? null,
+      customerEmail: parsed.customerEmail ?? null,
       mpesaReceiptNumber: parsed.mpesaReceiptNumber ?? null,
       mpesaMessage: parsed.mpesaMessage ?? null,
     };
@@ -199,6 +201,7 @@ export function receiptFromOrder(
       new Date().toISOString(),
     customerName: order.customer_name,
     customerPhone: order.customer_phone,
+    customerEmail: order.customer_email,
     mpesaReceiptNumber: mpesaReceiptNumberFromOrder(order),
     mpesaMessage: push?.message ?? null,
   };

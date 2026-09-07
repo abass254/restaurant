@@ -15,8 +15,10 @@ from app.services.rider_service import RiderServiceError, normalize_phone
 from app.support.otp_delivery import (
     MAIL_SEND_FAILED,
     PHONE_OTP_UNAVAILABLE,
+    SMS_SEND_FAILED,
     allow_otp_echo,
     phone_otp_allowed,
+    sms_configured,
     with_optional_login_code,
 )
 from app.support.delivery_status import (
@@ -947,7 +949,7 @@ class RiderTripService:
         generic = {
             "message": (
                 "If this account is onboarded, a login code will be sent."
-                if channel == "email"
+                if channel == "email" or sms_configured()
                 else "If this phone is onboarded, a login code is ready."
             ),
             "expires_in_seconds": LOGIN_CODE_TTL_SECONDS,
@@ -1034,6 +1036,43 @@ class RiderTripService:
             }
 
         masked_phone = f"{'*' * max(0, len(clean_phone) - 4)}{clean_phone[-4:]}"
+        if sms_configured():
+            from app.services.login_otp_sms import send_login_otp_sms
+
+            sent = send_login_otp_sms(
+                to_phone=clean_phone,
+                code=code,
+                expires_in_seconds=LOGIN_CODE_TTL_SECONDS,
+                kind="rider",
+            )
+            if sent:
+                login_row.delivery_status = "delivered"
+                self.db.commit()
+                return {
+                    "message": "Login code sent by SMS.",
+                    "expires_in_seconds": LOGIN_CODE_TTL_SECONDS,
+                    "login_code": None,
+                    "phone_masked": masked_phone,
+                    "email_masked": None,
+                    "channel": "phone",
+                    "code_sent": True,
+                }
+            login_row.delivery_status = "failed"
+            self.db.commit()
+            if not allow_otp_echo():
+                raise RiderServiceError(SMS_SEND_FAILED)
+            return with_optional_login_code(
+                {
+                    "message": "Could not send the SMS. Use the login code shown below.",
+                    "expires_in_seconds": LOGIN_CODE_TTL_SECONDS,
+                    "phone_masked": masked_phone,
+                    "email_masked": None,
+                    "channel": "phone",
+                    "code_sent": False,
+                },
+                code,
+            )
+
         return with_optional_login_code(
             {
                 "message": "Login code created. Enter it to continue.",

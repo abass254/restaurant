@@ -266,6 +266,49 @@ export async function promptWhatsAppPhone(
   return String(result.value).trim();
 }
 
+export async function promptEmail(
+  title = "Send receipt by email",
+  text = "Enter the customer's email address.",
+  initialValue = "",
+) {
+  const result = await dukaiSwal.fire({
+    icon: "question",
+    title,
+    text,
+    input: "email",
+    inputLabel: "Email address",
+    inputValue: initialValue,
+    inputPlaceholder: "name@example.com",
+    inputAttributes: {
+      autocapitalize: "off",
+      autocorrect: "off",
+      spellcheck: "false",
+      inputmode: "email",
+      autocomplete: "email",
+      "aria-label": "Email address",
+    },
+    showCancelButton: true,
+    confirmButtonText: "Send receipt",
+    preConfirm: (value) => {
+      const email = String(value ?? "").trim();
+      if (!email) {
+        dukaiSwal.showValidationMessage("Enter an email address.");
+        return false;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        dukaiSwal.showValidationMessage("Enter a valid email address.");
+        return false;
+      }
+      return email;
+    },
+  });
+
+  if (!result.isConfirmed || !result.value) {
+    return null;
+  }
+  return String(result.value).trim();
+}
+
 type MpesaTxnDraft = {
   status: string;
   phone_number: string;

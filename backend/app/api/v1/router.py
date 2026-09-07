@@ -36,6 +36,8 @@ from app.api.v1 import (
     storefront,
     tickets,
     meta,
+    sms_tools,
+    whatsapp_tools,
 )
 
 router = APIRouter(prefix="/api/v1")
@@ -56,6 +58,8 @@ router.include_router(mpesa.router)
 router.include_router(kra.router)
 router.include_router(login_codes.router)
 router.include_router(qa.router)
+router.include_router(whatsapp_tools.router)
+router.include_router(sms_tools.router)
 router.include_router(google_maps.router)
 router.include_router(ai_agent.router)
 router.include_router(mapbox.router)

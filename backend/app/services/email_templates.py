@@ -67,6 +67,31 @@ def _cta_button(label: str, url: str) -> str:
       </table>"""
 
 
+def _line_items_table(rows: list[tuple[str, str]], *, total_label: str, total_value: str) -> str:
+    cells = "".join(
+        f"""
+        <tr>
+          <td style="padding:8px 0;border-bottom:1px solid {HAIRLINE};color:{INK};
+                     font-size:14px;line-height:1.4;vertical-align:top;">{escape(name)}</td>
+          <td style="padding:8px 0 8px 16px;border-bottom:1px solid {HAIRLINE};
+                     color:{INK};font-size:14px;font-weight:600;text-align:right;
+                     white-space:nowrap;vertical-align:top;">{escape(amount)}</td>
+        </tr>"""
+        for name, amount in rows
+    )
+    return f"""
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+             style="margin:8px 0 20px;border-collapse:collapse;">
+        {cells}
+        <tr>
+          <td style="padding:14px 0 4px;color:{INK};font-size:15px;font-weight:700;">
+            {escape(total_label)}</td>
+          <td style="padding:14px 0 4px;color:{INK};font-size:15px;font-weight:700;
+                     text-align:right;white-space:nowrap;">{escape(total_value)}</td>
+        </tr>
+      </table>"""
+
+
 def render_branded_email(
     *,
     title: str,
@@ -74,6 +99,9 @@ def render_branded_email(
     intro: str | None = None,
     paragraphs: list[str] | None = None,
     details: list[tuple[str, str]] | None = None,
+    line_items: list[tuple[str, str]] | None = None,
+    total_label: str | None = None,
+    total_value: str | None = None,
     cta_label: str | None = None,
     cta_url: str | None = None,
     footer_note: str | None = None,
@@ -86,6 +114,10 @@ def render_branded_email(
         body_blocks.append(_paragraph(text))
     if details:
         body_blocks.append(_details_table(details))
+    if line_items and total_label and total_value:
+        body_blocks.append(
+            _line_items_table(line_items, total_label=total_label, total_value=total_value)
+        )
     if cta_label and cta_url:
         body_blocks.append(_cta_button(cta_label, cta_url))
     inner = "".join(body_blocks)

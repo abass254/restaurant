@@ -8,6 +8,7 @@ import { apiRoutes } from "@/lib/config";
 import {
   confirmAction,
   extractErrorMessage,
+  promptEmail,
   promptMpesaTransactionEdit,
   promptMpesaReceipt,
   promptRejectReason,
@@ -84,6 +85,7 @@ export default function OrderDetailPage() {
   const [copiedTrackLink, setCopiedTrackLink] = useState(false);
   const [riders, setRiders] = useState<RiderSummary[]>([]);
   const [assigningRider, setAssigningRider] = useState(false);
+  const [emailingReceipt, setEmailingReceipt] = useState(false);
   const orderRef = useRef<Order | null>(null);
 
   orderRef.current = order;
@@ -195,6 +197,29 @@ export default function OrderDetailPage() {
 
   function printReceipt() {
     window.print();
+  }
+
+  async function emailReceipt() {
+    if (!order) return;
+    const entered = await promptEmail(
+      "Send receipt by email",
+      "We'll email this receipt to the customer.",
+      order.customer_email ?? "",
+    );
+    if (!entered) return;
+    setEmailingReceipt(true);
+    try {
+      const data = await apiFetch<OrderMutationResponse>(
+        apiRoutes.orderSendReceiptEmail(order.id),
+        { method: "POST", body: JSON.stringify({ email: entered }) },
+      );
+      setOrder(data.data);
+      await toastSuccess(data.message || `Receipt sent to ${entered}`);
+    } catch (err) {
+      await showError("Could not email receipt", extractErrorMessage(err));
+    } finally {
+      setEmailingReceipt(false);
+    }
   }
 
   async function runWorkflowAction(action: OrderWorkflowAction) {
@@ -483,6 +508,15 @@ export default function OrderDetailPage() {
             >
               <i className="fa-solid fa-print" aria-hidden="true" />
               Print receipt
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => void emailReceipt()}
+              disabled={emailingReceipt || actingOn !== null}
+            >
+              <i className="fa-solid fa-envelope" aria-hidden="true" />
+              {emailingReceipt ? "Sending…" : "Email receipt"}
             </button>
           </div>
           {order.tracking_url ? (

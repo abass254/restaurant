@@ -14,7 +14,7 @@ from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -75,6 +75,8 @@ from app.support.order_status import (
     OUT_FOR_DELIVERY,
     PAYMENT_CREDIT,
     PAYMENT_MPESA,
+    PAYMENT_CASH,
+    PAYMENT_CARD,
     PAYMENT_RECEIVED,
     PICKED_UP,
     PLACED,
@@ -278,6 +280,10 @@ class TestDeliveryRequest(BaseModel):
     delivery_address: str | None = Field(default=None, max_length=2000)
     delivery_notes: str | None = Field(default=None, max_length=2000)
     delivery_fee: float | None = Field(default=150, ge=0, le=99_999_999.99)
+
+
+class SendReceiptEmailIn(BaseModel):
+    email: EmailStr | None = None
 
 
 # --- Endpoints --------------------------------------------------------------
@@ -1039,6 +1045,21 @@ def create_order(
     except Exception:
         logger.exception("Merchant dashboard notification failed order_id=%s", order.id)
 
+    if (
+        payload.payment_method in {PAYMENT_CASH, PAYMENT_CARD}
+        and (order.customer_phone or "").strip()
+    ):
+        try:
+            from app.services.order_notification_service import OrderNotificationService
+
+            OrderNotificationService(db).notify_customer_whatsapp(
+                order,
+                PLACED,
+                force=True,
+            )
+        except Exception:
+            logger.exception("Customer WhatsApp notification failed order_id=%s", order.id)
+
     # M-PESA flow: now that the order has a stable id and order_number we
     # can fire an STK push and link the resulting transaction. Failures
     # here are non-fatal — the cashier still has a valid order and can
@@ -1554,6 +1575,69 @@ def resend_mpesa_stk_push(
     return {
         "message": push_result["message"],
         "mpesa_push": push_result,
+        "data": OrderOut.from_model(
+            order,
+            allowed_next=allowed_next_statuses(order.status, order.fulfillment_type),
+        ),
+    }
+
+
+@router.post("/{order_id}/send-receipt-email")
+def send_receipt_email(
+    order_id: str,
+    payload: SendReceiptEmailIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Email the customer a branded receipt for this order."""
+    validate_csrf(request, session)
+    user = _auth_orders_user(db, session, pos_ok=True)
+    account_id = _require_shop(user)
+    order = _get_owned_order(db, account_id, order_id)
+
+    from app.services.email_service import EmailService
+    from app.services.order_notification_service import OrderNotificationService
+
+    mail = EmailService()
+    if not mail.settings.mail_enabled:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email sending is disabled. Set MAIL_ENABLED=true to send receipts.",
+        )
+    if not mail.configured:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email is not configured. Set MAILTRAP_API_TOKEN to send receipts.",
+        )
+
+    to = str(payload.email or order.customer_email or "").strip()
+    if not to:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "errors": {
+                    "email": ["Enter the customer's email address."],
+                },
+            },
+        )
+
+    if order.customer_email != to:
+        order.customer_email = to
+        db.commit()
+        db.refresh(order)
+
+    sent = OrderNotificationService(db).notify_customer_receipt_email(order, to)
+    if not sent:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail="Could not send the receipt email. Try again in a moment.",
+        )
+
+    db.refresh(order, attribute_names=["items", "status_history", "mpesa_transaction", "mpesa_transactions"])
+    return {
+        "message": f"Receipt sent to {to}.",
+        "recipient": to,
         "data": OrderOut.from_model(
             order,
             allowed_next=allowed_next_statuses(order.status, order.fulfillment_type),
