@@ -8,6 +8,7 @@ so the two entry points can't drift apart.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from decimal import Decimal
 
@@ -22,6 +23,9 @@ from app.support.store_status import is_accepting_orders
 
 # Mirror of the autopilot cap so a single line can't request an absurd qty.
 MAX_QUANTITY = 999
+
+_INITIALS_SKIP = frozenset({"the", "and", "of", "for", "&"})
+_WORD_RE = re.compile(r"[A-Za-z0-9]+")
 
 
 class StorePausedError(Exception):
@@ -41,11 +45,59 @@ def _assert_accepting(db: Session, account_id: str) -> None:
         raise StorePausedError()
 
 
-def next_order_number(db: Session) -> str:
-    """Return the next free ``ORD-000123`` style reference."""
-    seq = int((db.query(func.count(Order.id)).scalar() or 0) + 1)
+def merchant_order_initials(business_name: str | None) -> str:
+    """Three-letter merchant code used in order references.
+
+    ``Spice House`` → SPH, ``Java House Nairobi`` → JHN, ``Kiosk`` → KIO.
+    """
+    words = [
+        match.group(0)
+        for match in _WORD_RE.finditer(business_name or "")
+        if match.group(0).lower() not in _INITIALS_SKIP
+    ]
+    if not words:
+        return "XXX"
+    if len(words) >= 3:
+        return "".join(word[0] for word in words[:3]).upper()
+    if len(words) == 2:
+        first, second = words[0].upper(), words[1].upper()
+        if len(first) >= 2:
+            return first[:2] + second[0]
+        return (first + (second + "XX")[:2])[:3]
+    return (words[0].upper() + "XXX")[:3]
+
+
+def format_merchant_order_number(initials: str, seq: int) -> str:
+    """``ORD`` + 3 merchant initials + 5-digit increment, e.g. ``ORDSPH00001``."""
+    code = (initials or "XXX").upper()[:3].ljust(3, "X")
+    return f"ORD{code}{max(1, int(seq)):05d}"
+
+
+def next_order_number(db: Session, account_id: str) -> str:
+    """Next free ``ORDSPH00001``-style reference for this shop.
+
+    Sequence is per merchant (and per initials prefix). The unique index on
+    ``order_number`` keeps concurrent inserts from colliding.
+    """
+    account = db.query(Account).filter(Account.id == str(account_id)).first()
+    initials = merchant_order_initials(
+        account.business_name if account is not None else None
+    )
+    prefix = f"ORD{initials}"
+    seq = int(
+        (
+            db.query(func.count(Order.id))
+            .filter(
+                Order.account_id == str(account_id),
+                Order.order_number.like(f"{prefix}_____"),
+            )
+            .scalar()
+            or 0
+        )
+        + 1
+    )
     while True:
-        candidate = f"ORD-{seq:06d}"
+        candidate = format_merchant_order_number(initials, seq)
         if not db.query(Order.id).filter(Order.order_number == candidate).first():
             return candidate
         seq += 1
@@ -79,7 +131,7 @@ def build_instagram_order(
     now = datetime.utcnow()
     order = Order(
         account_id=str(account_id),
-        order_number=next_order_number(db),
+        order_number=next_order_number(db, account_id),
         source=source,
         fulfillment_type="delivery",
         status=PLACED,
@@ -194,7 +246,7 @@ def build_catalog_order(
     now = datetime.utcnow()
     order = Order(
         account_id=str(account_id),
-        order_number=next_order_number(db),
+        order_number=next_order_number(db, account_id),
         source=source,
         fulfillment_type="delivery",
         status=PLACED,

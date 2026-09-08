@@ -767,8 +767,11 @@ def release_collection_to_merchant(
     if txn.status != "success":
         raise MpesaApiError("Only successful Client → DukAI collections can be sent to a merchant.")
 
-    has_receipt = bool((txn.mpesa_receipt_number or "").strip()) or bool(
-        payload.get("admin_simulate"),
+    has_receipt = (
+        bool((txn.mpesa_receipt_number or "").strip())
+        or bool(payload.get("admin_simulate"))
+        # STK Push Query confirms the payment without ever returning a receipt.
+        or bool(payload.get("safaricom_confirmed"))
     )
     if not has_receipt:
         raise MpesaApiError("Collection is not confirmed at DukAI yet (no M-PESA receipt).")

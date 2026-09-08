@@ -257,6 +257,7 @@ class InventoryItemOut(BaseModel):
     margin: float | None
     stock_quantity: int | None
     low_stock_threshold: int | None
+    inventory_role: str = "both"
     is_active: bool
     is_low_stock: bool
     notes: str | None
@@ -269,6 +270,12 @@ class InventoryItemOut(BaseModel):
     def from_model(cls, item) -> "InventoryItemOut":
         from app.services.product_media_service import inventory_media_for_item
 
+        role = "both"
+        if hasattr(item, "normalized_role"):
+            role = item.normalized_role()
+        elif getattr(item, "inventory_role", None):
+            role = str(item.inventory_role).strip().lower() or "both"
+
         return cls(
             id=item.id,
             account_id=item.account_id,
@@ -278,6 +285,7 @@ class InventoryItemOut(BaseModel):
             margin=item.margin(),
             stock_quantity=item.stock_quantity,
             low_stock_threshold=item.low_stock_threshold,
+            inventory_role=role,
             is_active=bool(item.is_active),
             is_low_stock=item.is_low_stock(),
             notes=item.notes,

@@ -62,7 +62,9 @@ def inventory_item_to_catalog(item: InventoryItem, *, settings=None) -> CatalogI
         image_urls=tuple(image_urls),
         external_sku=(product.sku or "").strip() or None,
         unit=(product.unit or "pack").strip() or "pack",
-        is_active=bool(item.is_active and item.selling_price is not None),
+        is_active=bool(
+            item.is_active and item.is_saleable() and item.selling_price is not None
+        ),
         product_type=product_type,
         platform_inventory_item_id=str(item.id),
         platform_product_id=str(product.id),
@@ -82,6 +84,7 @@ class PlatformCatalogProvider:
                 InventoryItem.account_id == account_id,
                 InventoryItem.is_active.is_(True),
                 InventoryItem.selling_price.isnot(None),
+                InventoryItem.inventory_role.in_(("for_sale", "both")),
             )
             .order_by(
                 InventoryItem.updated_at.is_(None),

@@ -169,7 +169,7 @@ class DmOrderService:
     def format_no_order_reply(self) -> str:
         return (
             "I could not find an active order on this chat.\n"
-            "Place an order first, or share your order reference (for example: ORD-000123)."
+            "Place an order first, or share your order reference (for example: ORDSPH00001)."
         )
 
     @staticmethod

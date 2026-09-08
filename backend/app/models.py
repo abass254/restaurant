@@ -762,6 +762,59 @@ class MpesaHubBalanceQuery(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class MpesaStatusCheck(Base):
+    """Daraja Transaction Status queries used to reconcile DukAI records.
+
+    One row per (transaction, direction) verification attempt: what Safaricom
+    reports for that receipt, and how it compares to what DukAI recorded.
+    """
+
+    __tablename__ = "mpesa_status_checks"
+    __table_args__ = (
+        Index(
+            "mpesa_status_checks_originator_unique",
+            "originator_conversation_id",
+            unique=True,
+        ),
+        Index("mpesa_status_checks_txn_index", "transaction_id", "direction"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    transaction_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("mpesa_transactions.id"),
+    )
+    # "in" for a Client → DukAI collection, "out" for a DukAI → Merchant payout.
+    direction: Mapped[str] = mapped_column(String(3))
+    queried_receipt: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    recorded_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    originator_conversation_id: Mapped[str] = mapped_column(String(100))
+    conversation_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="pending")
+    result_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    result_desc: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # verified | amount_mismatch | status_mismatch | not_found | unresolved
+    match_state: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    safaricom_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    safaricom_amount: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    safaricom_receipt: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    safaricom_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    debit_party: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    credit_party: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    debit_party_charges: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    reason_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    callback_payload: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    requested_by_user_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    requested_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class Product(Base):
     """Shared catalog product (or service) visible to every shop.
 
@@ -819,6 +872,11 @@ class InventoryItem(Base):
     __table_args__ = (
         UniqueConstraint("account_id", "product_id"),
         Index("inventory_items_account_id_is_active_index", "account_id", "is_active"),
+        Index(
+            "inventory_items_account_id_inventory_role_index",
+            "account_id",
+            "inventory_role",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
@@ -828,6 +886,8 @@ class InventoryItem(Base):
     selling_price: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
     stock_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     low_stock_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # for_sale = sell only | raw_material = buy only | both = buy & sell
+    inventory_role: Mapped[str] = mapped_column(String(20), default="both")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     media: Mapped[Any | None] = mapped_column(JSON, nullable=True)
@@ -836,6 +896,18 @@ class InventoryItem(Base):
 
     account: Mapped[Account] = relationship()
     product: Mapped[Product] = relationship(back_populates="inventory_items")
+
+    def normalized_role(self) -> str:
+        role = (self.inventory_role or "both").strip().lower()
+        if role in {"for_sale", "raw_material", "both"}:
+            return role
+        return "both"
+
+    def is_saleable(self) -> bool:
+        return self.normalized_role() in {"for_sale", "both"}
+
+    def is_purchasable(self) -> bool:
+        return self.normalized_role() in {"raw_material", "both"}
 
     def is_low_stock(self) -> bool:
         if self.stock_quantity is None or self.low_stock_threshold is None:

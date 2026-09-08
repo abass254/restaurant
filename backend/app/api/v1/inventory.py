@@ -92,6 +92,7 @@ class InventoryCreate(BaseModel):
     buying_price: float | None = Field(default=None, ge=0, le=99_999_999.99)
     stock_quantity: int | None = Field(default=None, ge=0)
     low_stock_threshold: int | None = Field(default=None, ge=0)
+    inventory_role: Literal["for_sale", "raw_material", "both"] | None = None
     is_active: bool | None = None
     notes: str | None = Field(default=None, max_length=2000)
 
@@ -101,6 +102,7 @@ class InventoryUpdate(BaseModel):
     buying_price: float | None = Field(default=None, ge=0, le=99_999_999.99)
     stock_quantity: int | None = Field(default=None, ge=0)
     low_stock_threshold: int | None = Field(default=None, ge=0)
+    inventory_role: Literal["for_sale", "raw_material", "both"] | None = None
     is_active: bool | None = None
     notes: str | None = Field(default=None, max_length=2000)
 
@@ -123,6 +125,7 @@ class StockMovementsCreate(BaseModel):
 def list_inventory(
     q: str | None = Query(default=None, max_length=255),
     type: Literal["product", "service"] | None = Query(default=None),
+    role: Literal["for_sale", "raw_material", "both"] | None = Query(default=None),
     active: bool | None = Query(default=None),
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
@@ -143,6 +146,9 @@ def list_inventory(
 
     if active is not None:
         query = query.filter(InventoryItem.is_active == active)
+
+    if role is not None:
+        query = query.filter(InventoryItem.inventory_role == role)
 
     if q or type:
         query = query.join(Product, Product.id == InventoryItem.product_id)
@@ -447,6 +453,7 @@ def create_inventory_item(
         selling_price=payload.selling_price,
         stock_quantity=stock_quantity,
         low_stock_threshold=low_stock_threshold,
+        inventory_role=payload.inventory_role or "both",
         is_active=True if payload.is_active is None else payload.is_active,
         notes=payload.notes,
         created_at=now,
@@ -478,6 +485,9 @@ def update_inventory_item(
 
     item = _get_owned_item(db, account_id, item_id)
     data = payload.model_dump(exclude_unset=True)
+
+    if data.get("inventory_role") is None:
+        data.pop("inventory_role", None)
 
     if item.product and item.product.is_service():
         data["stock_quantity"] = None

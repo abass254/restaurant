@@ -49,6 +49,66 @@ function TransChapSignInBrand() {
   );
 }
 
+function splitSignInMessage(message: string): { title: string | null; body: string } {
+  const sessionExpired = /session expired/i.test(message);
+  if (sessionExpired) {
+    return {
+      title: "Session expired",
+      body: "Please sign in again to continue.",
+    };
+  }
+  return { title: null, body: message };
+}
+
+function SignInStatusAlert({
+  message,
+  ok = false,
+  embedded = false,
+}: {
+  message: string;
+  ok?: boolean;
+  embedded?: boolean;
+}) {
+  if (!embedded) {
+    return (
+      <p
+        role={ok ? "status" : "alert"}
+        className={`auth-split__alert ${
+          ok ? "auth-split__alert--ok" : "auth-split__alert--error"
+        }`}
+      >
+        {message}
+      </p>
+    );
+  }
+
+  const { title, body } = ok
+    ? { title: null as string | null, body: message }
+    : splitSignInMessage(message);
+  const icon = ok
+    ? "fa-circle-check"
+    : title
+      ? "fa-clock-rotate-left"
+      : "fa-circle-exclamation";
+
+  return (
+    <div
+      role={ok ? "status" : "alert"}
+      className={`trans-chap-signin__alert ${
+        ok ? "trans-chap-signin__alert--ok" : "trans-chap-signin__alert--error"
+      }`}
+    >
+      <span className="trans-chap-signin__alert-icon" aria-hidden="true">
+        <i className={`fa-solid ${icon}`} />
+      </span>
+      <div className="trans-chap-signin__alert-copy">
+        {title ? <strong>{title}</strong> : null}
+        <p>{body}</p>
+      </div>
+    </div>
+  );
+}
+
 function LoginFrame({
   embedded,
   children,
@@ -313,9 +373,13 @@ export default function LoginForm({
             </div>
 
             {error ? (
-              <p role="alert" className="auth-otp__error">
-                {error}
-              </p>
+              embedded ? (
+                <SignInStatusAlert message={error} embedded />
+              ) : (
+                <p role="alert" className="auth-otp__error">
+                  {error}
+                </p>
+              )
             ) : null}
             {!embedded && devCode ? (
               <p className="auth-otp__hint">
@@ -359,14 +423,7 @@ export default function LoginForm({
         )}
 
         {error ? (
-          <p
-            role="alert"
-            className={`auth-split__alert ${
-              statusOk ? "auth-split__alert--ok" : "auth-split__alert--error"
-            }`}
-          >
-            {error}
-          </p>
+          <SignInStatusAlert message={error} ok={statusOk} embedded={embedded} />
         ) : null}
 
         {!embedded && googleEnabled ? (
@@ -480,12 +537,10 @@ export default function LoginForm({
       )}
 
       {error ? (
-        <p role="alert" className="auth-split__alert auth-split__alert--error">
-          {error}
-        </p>
+        <SignInStatusAlert message={error} embedded={embedded} />
       ) : null}
       {info && !error ? (
-        <p className="auth-split__alert auth-split__alert--ok">{info}</p>
+        <SignInStatusAlert message={info} ok embedded={embedded} />
       ) : null}
 
       <form className="auth-split__form" onSubmit={(e) => void requestCode(e)}>

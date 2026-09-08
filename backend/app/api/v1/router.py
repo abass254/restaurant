@@ -35,6 +35,7 @@ from app.api.v1 import (
     store_status,
     storefront,
     tickets,
+    tigo,
     meta,
     sms_tools,
     whatsapp_tools,
@@ -55,6 +56,7 @@ router.include_router(conversation_starters.router)
 router.include_router(feeds.router)
 router.include_router(auto_reply.router)
 router.include_router(mpesa.router)
+router.include_router(tigo.router)
 router.include_router(kra.router)
 router.include_router(login_codes.router)
 router.include_router(qa.router)

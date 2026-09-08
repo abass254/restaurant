@@ -7,6 +7,8 @@ import { apiRoutes } from "@/lib/config";
 import {
   addLiteInventoryProduct,
   findInventoryByName,
+  inventoryRole,
+  updateInventoryItem,
   updateInventorySellingPrice,
 } from "@/lib/trans-chap-product";
 import type { InventoryItem, InventoryResponse } from "@/lib/types";
@@ -69,16 +71,27 @@ export function TransChapMenuForm() {
         existing = findInventoryByName(items, dish) ?? null;
       }
 
-      if (existing) {
-        const updated = await updateInventorySellingPrice(existing.id, sell);
-        setInventory(
-          items.map((item) => (item.id === updated.id ? updated : item)),
-        );
-      } else {
+      if (!existing) {
         const created = await addLiteInventoryProduct(dish, sellingPrice, {
           category: "food_beverage",
+          stock_quantity: null,
+          inventory_role: "for_sale",
         });
         setInventory([...items, created]);
+      } else if (
+        inventoryRole(existing) !== "for_sale" ||
+        existing.stock_quantity != null
+      ) {
+        // Keep hotel dishes sell-only so they never appear on Purchases.
+        const patched = await updateInventoryItem(existing.id, {
+          inventory_role: "for_sale",
+          stock_quantity: null,
+          selling_price: sell,
+        });
+        setInventory(items.map((item) => (item.id === patched.id ? patched : item)));
+      } else {
+        const updated = await updateInventorySellingPrice(existing.id, sell);
+        setInventory(items.map((item) => (item.id === updated.id ? updated : item)));
       }
 
       setName("");

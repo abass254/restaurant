@@ -9,8 +9,9 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy.orm import Session
@@ -29,6 +30,9 @@ BALANCE_PENDING = "pending"
 BALANCE_SUCCESS = "success"
 BALANCE_FAILED = "failed"
 BALANCE_TIMEOUT = "timeout"
+
+# Safaricom answers a balance query in seconds; longer means the result is lost.
+BALANCE_STALE_AFTER = timedelta(minutes=2)
 
 
 def _now_utc() -> datetime:
@@ -86,6 +90,47 @@ def _pick_balance(parsed: dict[str, str], *needles: str) -> str | None:
             if needle in key:
                 return value
     return None
+
+
+def expire_stale_pending(
+    db: Session,
+    *,
+    older_than: timedelta = BALANCE_STALE_AFTER,
+) -> int:
+    """Time out balance queries whose result callback never arrived.
+
+    Safaricom posts an Account Balance result within seconds, so a query still
+    pending minutes later means the callback never reached us — usually an
+    unreachable callback host. Without this the panel shows "Checking…" forever
+    and the Check balance button stays disabled.
+    """
+    cutoff = _now_utc() - older_than
+    rows = (
+        db.query(MpesaHubBalanceQuery)
+        .filter(
+            MpesaHubBalanceQuery.status == BALANCE_PENDING,
+            MpesaHubBalanceQuery.requested_at.isnot(None),
+            MpesaHubBalanceQuery.requested_at < cutoff,
+        )
+        .all()
+    )
+    if not rows:
+        return 0
+
+    result_url, _ = _balance_urls()
+    host = urlparse(result_url).netloc or result_url
+    for row in rows:
+        row.status = BALANCE_TIMEOUT
+        row.result_desc = (
+            "Safaricom accepted the query but never posted the result back. "
+            f"Check that {host} is reachable from the internet, then try again."
+        )[:500]
+        row.completed_at = _now_utc()
+        row.updated_at = _now_utc()
+
+    db.commit()
+    logger.warning("Timed out %s stale M-PESA balance quer(ies)", len(rows))
+    return len(rows)
 
 
 def get_latest_balance(db: Session) -> MpesaHubBalanceQuery | None:

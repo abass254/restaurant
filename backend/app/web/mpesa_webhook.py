@@ -165,3 +165,45 @@ async def mpesa_balance_timeout(request: Request, db=Depends(get_db)):
         logger.exception("Failed to apply M-PESA balance timeout")
 
     return {"ResultCode": 0, "ResultDesc": "Accepted"}
+
+
+@router.post("/mpesa/status/result")
+async def mpesa_status_result(request: Request, db=Depends(get_db)):
+    payload: dict[str, Any]
+    try:
+        payload = await request.json()
+    except Exception:
+        body = (await request.body()).decode("utf-8", errors="ignore")
+        logger.warning("M-PESA status result non-JSON body: %s", body[:500])
+        return {"ResultCode": 0, "ResultDesc": "Accepted"}
+
+    logger.info("M-PESA status result received: %s", payload)
+    try:
+        from app.services import mpesa_status_service
+
+        mpesa_status_service.apply_status_result(db, payload)
+    except Exception:
+        logger.exception("Failed to apply M-PESA status result")
+
+    return {"ResultCode": 0, "ResultDesc": "Accepted"}
+
+
+@router.post("/mpesa/status/timeout")
+async def mpesa_status_timeout(request: Request, db=Depends(get_db)):
+    payload: dict[str, Any]
+    try:
+        payload = await request.json()
+    except Exception:
+        body = (await request.body()).decode("utf-8", errors="ignore")
+        logger.warning("M-PESA status timeout non-JSON body: %s", body[:500])
+        return {"ResultCode": 0, "ResultDesc": "Accepted"}
+
+    logger.info("M-PESA status timeout received: %s", payload)
+    try:
+        from app.services import mpesa_status_service
+
+        mpesa_status_service.apply_status_timeout(db, payload)
+    except Exception:
+        logger.exception("Failed to apply M-PESA status timeout")
+
+    return {"ResultCode": 0, "ResultDesc": "Accepted"}

@@ -9,10 +9,18 @@ import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { MotionItem, MotionList } from "@/components/app/MotionList";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
 import { formatKsh } from "@/lib/trans-chap-receipt";
+import { inventoryRoleLabel } from "@/lib/trans-chap-product";
 import {
   fetchTransChapPurchases,
   type TransChapPurchase,
 } from "@/lib/trans-chap-purchases";
+
+function purchaseRoleTag(row: TransChapPurchase): string | undefined {
+  if (row.inventoryRole === "raw_material") return "Raw";
+  if (row.inventoryRole === "both") return "Buy & sell";
+  if (row.inventoryRole === "for_sale") return "Sell only";
+  return undefined;
+}
 
 export function TransChapPurchasesList() {
   const user = useAuthUser();
@@ -92,6 +100,7 @@ export function TransChapPurchasesList() {
                 open={open}
                 tone="purchase"
                 title={row.productName}
+                tag={purchaseRoleTag(row)}
                 qty={`Qty ${row.quantity}`}
                 price={formatKsh(row.total)}
                 onToggle={() => setOpenId(open ? null : row.id)}
@@ -109,6 +118,10 @@ export function TransChapPurchasesList() {
                   </li>
                 </ul>
                 <dl className="trans-chap-panel__facts">
+                  <div>
+                    <dt>Type</dt>
+                    <dd>{inventoryRoleLabel(row.inventoryRole)}</dd>
+                  </div>
                   <div>
                     <dt>Unit cost</dt>
                     <dd>{formatKsh(row.unitCost)}</dd>
@@ -139,8 +152,13 @@ export function TransChapPurchasesList() {
       <TransChapFab
         label="New purchase"
         options={[
-          { href: "/trans-chap/purchases/new", label: "Single", icon: "fa-cube" },
-          { href: "/trans-chap/purchases/new?mode=bulk", label: "Bulk", icon: "fa-layer-group" },
+          { href: "/trans-chap/purchases/new", label: "Scan", icon: "fa-barcode" },
+          { href: "/trans-chap/purchases/new?mode=select", label: "Select", icon: "fa-list" },
+          {
+            href: "/trans-chap/purchases/unavailable",
+            label: "Buy new item",
+            icon: "fa-cart-plus",
+          },
         ]}
       />
     </div>

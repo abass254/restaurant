@@ -4,21 +4,34 @@ import { Skeleton } from "@/components/app/Skeleton";
 
 export function TransChapTodaySkeleton() {
   return (
-    <section className="trans-chap-dash__today" aria-busy="true" aria-label="Loading today’s totals">
-      <h3>Today</h3>
-      <div className="trans-chap-dash__kpis">
-        {["Sales", "Purchases", "Profit"].map((label) => (
-          <article key={label}>
+    <div className="trans-chap-dash__analytics" aria-busy="true" aria-label="Loading today’s totals">
+      <article className="trans-chap-dash__spotlight">
+        <div className="trans-chap-dash__spotlight-copy">
+          <span>Net profit today</span>
+          <Skeleton variant="text" width="62%" height={36} />
+          <Skeleton variant="text" width="78%" height={14} />
+        </div>
+      </article>
+      <div className="trans-chap-dash__stat-grid">
+        {["Sales", "Purchases"].map((label) => (
+          <article key={label} className="trans-chap-dash__stat">
             <span>{label}</span>
-            <Skeleton variant="text" width="82%" height={28} />
+            <Skeleton variant="text" width="70%" height={28} />
+            <Skeleton variant="text" width="48%" height={12} />
           </article>
         ))}
       </div>
-      <div className="trans-chap-dash__pay trans-chap-dash__pay--skeleton">
-        <Skeleton variant="text" width="40%" height={14} />
-        <Skeleton variant="text" width="55%" height={14} />
-      </div>
-    </section>
+      <section className="trans-chap-dash__panel">
+        <header className="trans-chap-dash__panel-head">
+          <h3>How customers paid</h3>
+        </header>
+        <div className="trans-chap-dash__mix trans-chap-dash__pay--skeleton">
+          <Skeleton variant="text" width="100%" height={18} />
+          <Skeleton variant="text" width="100%" height={18} />
+          <Skeleton variant="text" width="100%" height={18} />
+        </div>
+      </section>
+    </div>
   );
 }
 

@@ -4,11 +4,13 @@ import { apiRoutes } from "@/lib/config";
 import {
   findInventoryByName,
   inventoryProductName,
+  inventoryRole,
   receiveStock,
 } from "@/lib/trans-chap-product";
 import type {
   InventoryItem,
   InventoryResponse,
+  InventoryRole,
   StockMovement,
   StockMovementsListResponse,
 } from "@/lib/types";
@@ -17,6 +19,7 @@ export type TransChapPurchase = {
   id: string;
   productName: string;
   inventoryItemId: string | null;
+  inventoryRole: InventoryRole;
   quantity: number;
   unitCost: number;
   total: number;
@@ -38,6 +41,7 @@ export function purchaseFromMovement(movement: StockMovement): TransChapPurchase
       ? inventoryProductName(movement.inventory_item)
       : "Product",
     inventoryItemId: movement.inventory_item_id,
+    inventoryRole: inventoryRole(movement.inventory_item),
     quantity,
     unitCost,
     total: unitCost * quantity,

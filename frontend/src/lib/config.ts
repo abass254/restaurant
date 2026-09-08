@@ -292,7 +292,11 @@ export const apiRoutes = {
     `${apiUrl}/api/v1/admin/mpesa-transactions/${encodeURIComponent(id)}/unlock`,
   adminMpesaConfirm: (id: string) =>
     `${apiUrl}/api/v1/admin/mpesa-transactions/${encodeURIComponent(id)}/confirm`,
+  adminMpesaQuerySafaricom: (id: string) =>
+    `${apiUrl}/api/v1/admin/mpesa-transactions/${encodeURIComponent(id)}/query-safaricom`,
   adminMpesaBalance: `${apiUrl}/api/v1/admin/mpesa-balance`,
+  adminMpesaActivity: `${apiUrl}/api/v1/admin/mpesa-activity`,
+  adminMpesaVerify: `${apiUrl}/api/v1/admin/mpesa-verify`,
   adminCatalogProducts: `${apiUrl}/api/v1/admin/catalog/products`,
   adminCatalogProduct: (id: string) => `${apiUrl}/api/v1/admin/catalog/products/${id}`,
   adminCatalogPrimaryImage: (id: string) =>
@@ -313,6 +317,12 @@ export const apiRoutes = {
     `${apiUrl}/api/v1/admin/bot-sandbox/training-chat/reset?merchant_id=${encodeURIComponent(merchantId)}`,
   adminMpesaConfig: `${apiUrl}/api/v1/mpesa/config`,
   adminMpesaTest: `${apiUrl}/api/v1/mpesa/test`,
+  adminTigoConfig: `${apiUrl}/api/v1/tigo/config`,
+  adminTigoTestToken: `${apiUrl}/api/v1/tigo/test/token`,
+  adminTigoTestSystemStatus: `${apiUrl}/api/v1/tigo/test/system-status`,
+  adminTigoTestValidateAccount: `${apiUrl}/api/v1/tigo/test/validate-account`,
+  adminTigoTestPaymentAuth: `${apiUrl}/api/v1/tigo/test/payment-auth`,
+  adminTigoTestDisburse: `${apiUrl}/api/v1/tigo/test/disburse`,
   googleMapsConfig: `${apiUrl}/api/v1/google-maps/config`,
   googleMapsDeliveryRate: `${apiUrl}/api/v1/google-maps/config/delivery-rate`,
   googleMapsPublicConfig: `${apiUrl}/api/v1/google-maps/public-config`,

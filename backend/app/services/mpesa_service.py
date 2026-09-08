@@ -366,10 +366,22 @@ def stk_push(
     return txn
 
 
-def refresh_pending_stk(db: Session, txn: MpesaTransaction) -> str:
+def refresh_pending_stk(
+    db: Session,
+    txn: MpesaTransaction,
+    *,
+    auto_payout: bool = True,
+) -> str:
     """Ask Daraja whether a waiting STK already finished, and apply the result.
 
     Returns ``paid``, ``failed``, or ``pending``.
+
+    STK Push Query answers with a result code but never an M-PESA receipt, so a
+    row settled this way is stamped ``safaricom_confirmed`` instead. That marker
+    stands in for the receipt when deciding whether money reached DukAI.
+
+    Pass ``auto_payout=False`` to settle the collection without releasing funds
+    to the merchant, leaving that to a deliberate admin action.
     """
     if txn.status == "success" and bool((txn.mpesa_receipt_number or "").strip()):
         return "paid"
@@ -402,19 +414,28 @@ def refresh_pending_stk(db: Session, txn: MpesaTransaction) -> str:
     if code == 0:
         txn.status = "success"
         txn.completed_at = _now_utc()
+        txn.callback_payload = {
+            **(txn.callback_payload or {}),
+            "safaricom_confirmed": {
+                "source": "stk_push_query",
+                "at": _now_utc().isoformat(),
+                "result_desc": body.get("ResultDesc"),
+            },
+        }
         db.flush()
         updated_order_ids = _sync_linked_orders_on_success(db, txn)
         _sync_linked_bookings_on_success(db, txn)
         apply_credit_collection_if_paid(db, txn)
-        try:
-            from app.services import mpesa_payout_service
+        if auto_payout:
+            try:
+                from app.services import mpesa_payout_service
 
-            mpesa_payout_service.queue_payout_for_collection(db, txn)
-        except Exception:
-            logger.exception(
-                "M-PESA merchant payout failed after STK query txn=%s",
-                txn.id,
-            )
+                mpesa_payout_service.queue_payout_for_collection(db, txn)
+            except Exception:
+                logger.exception(
+                    "M-PESA merchant payout failed after STK query txn=%s",
+                    txn.id,
+                )
         db.commit()
         db.refresh(txn)
         if updated_order_ids:

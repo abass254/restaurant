@@ -58,14 +58,23 @@ function headerMeta(pathname: string, mode: string | null): { title: string; bac
       backHref: "/trans-chap/make-a-sale",
     };
   }
+  if (pathname.startsWith("/trans-chap/purchases/unavailable")) {
+    return { title: "Buy new item", backHref: "/trans-chap/purchases" };
+  }
   if (pathname.startsWith("/trans-chap/purchases/new")) {
-    return { title: "New purchase", backHref: "/trans-chap/purchases" };
+    return {
+      title: mode === "select" || mode === "single" ? "Select buy" : "Scan buy",
+      backHref: "/trans-chap/purchases",
+    };
   }
   if (pathname.startsWith("/trans-chap/stocks/menu")) {
     return { title: "Hotel menu", backHref: "/trans-chap/stocks" };
   }
+  if (pathname.startsWith("/trans-chap/stocks/edit")) {
+    return { title: "Edit product", backHref: "/trans-chap/stocks" };
+  }
   if (pathname.startsWith("/trans-chap/stocks/stock-up")) {
-    return { title: "Add product", backHref: "/trans-chap/stocks" };
+    return { title: "Purchases", backHref: "/trans-chap/stocks" };
   }
   if (pathname.startsWith("/trans-chap/credit")) {
     return { title: "On tab", backHref: "/trans-chap" };

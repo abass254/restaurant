@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { TransChapProductThumb } from "@/components/trans-chap/TransChapProductThumb";
 
 export function TransChapPanel({
   id,
@@ -11,6 +12,7 @@ export function TransChapPanel({
   price,
   badge,
   tag,
+  imageUrl,
   tone = "sale",
   inactive = false,
   picking = false,
@@ -28,6 +30,7 @@ export function TransChapPanel({
   price?: string;
   badge?: { label: string; tone: "ok" | "wait" | "fail" | "credit" };
   tag?: string;
+  imageUrl?: string | null;
   tone?: "sale" | "purchase" | "stock" | "credit";
   inactive?: boolean;
   picking?: boolean;
@@ -49,6 +52,9 @@ export function TransChapPanel({
           aria-controls={picking ? undefined : id}
           onClick={onToggle}
         >
+          {imageUrl !== undefined ? (
+            <TransChapProductThumb src={imageUrl} name={title} size="md" />
+          ) : null}
           <span className="trans-chap-panel__copy">
             <span className="trans-chap-panel__title-row">
               <strong>{title}</strong>

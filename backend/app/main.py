@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,6 +42,25 @@ Allow: /
 """
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start the M-PESA lost-callback recovery sweep alongside the app."""
+    settings = get_settings()
+    task: asyncio.Task | None = None
+    if settings.mpesa_stk_recovery_enabled:
+        from app.services.mpesa_recovery_service import run_recovery_loop
+
+        task = asyncio.create_task(run_recovery_loop())
+
+    try:
+        yield
+    finally:
+        if task is not None:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     assert_production_secrets(settings)
@@ -50,6 +71,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         debug=settings.app_debug,
+        lifespan=lifespan,
         **fastapi_docs_kwargs(debug=settings.app_debug),
     )
 

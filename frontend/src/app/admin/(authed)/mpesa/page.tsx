@@ -12,7 +12,14 @@ import { MpesaMoneyFlow } from "@/components/app/MpesaMoneyFlow";
 import { Skeleton } from "@/components/app/Skeleton";
 import { staggerContainer, staggerItem } from "@/lib/motion";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
-import type { AdminMpesaTransaction, AdminMpesaTransactionsResponse } from "@/lib/types";
+import type {
+  AdminMpesaActivityEntry,
+  AdminMpesaActivityResponse,
+  AdminMpesaTransaction,
+  AdminMpesaTransactionsResponse,
+  AdminMpesaVerification,
+  AdminMpesaVerifyResponse,
+} from "@/lib/types";
 
 const SKELETON_ROWS = 8;
 
@@ -81,6 +88,37 @@ function formatDestinationType(type: string | null | undefined): string {
   }
 }
 
+const VERIFICATION_LABELS: Record<string, { label: string; icon: string }> = {
+  verified: { label: "Verified by Safaricom", icon: "fa-circle-check" },
+  amount_mismatch: { label: "Amount differs", icon: "fa-triangle-exclamation" },
+  status_mismatch: { label: "Status differs", icon: "fa-triangle-exclamation" },
+  not_found: { label: "Not found at Safaricom", icon: "fa-circle-xmark" },
+  unresolved: { label: "Unresolved", icon: "fa-circle-question" },
+  pending: { label: "Asking Safaricom…", icon: "fa-hourglass-half" },
+};
+
+/** Safaricom's answer, spelled out under the entry once a check has run. */
+function verificationDetail(verification: AdminMpesaVerification): string {
+  const bits: string[] = [];
+  if (verification.safaricom_amount) bits.push(`Safaricom KES ${verification.safaricom_amount}`);
+  if (verification.safaricom_status) bits.push(verification.safaricom_status);
+  if (verification.charges) bits.push(`Charge ${verification.charges}`);
+  if (verification.safaricom_completed_at) {
+    bits.push(formatWhen(verification.safaricom_completed_at));
+  }
+  if (bits.length === 0 && verification.result_desc) bits.push(verification.result_desc);
+  return bits.join(" · ");
+}
+
+function formatActivityCounterparty(entry: AdminMpesaActivityEntry): string {
+  const raw = (entry.counterparty || "").trim();
+  if (!raw) return entry.direction === "in" ? "Client" : "Merchant";
+  if (entry.direction === "in") return formatPhone(raw);
+  const [type, ...rest] = raw.split(" ");
+  const code = rest.join(" ");
+  return code ? `${formatDestinationType(type)} ${code}` : raw;
+}
+
 /** Safaricom / pipeline error shown on the when-column alert icon. */
 function txnFlowError(txn: AdminMpesaTransaction): string | null {
   if (txn.payout_status === "failed" || txn.payout_status === "skipped") {
@@ -102,10 +140,18 @@ export default function AdminMpesaTransactionsPage() {
   const [releasingId, setReleasingId] = useState<string | null>(null);
   const [unlockingId, setUnlockingId] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [queryingId, setQueryingId] = useState<string | null>(null);
+  const [bulkSending, setBulkSending] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [balance, setBalance] = useState<HubBalance | null>(null);
   const [balanceMessage, setBalanceMessage] = useState<string | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(true);
   const [balanceRefreshing, setBalanceRefreshing] = useState(false);
+  const [activity, setActivity] = useState<AdminMpesaActivityResponse | null>(null);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
+  const [verifyingAll, setVerifyingAll] = useState(false);
 
   function reload(soft = false) {
     if (!soft) setLoading(true);
@@ -143,11 +189,32 @@ export default function AdminMpesaTransactionsPage() {
 
   useEffect(() => {
     if (balance?.status !== "pending") return;
+    // The backend times a query out after ~2 minutes, so give up a little after
+    // that rather than polling a dead query forever.
+    let polls = 0;
     const timer = window.setInterval(() => {
+      polls += 1;
+      if (polls > 60) {
+        window.clearInterval(timer);
+        return;
+      }
       void loadBalance();
     }, 2500);
     return () => window.clearInterval(timer);
   }, [balance?.status, balance?.id]);
+
+  const verifyInFlight = useMemo(
+    () => (activity?.data ?? []).some((e) => e.verification?.state === "pending"),
+    [activity],
+  );
+
+  useEffect(() => {
+    if (!activityOpen || !verifyInFlight) return;
+    const timer = window.setInterval(() => {
+      void loadActivity(true);
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [activityOpen, verifyInFlight]);
 
   const payoutInFlight = useMemo(
     () =>
@@ -195,6 +262,17 @@ export default function AdminMpesaTransactionsPage() {
   const payoutCount = filtered.filter((t) => t.merchant_received_payout).length;
   const awaitingCount = filtered.filter((t) => t.can_send_to_merchant).length;
 
+  // Bulk release only ever covers the rows currently listed, so what the admin
+  // sees is exactly what gets sent.
+  const releasable = useMemo(
+    () => filtered.filter((t) => t.can_send_to_merchant),
+    [filtered],
+  );
+  const releasableTotal = useMemo(
+    () => releasable.reduce((sum, t) => sum + t.amount, 0),
+    [releasable],
+  );
+
   async function sendToMerchant(txn: AdminMpesaTransaction) {
     const dest = txn.merchant_payout_shortcode
       ? `${formatDestinationType(txn.merchant_payout_shortcode_type)} ${txn.merchant_payout_shortcode}`
@@ -227,6 +305,62 @@ export default function AdminMpesaTransactionsPage() {
     }
   }
 
+  /** Release every listed collection that is already at DukAI, one at a time. */
+  async function sendAllToMerchants() {
+    if (releasable.length === 0) return;
+
+    const ok = await confirmAction(
+      `Send ${releasable.length} payment${releasable.length === 1 ? "" : "s"} to merchants?`,
+      `This releases ${formatAmount(releasableTotal)} from DukAI across ` +
+        `${releasable.length} collection${releasable.length === 1 ? "" : "s"} currently listed. ` +
+        "This uses real B2B funds when MPESA_MODE is production and cannot be undone.",
+      "Yes, send them all",
+    );
+    if (!ok) return;
+
+    setBulkSending(true);
+    setBulkProgress({ done: 0, total: releasable.length });
+    const failures: string[] = [];
+    let sent = 0;
+
+    try {
+      for (const [index, txn] of releasable.entries()) {
+        setReleasingId(txn.id);
+        try {
+          await apiFetch<ReleaseResponse>(apiRoutes.adminMpesaRelease(txn.id), {
+            method: "POST",
+            body: JSON.stringify({}),
+          });
+          sent += 1;
+        } catch (err) {
+          const reason = err instanceof ApiError ? err.message : extractErrorMessage(err);
+          failures.push(`${txn.merchant_name ?? "Merchant"} (${formatAmount(txn.amount)}): ${reason}`);
+        } finally {
+          setReleasingId(null);
+          setBulkProgress({ done: index + 1, total: releasable.length });
+        }
+        // Daraja spike-arrest rejects tight bursts — pace the payouts.
+        await new Promise((resolve) => window.setTimeout(resolve, 700));
+      }
+
+      reload(true);
+      if (failures.length === 0) {
+        await toastSuccess(
+          `Queued ${sent} payout${sent === 1 ? "" : "s"} totalling ${formatAmount(releasableTotal)}.`,
+        );
+      } else {
+        await showError(
+          `${sent} sent, ${failures.length} could not be sent`,
+          failures.slice(0, 5).join("\n") +
+            (failures.length > 5 ? `\n…and ${failures.length - 5} more.` : ""),
+        );
+      }
+    } finally {
+      setBulkSending(false);
+      setBulkProgress(null);
+    }
+  }
+
   async function unlockPayout(txn: AdminMpesaTransaction) {
     const ok = await confirmAction(
       "Unlock stuck payout?",
@@ -252,6 +386,31 @@ export default function AdminMpesaTransactionsPage() {
       reload(true);
     } finally {
       setUnlockingId(null);
+    }
+  }
+
+  /** Lost-callback recovery: settle from Safaricom's answer, no payout. */
+  async function queryWithSafaricom(txn: AdminMpesaTransaction) {
+    setQueryingId(txn.id);
+    try {
+      const res = await apiFetch<{ message: string; outcome: string }>(
+        apiRoutes.adminMpesaQuerySafaricom(txn.id),
+        { method: "POST", body: JSON.stringify({}) },
+      );
+      if (res.outcome === "paid") {
+        await toastSuccess(res.message);
+      } else {
+        await showError("Safaricom's answer", res.message);
+      }
+      reload(true);
+    } catch (err) {
+      await showError(
+        "Could not reach Safaricom",
+        err instanceof ApiError ? err.message : extractErrorMessage(err),
+      );
+      reload(true);
+    } finally {
+      setQueryingId(null);
     }
   }
 
@@ -301,6 +460,95 @@ export default function AdminMpesaTransactionsPage() {
     }
   }
 
+  async function loadActivity(soft = false) {
+    if (!soft) setActivityLoading(true);
+    try {
+      const res = await apiFetch<AdminMpesaActivityResponse>(
+        `${apiRoutes.adminMpesaActivity}?limit=25`,
+      );
+      setActivity(res);
+      return true;
+    } catch (err) {
+      if (!soft) {
+        await showError(
+          "Could not load recent transactions",
+          err instanceof ApiError ? err.message : extractErrorMessage(err),
+        );
+      }
+      return false;
+    } finally {
+      if (!soft) setActivityLoading(false);
+    }
+  }
+
+  async function toggleActivity() {
+    if (activityOpen) {
+      setActivityOpen(false);
+      return;
+    }
+    setActivityOpen(true);
+    const ok = await loadActivity();
+    if (!ok && !activity) setActivityOpen(false);
+  }
+
+  /** Ask Safaricom's Transaction Status API about one movement. */
+  async function verifyEntry(entry: AdminMpesaActivityEntry, quiet = false) {
+    setVerifyingId(entry.id);
+    try {
+      const res = await apiFetch<AdminMpesaVerifyResponse>(apiRoutes.adminMpesaVerify, {
+        method: "POST",
+        body: JSON.stringify({
+          transaction_id: entry.transaction_id,
+          direction: entry.direction,
+        }),
+      });
+      if (!quiet) await toastSuccess(res.message);
+      await loadActivity(true);
+      return true;
+    } catch (err) {
+      if (!quiet) {
+        await showError(
+          "Could not verify with Safaricom",
+          err instanceof ApiError ? err.message : extractErrorMessage(err),
+        );
+      }
+      return false;
+    } finally {
+      setVerifyingId(null);
+    }
+  }
+
+  async function verifyAll() {
+    const pending = (activity?.data ?? []).filter((e) => e.can_verify && !e.verification);
+    if (pending.length === 0) return;
+
+    setVerifyingAll(true);
+    let failures = 0;
+    try {
+      for (const entry of pending) {
+        const ok = await verifyEntry(entry, true);
+        if (!ok) failures += 1;
+        // Daraja spike-arrest returns 429 on tight loops — pace the queries.
+        await new Promise((resolve) => window.setTimeout(resolve, 1200));
+      }
+      await loadActivity(true);
+      if (failures === 0) {
+        await toastSuccess(
+          `Asked Safaricom about ${pending.length} movement${pending.length === 1 ? "" : "s"}. ` +
+            "Results arrive on the callback.",
+        );
+      } else {
+        await showError(
+          "Some checks could not be sent",
+          `${failures} of ${pending.length} status queries were rejected by Safaricom. ` +
+            "Try those rows individually to see why.",
+        );
+      }
+    } finally {
+      setVerifyingAll(false);
+    }
+  }
+
   const balancePrimary = balance?.utility_balance || balance?.working_balance || null;
   const balancePending = balance?.status === "pending";
 
@@ -341,7 +589,9 @@ export default function AdminMpesaTransactionsPage() {
                 ? "Checking…"
                 : balancePrimary
                   ? balancePrimary
-                  : "—"}
+                  : balance?.status === "timeout"
+                    ? "No answer"
+                    : "—"}
             </p>
           )}
           <p className="admin-mpesa-balance__meta">
@@ -375,21 +625,188 @@ export default function AdminMpesaTransactionsPage() {
             <p className="admin-mpesa-balance__note">{balanceMessage}</p>
           ) : null}
         </div>
-        <button
-          type="button"
-          className="admin-btn admin-btn--primary"
-          onClick={() => void checkBalance()}
-          disabled={balanceRefreshing || balancePending || balance?.credentials_configured === false}
-          title={
-            balance?.credentials_configured === false
-              ? "Set MPESA_B2B_INITIATOR and MPESA_B2B_SECURITY_CREDENTIAL in .env"
-              : "Ask Safaricom for the current hub balance"
-          }
-        >
-          <i className="fa-solid fa-wallet" aria-hidden="true" />
-          {balanceRefreshing || balancePending ? "Checking…" : "Check balance"}
-        </button>
+        <div className="admin-mpesa-balance__actions">
+          <button
+            type="button"
+            className="admin-btn admin-btn--primary"
+            onClick={() => void checkBalance()}
+            disabled={
+              balanceRefreshing || balancePending || balance?.credentials_configured === false
+            }
+            title={
+              balance?.credentials_configured === false
+                ? "Set MPESA_B2B_INITIATOR and MPESA_B2B_SECURITY_CREDENTIAL in .env"
+                : "Ask Safaricom for the current hub balance"
+            }
+          >
+            <i className="fa-solid fa-wallet" aria-hidden="true" />
+            {balanceRefreshing || balancePending ? "Checking…" : "Check balance"}
+          </button>
+          <button
+            type="button"
+            className="admin-btn admin-btn--ghost"
+            onClick={() => void toggleActivity()}
+            aria-expanded={activityOpen}
+            aria-controls="admin-mpesa-activity"
+            title="Money in and out of the DukAI hub paybill"
+          >
+            <i className="fa-solid fa-right-left" aria-hidden="true" />
+            {activityLoading
+              ? "Loading…"
+              : activityOpen
+                ? "Hide recent transactions"
+                : "Check recent transactions"}
+          </button>
+        </div>
       </aside>
+
+      {activityOpen ? (
+        <MotionFade className="admin-mpesa-activity" id="admin-mpesa-activity">
+          <header className="admin-mpesa-activity__header">
+            <div>
+              <p className="admin-mpesa-balance__eyebrow">Recent hub transactions</p>
+              <p className="admin-mpesa-activity__lead">
+                Last 25 money movements in and out of the DukAI hub paybill
+                {activity?.shortcode ? <> <code>{activity.shortcode}</code></> : null}, from DukAI
+                records. Safaricom charges and manual withdrawals are not included.
+              </p>
+            </div>
+            <div className="admin-mpesa-activity__totals">
+              <span className="admin-chip admin-chip--in">
+                In {formatAmount(activity?.money_in ?? 0)}
+              </span>
+              <span className="admin-chip admin-chip--out">
+                Out {formatAmount(activity?.money_out ?? 0)}
+              </span>
+              <span className="admin-chip">Net {formatAmount(activity?.net ?? 0)}</span>
+              {activity && activity.mismatch_count > 0 ? (
+                <span className="admin-chip admin-chip--out">
+                  {activity.mismatch_count} mismatched
+                </span>
+              ) : null}
+              {activity && activity.verified_count > 0 ? (
+                <span className="admin-chip admin-chip--in">
+                  {activity.verified_count} verified
+                </span>
+              ) : null}
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost admin-btn--sm"
+                onClick={() => void verifyAll()}
+                disabled={
+                  verifyingAll ||
+                  activityLoading ||
+                  activity?.credentials_configured === false ||
+                  (activity?.unverified_count ?? 0) === 0
+                }
+                title={
+                  activity?.credentials_configured === false
+                    ? "Set MPESA_B2B_INITIATOR and MPESA_B2B_SECURITY_CREDENTIAL in .env"
+                    : "Ask Safaricom's Transaction Status API about every unverified movement"
+                }
+              >
+                <i className="fa-solid fa-shield-halved" aria-hidden="true" />
+                {verifyingAll ? "Verifying…" : "Verify all with Safaricom"}
+              </button>
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost admin-btn--sm"
+                onClick={() => void loadActivity()}
+                disabled={activityLoading}
+              >
+                <i className="fa-solid fa-arrows-rotate" aria-hidden="true" />
+                {activityLoading ? "Loading…" : "Refresh"}
+              </button>
+            </div>
+          </header>
+
+          {activityLoading && !activity ? (
+            <div className="admin-mpesa-activity__list">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} variant="text" height={16} />
+              ))}
+            </div>
+          ) : activity && activity.data.length > 0 ? (
+            <ul className="admin-mpesa-activity__list">
+              {activity.data.map((entry) => (
+                <li
+                  key={entry.id}
+                  className={`admin-mpesa-activity__row admin-mpesa-activity__row--${entry.direction}`}
+                >
+                  <i
+                    className={`fa-solid ${
+                      entry.direction === "in" ? "fa-arrow-down" : "fa-arrow-up"
+                    } admin-mpesa-activity__icon`}
+                    aria-hidden="true"
+                  />
+                  <div className="admin-mpesa-activity__body">
+                    <span className="admin-mpesa-activity__title">
+                      {entry.label}
+                      {entry.merchant_name ? ` · ${entry.merchant_name}` : ""}
+                      {entry.verification ? (
+                        <span
+                          className={`admin-mpesa-activity__badge admin-mpesa-activity__badge--${entry.verification.state}`}
+                        >
+                          <i
+                            className={`fa-solid ${
+                              VERIFICATION_LABELS[entry.verification.state]?.icon ??
+                              "fa-circle-question"
+                            }`}
+                            aria-hidden="true"
+                          />
+                          {VERIFICATION_LABELS[entry.verification.state]?.label ??
+                            entry.verification.state}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="admin-table__muted">
+                      {formatActivityCounterparty(entry)}
+                      {entry.receipt_number ? ` · ${entry.receipt_number}` : ""}
+                      {` · ${formatWhen(entry.at)}`}
+                    </span>
+                    {entry.verification && verificationDetail(entry.verification) ? (
+                      <span className="admin-mpesa-activity__verified-line">
+                        {verificationDetail(entry.verification)}
+                      </span>
+                    ) : null}
+                  </div>
+                  <strong className="admin-mpesa-activity__amount">
+                    {entry.direction === "in" ? "+" : "−"}
+                    {formatAmount(entry.amount)}
+                  </strong>
+                  {entry.can_verify ? (
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost admin-btn--sm"
+                      onClick={() => void verifyEntry(entry)}
+                      disabled={
+                        verifyingAll ||
+                        verifyingId !== null ||
+                        entry.verification?.state === "pending" ||
+                        activity?.credentials_configured === false
+                      }
+                      title="Ask Safaricom what it holds for this receipt"
+                    >
+                      <i className="fa-solid fa-shield-halved" aria-hidden="true" />
+                      {verifyingId === entry.id
+                        ? "Asking…"
+                        : entry.verification
+                          ? "Re-check"
+                          : "Verify"}
+                    </button>
+                  ) : (
+                    <span className="admin-table__muted">No receipt</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="admin-mpesa-activity__lead">
+              No completed money movements recorded yet.
+            </p>
+          )}
+        </MotionFade>
+      ) : null}
 
       <MpesaMoneyFlow audience="admin" />
 
@@ -425,6 +842,31 @@ export default function AdminMpesaTransactionsPage() {
           <option value="failed">Failed</option>
           <option value="cancelled">Cancelled</option>
         </select>
+        <button
+          type="button"
+          className="admin-btn admin-btn--primary"
+          onClick={() => void sendAllToMerchants()}
+          disabled={
+            bulkSending ||
+            releasable.length === 0 ||
+            releasingId !== null ||
+            unlockingId !== null ||
+            confirmingId !== null ||
+            queryingId !== null
+          }
+          title={
+            releasable.length === 0
+              ? "No listed collection is waiting to be sent to a merchant"
+              : `Release ${formatAmount(releasableTotal)} across ${releasable.length} listed collection(s)`
+          }
+        >
+          <i className="fa-solid fa-paper-plane" aria-hidden="true" />
+          {bulkSending
+            ? `Sending ${bulkProgress?.done ?? 0} of ${bulkProgress?.total ?? 0}…`
+            : releasable.length > 0
+              ? `Send all to merchants (${releasable.length} · ${formatAmount(releasableTotal)})`
+              : "Send all to merchants"}
+        </button>
       </div>
 
       {error ? (
@@ -586,19 +1028,39 @@ export default function AdminMpesaTransactionsPage() {
                             ) : null}
                           </div>
                         ) : txn.can_confirm_collection ? (
-                          <button
-                            type="button"
-                            className="admin-btn admin-btn--ghost admin-btn--sm"
-                            disabled={
-                              confirmingId !== null ||
-                              releasingId !== null ||
-                              unlockingId !== null
-                            }
-                            onClick={() => void confirmCollection(txn)}
-                          >
-                            <i className="fa-solid fa-wrench" aria-hidden="true" />
-                            {confirmingId === txn.id ? "Saving…" : "Fix payment"}
-                          </button>
+                          <div className="admin-table__action-stack">
+                            {txn.can_query_safaricom ? (
+                              <button
+                                type="button"
+                                className="admin-btn admin-btn--primary admin-btn--sm"
+                                disabled={
+                                  queryingId !== null ||
+                                  confirmingId !== null ||
+                                  releasingId !== null ||
+                                  unlockingId !== null
+                                }
+                                onClick={() => void queryWithSafaricom(txn)}
+                                title="Ask Safaricom whether this payment went through, and settle from its answer"
+                              >
+                                <i className="fa-solid fa-satellite-dish" aria-hidden="true" />
+                                {queryingId === txn.id ? "Asking…" : "Ask Safaricom"}
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="admin-btn admin-btn--ghost admin-btn--sm"
+                              disabled={
+                                confirmingId !== null ||
+                                releasingId !== null ||
+                                unlockingId !== null ||
+                                queryingId !== null
+                              }
+                              onClick={() => void confirmCollection(txn)}
+                            >
+                              <i className="fa-solid fa-wrench" aria-hidden="true" />
+                              {confirmingId === txn.id ? "Saving…" : "Fix payment"}
+                            </button>
+                          </div>
                         ) : (
                           <span className="admin-table__muted">—</span>
                         )}

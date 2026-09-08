@@ -42,6 +42,12 @@ const links: NavLink[] = [
     matchPrefix: true,
   },
   {
+    href: "/admin/tigo",
+    icon: "fa-tower-cell",
+    label: "Tigo Pesa",
+    matchPrefix: true,
+  },
+  {
     href: "/admin/users",
     icon: "fa-user-shield",
     label: "Platform admins",

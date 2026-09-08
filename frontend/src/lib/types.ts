@@ -150,6 +150,7 @@ export type AdminMpesaTransaction = {
   can_send_to_merchant: boolean;
   can_unlock_payout?: boolean;
   can_confirm_collection?: boolean;
+  can_query_safaricom?: boolean;
   is_admin_payout: boolean;
   is_client_collection: boolean;
   completed_at: string | null;
@@ -160,6 +161,110 @@ export type AdminMpesaTransaction = {
 export type AdminMpesaTransactionsResponse = {
   data: AdminMpesaTransaction[];
   total: number;
+};
+
+export type AdminMpesaVerificationState =
+  | "verified"
+  | "amount_mismatch"
+  | "status_mismatch"
+  | "not_found"
+  | "unresolved"
+  | "pending";
+
+export type AdminMpesaVerification = {
+  state: AdminMpesaVerificationState;
+  checked_at: string | null;
+  safaricom_status: string | null;
+  safaricom_amount: string | null;
+  safaricom_receipt: string | null;
+  safaricom_completed_at: string | null;
+  debit_party: string | null;
+  credit_party: string | null;
+  charges: string | null;
+  reason_type: string | null;
+  result_desc: string | null;
+};
+
+export type AdminMpesaActivityEntry = {
+  id: string;
+  transaction_id: string;
+  direction: "in" | "out";
+  label: string;
+  amount: number;
+  at: string | null;
+  counterparty: string | null;
+  merchant_id: string | null;
+  merchant_name: string | null;
+  receipt_number: string | null;
+  reference: string | null;
+  order_id: string | null;
+  can_verify: boolean;
+  verification: AdminMpesaVerification | null;
+};
+
+export type AdminMpesaActivityResponse = {
+  data: AdminMpesaActivityEntry[];
+  money_in: number;
+  money_out: number;
+  net: number;
+  shortcode: string | null;
+  verified_count: number;
+  mismatch_count: number;
+  unverified_count: number;
+  credentials_configured: boolean;
+};
+
+export type AdminMpesaVerifyResponse = {
+  message: string;
+  transaction_id: string;
+  direction: "in" | "out";
+  verification: AdminMpesaVerification;
+};
+
+/** One HTTP exchange with Tigo, as captured by the admin API console. */
+export type TigoCall = {
+  operation: string;
+  ok: boolean;
+  method: string;
+  url: string;
+  status_code: number | null;
+  duration_ms: number;
+  request_body: unknown;
+  response_body: unknown;
+  error: string | null;
+  ran_at: string;
+  reference_id?: string;
+};
+
+export type TigoConfig = {
+  environment: string;
+  base_url: string;
+  partner_base_url: string | null;
+  client_id_masked: string | null;
+  client_secret_masked: string | null;
+  account_msisdn: string | null;
+  account_pin_masked: string | null;
+  master_merchant_id: string | null;
+  biller_code: string | null;
+  callback_url: string;
+  redirect_url: string;
+  currency: string;
+  secure_configured: boolean;
+  partner_configured: boolean;
+  rollout_enabled: boolean;
+  allowlisted_accounts: number;
+};
+
+export type TigoConfigResponse = {
+  config: TigoConfig;
+  runtime_mode: string;
+  message: string | null;
+};
+
+export type TigoTestResponse = {
+  ok: boolean;
+  message: string;
+  calls: TigoCall[];
 };
 
 export type AdminMerchantChannel = {
@@ -998,6 +1103,8 @@ export type CatalogProductsResponse = {
   };
 };
 
+export type InventoryRole = "for_sale" | "raw_material" | "both";
+
 export type InventoryItem = {
   id: string;
   account_id: string;
@@ -1007,6 +1114,7 @@ export type InventoryItem = {
   margin: number | null;
   stock_quantity: number | null;
   low_stock_threshold: number | null;
+  inventory_role?: InventoryRole | string | null;
   is_active: boolean;
   is_low_stock: boolean;
   notes: string | null;

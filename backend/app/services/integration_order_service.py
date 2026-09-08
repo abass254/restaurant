@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models import InventoryItem, Order, OrderItem, OrderStatusHistory
 from app.services.inventory_stock_service import InsufficientStockError, deduct_stock
+from app.services.order_creation import next_order_number
 from app.support.order_status import (
     FULFILLMENT_DELIVERY,
     PAYMENT_MPESA,
@@ -28,29 +29,6 @@ def _money(value: float | int | Decimal | None) -> Decimal:
     if value is None:
         return Decimal("0.00")
     return Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-
-def _next_order_number(db: Session, account_id: str) -> str:
-    last = (
-        db.query(Order.order_number)
-        .filter(Order.account_id == account_id)
-        .order_by(Order.created_at.desc())
-        .first()
-    )
-    if not last or not last[0]:
-        return "ORD-000001"
-    raw = str(last[0])
-    if raw.startswith("ORD-"):
-        try:
-            n = int(raw.split("-", 1)[1])
-            return f"ORD-{n + 1:06d}"
-        except ValueError:
-            pass
-    if raw.isdigit():
-        return f"ORD-{int(raw) + 1:06d}"
-    # Fallback: count + 1
-    count = db.query(Order).filter(Order.account_id == account_id).count()
-    return f"ORD-{count + 1:06d}"
 
 
 class IntegrationOrderService:
@@ -191,7 +169,7 @@ class IntegrationOrderService:
 
         order = Order(
             account_id=account_id,
-            order_number=_next_order_number(self.db, account_id),
+            order_number=next_order_number(self.db, account_id),
             source=clean_source,
             fulfillment_type=FULFILLMENT_DELIVERY,
             status=PLACED,

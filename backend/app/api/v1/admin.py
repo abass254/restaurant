@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.v1.admin_auth import require_super_admin
@@ -320,6 +320,7 @@ class AdminMpesaTransactionOut(BaseModel):
     can_send_to_merchant: bool = False
     can_unlock_payout: bool = False
     can_confirm_collection: bool = False
+    can_query_safaricom: bool = False
     is_admin_payout: bool = False
     is_client_collection: bool = True
     completed_at: datetime | None = None
@@ -1559,8 +1560,16 @@ def list_mpesa_transactions(
             and (
                 bool((txn.mpesa_receipt_number or "").strip())
                 or bool(payload.get("admin_simulate"))
+                or bool(payload.get("safaricom_confirmed"))
                 or is_admin_payout
             )
+        )
+        # Safaricom can still be asked about any STK we have a checkout id for.
+        can_query_safaricom = (
+            not is_admin_payout
+            and not has_received
+            and bool((txn.checkout_request_id or "").strip())
+            and not (txn.checkout_request_id or "").startswith(("ADMIN-SIM-", "ADMIN-PAYOUT-"))
         )
         can_send = (
             not is_admin_payout
@@ -1610,6 +1619,7 @@ def list_mpesa_transactions(
                 can_send_to_merchant=can_send,
                 can_unlock_payout=can_unlock,
                 can_confirm_collection=can_confirm,
+                can_query_safaricom=can_query_safaricom,
                 is_admin_payout=is_admin_payout,
                 is_client_collection=not is_admin_payout,
                 completed_at=txn.completed_at,
@@ -1712,6 +1722,75 @@ def unlock_mpesa_payout(
     )
 
 
+class AdminQuerySafaricomResponse(BaseModel):
+    message: str
+    transaction_id: str
+    outcome: str
+    status: str
+    result_desc: str | None = None
+
+
+@router.post(
+    "/mpesa-transactions/{transaction_id}/query-safaricom",
+    response_model=AdminQuerySafaricomResponse,
+)
+def query_mpesa_collection_with_safaricom(
+    transaction_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+    admin: User = Depends(require_super_admin),
+):
+    """Settle a stuck collection from Safaricom's own answer, without paying out.
+
+    Covers the lost-callback case: Safaricom took the payment but its result
+    never reached us. The payout stays manual so money only moves on a
+    deliberate Send to merchant.
+    """
+    from app.services.mpesa_service import MpesaApiError
+
+    del admin  # auth gate only
+    validate_csrf(request, session)
+
+    txn = db.query(MpesaTransaction).filter(MpesaTransaction.id == transaction_id).first()
+    if txn is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Transaction not found.")
+    if not (txn.checkout_request_id or "").strip():
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="This record has no CheckoutRequestID, so Safaricom cannot be asked about it.",
+        )
+
+    try:
+        outcome = mpesa_service.refresh_pending_stk(db, txn, auto_payout=False)
+    except MpesaApiError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    if outcome == "paid":
+        message = (
+            f"Safaricom confirms the customer paid KES {int(txn.amount)}. "
+            "Marked as received at DukAI — use Send to merchant to release it."
+        )
+    elif outcome == "failed":
+        message = (
+            "Safaricom says this payment did not go through: "
+            f"{txn.result_desc or 'no further detail'}."
+        )
+    else:
+        message = (
+            "Safaricom is still processing this request. Try again shortly — "
+            "if it never resolves, use Fix payment with the customer's SMS code."
+        )
+
+    return AdminQuerySafaricomResponse(
+        message=message,
+        transaction_id=txn.id,
+        outcome=outcome,
+        status=txn.status,
+        result_desc=txn.result_desc,
+    )
+
+
 class AdminConfirmMpesaCollectionIn(BaseModel):
     mpesa_receipt_number: str = Field(min_length=6, max_length=50)
 
@@ -1800,6 +1879,10 @@ def get_mpesa_hub_balance(
     except Exception:
         credentials_configured = False
 
+    # Self-heal queries whose result callback never arrived, so the panel
+    # stops showing "Checking…" and the button becomes usable again.
+    mpesa_balance_service.expire_stale_pending(db)
+
     latest = mpesa_balance_service.get_latest_balance(db)
     if latest is None:
         return AdminMpesaBalanceResponse(
@@ -1866,6 +1949,270 @@ def refresh_mpesa_hub_balance(
             "Balance query sent. Safaricom will reply to the callback shortly — "
             "this panel refreshes automatically."
         ),
+    )
+
+
+class AdminMpesaVerification(BaseModel):
+    """What Safaricom's Transaction Status API reports for one entry."""
+
+    state: str
+    checked_at: datetime | None = None
+    safaricom_status: str | None = None
+    safaricom_amount: str | None = None
+    safaricom_receipt: str | None = None
+    safaricom_completed_at: datetime | None = None
+    debit_party: str | None = None
+    credit_party: str | None = None
+    charges: str | None = None
+    reason_type: str | None = None
+    result_desc: str | None = None
+
+
+class AdminMpesaActivityEntry(BaseModel):
+    id: str
+    transaction_id: str
+    direction: str
+    label: str
+    amount: int
+    at: datetime | None = None
+    counterparty: str | None = None
+    merchant_id: str | None = None
+    merchant_name: str | None = None
+    receipt_number: str | None = None
+    reference: str | None = None
+    order_id: str | None = None
+    can_verify: bool = False
+    verification: AdminMpesaVerification | None = None
+
+
+class AdminMpesaActivityResponse(BaseModel):
+    data: list[AdminMpesaActivityEntry]
+    money_in: int
+    money_out: int
+    net: int
+    shortcode: str | None = None
+    verified_count: int = 0
+    mismatch_count: int = 0
+    unverified_count: int = 0
+    credentials_configured: bool = False
+
+
+def _activity_verification(row) -> AdminMpesaVerification:
+    from app.services import mpesa_status_service
+
+    state = row.match_state
+    if row.status == mpesa_status_service.CHECK_PENDING:
+        state = "pending"
+    return AdminMpesaVerification(
+        state=state or "unresolved",
+        checked_at=row.completed_at or row.requested_at,
+        safaricom_status=row.safaricom_status,
+        safaricom_amount=row.safaricom_amount,
+        safaricom_receipt=row.safaricom_receipt,
+        safaricom_completed_at=row.safaricom_completed_at,
+        debit_party=row.debit_party,
+        credit_party=row.credit_party,
+        charges=row.debit_party_charges,
+        reason_type=row.reason_type,
+        result_desc=row.result_desc,
+    )
+
+
+@router.get("/mpesa-activity", response_model=AdminMpesaActivityResponse)
+def list_mpesa_hub_activity(
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_super_admin),
+    limit: int = 25,
+):
+    """Recent money in and out of the DukAI hub Paybill.
+
+    Built from DukAI's own M-PESA records: confirmed Client → DukAI collections
+    are money in, completed DukAI → Merchant payouts are money out. Safaricom
+    has no statement API, so movements DukAI did not initiate (manual
+    withdrawals, transaction charges) are not listed here. Each entry carries
+    the latest Transaction Status verification against Safaricom, if any.
+    """
+    from app.services import mpesa_payout_service, mpesa_status_service
+
+    del admin  # auth gate only
+    limit = max(1, min(limit, 100))
+
+    shortcode: str | None = None
+    credentials_configured = False
+    try:
+        config = mpesa_service.resolve_mpesa_config(db)
+        shortcode = (config.shortcode or "").strip() or None
+        credentials_configured = mpesa_payout_service._resolve_b2b_credentials(config) is not None
+    except Exception:
+        shortcode = None
+
+    # Over-fetch: one row can yield both an in and an out entry, and rows are
+    # ordered by creation while entries are ordered by when money moved.
+    rows = (
+        db.query(MpesaTransaction)
+        .filter(
+            or_(
+                MpesaTransaction.status == "success",
+                MpesaTransaction.payout_status == "success",
+            ),
+        )
+        .order_by(
+            MpesaTransaction.created_at.is_(None),
+            MpesaTransaction.created_at.desc(),
+            MpesaTransaction.id.desc(),
+        )
+        .limit(limit * 4)
+        .all()
+    )
+
+    account_ids = {t.account_id for t in rows if t.account_id}
+    accounts: dict[str, Account] = {}
+    if account_ids:
+        for account in db.query(Account).filter(Account.id.in_(account_ids)).all():
+            accounts[account.id] = account
+
+    entries: list[AdminMpesaActivityEntry] = []
+    for txn in rows:
+        payload = txn.callback_payload if isinstance(txn.callback_payload, dict) else {}
+        is_admin_payout = bool(payload.get("admin_merchant_payout"))
+        account = accounts.get(txn.account_id) if txn.account_id else None
+        merchant_name = account.business_name if account else None
+
+        received = txn.status == "success" and (
+            bool((txn.mpesa_receipt_number or "").strip())
+            or bool(payload.get("admin_simulate"))
+            or bool(payload.get("safaricom_confirmed"))
+        )
+        if received and not is_admin_payout:
+            entries.append(
+                AdminMpesaActivityEntry(
+                    id=f"{txn.id}:in",
+                    transaction_id=txn.id,
+                    direction="in",
+                    label="Client payment",
+                    amount=int(txn.amount),
+                    at=txn.completed_at or txn.created_at,
+                    counterparty=txn.phone_number,
+                    merchant_id=txn.account_id,
+                    merchant_name=merchant_name,
+                    receipt_number=txn.mpesa_receipt_number,
+                    reference=txn.account_reference,
+                    order_id=txn.order_id,
+                    can_verify=bool((txn.mpesa_receipt_number or "").strip()),
+                ),
+            )
+
+        if txn.payout_status == "success":
+            destination = " ".join(
+                part
+                for part in [txn.payout_shortcode_type or "", txn.payout_shortcode or ""]
+                if part
+            ).strip()
+            entries.append(
+                AdminMpesaActivityEntry(
+                    id=f"{txn.id}:out",
+                    transaction_id=txn.id,
+                    direction="out",
+                    label="Admin payout" if is_admin_payout else "Merchant payout",
+                    amount=int(txn.payout_amount or txn.amount),
+                    at=txn.payout_completed_at or txn.updated_at,
+                    counterparty=destination or None,
+                    merchant_id=txn.account_id,
+                    merchant_name=merchant_name,
+                    receipt_number=txn.payout_receipt_number,
+                    reference=txn.account_reference,
+                    order_id=txn.order_id,
+                    can_verify=bool((txn.payout_receipt_number or "").strip()),
+                ),
+            )
+
+    entries.sort(
+        key=lambda e: (e.at is not None, e.at or datetime.min),
+        reverse=True,
+    )
+    entries = entries[:limit]
+
+    checks = mpesa_status_service.latest_checks_for_transactions(
+        db,
+        [e.transaction_id for e in entries],
+    )
+    for entry in entries:
+        check = checks.get((entry.transaction_id, entry.direction))
+        if check is not None:
+            entry.verification = _activity_verification(check)
+
+    money_in = sum(e.amount for e in entries if e.direction == "in")
+    money_out = sum(e.amount for e in entries if e.direction == "out")
+    states = [e.verification.state if e.verification else None for e in entries]
+
+    return AdminMpesaActivityResponse(
+        data=entries,
+        money_in=money_in,
+        money_out=money_out,
+        net=money_in - money_out,
+        shortcode=shortcode,
+        verified_count=sum(1 for s in states if s == mpesa_status_service.MATCH_VERIFIED),
+        mismatch_count=sum(
+            1
+            for s in states
+            if s
+            in {
+                mpesa_status_service.MATCH_AMOUNT_MISMATCH,
+                mpesa_status_service.MATCH_STATUS_MISMATCH,
+                mpesa_status_service.MATCH_NOT_FOUND,
+            }
+        ),
+        unverified_count=sum(
+            1 for s in states if s is None or s == mpesa_status_service.MATCH_UNRESOLVED
+        ),
+        credentials_configured=credentials_configured,
+    )
+
+
+class AdminMpesaVerifyIn(BaseModel):
+    transaction_id: str
+    direction: str = Field(pattern="^(in|out)$")
+
+
+class AdminMpesaVerifyResponse(BaseModel):
+    message: str
+    transaction_id: str
+    direction: str
+    verification: AdminMpesaVerification
+
+
+@router.post("/mpesa-verify", response_model=AdminMpesaVerifyResponse)
+def verify_mpesa_entry_against_safaricom(
+    payload: AdminMpesaVerifyIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+    admin: User = Depends(require_super_admin),
+):
+    """Ask Safaricom's Transaction Status API what it holds for one movement."""
+    from app.services import mpesa_status_service
+    from app.services.mpesa_service import MpesaApiError
+
+    validate_csrf(request, session)
+
+    try:
+        row = mpesa_status_service.request_status_check(
+            db,
+            transaction_id=payload.transaction_id,
+            direction=payload.direction,
+            requested_by_user_id=admin.id,
+        )
+    except MpesaApiError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return AdminMpesaVerifyResponse(
+        message=(
+            "Asked Safaricom about this transaction. The result arrives on the "
+            "callback shortly — this panel refreshes automatically."
+        ),
+        transaction_id=row.transaction_id,
+        direction=row.direction,
+        verification=_activity_verification(row),
     )
 
 

@@ -15,7 +15,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
-from sqlalchemy import func, or_
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.session import require_user, validate_csrf
@@ -47,6 +47,7 @@ from app.services.mpesa_service import (
     MpesaConfigurationMissing,
 )
 from app.support.mpesa_merchant_copy import merchant_safe_stk_error
+from app.services.order_creation import next_order_number
 from app.services.order_tracking_service import (
     OrderTrackingError,
     OrderTrackingService,
@@ -135,27 +136,6 @@ def _get_owned_order(
     if not order:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Order not found.")
     return order
-
-
-def _next_order_number(db: Session, account_id: str) -> str:
-    """Sequential per-shop order number, e.g. ``ORD-000123``.
-
-    Order IDs are UUIDs and can't be used for the human-readable counter,
-    so we count existing orders globally and walk forward until we find a
-    free ``ORD-NNNNNN`` slot. The unique index on ``order_number`` keeps
-    this race-free under concurrent inserts.
-    """
-    seq = (db.query(func.count(Order.id)).scalar() or 0) + 1
-    while True:
-        candidate = f"ORD-{seq:06d}"
-        exists = (
-            db.query(Order.id)
-            .filter(Order.order_number == candidate)
-            .first()
-        )
-        if not exists:
-            return candidate
-        seq += 1
 
 
 def _money(value: float | int | Decimal | None) -> Decimal:
@@ -539,7 +519,7 @@ def create_test_delivery(
     now = datetime.utcnow()
     order = Order(
         account_id=account_id,
-        order_number=_next_order_number(db, account_id),
+        order_number=next_order_number(db, account_id),
         source="walkin",
         fulfillment_type=FULFILLMENT_DELIVERY,
         status=READY,
@@ -894,6 +874,17 @@ def create_order(
                         },
                     },
                 )
+            if not inv_item.is_saleable():
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "errors": {
+                            f"items.{idx}.inventory_item_id": [
+                                "This item is a raw material and cannot be sold.",
+                            ],
+                        },
+                    },
+                )
 
         # Resolve display name + price from the snapshot or the explicit payload.
         if inv_item and inv_item.product:
@@ -949,7 +940,7 @@ def create_order(
     now = datetime.utcnow()
     order = Order(
         account_id=account_id,
-        order_number=_next_order_number(db, account_id),
+        order_number=next_order_number(db, account_id),
         source=payload.source,
         fulfillment_type=payload.fulfillment_type,
         status=PLACED,

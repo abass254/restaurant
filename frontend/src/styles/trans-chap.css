@@ -282,6 +282,48 @@ button.trans-chap-header__icon {
     padding-inline: 20px;
 }
 
+.trans-chap-barcode-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 64px;
+    gap: 0.55rem;
+    align-items: stretch;
+}
+
+.trans-chap-barcode-row .trans-chap-input {
+    min-width: 0;
+}
+
+.trans-chap-barcode-row .auth-split__input:read-only {
+    color: var(--app-text);
+    opacity: 1;
+    cursor: default;
+}
+
+.trans-chap-form__secondary {
+    appearance: none;
+    width: 100%;
+    min-height: 48px;
+    padding: 0.75rem 1rem;
+    border: 1px solid color-mix(in srgb, var(--trans-chap-purchase) 45%, var(--app-border));
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--trans-chap-purchase) 8%, var(--app-surface));
+    color: var(--app-text);
+    font: inherit;
+    font-size: 0.95rem;
+    font-weight: 750;
+    cursor: pointer;
+}
+
+.trans-chap-form__secondary:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.trans-chap-form__hint a {
+    color: var(--trans-chap-purchase);
+    font-weight: 750;
+}
+
 .trans-chap-form > .trans-chap-form__lead {
     padding-inline: 20px;
 }
@@ -348,6 +390,31 @@ button.trans-chap-header__icon {
     display: flex;
     flex-wrap: wrap;
     gap: 0.4rem;
+}
+
+.trans-chap-form__label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: var(--app-text);
+}
+
+.trans-chap-form__hint {
+    margin: 0.35rem 0 0;
+    font-size: 0.78rem;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-form__readonly {
+    margin: 0;
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    padding: 0.55rem 0.1rem;
+    font-size: 1rem;
+    font-weight: 750;
+    color: var(--app-text);
 }
 
 .trans-chap-form__chip {
@@ -694,6 +761,141 @@ button.trans-chap-header__icon {
     font-size: 0.82rem;
 }
 
+.trans-chap-purchase-add-new {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    width: 100%;
+    margin: 0 0 0.55rem;
+    padding: 0.7rem 0.85rem;
+    border: 1px dashed color-mix(in srgb, var(--trans-chap-purchase) 45%, var(--app-border));
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--trans-chap-purchase) 10%, var(--app-bg));
+    color: var(--app-text);
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 700;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.trans-chap-purchase-add-new strong {
+    font-weight: 800;
+}
+
+.trans-chap-purchase-add-new i {
+    color: var(--trans-chap-purchase);
+}
+
+.trans-chap-purchase-scan__role {
+    margin: 0 0 0.85rem;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid color-mix(in srgb, var(--trans-chap-purchase) 28%, var(--app-border));
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--trans-chap-purchase) 8%, var(--app-surface));
+}
+
+.trans-chap-purchase-scan__role .trans-chap-form__label {
+    margin-bottom: 0.45rem;
+}
+
+.trans-chap-purchase-scan__line-tools {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.4rem;
+    min-width: 0;
+    width: 100%;
+}
+
+.trans-chap-purchase-scan__new-lines {
+    list-style: none;
+    margin: 0.75rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.trans-chap-purchase-scan__new-lines .trans-chap-catalog__card {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.7rem 0.75rem;
+}
+
+.trans-chap-purchase-scan__new-lines .trans-chap-catalog__copy {
+    flex: 1;
+    min-width: 0;
+}
+
+.trans-chap-purchase-scan__new-lines .trans-chap-sale-scan__qty {
+    flex-shrink: 0;
+    margin: 0;
+}
+
+.trans-chap-purchase-scan__lead {
+    margin: 0 0 0.75rem;
+    color: var(--app-text-secondary);
+    font-size: 0.88rem;
+    line-height: 1.45;
+}
+
+.trans-chap-purchase-scan__add {
+    margin: 0 0 0.9rem;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid color-mix(in srgb, var(--trans-chap-purchase) 35%, var(--app-border));
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--trans-chap-purchase) 7%, var(--app-surface));
+}
+
+.trans-chap-purchase-scan__add-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.55rem;
+    align-items: stretch;
+}
+
+.trans-chap-purchase-scan__add-btn {
+    min-width: 4.75rem;
+    width: auto;
+    padding-inline: 1rem;
+}
+
+.trans-chap-purchase-scan__add .trans-chap-form__hint {
+    margin-top: 0.45rem;
+}
+
+.trans-chap-purchase-scan__search {
+    margin: 0 0 0.75rem;
+}
+
+.trans-chap-purchase-scan__search .trans-chap-sales__search {
+    width: 100%;
+    flex: none;
+}
+
+.trans-chap-purchase-scan__section {
+    margin: 0 0 0.55rem;
+    color: var(--app-text-secondary);
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.trans-chap-purchase-scan__bar .auth-split__btn {
+    background: var(--trans-chap-purchase);
+    border-color: var(--trans-chap-purchase);
+}
+
+.trans-chap-purchase-scan .trans-chap-catalog__card.is-in-cart {
+    border-color: color-mix(in srgb, var(--trans-chap-purchase) 55%, var(--app-border));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--trans-chap-purchase) 25%, transparent);
+}
+
 .trans-chap-sale-scan__bar .auth-split__btn {
     width: 100%;
 }
@@ -707,10 +909,17 @@ button.trans-chap-header__icon {
     gap: 0.45rem;
 }
 
+.trans-chap-catalog--grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
 .trans-chap-catalog__card {
     display: flex;
     align-items: center;
     gap: 0.55rem;
+    min-width: 0;
     min-height: 3.6rem;
     padding: 0.35rem 0.55rem 0.35rem 0.15rem;
     border: 1px solid var(--app-border);
@@ -735,6 +944,7 @@ button.trans-chap-header__icon {
     min-width: 0;
     display: flex;
     align-items: center;
+    gap: 0.7rem;
     padding: 0.45rem 0.55rem;
     border: 0;
     background: transparent;
@@ -751,6 +961,7 @@ button.trans-chap-header__icon {
 .trans-chap-catalog__copy {
     display: flex;
     min-width: 0;
+    flex: 1;
     flex-direction: column;
     gap: 0.15rem;
 }
@@ -764,6 +975,7 @@ button.trans-chap-header__icon {
     font-size: 0.88rem;
     font-weight: 800;
     line-height: 1.25;
+    overflow: hidden;
 }
 
 .trans-chap-catalog__copy span {
@@ -775,6 +987,228 @@ button.trans-chap-header__icon {
 .trans-chap-catalog__card .trans-chap-sale-scan__qty {
     flex-shrink: 0;
     margin-right: 0.2rem;
+}
+
+.trans-chap-catalog--grid .trans-chap-catalog__card {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0;
+    overflow: hidden;
+}
+
+.trans-chap-catalog--grid .trans-chap-catalog__main {
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
+    width: 100%;
+}
+
+.trans-chap-catalog--grid .trans-chap-thumb {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    border-radius: 0;
+}
+
+.trans-chap-catalog--grid .trans-chap-catalog__copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.3rem;
+    padding: 0.45rem 0.5rem 0.55rem;
+    width: 100%;
+    min-width: 0;
+}
+
+.trans-chap-catalog--grid .trans-chap-catalog__name {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    width: 100%;
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1.25;
+}
+
+.trans-chap-catalog--grid .trans-chap-catalog__copy .trans-chap-panel__tag {
+    align-self: flex-start;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.trans-chap-catalog--grid .trans-chap-catalog__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    width: 100%;
+    color: var(--app-text-secondary);
+    font-size: 0.65rem;
+    font-weight: 650;
+    line-height: 1.3;
+}
+
+.trans-chap-catalog--grid .trans-chap-catalog__meta span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: inherit;
+}
+
+.trans-chap-catalog--grid .trans-chap-sale-scan__qty {
+    margin: 0 0.45rem 0.55rem;
+    align-self: stretch;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+
+.trans-chap-catalog__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.55rem;
+}
+
+.trans-chap-thumb {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    overflow: hidden;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--app-primary) 10%, var(--app-bg));
+    color: var(--app-primary);
+}
+
+.trans-chap-thumb--sm {
+    width: 36px;
+    height: 36px;
+}
+
+.trans-chap-thumb--md {
+    width: 48px;
+    height: 48px;
+}
+
+.trans-chap-thumb--lg {
+    width: 72px;
+    height: 72px;
+}
+
+.trans-chap-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.trans-chap-thumb em {
+    font-size: 0.95rem;
+    font-style: normal;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.trans-chap-thumb--lg em {
+    font-size: 1.35rem;
+}
+
+.trans-chap-photo {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.trans-chap-photo__pick {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    width: 100%;
+    min-height: 9.5rem;
+    padding: 0;
+    overflow: hidden;
+    border: 1px dashed var(--app-border);
+    border-radius: 16px;
+    background: var(--app-bg);
+    color: var(--app-text-secondary);
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.trans-chap-photo__pick.has-image {
+    border-style: solid;
+    min-height: 0;
+}
+
+.trans-chap-photo__pick i {
+    font-size: 1.15rem;
+    color: var(--app-primary);
+}
+
+.trans-chap-photo__pick img {
+    display: block;
+    width: 100%;
+    height: 11rem;
+    object-fit: cover;
+}
+
+.trans-chap-photo__pick.is-ai-queued {
+    border-style: solid;
+    border-color: color-mix(in srgb, var(--app-primary) 45%, transparent);
+    background: color-mix(in srgb, var(--app-primary) 8%, var(--app-surface));
+}
+
+.trans-chap-photo__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.55rem 1rem;
+}
+
+.trans-chap-photo__ai {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 0;
+    padding: 0;
+    background: none;
+    color: var(--app-primary);
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.trans-chap-photo__ai:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.trans-chap-photo__clear {
+    appearance: none;
+    align-self: flex-start;
+    border: 0;
+    padding: 0;
+    background: none;
+    color: var(--app-primary);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 750;
+    cursor: pointer;
+}
+
+.trans-chap-photo__hint {
+    margin: 0;
+    color: var(--app-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
 }
 
 .trans-chap-status {
@@ -3655,21 +4089,382 @@ html[data-theme="dark"] .trans-chap-sale__add {
 .trans-chap-home {
     display: flex;
     flex-direction: column;
-    gap: 1.15rem;
+    gap: 1rem;
     flex: 1;
     min-height: 0;
     overflow: auto;
-    padding-bottom: 0.25rem;
+    padding: 0.15rem 0 1.25rem;
 }
 
 .trans-chap-dash {
-    --dash-gap: clamp(0.5rem, 2.4cqi, 0.9rem);
+    --dash-gap: clamp(0.55rem, 2.4cqi, 0.95rem);
     --tile-accent: var(--app-primary);
     container-type: inline-size;
     container-name: trans-chap-dash;
     width: 100%;
-    gap: 1.35rem;
-    padding-top: 0.2rem;
+    gap: 1rem;
+}
+
+.trans-chap-dash__hero {
+    padding: 0.15rem 0.2rem 0.25rem;
+}
+
+.trans-chap-dash__hero-date {
+    margin: 0 0 0.35rem;
+    color: var(--app-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.trans-chap-dash__hero h2 {
+    margin: 0;
+    font-size: clamp(1.35rem, 6.5cqi, 1.75rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    color: var(--app-text);
+}
+
+.trans-chap-dash__hero-shop {
+    margin: 0.3rem 0 0;
+    color: var(--app-text-secondary);
+    font-size: 0.92rem;
+    font-weight: 650;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.trans-chap-dash__analytics {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    flex: 1;
+}
+
+.trans-chap-dash__spotlight {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.15rem 1.1rem 1.2rem;
+    border-radius: 22px;
+    background:
+        linear-gradient(
+            145deg,
+            color-mix(in srgb, var(--trans-chap-sale) 18%, var(--app-bg)) 0%,
+            color-mix(in srgb, var(--trans-chap-sale) 6%, var(--app-bg)) 100%
+        );
+    border: 1px solid color-mix(in srgb, var(--trans-chap-sale) 22%, var(--app-border));
+}
+
+.trans-chap-dash__spotlight.is-loss {
+    background:
+        linear-gradient(
+            145deg,
+            color-mix(in srgb, #b42318 16%, var(--app-bg)) 0%,
+            color-mix(in srgb, #b42318 5%, var(--app-bg)) 100%
+        );
+    border-color: color-mix(in srgb, #b42318 28%, var(--app-border));
+}
+
+.trans-chap-dash__spotlight-copy {
+    min-width: 0;
+}
+
+.trans-chap-dash__spotlight-copy > span {
+    display: block;
+    color: var(--app-text-secondary);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.trans-chap-dash__spotlight-copy strong {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.2em;
+    margin-top: 0.35rem;
+    color: var(--app-text);
+    font-size: clamp(1.55rem, 8cqi, 2.05rem);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.04em;
+    line-height: 1.05;
+}
+
+.trans-chap-dash__spotlight-copy strong small {
+    font-size: 0.45em;
+    font-weight: 800;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-dash__spotlight.is-loss .trans-chap-dash__spotlight-copy strong {
+    color: #b42318;
+}
+
+.trans-chap-dash__spotlight-copy p {
+    margin: 0.45rem 0 0;
+    color: var(--app-text-secondary);
+    font-size: 0.78rem;
+    font-weight: 650;
+    line-height: 1.35;
+}
+
+.trans-chap-dash__spotlight > i {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--trans-chap-sale) 16%, transparent);
+    color: var(--trans-chap-sale);
+    font-size: 1.15rem;
+}
+
+.trans-chap-dash__spotlight.is-loss > i {
+    background: color-mix(in srgb, #b42318 14%, transparent);
+    color: #b42318;
+}
+
+.trans-chap-dash__stat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+}
+
+.trans-chap-dash__stat {
+    min-width: 0;
+    padding: 1rem 0.9rem 1.05rem;
+    border-radius: 18px;
+    background: var(--app-bg);
+    border: 1px solid var(--app-border);
+}
+
+.trans-chap-dash__stat--sale {
+    border-color: color-mix(in srgb, var(--trans-chap-sale) 28%, var(--app-border));
+    background: color-mix(in srgb, var(--trans-chap-sale) 7%, var(--app-bg));
+}
+
+.trans-chap-dash__stat--purchase {
+    border-color: color-mix(in srgb, var(--trans-chap-purchase) 28%, var(--app-border));
+    background: color-mix(in srgb, var(--trans-chap-purchase) 8%, var(--app-bg));
+}
+
+.trans-chap-dash__stat > span {
+    display: block;
+    color: var(--app-text-secondary);
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.trans-chap-dash__stat strong {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.18em;
+    margin-top: 0.4rem;
+    color: var(--app-text);
+    font-size: clamp(1.05rem, 5.5cqi, 1.35rem);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+}
+
+.trans-chap-dash__stat strong small {
+    font-size: 0.52em;
+    font-weight: 800;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-dash__stat em {
+    display: block;
+    margin-top: 0.45rem;
+    color: var(--app-text-secondary);
+    font-size: 0.78rem;
+    font-style: normal;
+    font-weight: 650;
+}
+
+.trans-chap-dash__panel {
+    padding: 1rem 0.95rem 1.05rem;
+    border-radius: 18px;
+    background: var(--app-bg);
+    border: 1px solid var(--app-border);
+}
+
+.trans-chap-dash__panel-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.85rem;
+}
+
+.trans-chap-dash__panel-head h3 {
+    margin: 0;
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: var(--app-text);
+}
+
+.trans-chap-dash__panel-head span {
+    color: var(--app-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 750;
+}
+
+.trans-chap-dash__mix {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.trans-chap-dash__mix-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.35rem;
+}
+
+.trans-chap-dash__mix-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-width: 0;
+    color: var(--app-text-secondary);
+    font-size: 0.84rem;
+    font-weight: 700;
+}
+
+.trans-chap-dash__mix-meta i {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    flex-shrink: 0;
+}
+
+.trans-chap-dash__mix-meta strong {
+    font-size: 0.88rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+}
+
+.trans-chap-dash__mix-track {
+    height: 0.55rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-text) 8%, var(--app-surface));
+    overflow: hidden;
+}
+
+.trans-chap-dash__mix-track b {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    min-width: 0;
+}
+
+.trans-chap-dash__empty {
+    margin: 0;
+    color: var(--app-text-secondary);
+    font-size: 0.84rem;
+    font-weight: 600;
+    line-height: 1.45;
+}
+
+.trans-chap-dash__owing {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.85rem;
+    padding: 1rem 1rem 1.05rem;
+    border-radius: 18px;
+    text-decoration: none;
+    color: inherit;
+    background: color-mix(in srgb, var(--trans-chap-credit) 10%, var(--app-bg));
+    border: 1px solid color-mix(in srgb, var(--trans-chap-credit) 30%, var(--app-border));
+}
+
+.trans-chap-dash__owing.is-clear {
+    background: color-mix(in srgb, var(--trans-chap-cash) 8%, var(--app-bg));
+    border-color: color-mix(in srgb, var(--trans-chap-cash) 26%, var(--app-border));
+}
+
+.trans-chap-dash__owing > span:first-child {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.trans-chap-dash__owing strong {
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--app-text);
+}
+
+.trans-chap-dash__owing em {
+    color: var(--app-text-secondary);
+    font-size: 0.8rem;
+    font-style: normal;
+    font-weight: 650;
+}
+
+.trans-chap-dash__owing-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
+    color: var(--trans-chap-credit);
+    font-size: 0.88rem;
+    font-weight: 800;
+}
+
+.trans-chap-dash__owing.is-clear > i {
+    color: var(--trans-chap-cash);
+    font-size: 1rem;
+}
+
+.trans-chap-dash__foot {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0.15rem 0 0;
+    padding: 0 0.15rem;
+}
+
+.trans-chap-dash__foot a {
+    color: var(--app-primary);
+    font-size: 0.88rem;
+    font-weight: 800;
+    text-decoration: none;
+}
+
+.trans-chap-dash__foot a:hover,
+.trans-chap-dash__foot a:focus-visible {
+    text-decoration: underline;
+}
+
+.trans-chap-dash__foot span {
+    color: var(--app-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.4;
 }
 
 .trans-chap-dash__hello {
@@ -3713,37 +4508,63 @@ html[data-theme="dark"] .trans-chap-sale__add {
 .trans-chap-dash__kpis {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--dash-gap);
+    gap: 0.45rem;
 }
 
 .trans-chap-dash__kpis article {
     min-width: 0;
-    padding: 0.9rem 0.7rem 0.95rem;
+    overflow: hidden;
+    container-type: inline-size;
+    padding: 0.85rem 0.5rem 0.9rem;
     border-radius: 16px;
     background: var(--app-bg);
 }
 
 .trans-chap-dash__kpis span {
     display: block;
+    overflow: hidden;
     color: var(--app-text-secondary);
     font-size: 0.68rem;
     font-weight: 800;
     letter-spacing: 0.04em;
     text-transform: uppercase;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .trans-chap-dash__kpis strong {
-    display: block;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.18em;
+    row-gap: 0.02em;
     margin-top: 0.32rem;
+    max-width: 100%;
     color: var(--app-text);
-    font-size: clamp(1.28rem, 6.4cqi, 1.55rem);
+    font-size: clamp(0.82rem, 17cqi, 1.2rem);
     font-weight: 800;
+    font-variant-numeric: tabular-nums;
     letter-spacing: -0.03em;
-    line-height: 1.1;
+    line-height: 1.15;
+}
+
+.trans-chap-dash__kpis strong small {
+    font-size: 0.58em;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    color: var(--app-text-secondary);
 }
 
 .trans-chap-dash__kpis article.is-loss strong {
     color: #b42318;
+}
+
+@container (max-width: 5.75rem) {
+    .trans-chap-dash__kpis strong {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.08rem;
+    }
 }
 
 .trans-chap-dash__today-note {
@@ -4326,12 +5147,80 @@ html[data-theme="dark"] .trans-chap-sale__add {
     color: var(--app-text-secondary);
 }
 
-.trans-chap-signin .auth-split__alert {
+.trans-chap-signin__alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
     margin: 0;
     padding: 0.9rem 1rem;
-    border-radius: 14px;
-    font-size: 0.9375rem;
+    border-radius: 16px;
+    border: 1px solid transparent;
+    text-align: left;
+}
+
+.trans-chap-signin__alert-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 2.15rem;
+    height: 2.15rem;
+    border-radius: 999px;
+    font-size: 0.95rem;
+}
+
+.trans-chap-signin__alert-copy {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding-top: 0.12rem;
+}
+
+.trans-chap-signin__alert-copy strong {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+}
+
+.trans-chap-signin__alert-copy p {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
     line-height: 1.4;
+}
+
+.trans-chap-signin__alert--error {
+    background: color-mix(in srgb, var(--app-danger, #b42318) 8%, var(--app-surface));
+    border-color: color-mix(in srgb, var(--app-danger, #b42318) 22%, transparent);
+    color: var(--app-danger, #b42318);
+}
+
+.trans-chap-signin__alert--error .trans-chap-signin__alert-icon {
+    background: color-mix(in srgb, var(--app-danger, #b42318) 14%, transparent);
+    color: var(--app-danger, #b42318);
+}
+
+.trans-chap-signin__alert--error .trans-chap-signin__alert-copy p {
+    color: color-mix(in srgb, var(--app-danger, #b42318) 72%, var(--app-text));
+}
+
+.trans-chap-signin__alert--ok {
+    background: color-mix(in srgb, var(--app-success, #15803d) 10%, var(--app-surface));
+    border-color: color-mix(in srgb, var(--app-success, #15803d) 22%, transparent);
+    color: var(--app-success, #15803d);
+}
+
+.trans-chap-signin__alert--ok .trans-chap-signin__alert-icon {
+    background: color-mix(in srgb, var(--app-success, #15803d) 14%, transparent);
+    color: var(--app-success, #15803d);
+}
+
+.trans-chap-signin__alert--ok .trans-chap-signin__alert-copy p {
+    color: color-mix(in srgb, var(--app-success, #15803d) 72%, var(--app-text));
 }
 
 .trans-chap-signin .auth-otp {
@@ -5280,6 +6169,10 @@ html[data-trans-chap-machine="tablet"] .trans-chap-form:not(.trans-chap-form--sc
     margin-inline: auto;
     width: 100%;
     padding-top: 0.75rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-catalog--grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 html[data-trans-chap-machine="tablet"] .trans-chap-sale-scan:not(.trans-chap-sale-scan--select) {

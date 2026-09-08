@@ -35,6 +35,7 @@ import {
   formatMoney,
 } from "@/lib/orders";
 import { findInventoryByBarcode } from "@/lib/barcode";
+import { inventoryRole, isSaleableRole } from "@/lib/trans-chap-product";
 import type {
   InventoryItem,
   InventoryResponse,
@@ -230,6 +231,13 @@ export default function PosPage() {
 
   const addToCart = useCallback((item: InventoryItem, qty = quickAddQty) => {
     const addAmount = Math.max(1, Math.floor(qty || 1));
+    if (!isSaleableRole(inventoryRole(item))) {
+      void showError(
+        "Raw material",
+        `"${item.product?.name ?? "This item"}" is marked as a raw material and can’t be sold.`,
+      );
+      return;
+    }
     if (item.selling_price === null && !priceEditEnabled) {
       void showError(
         "No price set",
@@ -369,6 +377,7 @@ export default function PosPage() {
     const term = search.trim().toLowerCase();
     return items.filter((item) => {
       if (!item.is_active) return false;
+      if (!isSaleableRole(inventoryRole(item))) return false;
       if (activeCategory && item.product?.category !== activeCategory)
         return false;
       if (!term) return true;

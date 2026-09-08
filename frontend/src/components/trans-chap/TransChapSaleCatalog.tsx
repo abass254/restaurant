@@ -2,11 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { BarcodeCamera } from "@/components/inventory/BarcodeCamera";
+import { TransChapProductThumb } from "@/components/trans-chap/TransChapProductThumb";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import {
   canSellInventoryItem,
   inventoryProductName,
+  inventoryRole,
   isHotelMenuItem,
+  isSaleableRole,
 } from "@/lib/trans-chap-product";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import type { InventoryItem } from "@/lib/types";
@@ -60,6 +63,7 @@ export function TransChapSaleCatalog({
     const needle = query.trim().toLowerCase();
     return inventory.filter((item) => {
       if (!item.is_active) return false;
+      if (!isSaleableRole(inventoryRole(item))) return false;
       if (!needle) return true;
       const name = inventoryProductName(item).toLowerCase();
       const sku = (item.product?.sku ?? "").toLowerCase();
@@ -98,15 +102,15 @@ export function TransChapSaleCatalog({
           <p className="trans-chap-sale-scan__empty">Loading inventory…</p>
         ) : filtered.length === 0 ? (
           <TransChapStatus
-            actionHref={inventory.length === 0 ? "/trans-chap/stocks" : undefined}
-            actionLabel={inventory.length === 0 ? "Go to Inventory" : undefined}
+            actionHref={inventory.length === 0 ? "/trans-chap/purchases/new" : undefined}
+            actionLabel={inventory.length === 0 ? "Record a purchase" : undefined}
           >
             {inventory.length === 0
-              ? "No active inventory yet."
+              ? "No active inventory yet. Buy stock first, then set selling prices in Inventory."
               : "No items match this search."}
           </TransChapStatus>
         ) : (
-          <ul className="trans-chap-catalog">
+          <ul className={`trans-chap-catalog${scan ? "" : " trans-chap-catalog--grid"}`}>
             {filtered.map((item) => {
               const name = inventoryProductName(item);
               const line = qtyById.get(item.id);
@@ -128,6 +132,7 @@ export function TransChapSaleCatalog({
                     disabled={!canSell}
                     onClick={() => onAdd(item)}
                   >
+                    <TransChapProductThumb item={item} name={name} size={scan ? "md" : "lg"} />
                     <span className="trans-chap-catalog__copy">
                       <strong>
                         {name}

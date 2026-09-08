@@ -136,6 +136,12 @@ class Settings(BaseSettings):
     mpesa_b2b_initiator: str = ""
     mpesa_b2b_security_credential: str = ""
     mpesa_b2b_auto_payout: bool = False
+    # Safaricom does not guarantee STK callbacks. A background sweep asks
+    # Daraja about collections left pending and settles them from its answer.
+    # Recovered collections are never auto-paid to the merchant.
+    mpesa_stk_recovery_enabled: bool = True
+    mpesa_stk_recovery_interval_seconds: int = 120
+    mpesa_stk_recovery_grace_seconds: int = 120
     # Before merchant B2B, sweep Utility → Working via BusinessTransferFromUtilityToMMF.
     # Requires the B2B initiator to be allowed Intra Account transfers on the org portal.
     # Set MPESA_B2B_UTILITY_TO_WORKING=false to pay from Working without the sweep.
@@ -147,6 +153,37 @@ class Settings(BaseSettings):
     mpesa_min_b2b_amount: int = 10
     mpesa_min_sandbox_amount: int = 1
     mpesa_max_amount: int = 150000
+
+    # --- Tigo Pesa / Mixx by Yas (Tanzania) ---------------------------------
+    # Direct integration with the Yas MFS gateway. There is no public developer
+    # portal: credentials come from the Mixx corporate onboarding pack
+    # (inquiry.mfscorporate@mixx.co.tz). Nothing is editable from the admin UI.
+    tigo_mode: str = ""  # production|sandbox — empty follows platform Mode toggle
+    tigo_client_id: str = ""
+    tigo_client_secret: str = ""
+    # Tigo Secure gateway (token, system status, account validation, payment auth).
+    tigo_sandbox_base_url: str = "https://securesandbox.tigo.com"
+    tigo_base_url: str = "https://secure.tigo.com"
+    # Partner integration gateway (XML bill pay + A2W disbursement). Provisioned
+    # per partner by Tigo, so there is no sensible default.
+    tigo_partner_base_url: str = ""
+    # Our master-merchant wallet: the account that collects and disburses.
+    tigo_account_msisdn: str = ""
+    tigo_account_pin: str = ""
+    tigo_master_merchant_id: str = ""  # "id" field on payment auth, per Millicom
+    tigo_biller_code: str = ""  # COMPANYNAME on inbound bill pay
+    tigo_callback_url: str = ""  # empty → {APP_URL}/tigo/callback
+    tigo_redirect_url: str = ""  # empty → {APP_URL}/tigo/return
+    # Tigo authenticates its inbound callback to us, unlike Safaricom.
+    tigo_callback_username: str = ""
+    tigo_callback_password: str = ""
+    tigo_currency: str = "TZS"
+    tigo_min_amount: int = 1000
+    tigo_max_amount: int = 5000000
+    # Rollout gate. Tigo stays unreachable from merchant surfaces until an
+    # account is allowlisted here; admin test calls bypass it explicitly.
+    tigo_enabled: bool = False
+    tigo_enabled_account_ids: str = ""  # comma-separated account ids
 
     # --- AI image generation ------------------------------------------------
     # Master switch. When false, the generate endpoint returns a friendly 503

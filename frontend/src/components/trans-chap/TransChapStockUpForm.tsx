@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { TransChapPhotoField } from "@/components/trans-chap/TransChapPhotoField";
 import { TransChapProductField } from "@/components/trans-chap/TransChapProductField";
 import { apiFetch } from "@/lib/api";
 import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
@@ -9,9 +10,12 @@ import { apiRoutes } from "@/lib/config";
 import {
   addLiteInventoryProduct,
   findInventoryByName,
+  generateInventoryPhoto,
+  inventoryCoverUrl,
   isHotelMenuItem,
   receiveStock,
   updateInventorySellingPrice,
+  uploadInventoryPhoto,
 } from "@/lib/trans-chap-product";
 import type { InventoryItem, InventoryResponse } from "@/lib/types";
 
@@ -21,6 +25,9 @@ export function TransChapStockUpForm() {
   const [quantity, setQuantity] = useState("");
   const [sellingPrice, setSellingPrice] = useState("");
   const [buyingPrice, setBuyingPrice] = useState("");
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [aiQueued, setAiQueued] = useState(false);
+  const [generatingAi, setGeneratingAi] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [saving, setSaving] = useState(false);
@@ -71,6 +78,37 @@ export function TransChapStockUpForm() {
     return item;
   }
 
+  async function handleGenerateAi() {
+    const name = product.trim();
+    if (!name) {
+      await showError("Product name needed", "Type the product name first, then generate a photo.");
+      return;
+    }
+
+    const existing = selectedItem ?? findInventoryByName(inventory, name) ?? null;
+    if (existing) {
+      setGeneratingAi(true);
+      try {
+        const updated = await generateInventoryPhoto(existing.id, { prompt: name });
+        setSelectedItem(updated);
+        setInventory((prev) =>
+          prev.map((row) => (row.id === updated.id ? updated : row)),
+        );
+        setPhotoFile(null);
+        setAiQueued(false);
+        await toastSuccess("Photo generated");
+      } catch (err) {
+        await showError("Could not generate photo", extractErrorMessage(err));
+      } finally {
+        setGeneratingAi(false);
+      }
+      return;
+    }
+
+    setPhotoFile(null);
+    setAiQueued(true);
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     const name = product.trim();
@@ -93,8 +131,8 @@ export function TransChapStockUpForm() {
         );
         return;
       }
+      let item: InventoryItem | null = existing;
       if (bulk) {
-        let item = existing;
         if (!item) {
           item = await addLiteInventoryProduct(name, "", { stock_quantity: 0 });
         }
@@ -103,29 +141,52 @@ export function TransChapStockUpForm() {
           quantity: qty,
           reason: "adjustment",
         });
+      } else if (existing) {
+        item = existing;
+        await receiveStock({
+          item: existing,
+          quantity: qty,
+          reason: "adjustment",
+          unitCost: Number.isFinite(cost) && cost >= 0 ? cost : null,
+        });
+        if (Number.isFinite(sell) && sell > 0) {
+          await updateInventorySellingPrice(existing.id, sell);
+        }
+      } else {
+        item = await addLiteInventoryProduct(name, sellingPrice, {
+          buying_price: Number.isFinite(cost) && cost >= 0 ? cost : null,
+          stock_quantity: qty,
+        });
+      }
+      if (item && photoFile) {
+        try {
+          await uploadInventoryPhoto(item.id, photoFile);
+        } catch (err) {
+          await showError("Stock saved, but the photo didn’t upload", extractErrorMessage(err));
+          if (!bulk) router.push("/trans-chap/stocks");
+          return;
+        }
+      } else if (item && aiQueued) {
+        try {
+          await generateInventoryPhoto(item.id, { prompt: name });
+        } catch (err) {
+          await showError(
+            "Stock saved, but the AI photo didn’t generate",
+            extractErrorMessage(err),
+          );
+          if (!bulk) router.push("/trans-chap/stocks");
+          return;
+        }
+      }
+      if (bulk) {
         setProduct("");
         setQuantity("");
+        setPhotoFile(null);
+        setAiQueued(false);
         setSelectedItem(null);
         await toastSuccess("Stock added. Add another?");
       } else {
-        if (existing) {
-          await receiveStock({
-            item: existing,
-            quantity: qty,
-            reason: "adjustment",
-            unitCost: Number.isFinite(cost) && cost >= 0 ? cost : null,
-          });
-          if (Number.isFinite(sell) && sell > 0) {
-            await updateInventorySellingPrice(existing.id, sell);
-          }
-          await toastSuccess("Stock added");
-        } else {
-          await addLiteInventoryProduct(name, sellingPrice, {
-            buying_price: Number.isFinite(cost) && cost >= 0 ? cost : null,
-            stock_quantity: qty,
-          });
-          await toastSuccess("Product added");
-        }
+        await toastSuccess(existing ? "Stock added" : "Product added");
         router.push("/trans-chap/stocks");
       }
     } catch (err) {
@@ -143,7 +204,7 @@ export function TransChapStockUpForm() {
       <p className="trans-chap-form__lead">
         {bulk
           ? "Scan or search products and add units, one after another. Go back to Inventory when you’re done."
-          : "Type the product name, quantity, and prices. We’ll add it to inventory."}
+          : "Type the product name, add a photo if you have one, then quantity and prices."}
       </p>
       <div className="trans-chap-form__fields">
         {bulk ? (
@@ -152,9 +213,15 @@ export function TransChapStockUpForm() {
             value={product}
             amount=""
             selectedItem={selectedItem}
-            onNameChange={setProduct}
+            onNameChange={(value) => {
+              setProduct(value);
+              setAiQueued(false);
+            }}
             onAmountChange={() => undefined}
-            onSelectItem={setSelectedItem}
+            onSelectItem={(item) => {
+              setSelectedItem(item);
+              setAiQueued(false);
+            }}
             onItemsChange={handleItemsChange}
             fillAmountFrom="none"
             suggestMeta="stock"
@@ -174,11 +241,22 @@ export function TransChapStockUpForm() {
                 onChange={(event) => {
                   setProduct(event.target.value);
                   setSelectedItem(null);
+                  setAiQueued(false);
                 }}
               />
             </div>
           </div>
         )}
+        <TransChapPhotoField
+          existingUrl={selectedItem ? inventoryCoverUrl(selectedItem) : null}
+          file={photoFile}
+          onFileChange={setPhotoFile}
+          disabled={saving || generatingAi}
+          onGenerateAi={() => void handleGenerateAi()}
+          generatingAi={generatingAi}
+          aiQueued={aiQueued}
+          onClearAiQueue={() => setAiQueued(false)}
+        />
         <div className="auth-split__field">
           <label htmlFor="stock-up-qty">{bulk ? "Quantity to add" : "Quantity"}</label>
           <div className="trans-chap-input">
@@ -229,7 +307,7 @@ export function TransChapStockUpForm() {
         )}
       </div>
       <div className="trans-chap-form__actions">
-        <button type="submit" className="auth-split__btn" disabled={saving}>
+        <button type="submit" className="auth-split__btn" disabled={saving || generatingAi}>
           {saving
             ? bulk
               ? "Adding stock…"

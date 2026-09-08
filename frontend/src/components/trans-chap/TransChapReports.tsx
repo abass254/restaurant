@@ -114,6 +114,15 @@ export function TransChapReports() {
       .filter((order) => order.payment_method !== "mpesa" && order.payment_method !== "credit")
       .reduce((sum, order) => sum + order.total, 0);
     const purchaseTotal = bought.reduce((sum, row) => sum + row.total, 0);
+    const forSalePurchaseTotal = bought
+      .filter((row) => row.inventoryRole === "for_sale")
+      .reduce((sum, row) => sum + row.total, 0);
+    const rawPurchaseTotal = bought
+      .filter((row) => row.inventoryRole === "raw_material")
+      .reduce((sum, row) => sum + row.total, 0);
+    const bothPurchaseTotal = bought
+      .filter((row) => row.inventoryRole === "both")
+      .reduce((sum, row) => sum + row.total, 0);
     const units = paid.reduce(
       (sum, order) =>
         sum + (order.items?.reduce((qty, line) => qty + (line.quantity || 0), 0) ?? 0),
@@ -147,6 +156,9 @@ export function TransChapReports() {
       creditTotal,
       mpesaTotal,
       purchaseTotal,
+      forSalePurchaseTotal,
+      rawPurchaseTotal,
+      bothPurchaseTotal,
       profit: salesTotal - purchaseTotal,
       saleCount: paid.length,
       purchaseCount: bought.length,
@@ -226,7 +238,26 @@ export function TransChapReports() {
                   <span>Purchases</span>
                   <strong>{formatKsh(report.purchaseTotal)}</strong>
                   <small>
-                    {report.purchaseCount} purchase{report.purchaseCount === 1 ? "" : "s"}
+                    {(() => {
+                      const parts = [
+                        `${report.purchaseCount} purchase${report.purchaseCount === 1 ? "" : "s"}`,
+                      ];
+                      if (
+                        report.rawPurchaseTotal > 0 ||
+                        report.bothPurchaseTotal > 0
+                      ) {
+                        if (report.forSalePurchaseTotal > 0) {
+                          parts.push(`sale ${formatKsh(report.forSalePurchaseTotal)}`);
+                        }
+                        if (report.rawPurchaseTotal > 0) {
+                          parts.push(`raw ${formatKsh(report.rawPurchaseTotal)}`);
+                        }
+                        if (report.bothPurchaseTotal > 0) {
+                          parts.push(`both ${formatKsh(report.bothPurchaseTotal)}`);
+                        }
+                      }
+                      return parts.join(" · ");
+                    })()}
                   </small>
                 </article>
                 <article
