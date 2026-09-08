@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BarcodeScannerSheet } from "@/components/inventory/BarcodeScannerSheet";
+import { TransChapBarcodeScannerSheet } from "@/components/trans-chap/TransChapBarcodeScannerSheet";
 import { apiFetch } from "@/lib/api";
 import { extractErrorMessage, showError, toastInfo, toastSuccess } from "@/lib/alerts";
 import { findInventoryByBarcode } from "@/lib/barcode";
@@ -285,7 +285,7 @@ export function TransChapProductField({
       ) : null}
 
       {showScan ? (
-      <BarcodeScannerSheet
+      <TransChapBarcodeScannerSheet
         open={scannerOpen}
         onClose={() => setScannerOpen(false)}
         onScan={handleScan}

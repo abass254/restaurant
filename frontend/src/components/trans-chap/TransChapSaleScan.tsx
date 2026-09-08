@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BarcodeCamera } from "@/components/inventory/BarcodeCamera";
+import { TransChapBarcodeCamera } from "@/components/trans-chap/TransChapBarcodeCamera";
 import { findInventoryByName, inventoryProductName } from "@/lib/trans-chap-product";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import type { InventoryItem } from "@/lib/types";
@@ -74,7 +74,7 @@ export function TransChapSaleScan({
   return (
     <div className="trans-chap-sale-scan">
       <div className="trans-chap-sale-scan__camera">
-        <BarcodeCamera active={active} onScan={onScan} />
+        <TransChapBarcodeCamera active={active} onScan={onScan} />
       </div>
 
       <div className="trans-chap-sale-scan__list">

@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BarcodeScannerSheet } from "@/components/inventory/BarcodeScannerSheet";
+import { TransChapBarcodeScannerSheet } from "@/components/trans-chap/TransChapBarcodeScannerSheet";
 import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { findInventoryByBarcode } from "@/lib/barcode";
@@ -361,7 +361,7 @@ export function TransChapUnavailablePurchaseForm() {
         </div>
       </form>
 
-      <BarcodeScannerSheet
+      <TransChapBarcodeScannerSheet
         open={scannerOpen}
         onClose={() => setScannerOpen(false)}
         onScan={handleBarcodeScan}

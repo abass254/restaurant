@@ -174,9 +174,16 @@ type BarcodeCameraProps = {
   active: boolean;
   onScan: (code: string) => void;
   className?: string;
+  /** Start without the Allow button when the browser already granted camera. */
+  autoStart?: boolean;
 };
 
-export function BarcodeCamera({ active, onScan, className }: BarcodeCameraProps) {
+export function BarcodeCamera({
+  active,
+  onScan,
+  className,
+  autoStart = false,
+}: BarcodeCameraProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const stopScanRef = useRef<(() => void) | null>(null);
@@ -317,11 +324,18 @@ export function BarcodeCamera({ active, onScan, className }: BarcodeCameraProps)
     if (!active) {
       stop();
       setError(null);
+      return;
     }
     return () => {
       stop();
     };
   }, [active, stop]);
+
+  useEffect(() => {
+    if (!active || !autoStart) return;
+    if (live || startingRef.current || streamRef.current) return;
+    void startCamera();
+  }, [active, autoStart, live, startCamera]);
 
   if (!active) return null;
 
@@ -350,7 +364,7 @@ export function BarcodeCamera({ active, onScan, className }: BarcodeCameraProps)
             }}
             onClick={() => void startCamera()}
           >
-            {starting ? "Starting camera…" : "Allow camera"}
+            {starting ? "Starting camera…" : autoStart ? "Start camera" : "Allow camera"}
           </button>
           {error ? <p className="barcode-camera__error">{error}</p> : null}
         </div>

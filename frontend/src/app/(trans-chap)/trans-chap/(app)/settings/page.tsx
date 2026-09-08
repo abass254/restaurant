@@ -3,17 +3,22 @@
 import { useEffect, useState } from "react";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
+import { TransChapCameraSettings } from "@/components/trans-chap/TransChapCameraSettings";
 import { TransChapInstallPanel } from "@/components/trans-chap/TransChapInstallPanel";
 import { TransChapMpesaSettings } from "@/components/trans-chap/TransChapMpesaSettings";
 import { apiFetch } from "@/lib/api";
 import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes, instagramAuthPath, resolveSameOriginUrl } from "@/lib/config";
 import { isShopOwner } from "@/lib/merchant-permissions";
+import {
+  isCameraScanningEnabled,
+  queryCameraPermission,
+} from "@/lib/trans-chap-camera";
 import type { MerchantMpesaConfigResponse, SettingsResponse } from "@/lib/types";
 
 const SIGN_IN_PATH = "/trans-chap/sign-in";
 
-type SettingsPane = "list" | "mpesa" | "download";
+type SettingsPane = "list" | "mpesa" | "download" | "camera";
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -27,6 +32,7 @@ export default function TransChapSettingsPage() {
   const [pane, setPane] = useState<SettingsPane>("list");
   const [loggingOut, setLoggingOut] = useState(false);
   const [mpesaReady, setMpesaReady] = useState<boolean | null>(null);
+  const [cameraReady, setCameraReady] = useState<boolean | null>(null);
   const [hasInstagram, setHasInstagram] = useState(Boolean(user.instagram_account));
   const [canManageInstagram, setCanManageInstagram] = useState(isShopOwner(user));
   const [autoRepliesEnabled, setAutoRepliesEnabled] = useState(
@@ -40,6 +46,13 @@ export default function TransChapSettingsPage() {
     "Trans Chap";
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("pane") === "camera") {
+      setPane("camera");
+    }
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     void apiFetch<MerchantMpesaConfigResponse>(apiRoutes.mpesaBusinessConfig)
       .then((data) => {
@@ -48,6 +61,19 @@ export default function TransChapSettingsPage() {
       .catch(() => {
         if (!cancelled) setMpesaReady(null);
       });
+    return () => {
+      cancelled = true;
+    };
+  }, [pane]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const enabled = isCameraScanningEnabled();
+      const permission = await queryCameraPermission();
+      if (cancelled) return;
+      setCameraReady(enabled && permission === "granted");
+    })();
     return () => {
       cancelled = true;
     };
@@ -110,14 +136,17 @@ export default function TransChapSettingsPage() {
     window.location.assign(SIGN_IN_PATH);
   }
 
+  function backToList() {
+    setPane("list");
+    const url = new URL(window.location.href);
+    url.searchParams.delete("pane");
+    window.history.replaceState({}, "", url.pathname + url.search);
+  }
+
   if (pane === "mpesa") {
     return (
       <div className="ios-settings">
-        <button
-          type="button"
-          className="ios-settings__back"
-          onClick={() => setPane("list")}
-        >
+        <button type="button" className="ios-settings__back" onClick={backToList}>
           <i className="fa-solid fa-chevron-left" aria-hidden />
           Settings
         </button>
@@ -127,14 +156,23 @@ export default function TransChapSettingsPage() {
     );
   }
 
+  if (pane === "camera") {
+    return (
+      <div className="ios-settings">
+        <button type="button" className="ios-settings__back" onClick={backToList}>
+          <i className="fa-solid fa-chevron-left" aria-hidden />
+          Settings
+        </button>
+        <h2 className="ios-settings__screen-title">Camera</h2>
+        <TransChapCameraSettings />
+      </div>
+    );
+  }
+
   if (pane === "download") {
     return (
       <div className="ios-settings">
-        <button
-          type="button"
-          className="ios-settings__back"
-          onClick={() => setPane("list")}
-        >
+        <button type="button" className="ios-settings__back" onClick={backToList}>
           <i className="fa-solid fa-chevron-left" aria-hidden />
           Settings
         </button>
@@ -249,6 +287,20 @@ export default function TransChapSettingsPage() {
       <section className="ios-settings__group" aria-label="App">
         <h3 className="ios-settings__caption">App</h3>
         <div className="ios-settings__card">
+          <button
+            type="button"
+            className="ios-settings__row"
+            onClick={() => setPane("camera")}
+          >
+            <span className="ios-settings__icon ios-settings__icon--camera" aria-hidden>
+              <i className="fa-solid fa-camera" />
+            </span>
+            <span className="ios-settings__label">Camera</span>
+            <span className="ios-settings__value">
+              {cameraReady == null ? "" : cameraReady ? "Ready" : "Off"}
+            </span>
+            <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+          </button>
           <button
             type="button"
             className="ios-settings__row"

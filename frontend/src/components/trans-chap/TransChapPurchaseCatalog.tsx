@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { BarcodeCamera } from "@/components/inventory/BarcodeCamera";
+import { TransChapBarcodeCamera } from "@/components/trans-chap/TransChapBarcodeCamera";
 import { TransChapProductThumb } from "@/components/trans-chap/TransChapProductThumb";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import {
@@ -150,7 +150,7 @@ export function TransChapPurchaseCatalog({
     >
       {scan ? (
         <div className="trans-chap-sale-scan__camera">
-          <BarcodeCamera active={active} onScan={onScan} />
+          <TransChapBarcodeCamera active={active} onScan={onScan} />
         </div>
       ) : null}
 

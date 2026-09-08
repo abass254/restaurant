@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BarcodeCamera } from "@/components/inventory/BarcodeCamera";
+import { TransChapBarcodeCamera } from "@/components/trans-chap/TransChapBarcodeCamera";
 import { TransChapProductThumb } from "@/components/trans-chap/TransChapProductThumb";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import {
@@ -82,7 +82,7 @@ export function TransChapSaleCatalog({
     <div className={`trans-chap-sale-scan${scan ? "" : " trans-chap-sale-scan--select"}`}>
       {scan ? (
         <div className="trans-chap-sale-scan__camera">
-          <BarcodeCamera active={active} onScan={onScan} />
+          <TransChapBarcodeCamera active={active} onScan={onScan} />
         </div>
       ) : null}
 
