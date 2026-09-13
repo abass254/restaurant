@@ -889,7 +889,11 @@ class InventoryItem(Base):
     # for_sale = sell only | raw_material = buy only | both = buy & sell
     inventory_role: Mapped[str] = mapped_column(String(20), default="both")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    supplier: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Shop-specific extras from imports (rack/row/position, tax, expiry, etc.).
+    attributes: Mapped[Any | None] = mapped_column(JSON, nullable=True)
     media: Mapped[Any | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

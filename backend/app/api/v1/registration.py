@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.session import login_user, require_user, save_session, validate_csrf
 from app.database import get_db
@@ -64,9 +64,9 @@ def create_shop(
     owner = (
         db.query(User)
         .options(
-            joinedload(User.account),
-            joinedload(User.instagram_account),
-            joinedload(User.memberships).joinedload(UserMembership.account),
+            selectinload(User.account),
+            selectinload(User.instagram_account),
+            selectinload(User.memberships).selectinload(UserMembership.account),
         )
         .filter(User.id == user.id)
         .first()

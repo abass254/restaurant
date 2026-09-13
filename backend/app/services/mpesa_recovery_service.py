@@ -91,12 +91,22 @@ def sweep_pending_collections(
     return counts
 
 
+def _sweep_in_thread(*, grace: timedelta) -> dict[str, int]:
+    """Open/close the session inside the worker so shutdown can't race close()."""
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        return sweep_pending_collections(db, grace=grace)
+    finally:
+        db.close()
+
+
 async def run_recovery_loop() -> None:
     """Background sweep, started from the app lifespan. Never raises."""
     import asyncio
 
     from app.config import get_settings
-    from app.database import SessionLocal
 
     settings = get_settings()
     interval = max(30, int(settings.mpesa_stk_recovery_interval_seconds))
@@ -106,15 +116,7 @@ async def run_recovery_loop() -> None:
     while True:
         await asyncio.sleep(interval)
         try:
-            db = SessionLocal()
-            try:
-                counts = await asyncio.to_thread(
-                    sweep_pending_collections,
-                    db,
-                    grace=grace,
-                )
-            finally:
-                db.close()
+            counts = await asyncio.to_thread(_sweep_in_thread, grace=grace)
             if counts["checked"]:
                 logger.info("M-PESA STK recovery sweep: %s", counts)
         except asyncio.CancelledError:

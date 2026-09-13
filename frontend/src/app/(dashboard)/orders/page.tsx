@@ -108,7 +108,7 @@ export default function OrdersPage() {
             Everything placed through the POS and your social channels.
           </p>
         </div>
-        <Link href="/pos" className="btn btn-primary btn-sm">
+        <Link href="/station" className="btn btn-primary btn-sm">
           <i className="fa-solid fa-cash-register" aria-hidden="true" />
           Open POS
         </Link>
@@ -331,7 +331,7 @@ function EmptyOrders() {
         from Instagram, WhatsApp, and other channels will also show up
         automatically.
       </p>
-      <Link href="/pos" className="btn btn-primary btn-sm">
+      <Link href="/station" className="btn btn-primary btn-sm">
         <i className="fa-solid fa-cash-register" aria-hidden="true" />
         Open POS
       </Link>

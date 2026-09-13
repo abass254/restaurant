@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { TransChapPhotoField } from "@/components/trans-chap/TransChapPhotoField";
 import { TransChapProductField } from "@/components/trans-chap/TransChapProductField";
 import { apiFetch } from "@/lib/api";
-import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
+import { showError, showInternalError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import {
   addLiteInventoryProduct,
@@ -97,8 +97,8 @@ export function TransChapStockUpForm() {
         setPhotoFile(null);
         setAiQueued(false);
         await toastSuccess("Photo generated");
-      } catch (err) {
-        await showError("Could not generate photo", extractErrorMessage(err));
+      } catch {
+        await showInternalError();
       } finally {
         setGeneratingAi(false);
       }
@@ -161,19 +161,16 @@ export function TransChapStockUpForm() {
       if (item && photoFile) {
         try {
           await uploadInventoryPhoto(item.id, photoFile);
-        } catch (err) {
-          await showError("Stock saved, but the photo didn’t upload", extractErrorMessage(err));
+        } catch {
+          await showInternalError();
           if (!bulk) router.push("/trans-chap/stocks");
           return;
         }
       } else if (item && aiQueued) {
         try {
           await generateInventoryPhoto(item.id, { prompt: name });
-        } catch (err) {
-          await showError(
-            "Stock saved, but the AI photo didn’t generate",
-            extractErrorMessage(err),
-          );
+        } catch {
+          await showInternalError();
           if (!bulk) router.push("/trans-chap/stocks");
           return;
         }
@@ -189,11 +186,8 @@ export function TransChapStockUpForm() {
         await toastSuccess(existing ? "Stock added" : "Product added");
         router.push("/trans-chap/stocks");
       }
-    } catch (err) {
-      await showError(
-        bulk ? "Could not add stock" : "Could not add product",
-        extractErrorMessage(err),
-      );
+    } catch {
+      await showInternalError();
     } finally {
       setSaving(false);
     }

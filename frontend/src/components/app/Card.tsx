@@ -18,7 +18,7 @@ function joinClassNames(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
 
-/** Shared surface card — 12px (`--space-card`) inset by default. */
+/** Shared surface card — uses `--space-card` inset by default. */
 export function Card<T extends ElementType = "article">({
   as,
   variant = "solid",

@@ -43,7 +43,7 @@ export const merchantNavLinks: MerchantNavLink[] = [
     topTab: true,
   },
   {
-    href: "/pos",
+    href: "/station",
     icon: "fa-cash-register",
     label: "POS",
     section: "pos",
@@ -78,13 +78,6 @@ export const merchantNavLinks: MerchantNavLink[] = [
     icon: "fa-images",
     label: "Feeds",
     section: "feeds",
-    group: "more",
-  },
-  {
-    href: "/station",
-    icon: "fa-tablet-screen-button",
-    label: "Station",
-    section: "orders",
     group: "more",
   },
   {

@@ -523,10 +523,13 @@ export default function InventoryPage() {
                 </th>
                 <th className="inventory-th-image" aria-label="Image" />
                 <th>Product</th>
-                <th>Code</th>
+                <th>SKU</th>
+                <th>Unit</th>
                 <th>Buy</th>
                 <th>Sell</th>
                 <th>Stock</th>
+                <th>Location</th>
+                <th>Supplier</th>
                 <th>Status</th>
                 <th aria-label="Actions" />
               </tr>
@@ -603,17 +606,23 @@ export default function InventoryPage() {
                           <strong>{productName}</strong>
                           <span className="app-muted">
                             {item.product?.brand ?? null}
-                            {item.product?.brand && cat ? " · " : null}
-                            {cat?.label ?? null}
+                            {item.product?.brand &&
+                            (cat || item.product?.category)
+                              ? " · "
+                              : null}
+                            {cat?.label ?? item.product?.category ?? null}
                           </span>
                         </span>
                       </Link>
                     </td>
                     <td>
                       <code className="inventory-code">
-                        {item.product?.product_code ?? "—"}
+                        {item.product?.sku ??
+                          item.product?.product_code ??
+                          "—"}
                       </code>
                     </td>
+                    <td>{item.product?.unit ?? "—"}</td>
                     <td>{formatPrice(item.buying_price)}</td>
                     <td>
                       <div className="inventory-cell-price">
@@ -629,9 +638,10 @@ export default function InventoryPage() {
                     <td>
                       <span className={item.is_low_stock ? "inventory-low" : ""}>
                         {item.stock_quantity ?? "—"}
-                        {item.product?.unit ? ` ${item.product.unit}` : null}
                       </span>
                     </td>
+                    <td>{item.location?.trim() || "—"}</td>
+                    <td>{item.supplier?.trim() || "—"}</td>
                     <td>
                       <span
                         className={`inventory-status-pill ${item.is_active ? "is-on" : "is-off"}`}
@@ -1024,10 +1034,13 @@ function InventorySkeleton({ viewMode = "table" }: { viewMode?: InventoryViewMod
             <th className="inventory-th-select" aria-label="Select" />
             <th className="inventory-th-image" aria-label="Image" />
             <th>Product</th>
-            <th>Code</th>
+            <th>SKU</th>
+            <th>Unit</th>
             <th>Buy</th>
             <th>Sell</th>
             <th>Stock</th>
+            <th>Location</th>
+            <th>Supplier</th>
             <th>Status</th>
             <th aria-label="Actions" />
           </tr>
@@ -1302,10 +1315,16 @@ function ImportExcelModal({
 
       <div className="inventory-modal__body inventory-import">
         <p className="app-muted inventory-import__lead">
-          Upload an <strong>.xlsx</strong> export from Odoo (Inventory → Products →
-          Actions → Export). We recognise common Odoo columns such as{" "}
-          <code>Name</code>, <code>Internal Reference</code>, <code>Sales Price</code>,{" "}
-          <code>Cost</code>, and <code>Quantity On Hand</code>.
+          Upload an <strong>.xlsx</strong> product export from SmartSales POS or
+          Odoo. We map columns such as <code>Name</code>, <code>SKU</code>,{" "}
+          <code>Brand</code>, <code>Unit</code>, <code>Category</code>,{" "}
+          <code>Selling Price</code>, <code>Purchase Price</code>,{" "}
+          <code>Opening Stock</code>, <code>Alert Quantity</code>,{" "}
+          <code>Product Locations</code>, and related extras (tax, rack/row,
+          expiry, custom fields). Matching avoids duplicates by <code>SKU</code>,
+          barcode, product code, and name — existing products are updated instead
+          of re-created. If the Excel name differs on a code match, we update the
+          catalog name.
         </p>
 
         <input
@@ -1333,7 +1352,7 @@ function ImportExcelModal({
           ) : (
             <>
               <strong>Choose an Excel file</strong>
-              <span className="app-muted">.xlsx only, up to 5 MB</span>
+              <span className="app-muted">.xlsx only, up to 5 MB · large files may take a minute</span>
             </>
           )}
         </button>

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { TransChapPhotoField } from "@/components/trans-chap/TransChapPhotoField";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { apiFetch } from "@/lib/api";
-import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
+import { showInternalError, toastSuccess, internalErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import {
   generateInventoryPhoto,
@@ -73,7 +73,7 @@ export function TransChapProductEditForm() {
       .catch((err) => {
         if (!alive) return;
         setItem(null);
-        setError(extractErrorMessage(err, "Could not load this product."));
+        setError(internalErrorMessage());
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -95,8 +95,8 @@ export function TransChapProductEditForm() {
       setItem(updated);
       setPhotoFile(null);
       await toastSuccess("Photo generated");
-    } catch (err) {
-      await showError("Could not generate photo", extractErrorMessage(err));
+    } catch {
+      await showInternalError();
     } finally {
       setGeneratingAi(false);
     }
@@ -139,8 +139,8 @@ export function TransChapProductEditForm() {
       if (photoFile) {
         try {
           updated = await uploadInventoryPhoto(item.id, photoFile);
-        } catch (err) {
-          await showError("Product saved, but the photo didn’t upload", extractErrorMessage(err));
+        } catch {
+          await showInternalError();
           router.push("/trans-chap/stocks");
           return;
         }
@@ -148,8 +148,8 @@ export function TransChapProductEditForm() {
       setItem(updated);
       await toastSuccess("Product updated");
       router.push("/trans-chap/stocks");
-    } catch (err) {
-      await showError("Could not update product", extractErrorMessage(err));
+    } catch {
+      await showInternalError();
     } finally {
       setSaving(false);
     }

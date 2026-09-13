@@ -7,7 +7,7 @@ import { TransChapCameraSettings } from "@/components/trans-chap/TransChapCamera
 import { TransChapInstallPanel } from "@/components/trans-chap/TransChapInstallPanel";
 import { TransChapMpesaSettings } from "@/components/trans-chap/TransChapMpesaSettings";
 import { apiFetch } from "@/lib/api";
-import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
+import { showInternalError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes, instagramAuthPath, resolveSameOriginUrl } from "@/lib/config";
 import { isShopOwner } from "@/lib/merchant-permissions";
 import {
@@ -118,8 +118,8 @@ export default function TransChapSettingsPage() {
       );
       setAutoRepliesEnabled(data.auto_replies_enabled);
       await toastSuccess(enabled ? "AI auto-reply enabled" : "AI auto-reply disabled");
-    } catch (err) {
-      await showError("Could not update setting", extractErrorMessage(err));
+    } catch {
+      await showInternalError();
     } finally {
       setAutoRepliesSaving(false);
     }

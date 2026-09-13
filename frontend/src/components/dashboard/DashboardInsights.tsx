@@ -208,7 +208,7 @@ export function DashboardInsights({
                   : "Add your first product"}
               </p>
             </Link>
-            <Link href="/pos" className="soft-action-card soft-action-card--teal">
+            <Link href="/station" className="soft-action-card soft-action-card--teal">
               <span className="soft-action-card__tag">Sales</span>
               <h3 className="soft-action-card__title">Point of sale</h3>
               <p className="soft-action-card__meta">Create orders in-store</p>
@@ -504,7 +504,7 @@ function OrdersCard({
           icon="fa-receipt"
           title="No orders yet"
           body="Create your first order from the POS or Instagram inbox."
-          ctaHref="/pos"
+          ctaHref="/station"
           ctaLabel="Open POS"
         />
       ) : (

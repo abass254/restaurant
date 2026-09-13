@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useOptionalAuthUser } from "@/components/app/AuthProvider";
+import { FullscreenToggle } from "@/components/app/FullscreenToggle";
 import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import {
   userCanAccessSection,
@@ -11,6 +12,8 @@ import {
 } from "@/lib/merchant-permissions";
 import { migrateLegacyTransChapPurchases } from "@/lib/trans-chap-purchases";
 import { detectTransChapMachine, syncTransChapMachine } from "@/lib/trans-chap-machine";
+
+const NAV_COLLAPSED_KEY = "trans-chap-nav-collapsed";
 
 const NAV: Array<{
   href: string;
@@ -32,7 +35,14 @@ const NAV: Array<{
     href: "/trans-chap/make-a-sale",
     label: "Sales",
     title: "Sales",
+    icon: "fa-receipt",
+  },
+  {
+    href: "/trans-chap/pos",
+    label: "POS",
+    title: "POS",
     icon: "fa-cash-register",
+    section: "pos",
   },
   {
     href: "/trans-chap/purchases",
@@ -69,6 +79,9 @@ function headerMeta(pathname: string, mode: string | null): { title: string; bac
   }
   if (pathname.startsWith("/trans-chap/stocks/menu")) {
     return { title: "Hotel menu", backHref: "/trans-chap/stocks" };
+  }
+  if (pathname.startsWith("/trans-chap/stocks/opening")) {
+    return { title: "Opening stock", backHref: "/trans-chap/stocks" };
   }
   if (pathname.startsWith("/trans-chap/stocks/edit")) {
     return { title: "Edit product", backHref: "/trans-chap/stocks" };
@@ -122,9 +135,31 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
   const { title, backHref } = headerMeta(pathname, searchParams.get("mode"));
   const isSignIn = pathname.startsWith("/trans-chap/sign-in");
   const isNewPost = pathname.startsWith("/trans-chap/feeds/new");
+  const isPos = pathname.startsWith("/trans-chap/pos");
   const showNav = !isSignIn && !isNewPost;
   const showHeader = !isSignIn && !isNewPost;
   const instagramConnected = Boolean(user?.instagram_account);
+  const [navCollapsed, setNavCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      setNavCollapsed(window.localStorage.getItem(NAV_COLLAPSED_KEY) === "1");
+    } catch {
+      setNavCollapsed(false);
+    }
+  }, []);
+
+  function toggleNavCollapsed() {
+    setNavCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(NAV_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
 
   const items = useMemo(
     () =>
@@ -174,11 +209,12 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
         href={item.href}
         className={isActive ? "is-active" : ""}
         aria-label={item.label}
+        title={item.label}
       >
         <span className="mobile-nav__icon">
           <i className={`fa-solid ${item.icon}`} aria-hidden />
         </span>
-        {item.label}
+        <span className="mobile-nav__label">{item.label}</span>
       </Link>
     );
   }
@@ -186,7 +222,9 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
   return (
     <div className={`auth-split trans-chap-root${isSignIn ? " trans-chap-root--signin" : ""}`}>
       <section className="auth-split__panel">
-        <div className={`mobile-root trans-chap-app${isNewPost ? " trans-chap-app--new-post" : ""}`}>
+        <div
+          className={`mobile-root trans-chap-app${isNewPost ? " trans-chap-app--new-post" : ""}${isPos ? " trans-chap-app--pos" : ""}${navCollapsed ? " trans-chap-app--nav-collapsed" : ""}`}
+        >
           {showHeader ? (
             <header className="trans-chap-header">
               <div className="trans-chap-header__side">
@@ -209,6 +247,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                 <h1>{title}</h1>
               </div>
               <div className="trans-chap-header__side trans-chap-header__side--end">
+                <FullscreenToggle className="trans-chap-header__icon" />
                 <span className="trans-chap-header__logo" aria-hidden>
                   <TransChapLogoMark size={34} color="currentColor" accentColor="#e8412a" />
                 </span>
@@ -217,7 +256,26 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
           ) : null}
           <main className="trans-chap-app__content">{children}</main>
           {showNav ? (
-            <nav className="mobile-nav mobile-nav--5" aria-label="Trans Chap navigation">
+            <nav
+              className={`mobile-nav mobile-nav--${Math.min(Math.max(items.length, 3), 6)}`}
+              aria-label="Trans Chap navigation"
+            >
+              <button
+                type="button"
+                className="mobile-nav__collapse"
+                aria-label={navCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                aria-pressed={navCollapsed}
+                title={navCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                onClick={toggleNavCollapsed}
+              >
+                <i
+                  className={`fa-solid ${navCollapsed ? "fa-angles-right" : "fa-angles-left"}`}
+                  aria-hidden
+                />
+                <span className="mobile-nav__label">
+                  {navCollapsed ? "Expand" : "Collapse"}
+                </span>
+              </button>
               {items.map((item) => renderNavLink(item))}
             </nav>
           ) : null}

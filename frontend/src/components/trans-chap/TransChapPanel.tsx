@@ -19,6 +19,7 @@ export function TransChapPanel({
   picked = false,
   onToggle,
   action,
+  midAction,
   headAction,
   children,
 }: {
@@ -37,6 +38,7 @@ export function TransChapPanel({
   picked?: boolean;
   onToggle: () => void;
   action?: ReactNode;
+  midAction?: ReactNode;
   headAction?: ReactNode;
   children: ReactNode;
 }) {
@@ -74,6 +76,7 @@ export function TransChapPanel({
           ) : null}
           {picking ? null : <i className="fa-solid fa-chevron-down" aria-hidden />}
         </button>
+        {midAction ? <div className="trans-chap-panel__mid">{midAction}</div> : null}
         {headAction}
       </div>
       {open ? (

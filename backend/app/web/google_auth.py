@@ -8,7 +8,7 @@ from urllib.parse import quote, urlencode
 import httpx
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import selectinload
 
 from app.config import get_settings
 from app.core.session import login_user, save_session
@@ -154,9 +154,9 @@ def google_callback(
     user = (
         services.db.query(User)
         .options(
-            joinedload(User.account),
-            joinedload(User.instagram_account),
-            joinedload(User.memberships).joinedload(UserMembership.account),
+            selectinload(User.account),
+            selectinload(User.instagram_account),
+            selectinload(User.memberships).selectinload(UserMembership.account),
         )
         .filter(User.id == user.id)
         .first()

@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
+import { showInternalError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import {
   addLiteInventoryProduct,
@@ -97,8 +97,8 @@ export function TransChapMenuForm() {
       setName("");
       setSellingPrice("");
       await toastSuccess("Dish added. Add another?");
-    } catch (err) {
-      await showError("Could not add dish", extractErrorMessage(err));
+    } catch {
+      await showInternalError();
     } finally {
       setSaving(false);
     }

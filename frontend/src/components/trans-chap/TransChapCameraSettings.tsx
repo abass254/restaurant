@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
+import { showInternalError, toastSuccess } from "@/lib/alerts";
 import {
   cameraPermissionLabel,
   isCameraScanningEnabled,
@@ -40,9 +40,9 @@ export function TransChapCameraSettings() {
         await toastSuccess("Camera ready for barcode scanning");
         return;
       }
-      await showError("Could not enable camera", result.message || "Try again.");
-    } catch (err) {
-      await showError("Could not enable camera", extractErrorMessage(err));
+      await showInternalError();
+    } catch {
+      await showInternalError();
     } finally {
       setBusy(false);
     }

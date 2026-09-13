@@ -53,8 +53,8 @@ export function MobileShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="mobile-header__actions">
             <ThemeToggle />
-            <Link href="/station" className="station-btn" title="Open tablet station">
-              <i className="fa-solid fa-tablet-screen-button" aria-hidden />
+            <Link href="/station" className="station-btn" title="Open tablet POS">
+              <i className="fa-solid fa-cash-register" aria-hidden />
             </Link>
           </div>
         </header>

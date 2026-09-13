@@ -94,7 +94,10 @@ class InventoryCreate(BaseModel):
     low_stock_threshold: int | None = Field(default=None, ge=0)
     inventory_role: Literal["for_sale", "raw_material", "both"] | None = None
     is_active: bool | None = None
+    supplier: str | None = Field(default=None, max_length=255)
+    location: str | None = Field(default=None, max_length=255)
     notes: str | None = Field(default=None, max_length=2000)
+    attributes: dict[str, Any] | None = None
 
 
 class InventoryUpdate(BaseModel):
@@ -104,7 +107,10 @@ class InventoryUpdate(BaseModel):
     low_stock_threshold: int | None = Field(default=None, ge=0)
     inventory_role: Literal["for_sale", "raw_material", "both"] | None = None
     is_active: bool | None = None
+    supplier: str | None = Field(default=None, max_length=255)
+    location: str | None = Field(default=None, max_length=255)
     notes: str | None = Field(default=None, max_length=2000)
+    attributes: dict[str, Any] | None = None
 
 
 class StockMovementLineIn(BaseModel):
@@ -212,6 +218,7 @@ async def import_inventory_excel(
             "errors": result.errors,
         },
         "detected_columns": result.detected_columns,
+        # Keep the payload light — full row logs for 600+ items stall the UI.
         "rows": [
             {
                 "row": row.row,
@@ -221,7 +228,8 @@ async def import_inventory_excel(
                 "message": row.message,
             }
             for row in result.rows
-        ],
+            if row.status in {"error", "skipped"}
+        ][:50],
     }
 
 
@@ -231,7 +239,7 @@ def get_inventory_by_code(
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
 ):
-    """Look up an inventory item by product_code, sku, or attributes.barcode."""
+    """Look up an inventory item by products.sku (barcode / SKU scan)."""
     user = _auth_inventory_user(db, session, pos_read_ok=True)
     account_id = _require_shop(user)
     scanned = code.strip()
@@ -257,15 +265,12 @@ def get_inventory_by_code(
             detail=f'No product matched "{scanned}".',
         )
     if len(matched) > 1:
-        # Prefer exact sku / product_code when multiple fuzzy hits.
+        # Prefer exact sku when multiple fuzzy hits.
         exact = [
             row
             for row in matched
             if row.product
-            and (
-                (row.product.sku or "").strip().lower() == scanned.lower()
-                or (row.product.product_code or "").strip().lower() == scanned.lower()
-            )
+            and (row.product.sku or "").strip().lower() == scanned.lower()
         ]
         matched = exact or matched
 
@@ -455,7 +460,10 @@ def create_inventory_item(
         low_stock_threshold=low_stock_threshold,
         inventory_role=payload.inventory_role or "both",
         is_active=True if payload.is_active is None else payload.is_active,
+        supplier=payload.supplier,
+        location=payload.location,
         notes=payload.notes,
+        attributes=payload.attributes,
         created_at=now,
         updated_at=now,
     )

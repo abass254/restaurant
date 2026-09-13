@@ -1,5 +1,11 @@
 /* Soft-dashboard merchant UI (light/dark via tokens) */
 
+/* Denser merchant UI while the shell is mounted (default 16px → 12px rem). */
+html:has(.fb-app),
+html:has(.station-root) {
+  font-size: 12px;
+}
+
 .fb-app {
   min-height: 100vh;
   font-family: var(--font-body), var(--font-display), var(--app-font);

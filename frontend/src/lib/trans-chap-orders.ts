@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api";
-import { extractErrorMessage, promptVoidReason } from "@/lib/alerts";
+import { internalErrorMessage, promptVoidReason } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { orderHasSuccessfulMpesa } from "@/lib/orders";
 import type { Order, OrderMutationResponse, OrdersListResponse } from "@/lib/types";
@@ -22,10 +22,10 @@ export async function fetchWalkinOrders(options?: {
       }
     }
     return { orders, error: null, truncated: true };
-  } catch (err) {
+  } catch {
     return {
       orders,
-      error: extractErrorMessage(err, "Could not load sales."),
+      error: internalErrorMessage(),
       truncated: false,
     };
   }

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { QRCodeSVG } from "qrcode.react";
 import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
-import { extractErrorMessage, promptEmail, promptPendingStk, promptWhatsAppPhone, showError, toastSuccess } from "@/lib/alerts";
+import { showError, showInternalError, toastSuccess, promptEmail, promptPendingStk, promptWhatsAppPhone } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
@@ -182,8 +182,8 @@ export function TransChapReceiptView() {
       }
 
       void toastSuccess("Receipt PDF saved — attach it in the chat");
-    } catch (err) {
-      await showError("Could not share receipt", extractErrorMessage(err));
+    } catch {
+      await showInternalError();
     } finally {
       setOpeningWhatsApp(false);
     }
@@ -217,7 +217,7 @@ export function TransChapReceiptView() {
       await toastSuccess(data.message || `Receipt sent to ${entered}`);
     } catch (err) {
       applyReceipt({ ...receipt, customerEmail: entered });
-      await showError("Could not email receipt", extractErrorMessage(err));
+      await showInternalError();
     } finally {
       setSendingEmail(false);
     }
@@ -261,7 +261,7 @@ export function TransChapReceiptView() {
         if (data.outcome === "paid") {
           await toastSuccess("Customer already paid");
         } else {
-          await showError("Still waiting", data.message);
+          await showError("Still waiting", "Please try again in a moment.");
         }
         return;
       }
@@ -281,16 +281,10 @@ export function TransChapReceiptView() {
       if (data.mpesa_push?.status === "sent") {
         await toastSuccess("M-PESA prompt sent");
       } else {
-        await showError(
-          "Prompt didn't go through",
-          data.mpesa_push?.message ?? "Ask the customer to check their phone, then try again.",
-        );
+        await showInternalError();
       }
-    } catch (err) {
-      await showError(
-        choice === "check" ? "Could not check M-PESA" : "Couldn't send M-PESA prompt",
-        extractErrorMessage(err),
-      );
+    } catch {
+      await showInternalError();
     } finally {
       setResending(false);
     }
@@ -309,8 +303,8 @@ export function TransChapReceiptView() {
       if (!updated) return;
       applyReceipt(receiptFromOrder(updated, receipt.shopName));
       await toastSuccess(updated.status === "refunded" ? "Sale refunded" : "Sale voided");
-    } catch (err) {
-      await showError("Could not undo sale", extractErrorMessage(err));
+    } catch {
+      await showInternalError();
     } finally {
       setUndoing(false);
     }

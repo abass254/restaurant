@@ -2,19 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthUser } from "@/components/app/AuthProvider";
-import { FeedsAnalyticsDashboard } from "@/components/app/FeedsAnalyticsDashboard";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
+import { TransChapStoreProfile } from "@/components/trans-chap/TransChapStoreProfile";
+import { TransChapTodaySkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { apiFetch } from "@/lib/api";
-import { extractErrorMessage } from "@/lib/alerts";
+import { internalErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { nairobiDateKey, parseIso } from "@/lib/nairobi-time";
 import { fetchWalkinOrders, isCountedWalkinSale } from "@/lib/trans-chap-orders";
 import { fetchTransChapPurchases, type TransChapPurchase } from "@/lib/trans-chap-purchases";
 import { inventoryProductName } from "@/lib/trans-chap-product";
-import { formatKsh } from "@/lib/trans-chap-receipt";
-import {
-  userCanAccessSection,
-} from "@/lib/merchant-permissions";
+import { formatKesDigits, formatKsh } from "@/lib/trans-chap-receipt";
 import type {
   InventoryItem,
   InventoryResponse,
@@ -49,19 +47,23 @@ function inPeriod(key: string | null, when: WhenFilter, todayKey: string): boole
   return isWithinLastDays(key, 7, todayKey);
 }
 
+function Money({ amount }: { amount: number }) {
+  return (
+    <strong aria-label={formatKsh(amount)}>
+      <small>Ksh</small>
+      {formatKesDigits(amount)}
+    </strong>
+  );
+}
+
 export function TransChapReports() {
   const user = useAuthUser();
-  const canSeeFeedAnalytics =
-    userCanAccessSection(user, "feeds") && Boolean(user.instagram_account);
   const [orders, setOrders] = useState<Order[]>([]);
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [purchases, setPurchases] = useState<TransChapPurchase[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [when, setWhen] = useState<WhenFilter>("today");
-  const [section, setSection] = useState<"sales" | "feeds">(
-    "sales",
-  );
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -76,12 +78,12 @@ export function TransChapReports() {
       setOrders(sales.orders);
       setItems(inventory.data);
       setPurchases(bought.purchases);
-      setError(sales.error || bought.error);
-    } catch (err) {
+      setError(sales.error || bought.error ? internalErrorMessage() : null);
+    } catch {
       setOrders([]);
       setItems([]);
       setPurchases([]);
-      setError(extractErrorMessage(err, "Could not load report."));
+      setError(internalErrorMessage());
     } finally {
       setLoading(false);
     }
@@ -168,148 +170,127 @@ export function TransChapReports() {
     };
   }, [items, orders, purchases, todayKey, when]);
 
+  const purchaseBreakdown = (() => {
+    const parts = [
+      `${report.purchaseCount} purchase${report.purchaseCount === 1 ? "" : "s"}`,
+    ];
+    if (report.rawPurchaseTotal > 0 || report.bothPurchaseTotal > 0) {
+      if (report.forSalePurchaseTotal > 0) {
+        parts.push(`sale ${formatKsh(report.forSalePurchaseTotal)}`);
+      }
+      if (report.rawPurchaseTotal > 0) {
+        parts.push(`raw ${formatKsh(report.rawPurchaseTotal)}`);
+      }
+      if (report.bothPurchaseTotal > 0) {
+        parts.push(`both ${formatKsh(report.bothPurchaseTotal)}`);
+      }
+    }
+    return parts.join(" · ");
+  })();
+
   return (
     <div className="trans-chap-sales trans-chap-reports">
-      {canSeeFeedAnalytics ? (
+      <TransChapStoreProfile>
         <div className="trans-chap-sales__filters">
-          <div className="trans-chap-sales__chips" role="tablist" aria-label="Report section">
-            <button
-              type="button"
-              role="tab"
-              className={`trans-chap-sales__chip${section === "sales" ? " is-active" : ""}`}
-              aria-selected={section === "sales"}
-              onClick={() => setSection("sales")}
-            >
-              Sales
-            </button>
-            <button
-              type="button"
-              role="tab"
-              className={`trans-chap-sales__chip${section === "feeds" ? " is-active" : ""}`}
-              aria-selected={section === "feeds"}
-              onClick={() => setSection("feeds")}
-            >
-              Feeds
-            </button>
+          <div className="trans-chap-sales__chips" role="group" aria-label="Report period">
+            {WHEN_CHIPS.map((chip) => (
+              <button
+                key={chip.id}
+                type="button"
+                className={`trans-chap-sales__chip${when === chip.id ? " is-active" : ""}`}
+                aria-pressed={when === chip.id}
+                onClick={() => setWhen(chip.id)}
+              >
+                {chip.label}
+              </button>
+            ))}
           </div>
         </div>
-      ) : null}
 
-      {section === "feeds" && canSeeFeedAnalytics ? (
-        <div className="trans-chap-reports__feeds fb-app">
-          <FeedsAnalyticsDashboard
-            embedded
-            settingsHref="/trans-chap/settings"
-          />
-        </div>
-      ) : (
-        <>
-          <div className="trans-chap-sales__filters">
-            <div className="trans-chap-sales__chips" role="group" aria-label="Report period">
-              {WHEN_CHIPS.map((chip) => (
-                <button
-                  key={chip.id}
-                  type="button"
-                  className={`trans-chap-sales__chip${when === chip.id ? " is-active" : ""}`}
-                  aria-pressed={when === chip.id}
-                  onClick={() => setWhen(chip.id)}
-                >
-                  {chip.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
+        <div className="trans-chap-reports__scroll">
           {loading ? (
-            <p className="trans-chap-sales__empty">Loading report…</p>
+            <TransChapTodaySkeleton />
           ) : error && orders.length === 0 && purchases.length === 0 ? (
             <TransChapStatus tone="error">{error}</TransChapStatus>
           ) : (
             <div className="trans-chap-reports__body">
-              <section className="trans-chap-reports__kpis" aria-label="Totals">
-                <article className="trans-chap-reports__kpi">
-                  <span>Sales</span>
-                  <strong>{formatKsh(report.salesTotal)}</strong>
-                  <small>
-                    {report.saleCount} sale{report.saleCount === 1 ? "" : "s"} · {report.units} sold
-                  </small>
-                </article>
-                <article className="trans-chap-reports__kpi">
-                  <span>Purchases</span>
-                  <strong>{formatKsh(report.purchaseTotal)}</strong>
-                  <small>
-                    {(() => {
-                      const parts = [
-                        `${report.purchaseCount} purchase${report.purchaseCount === 1 ? "" : "s"}`,
-                      ];
-                      if (
-                        report.rawPurchaseTotal > 0 ||
-                        report.bothPurchaseTotal > 0
-                      ) {
-                        if (report.forSalePurchaseTotal > 0) {
-                          parts.push(`sale ${formatKsh(report.forSalePurchaseTotal)}`);
-                        }
-                        if (report.rawPurchaseTotal > 0) {
-                          parts.push(`raw ${formatKsh(report.rawPurchaseTotal)}`);
-                        }
-                        if (report.bothPurchaseTotal > 0) {
-                          parts.push(`both ${formatKsh(report.bothPurchaseTotal)}`);
-                        }
-                      }
-                      return parts.join(" · ");
-                    })()}
-                  </small>
-                </article>
-                <article
-                  className={`trans-chap-reports__kpi trans-chap-reports__kpi--wide${
-                    report.profit < 0 ? " is-loss" : ""
-                  }`}
-                >
+              <section
+                className={`trans-chap-reports__profit${report.profit < 0 ? " is-loss" : ""}`}
+                aria-label={report.profit < 0 ? "Loss" : "Profit"}
+              >
+                <div className="trans-chap-reports__profit-copy">
                   <span>{report.profit < 0 ? "Loss" : "Profit"}</span>
-                  <strong>{formatKsh(report.profit)}</strong>
-                  <small>Sales minus restock spend in this period — not cost of goods sold</small>
+                  <Money amount={report.profit} />
+                  <p>Sales minus restock spend in this period</p>
+                </div>
+                <i
+                  className={`fa-solid ${report.profit < 0 ? "fa-arrow-trend-down" : "fa-arrow-trend-up"}`}
+                  aria-hidden
+                />
+              </section>
+
+              <section className="trans-chap-reports__kpis" aria-label="Totals">
+                <article className="trans-chap-reports__kpi trans-chap-reports__kpi--sale">
+                  <span>Sales</span>
+                  <Money amount={report.salesTotal} />
+                  <small>
+                    {report.saleCount} sale{report.saleCount === 1 ? "" : "s"} · {report.units}{" "}
+                    sold
+                  </small>
+                </article>
+                <article className="trans-chap-reports__kpi trans-chap-reports__kpi--purchase">
+                  <span>Purchases</span>
+                  <Money amount={report.purchaseTotal} />
+                  <small>{purchaseBreakdown}</small>
                 </article>
               </section>
 
               <section className="trans-chap-reports__split" aria-label="How customers paid">
-                <article>
+                <article className="trans-chap-reports__pay trans-chap-reports__pay--mpesa">
                   <span>M-PESA</span>
-                  <strong>{formatKsh(report.mpesaTotal)}</strong>
+                  <Money amount={report.mpesaTotal} />
                 </article>
-                <article>
+                <article className="trans-chap-reports__pay trans-chap-reports__pay--credit">
                   <span>Credit</span>
-                  <strong>{formatKsh(report.creditTotal)}</strong>
+                  <Money amount={report.creditTotal} />
                 </article>
                 {report.cashTotal > 0 ? (
-                  <article>
+                  <article className="trans-chap-reports__pay trans-chap-reports__pay--cash">
                     <span>Cash</span>
-                    <strong>{formatKsh(report.cashTotal)}</strong>
+                    <Money amount={report.cashTotal} />
                   </article>
                 ) : null}
               </section>
 
-              <section className="trans-chap-reports__block" aria-labelledby="trans-chap-top-products">
+              <section
+                className="trans-chap-reports__block"
+                aria-labelledby="trans-chap-top-products"
+              >
                 <h2 id="trans-chap-top-products">Top products</h2>
                 {report.topProducts.length === 0 ? (
                   <p className="trans-chap-sales__empty">No paid sales in this period.</p>
                 ) : (
                   <ul>
-                    {report.topProducts.map((row) => (
+                    {report.topProducts.map((row, index) => (
                       <li key={row.name}>
+                        <em className="trans-chap-reports__rank" aria-hidden>
+                          {index + 1}
+                        </em>
                         <span>
                           <strong>{row.name}</strong>
-                          <small>
-                            {row.qty} sold
-                          </small>
+                          <small>{row.qty} sold</small>
                         </span>
-                        <em>{formatKsh(row.amount)}</em>
+                        <b>{formatKsh(row.amount)}</b>
                       </li>
                     ))}
                   </ul>
                 )}
               </section>
 
-              <section className="trans-chap-reports__block" aria-labelledby="trans-chap-stock-alerts">
+              <section
+                className="trans-chap-reports__block"
+                aria-labelledby="trans-chap-stock-alerts"
+              >
                 <h2 id="trans-chap-stock-alerts">Stock alerts</h2>
                 {report.lowStock.length === 0 ? (
                   <p className="trans-chap-sales__empty">No low-stock items right now.</p>
@@ -323,6 +304,9 @@ export function TransChapReports() {
                             <strong>{inventoryProductName(item)}</strong>
                             <small>{qty <= 0 ? "Out of stock" : `${qty} left`}</small>
                           </span>
+                          <b className={qty <= 0 ? "is-out" : "is-low"}>
+                            {qty <= 0 ? "Out" : "Low"}
+                          </b>
                         </li>
                       );
                     })}
@@ -331,8 +315,8 @@ export function TransChapReports() {
               </section>
             </div>
           )}
-        </>
-      )}
+        </div>
+      </TransChapStoreProfile>
     </div>
   );
 }

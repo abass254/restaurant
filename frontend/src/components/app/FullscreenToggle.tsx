@@ -39,7 +39,7 @@ async function exitFullscreen(): Promise<void> {
   await doc.webkitExitFullscreen?.();
 }
 
-export function FullscreenToggle() {
+export function FullscreenToggle({ className }: { className?: string }) {
   const [active, setActive] = useState(false);
   const [supported, setSupported] = useState(false);
 
@@ -70,7 +70,7 @@ export function FullscreenToggle() {
   return (
     <button
       type="button"
-      className="fullscreen-toggle"
+      className={["fullscreen-toggle", className].filter(Boolean).join(" ")}
       onClick={() => void toggle()}
       aria-label={active ? "Exit full screen" : "Enter full screen"}
       aria-pressed={active}

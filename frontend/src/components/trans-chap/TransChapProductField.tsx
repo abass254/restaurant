@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TransChapBarcodeScannerSheet } from "@/components/trans-chap/TransChapBarcodeScannerSheet";
 import { apiFetch } from "@/lib/api";
-import { extractErrorMessage, showError, toastInfo, toastSuccess } from "@/lib/alerts";
+import { showInternalError, toastInfo, toastSuccess } from "@/lib/alerts";
 import { findInventoryByBarcode } from "@/lib/barcode";
 import { apiRoutes } from "@/lib/config";
 import { formatMoney } from "@/lib/orders";
@@ -168,8 +168,8 @@ export function TransChapProductField({
       setScanMiss(null);
       setOpen(false);
       await toastSuccess(`Added “${name}”`);
-    } catch (err) {
-      await showError("Could not add product", extractErrorMessage(err));
+    } catch {
+      await showInternalError();
     } finally {
       setAdding(false);
     }

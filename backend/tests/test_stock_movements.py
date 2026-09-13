@@ -30,14 +30,23 @@ def test_code_matches_candidate_exact_and_normalized() -> None:
     assert not code_matches_candidate("xyz", "ABC-123")
 
 
-def test_product_matches_barcode_uses_attributes() -> None:
+def test_product_matches_barcode_uses_sku_only() -> None:
     product = SimpleNamespace(
         product_code="PRD-1",
+        sku="8901234567890",
+        attributes={"barcode": "9999999999999"},
+    )
+    assert product_matches_barcode(product, "8901234567890")
+    assert not product_matches_barcode(product, "9999999999999")
+    assert not product_matches_barcode(product, "PRD-1")
+    assert not product_matches_barcode(product, "nope")
+
+    empty_sku = SimpleNamespace(
+        product_code="PRD-2",
         sku=None,
         attributes={"barcode": "8901234567890"},
     )
-    assert product_matches_barcode(product, "8901234567890")
-    assert not product_matches_barcode(product, "nope")
+    assert not product_matches_barcode(empty_sku, "8901234567890")
 
 
 class _FakeQuery:

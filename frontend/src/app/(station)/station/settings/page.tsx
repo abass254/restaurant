@@ -1,7 +1,5 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { StationWorkspace } from "@/components/station/StationWorkspace";
-
-export default function StationSettingsPage() {
-  return <StationWorkspace view="settings" />;
+export default function StationSettingsRedirect() {
+  redirect("/station");
 }

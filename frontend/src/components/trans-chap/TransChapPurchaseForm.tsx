@@ -6,7 +6,7 @@ import {
   TransChapPurchaseCatalog,
   type PurchaseCatalogLine,
 } from "@/components/trans-chap/TransChapPurchaseCatalog";
-import { extractErrorMessage, confirmAction, showError, toastSuccess } from "@/lib/alerts";
+import { confirmAction, showError, showInternalError, toastSuccess } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { findInventoryByBarcode } from "@/lib/barcode";
 import { apiRoutes } from "@/lib/config";
@@ -303,8 +303,8 @@ export function TransChapPurchaseForm() {
           : `${basket.length} purchases saved`,
       );
       router.push("/trans-chap/purchases");
-    } catch (err) {
-      await showError("Could not save purchase", extractErrorMessage(err));
+    } catch {
+      await showInternalError();
     } finally {
       setSaving(false);
     }

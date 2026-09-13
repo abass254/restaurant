@@ -1117,7 +1117,10 @@ export type InventoryItem = {
   inventory_role?: InventoryRole | string | null;
   is_active: boolean;
   is_low_stock: boolean;
+  supplier?: string | null;
+  location?: string | null;
   notes: string | null;
+  attributes?: Record<string, unknown> | null;
   media?: ProductImage[] | null;
   product?: CatalogProduct;
   created_at: string | null;

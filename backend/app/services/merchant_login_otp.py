@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, selectinload
 
 from app.models import User, UserLoginCode, UserMembership
 from app.services.rider_service import normalize_phone, phone_lookup_candidates
@@ -350,9 +350,9 @@ class MerchantLoginOtpService:
         return (
             self.db.query(User)
             .options(
-                joinedload(User.account),
-                joinedload(User.instagram_account),
-                joinedload(User.memberships).joinedload(UserMembership.account),
+                selectinload(User.account),
+                selectinload(User.instagram_account),
+                selectinload(User.memberships).selectinload(UserMembership.account),
             )
             .filter(User.id == user.id)
             .first()

@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TransChapBarcodeScannerSheet } from "@/components/trans-chap/TransChapBarcodeScannerSheet";
-import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
+import { showError, showInternalError, toastSuccess } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { findInventoryByBarcode } from "@/lib/barcode";
 import { apiRoutes } from "@/lib/config";
@@ -139,7 +139,7 @@ export function TransChapUnavailablePurchaseForm() {
         buying_price: cost,
         stock_quantity: 0,
         inventory_role: role,
-        product_code: code || null,
+        sku: code || null,
       });
       item = await receiveStock({
         item,
@@ -158,8 +158,8 @@ export function TransChapUnavailablePurchaseForm() {
         return;
       }
       router.push("/trans-chap/purchases");
-    } catch (err) {
-      await showError("Could not save purchase", extractErrorMessage(err));
+    } catch {
+      await showInternalError();
     } finally {
       setSaving(false);
     }

@@ -104,6 +104,18 @@ function toastMixin(extra: SweetAlertOptions = {}) {
   });
 }
 
+/** User-facing copy for unexpected failures (never surface backend/log detail). */
+export const INTERNAL_ERROR_TITLE = "Internal error";
+export const INTERNAL_ERROR_TEXT = "Please try again.";
+
+export function internalErrorMessage(): string {
+  return "Internal error. Please try again.";
+}
+
+export async function showInternalError() {
+  return showError(INTERNAL_ERROR_TITLE, INTERNAL_ERROR_TEXT);
+}
+
 export function extractErrorMessage(err: unknown, fallback = "Something went wrong."): string {
   if (err instanceof ApiError && err.message && !err.message.startsWith("Request failed (")) {
     return err.message;

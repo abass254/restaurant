@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api";
-import { extractErrorMessage } from "@/lib/alerts";
+import { internalErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import {
   findInventoryByName,
@@ -70,10 +70,10 @@ export async function fetchTransChapPurchases(options?: {
       }
     }
     return { purchases, error: null, truncated: true };
-  } catch (err) {
+  } catch {
     return {
       purchases,
-      error: extractErrorMessage(err, "Could not load purchases."),
+      error: internalErrorMessage(),
       truncated: false,
     };
   }

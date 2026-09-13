@@ -9,12 +9,7 @@ import { FeedsLinkProductModal } from "@/components/app/FeedsLinkProductModal";
 import { FeedsPermissionBanner } from "@/components/app/FeedsPermissionBanner";
 import { FeedsPostDetailModal } from "@/components/app/FeedsPostDetailModal";
 import { apiFetch } from "@/lib/api";
-import {
-  confirmAction,
-  extractErrorMessage,
-  showError,
-  toastSuccess,
-} from "@/lib/alerts";
+import { confirmAction, showInternalError, toastSuccess, internalErrorMessage } from "@/lib/alerts";
 import { apiRoutes, resolveSameOriginUrl } from "@/lib/config";
 import { isFeedPostVideo } from "@/lib/feedsMedia";
 import {
@@ -74,8 +69,8 @@ export function TransChapFeedsProfile() {
       const next = await apiFetch<FeedsResponse>(apiRoutes.feeds);
       setData(next);
       setError(null);
-    } catch (err) {
-      setError(extractErrorMessage(err, "Failed to load feeds."));
+    } catch {
+      setError(internalErrorMessage());
     } finally {
       setLoading(false);
     }
@@ -189,8 +184,8 @@ export function TransChapFeedsProfile() {
           : current,
       );
       await toastSuccess(res.message);
-    } catch (err) {
-      await showError("Could not unlink product", extractErrorMessage(err));
+    } catch {
+      await showInternalError();
     }
   }
 
@@ -219,8 +214,8 @@ export function TransChapFeedsProfile() {
           ),
         };
       });
-    } catch (err) {
-      setError(extractErrorMessage(err, "Failed to load more posts."));
+    } catch {
+      setError(internalErrorMessage());
     } finally {
       setLoadingMore(false);
     }

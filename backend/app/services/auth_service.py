@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, selectinload
 
 from app.config import Settings
 from app.core.instagram_hub import hub_connect_url
@@ -66,7 +66,7 @@ class InstagramAuthService:
 
         linked_user = (
             db.query(User)
-            .options(joinedload(User.account), joinedload(User.instagram_account))
+            .options(selectinload(User.account), selectinload(User.instagram_account))
             .filter(User.id == user.id)
             .one()
         )

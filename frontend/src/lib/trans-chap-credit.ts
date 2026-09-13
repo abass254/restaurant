@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api";
-import { extractErrorMessage } from "@/lib/alerts";
+import { internalErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import type { ShopCustomer, ShopCustomersListResponse } from "@/lib/types";
 
@@ -17,11 +17,11 @@ export async function fetchOwingCustomers(): Promise<{
         res.data.reduce((sum, row) => sum + (row.outstanding_balance || 0), 0),
       error: null,
     };
-  } catch (err) {
+  } catch {
     return {
       customers: [],
       owingTotal: 0,
-      error: extractErrorMessage(err, "Could not load the tab."),
+      error: internalErrorMessage(),
     };
   }
 }

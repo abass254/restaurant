@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuthUser } from "@/components/app/AuthProvider";
-import { AppRightRail } from "@/components/app/AppRightRail";
 import { AppSidebar } from "@/components/app/AppSidebar";
 import { AppTopBar } from "@/components/app/AppTopBar";
 import { OnboardingGate } from "@/components/app/OnboardingGate";
@@ -65,7 +64,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <div
         className={[
           "fb-app",
-          isInbox ? "fb-app--no-rail fb-app--messages" : "",
+          "fb-app--no-rail",
+          isInbox ? "fb-app--messages" : "",
           isMobileNav ? "" : "fb-app--sidebar-desktop",
           mobileSidebarOpen ? "fb-app--sidebar-expanded" : "",
         ]
@@ -88,7 +88,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               <MerchantLocationBanner />
               <PageTransition>{children}</PageTransition>
             </div>
-            {isInbox ? null : <AppRightRail user={user} />}
           </div>
         </div>
         <div

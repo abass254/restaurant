@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TransChapBarcodeCamera } from "@/components/trans-chap/TransChapBarcodeCamera";
 import { TransChapProductThumb } from "@/components/trans-chap/TransChapProductThumb";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
@@ -48,6 +48,7 @@ export function TransChapSaleCatalog({
   onContinue,
 }: Props) {
   const [query, setQuery] = useState("");
+  const listRef = useRef<HTMLDivElement | null>(null);
   const total = useMemo(
     () => basket.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0),
     [basket],
@@ -61,7 +62,7 @@ export function TransChapSaleCatalog({
   }, [basket]);
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return inventory.filter((item) => {
+    const rows = inventory.filter((item) => {
       if (!item.is_active) return false;
       if (!isSaleableRole(inventoryRole(item))) return false;
       if (!needle) return true;
@@ -76,7 +77,28 @@ export function TransChapSaleCatalog({
         category.includes(needle)
       );
     });
-  }, [inventory, query]);
+
+    // Newest basket / scanned lines first, then the rest in catalog order.
+    const basketRank = new Map<string, number>();
+    basket.forEach((line, index) => {
+      if (line.inventoryItemId && !basketRank.has(line.inventoryItemId)) {
+        basketRank.set(line.inventoryItemId, index);
+      }
+    });
+    return [...rows].sort((a, b) => {
+      const aRank = basketRank.get(a.id);
+      const bRank = basketRank.get(b.id);
+      if (aRank != null && bRank != null) return aRank - bRank;
+      if (aRank != null) return -1;
+      if (bRank != null) return 1;
+      return 0;
+    });
+  }, [basket, inventory, query]);
+
+  useEffect(() => {
+    if (!lastScannedKey) return;
+    listRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [lastScannedKey]);
 
   return (
     <div className={`trans-chap-sale-scan${scan ? "" : " trans-chap-sale-scan--select"}`}>
@@ -86,7 +108,7 @@ export function TransChapSaleCatalog({
         </div>
       ) : null}
 
-      <div className="trans-chap-sale-scan__list">
+      <div className="trans-chap-sale-scan__list" ref={listRef}>
         <label className="trans-chap-sales__search">
           <i className="fa-solid fa-magnifying-glass" aria-hidden />
           <input

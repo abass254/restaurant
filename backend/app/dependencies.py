@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import Depends, Request
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, selectinload
 
 from app.config import Settings, get_settings
 from app.core.session import get_session
@@ -33,7 +33,7 @@ def load_user(db: Session, user_id: str | None) -> User | None:
         return None
     return (
         db.query(User)
-        .options(joinedload(User.account), joinedload(User.instagram_account))
+        .options(selectinload(User.account), selectinload(User.instagram_account))
         .filter(User.id == user_id)
         .first()
     )

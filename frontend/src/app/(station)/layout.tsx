@@ -1,11 +1,13 @@
 import { redirect } from "next/navigation";
 import "@/styles/station.css";
+import "@/styles/orders-pos.css";
 import { AuthProvider } from "@/components/app/AuthProvider";
 import { BackendUnavailablePanel } from "@/components/app/BackendUnavailablePanel";
 import { BackendUnavailableError, backendUrl } from "@/lib/backend";
 import { getServerUser } from "@/lib/server-auth";
 import { userCanAccessSection } from "@/lib/merchant-permissions";
 import { StationShell } from "@/components/station/StationShell";
+import { PlatformRuntimeProvider } from "@/lib/platform-runtime";
 
 export default async function StationLayout({
   children,
@@ -32,13 +34,18 @@ export default async function StationLayout({
     redirect("/change-password");
   }
 
-  if (!userCanAccessSection(user, "orders")) {
+  if (
+    !userCanAccessSection(user, "pos") &&
+    !userCanAccessSection(user, "orders")
+  ) {
     redirect("/dashboard");
   }
 
   return (
     <AuthProvider user={user}>
-      <StationShell>{children}</StationShell>
+      <PlatformRuntimeProvider>
+        <StationShell>{children}</StationShell>
+      </PlatformRuntimeProvider>
     </AuthProvider>
   );
 }

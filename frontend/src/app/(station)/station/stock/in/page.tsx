@@ -1,7 +1,5 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { FloorStockScanPage } from "@/components/inventory/FloorStockScanPage";
-
-export default function StationStockInPage() {
-  return <FloorStockScanPage direction="in" backHref="/station/stock" />;
+export default function StationStockInRedirect() {
+  redirect("/station");
 }

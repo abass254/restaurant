@@ -1452,7 +1452,7 @@ def confirm_order_handoff(
     session: dict = Depends(get_request_session),
 ):
     validate_csrf(request, session)
-    user = _auth_orders_user(db, session)
+    user = _auth_orders_user(db, session, pos_ok=True)
     account_id = _require_shop(user)
 
     order = _get_owned_order(db, account_id, order_id)

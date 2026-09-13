@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, selectinload
 
 from app.config import get_settings
 from app.core.password_reset_tokens import (
@@ -97,9 +97,9 @@ def login(
     user = (
         db.query(User)
         .options(
-            joinedload(User.account),
-            joinedload(User.instagram_account),
-            joinedload(User.memberships).joinedload(UserMembership.account),
+            selectinload(User.account),
+            selectinload(User.instagram_account),
+            selectinload(User.memberships).selectinload(UserMembership.account),
         )
         .filter(User.email == str(payload.email))
         .first()
@@ -223,9 +223,9 @@ def signup(
     user = (
         db.query(User)
         .options(
-            joinedload(User.account),
-            joinedload(User.instagram_account),
-            joinedload(User.memberships).joinedload(UserMembership.account),
+            selectinload(User.account),
+            selectinload(User.instagram_account),
+            selectinload(User.memberships).selectinload(UserMembership.account),
         )
         .filter(User.id == user.id)
         .first()
@@ -266,7 +266,7 @@ def admin_login(
 
     user = (
         db.query(User)
-        .options(joinedload(User.memberships).joinedload(UserMembership.account))
+        .options(selectinload(User.memberships).selectinload(UserMembership.account))
         .filter(User.username == payload.username.strip())
         .first()
     )

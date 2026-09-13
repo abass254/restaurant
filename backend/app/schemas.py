@@ -260,7 +260,10 @@ class InventoryItemOut(BaseModel):
     inventory_role: str = "both"
     is_active: bool
     is_low_stock: bool
+    supplier: str | None = None
+    location: str | None = None
     notes: str | None
+    attributes: Any | None = None
     media: list[dict[str, Any]] | None = None
     product: ProductOut | None = None
     created_at: datetime | None
@@ -288,7 +291,10 @@ class InventoryItemOut(BaseModel):
             inventory_role=role,
             is_active=bool(item.is_active),
             is_low_stock=item.is_low_stock(),
+            supplier=getattr(item, "supplier", None),
+            location=getattr(item, "location", None),
             notes=item.notes,
+            attributes=getattr(item, "attributes", None),
             media=inventory_media_for_item(item) or None,
             product=ProductOut.model_validate(item.product) if item.product else None,
             created_at=item.created_at,

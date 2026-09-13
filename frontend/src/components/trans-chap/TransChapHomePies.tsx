@@ -79,7 +79,7 @@ export function TransChapHomePies() {
     setPurchaseCount(purchasesToday.length);
     setOwingTotal(owing.owingTotal);
     setOwingCount(owing.customers?.length ?? 0);
-    setError(sales.error || purchases.error);
+    setError(sales.error || purchases.error || owing.error);
     setLoading(false);
   }, [accountId]);
 

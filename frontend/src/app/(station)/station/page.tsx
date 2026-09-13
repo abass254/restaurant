@@ -1,7 +1,7 @@
 "use client";
 
-import { StationWorkspace } from "@/components/station/StationWorkspace";
+import { PosWorkspace } from "@/components/pos/PosWorkspace";
 
-export default function StationOrdersPage() {
-  return <StationWorkspace view="orders" />;
+export default function StationPosPage() {
+  return <PosWorkspace completeInPlace />;
 }

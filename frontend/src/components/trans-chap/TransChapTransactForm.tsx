@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { TransChapSaleCatalog } from "@/components/trans-chap/TransChapSaleCatalog";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { apiFetch } from "@/lib/api";
-import { extractErrorMessage, showError, toastInfo, toastSuccess } from "@/lib/alerts";
+import { showError, showInternalError, toastInfo, toastSuccess } from "@/lib/alerts";
 import { findInventoryByBarcode } from "@/lib/barcode";
 import { apiRoutes } from "@/lib/config";
 import {
@@ -52,14 +52,10 @@ function mergeBasketLine(
   const key = basketKey(draft.name, item?.id ?? null);
   const existing = lines.find((line) => line.key === key);
   if (existing) {
-    return lines.map((line) =>
-      line.key === key
-        ? { ...line, quantity: line.quantity + draft.qty }
-        : line,
-    );
+    const updated = { ...existing, quantity: existing.quantity + draft.qty };
+    return [updated, ...lines.filter((line) => line.key !== key)];
   }
   return [
-    ...lines,
     {
       key,
       productName: draft.name,
@@ -67,6 +63,7 @@ function mergeBasketLine(
       quantity: draft.qty,
       unitPrice: draft.unitPrice,
     },
+    ...lines,
   ];
 }
 
@@ -226,8 +223,8 @@ export function TransChapTransactForm() {
       setCustomerName(customer.name);
       setPhone(customer.phone);
       setStage("pay");
-    } catch (err) {
-      await showError("Could not save customer", extractErrorMessage(err));
+    } catch {
+      await showInternalError();
     } finally {
       setSavingCustomer(false);
     }
@@ -326,11 +323,8 @@ export function TransChapTransactForm() {
         saveTransChapReceipt(receipt);
         router.push(transChapReceiptHref(created.data.id));
         return;
-      } catch (err) {
-        await showError(
-          payMode === "mpesa" ? "Could not send M-PESA prompt" : "Could not save credit sale",
-          extractErrorMessage(err),
-        );
+      } catch {
+        await showInternalError();
       }
     } finally {
       setSaving(false);

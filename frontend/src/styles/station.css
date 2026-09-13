@@ -99,6 +99,39 @@ html[data-theme="dark"] .mobile-root {
   overflow: hidden;
 }
 
+.station-root--pos .station-main {
+  min-height: 0;
+}
+
+.station-pos-host {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--app-bg, var(--station-bg));
+}
+
+.station-pos-host.fb-app {
+  display: block;
+  min-height: 100%;
+}
+
+@media print {
+  .station-rail,
+  .station-topbar {
+    display: none !important;
+  }
+
+  .station-root,
+  .station-root--pos,
+  .station-main,
+  .station-pos-host {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+}
+
 .station-rail {
   display: flex;
   flex-direction: column;
@@ -780,6 +813,10 @@ html[data-theme="dark"] .mobile-root {
 
 .mobile-nav--5 {
   grid-template-columns: repeat(5, 1fr);
+}
+
+.mobile-nav--6 {
+  grid-template-columns: repeat(6, 1fr);
 }
 
 .mobile-row {

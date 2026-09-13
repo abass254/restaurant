@@ -7,7 +7,7 @@ import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { apiFetch } from "@/lib/api";
-import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
+import { showError, showInternalError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { fetchOwingCustomers } from "@/lib/trans-chap-credit";
 import { formatKsh } from "@/lib/trans-chap-receipt";
@@ -104,7 +104,7 @@ export function TransChapCreditList() {
           setSavingId(null);
           await showError(
             "M-PESA didn’t go through",
-            res.message || "Ask them to try again.",
+            "Please try again.",
           );
         }
       } catch {
@@ -159,7 +159,7 @@ export function TransChapCreditList() {
       setWaiting({ customerId: customer.id, txnId: res.collection.id });
     } catch (err) {
       setSavingId(null);
-      await showError("Could not send prompt", extractErrorMessage(err));
+      await showInternalError();
     }
   }
 

@@ -1,4 +1,4 @@
-"""Normalize and match product barcodes / SKUs for stock tools and POS."""
+"""Normalize and match product barcodes against the products.sku column."""
 
 from __future__ import annotations
 
@@ -12,19 +12,13 @@ def normalize_scan_value(value: str | None) -> str:
 
 
 def product_barcode_candidates(product: Any | None) -> list[str]:
-    """Collect sku, product_code, and attributes.barcode from a Product-like object."""
+    """Scan matching always uses the product SKU column."""
     if product is None:
         return []
-    candidates: list[str] = []
-    for raw in (getattr(product, "product_code", None), getattr(product, "sku", None)):
-        if isinstance(raw, str) and raw.strip():
-            candidates.append(raw.strip())
-    attrs = getattr(product, "attributes", None)
-    if isinstance(attrs, dict):
-        barcode = attrs.get("barcode")
-        if isinstance(barcode, str) and barcode.strip():
-            candidates.append(barcode.strip())
-    return candidates
+    sku = getattr(product, "sku", None)
+    if isinstance(sku, str) and sku.strip():
+        return [sku.strip()]
+    return []
 
 
 def code_matches_candidate(code: str, candidate: str) -> bool:

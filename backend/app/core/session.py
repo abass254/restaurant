@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 from fastapi import HTTPException, Request, status
 from itsdangerous import BadSignature, URLSafeTimedSerializer
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, selectinload
 
 from app.config import Settings, get_settings
 from app.models import User, UserMembership
@@ -172,9 +172,9 @@ def get_current_user(db: Session, session: dict[str, Any]) -> User | None:
     user = (
         db.query(User)
         .options(
-            joinedload(User.account),
-            joinedload(User.instagram_account),
-            joinedload(User.memberships).joinedload(UserMembership.account),
+            selectinload(User.account),
+            selectinload(User.instagram_account),
+            selectinload(User.memberships).selectinload(UserMembership.account),
         )
         .filter(User.id == str(user_id))
         .first()

@@ -159,21 +159,21 @@ html[data-theme="light"] {
   --app-shadow: var(--elevation);
   --app-shadow-elevated: var(--elevation-hover);
   --app-shadow-soft: var(--elevation-soft);
-  --app-topbar-height: 76px;
-  --app-topbar-height-mobile: 64px;
-  --app-sidebar-width: 300px;
-  --app-sidebar-rail-width: 84px;
-  --app-rail-width: 300px;
+  --app-topbar-height: 68px;
+  --app-topbar-height-mobile: 58px;
+  --app-sidebar-width: 272px;
+  --app-sidebar-rail-width: 72px;
+  --app-rail-width: 272px;
   --app-radius: 16px;
   --app-radius-lg: 24px;
   --app-radius-pill: 999px;
 
   /* Card / table inset */
-  --space-card: 0.75rem; /* 12px — platform default */
-  --space-card-sm: 0.5rem; /* 8px — tighter nested tiles */
-  --space-card-lg: 1.5rem; /* 24px — generous sections when needed */
-  --space-table-y: 1.1rem;
-  --space-table-x: 1.35rem;
+  --space-card: 0.625rem; /* 10px — platform default */
+  --space-card-sm: 0.4rem; /* ~6.5px — tighter nested tiles */
+  --space-card-lg: 1.25rem; /* 20px — generous sections when needed */
+  --space-table-y: 0.9rem;
+  --space-table-x: 1.1rem;
   --app-sidebar-bg: #ffffff;
   --app-sidebar-text: #6b7280;
   --app-sidebar-text-active: #1a100c;

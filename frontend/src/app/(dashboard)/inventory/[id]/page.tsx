@@ -43,6 +43,8 @@ type EditDraft = {
   stock_quantity: string;
   low_stock_threshold: string;
   is_active: boolean;
+  supplier: string;
+  location: string;
   notes: string;
 };
 
@@ -67,6 +69,8 @@ function toDraft(item: InventoryItem): EditDraft {
         ? String(item.low_stock_threshold)
         : "",
     is_active: item.is_active,
+    supplier: item.supplier ?? "",
+    location: item.location ?? "",
     notes: item.notes ?? "",
   };
 }
@@ -80,6 +84,8 @@ function draftToPayload(
     selling_price: toNumOrNull(draft.selling_price),
     buying_price: toNumOrNull(draft.buying_price),
     is_active: draft.is_active,
+    supplier: draft.supplier.trim() || null,
+    location: draft.location.trim() || null,
     notes: draft.notes.trim() || null,
   };
   if (!isService) {
@@ -343,6 +349,8 @@ function ProductHero({ item }: { item: InventoryItem }) {
           ) : null}
           {product?.sku ? <Fact label="SKU" value={product.sku} mono /> : null}
           {product?.unit ? <Fact label="Unit" value={product.unit} /> : null}
+          {item.location ? <Fact label="Location" value={item.location} /> : null}
+          {item.supplier ? <Fact label="Supplier" value={item.supplier} /> : null}
         </dl>
       </div>
     </div>
@@ -580,6 +588,8 @@ function PricingTab({
         ? String(item.low_stock_threshold)
         : "") ||
     draft.is_active !== item.is_active ||
+    draft.supplier !== (item.supplier ?? "") ||
+    draft.location !== (item.location ?? "") ||
     draft.notes !== (item.notes ?? "");
 
   return (
@@ -645,6 +655,29 @@ function PricingTab({
           </label>
         </div>
       ) : null}
+
+      <div className="settings-form__row">
+        <label className="settings-field">
+          <span>Location</span>
+          <input
+            type="text"
+            value={draft.location}
+            onChange={(e) => update("location", e.target.value)}
+            maxLength={255}
+            placeholder="Shop / warehouse location"
+          />
+        </label>
+        <label className="settings-field">
+          <span>Supplier</span>
+          <input
+            type="text"
+            value={draft.supplier}
+            onChange={(e) => update("supplier", e.target.value)}
+            maxLength={255}
+            placeholder="Primary supplier"
+          />
+        </label>
+      </div>
 
       <label className="settings-field">
         <span>Notes (optional)</span>
@@ -1604,6 +1637,7 @@ function DetailsTab({ item }: { item: InventoryItem }) {
   const product = item.product;
   const cat = getCategory(product?.category);
   const attrs = product?.attributes ?? {};
+  const inventoryAttrs = item.attributes ?? {};
 
   const rows = useMemo(() => {
     if (!cat) return [] as { label: string; value: string }[];
@@ -1631,9 +1665,61 @@ function DetailsTab({ item }: { item: InventoryItem }) {
       .filter((r): r is { label: string; value: string } => r !== null);
   }, [cat, attrs]);
 
+  const importRows = useMemo(() => {
+    const labels: Record<string, string> = {
+      sub_category: "Sub-category",
+      barcode_type: "Barcode type",
+      barcode: "Barcode",
+      weight: "Weight",
+      expires_in: "Expires in",
+      expiry_period_unit: "Expiry period unit",
+      expiry_date: "Expiry date",
+      applicable_tax: "Applicable tax",
+      variant_mode: "Variant mode",
+      variation_name: "Variation name",
+      variation_values: "Variation values",
+      variation_skus: "Variation SKUs",
+      enable_imei: "IMEI / serial tracking",
+      custom_field_1: "Custom field 1",
+      custom_field_2: "Custom field 2",
+      custom_field_3: "Custom field 3",
+      custom_field_4: "Custom field 4",
+      origin_country: "Origin country",
+      etims_product_type: "eTIMS product type",
+      unspsc: "UNSPSC",
+      tax_type: "Selling price tax type",
+      profit_margin: "Profit margin",
+      manage_stock: "Manage stock",
+      rack: "Rack",
+      shelf_row: "Row",
+      position: "Position",
+      opening_stock_location: "Opening stock location",
+      available_in_pos: "Available in POS",
+    };
+    const skip = new Set(["import_source"]);
+    const knownFieldKeys = new Set(cat?.fields.map((f) => f.key) ?? []);
+    const out: { label: string; value: string }[] = [];
+    const sources: Array<Record<string, unknown>> = [attrs, inventoryAttrs];
+    const seen = new Set<string>();
+    for (const source of sources) {
+      for (const [key, raw] of Object.entries(source)) {
+        if (skip.has(key) || knownFieldKeys.has(key) || seen.has(key)) continue;
+        if (raw === null || raw === undefined || raw === "") continue;
+        seen.add(key);
+        out.push({
+          label: labels[key] ?? key.replaceAll("_", " "),
+          value: String(raw),
+        });
+      }
+    }
+    return out;
+  }, [attrs, inventoryAttrs, cat]);
+
   if (!product) {
     return <p className="app-muted">Catalog details unavailable.</p>;
   }
+
+  const allRows = [...rows, ...importRows];
 
   return (
     <div className="inv-detail__card">
@@ -1641,13 +1727,13 @@ function DetailsTab({ item }: { item: InventoryItem }) {
         <i className={`fa-solid ${cat?.icon ?? "fa-circle-info"}`} aria-hidden="true" />
         {cat?.label ?? "Catalog details"}
       </h2>
-      {rows.length === 0 ? (
+      {allRows.length === 0 ? (
         <p className="app-muted">
           No structured catalog attributes for this product yet.
         </p>
       ) : (
         <dl className="inv-detail__attrs">
-          {rows.map((row) => (
+          {allRows.map((row) => (
             <div className="inv-detail__attr" key={row.label}>
               <dt>{row.label}</dt>
               <dd>{row.value}</dd>

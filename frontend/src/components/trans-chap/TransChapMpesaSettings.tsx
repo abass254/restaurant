@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { apiFetch } from "@/lib/api";
-import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
+import { showInternalError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { isShopOwner } from "@/lib/merchant-permissions";
 import {
@@ -97,7 +97,7 @@ export function TransChapMpesaSettings() {
       setLookup(data);
     } catch (err) {
       setLookup(null);
-      await showError("Could not look up destination", extractErrorMessage(err));
+      await showInternalError();
     } finally {
       setBusy(false);
     }
@@ -123,8 +123,8 @@ export function TransChapMpesaSettings() {
       setLookup(null);
       setEditing(false);
       await toastSuccess("M-PESA details saved");
-    } catch (err) {
-      await showError("Could not save", extractErrorMessage(err));
+    } catch {
+      await showInternalError();
     } finally {
       setBusy(false);
     }

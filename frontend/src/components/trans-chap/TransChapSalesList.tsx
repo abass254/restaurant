@@ -8,7 +8,7 @@ import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { MotionItem, MotionList } from "@/components/app/MotionList";
-import { extractErrorMessage, promptPendingStk, showError, toastSuccess } from "@/lib/alerts";
+import { showError, showInternalError, toastSuccess, promptPendingStk } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { formatNairobiDateTime, nairobiDateKey, parseIso } from "@/lib/nairobi-time";
@@ -175,8 +175,8 @@ export function TransChapSalesList() {
       if (!updated) return;
       setOrders((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
       await toastSuccess(updated.status === "refunded" ? "Sale refunded" : "Sale voided");
-    } catch (err) {
-      await showError("Could not undo sale", extractErrorMessage(err));
+    } catch {
+      await showInternalError();
     } finally {
       setUndoingId(null);
     }
@@ -196,7 +196,7 @@ export function TransChapSalesList() {
         if (data.outcome === "paid") {
           await toastSuccess("Customer already paid");
         } else {
-          await showError("Still waiting", data.message);
+          await showError("Still waiting", "Please try again in a moment.");
         }
         return;
       }
@@ -208,16 +208,10 @@ export function TransChapSalesList() {
       if (data.mpesa_push?.status === "sent") {
         await toastSuccess("M-PESA prompt sent");
       } else {
-        await showError(
-          "Prompt didn't go through",
-          data.mpesa_push?.message ?? data.message,
-        );
+        await showInternalError();
       }
-    } catch (err) {
-      await showError(
-        choice === "check" ? "Could not check M-PESA" : "Couldn't send M-PESA prompt",
-        extractErrorMessage(err),
-      );
+    } catch {
+      await showInternalError();
     } finally {
       setStkBusyId(null);
     }

@@ -5,7 +5,7 @@ import { AddressLocationField } from "@/components/shared/AddressLocationField";
 import { useAuthRefresh, useAuthUser } from "@/components/app/AuthProvider";
 import { apiFetch } from "@/lib/api";
 import { accountHasLocationCoordinates } from "@/lib/account-location";
-import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
+import { showError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import type { LatLng } from "@/lib/google-maps";
 import { useMapProviderConfig } from "@/lib/useMapProviderConfig";
@@ -77,8 +77,8 @@ export function BusinessLocationSection({
       await refreshUser();
       await toastSuccess("Store location saved");
       onSaved?.();
-    } catch (err) {
-      await showError("Could not save location", extractErrorMessage(err));
+    } catch {
+      await showError("Internal error", "Please try again.");
     } finally {
       setSaving(false);
     }

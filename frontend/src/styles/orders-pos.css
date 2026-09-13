@@ -2099,7 +2099,8 @@ html[data-theme="dark"] .fb-app .orders-action-btn--primary {
 }
 
 @media print {
-  .fb-app .orders-detail > :not(.orders-receipt-print) {
+  .fb-app .orders-detail > :not(.orders-receipt-print),
+  .fb-app .pos-panel > :not(.orders-receipt-print) {
     display: none !important;
   }
 
