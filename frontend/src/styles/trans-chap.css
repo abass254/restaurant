@@ -7467,12 +7467,44 @@ html[data-trans-chap-machine="tablet"] .trans-chap-header__center h1 {
     width: 3.1rem !important;
     height: 3.1rem !important;
     margin: 0.1rem auto 0.45rem !important;
-    border-width: 0.18em !important;
-    transform: scale(0.92);
+    border: 0 !important;
+    background: transparent !important;
+    transform: none;
+    color: var(--app-primary) !important;
 }
 
 .trans-chap-swal-popup .swal2-icon .swal2-icon-content {
-    font-size: 1.65rem !important;
+    font-size: 2.35rem !important;
+    line-height: 1 !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+}
+
+.trans-chap-swal-popup .swal2-icon .swal2-success-ring,
+.trans-chap-swal-popup .swal2-icon [class^="swal2-success-line"],
+.trans-chap-swal-popup .swal2-icon .swal2-success-circular-line-left,
+.trans-chap-swal-popup .swal2-icon .swal2-success-circular-line-right,
+.trans-chap-swal-popup .swal2-icon .swal2-success-fix,
+.trans-chap-swal-popup .swal2-icon .swal2-x-mark {
+    display: none !important;
+}
+
+.trans-chap-swal-icon--error {
+    color: var(--app-danger) !important;
+}
+
+.trans-chap-swal-icon--success {
+    color: var(--app-success) !important;
+}
+
+.trans-chap-swal-icon--warning {
+    color: var(--app-accent-amber) !important;
+}
+
+.trans-chap-swal-icon--info,
+.trans-chap-swal-icon--question {
+    color: var(--app-primary) !important;
 }
 
 .trans-chap-swal-actions {
@@ -7494,6 +7526,23 @@ html[data-trans-chap-machine="tablet"] .trans-chap-header__center h1 {
 
 .trans-chap-swal-actions .dukai-swal-btn:hover {
     transform: none;
+}
+
+.trans-chap-swal-actions .trans-chap-swal-btn--confirm {
+    background: var(--app-primary) !important;
+    color: var(--app-primary-text) !important;
+    box-shadow: none !important;
+}
+
+.trans-chap-swal-actions .trans-chap-swal-btn--confirm:hover {
+    background: var(--app-primary-hover) !important;
+    color: var(--app-primary-text) !important;
+}
+
+.trans-chap-swal-actions .trans-chap-swal-btn--cancel {
+    background: var(--app-surface-hover) !important;
+    color: var(--app-text) !important;
+    border: 1px solid var(--app-border) !important;
 }
 
 .trans-chap-swal-popup .swal2-input,

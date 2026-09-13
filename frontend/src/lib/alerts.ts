@@ -29,27 +29,48 @@ function transChapHost(): HTMLElement | undefined {
   return document.querySelector<HTMLElement>(".trans-chap-app") ?? undefined;
 }
 
+const TRANS_CHAP_DIALOG_ICONS = {
+  success: '<i class="fa-solid fa-circle-check" aria-hidden="true"></i>',
+  error: '<i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>',
+  warning: '<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>',
+  info: '<i class="fa-solid fa-circle-info" aria-hidden="true"></i>',
+  question: '<i class="fa-solid fa-circle-question" aria-hidden="true"></i>',
+} as const;
+
 function withDialogOptions(options: SweetAlertOptions): SweetAlertOptions {
   if (!isTransChapUi()) return options;
   const host = transChapHost();
+  const iconKey =
+    options.icon && options.icon in TRANS_CHAP_DIALOG_ICONS
+      ? (options.icon as keyof typeof TRANS_CHAP_DIALOG_ICONS)
+      : null;
+  const { customClass: optionCustomClass, ...restOptions } = options;
   return {
-    ...options,
+    ...restOptions,
     ...(host ? { target: host } : {}),
     position: "bottom",
     width: "100%",
     scrollbarPadding: false,
+    ...(iconKey && !options.iconHtml
+      ? {
+          iconHtml: TRANS_CHAP_DIALOG_ICONS[iconKey],
+        }
+      : {}),
     customClass: {
       container: "trans-chap-swal",
       popup: "dukai-swal-popup trans-chap-swal-popup",
       title: "dukai-swal-title trans-chap-swal-title",
       htmlContainer: "dukai-swal-text trans-chap-swal-text",
-      confirmButton: "dukai-swal-btn dukai-swal-btn--confirm",
-      cancelButton: "dukai-swal-btn dukai-swal-btn--cancel",
-      denyButton: "dukai-swal-btn dukai-swal-btn--cancel",
+      confirmButton: "dukai-swal-btn dukai-swal-btn--confirm trans-chap-swal-btn--confirm",
+      cancelButton: "dukai-swal-btn dukai-swal-btn--cancel trans-chap-swal-btn--cancel",
+      denyButton: "dukai-swal-btn dukai-swal-btn--cancel trans-chap-swal-btn--cancel",
       actions: "trans-chap-swal-actions",
       input: "trans-chap-swal-input",
       validationMessage: "trans-chap-swal-validation",
-      ...options.customClass,
+      ...(iconKey
+        ? { icon: `trans-chap-swal-icon trans-chap-swal-icon--${iconKey}` }
+        : {}),
+      ...optionCustomClass,
     },
     showClass: {
       popup: "trans-chap-swal-sheet-in",

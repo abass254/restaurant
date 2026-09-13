@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { showInternalError, toastSuccess } from "@/lib/alerts";
 import {
   cameraPermissionLabel,
@@ -16,6 +16,7 @@ export function TransChapCameraSettings() {
   const [enabled, setEnabled] = useState(false);
   const [permission, setPermission] = useState<CameraPermissionState>("unknown");
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
 
   const refreshPermission = useCallback(async () => {
     const state = await queryCameraPermission();
@@ -30,10 +31,13 @@ export function TransChapCameraSettings() {
   }, [refreshPermission]);
 
   async function enableCamera() {
-    if (busy) return;
-    setBusy(true);
+    if (busyRef.current) return;
+    busyRef.current = true;
+    // Do not setState before getUserMedia — Android Chrome drops the
+    // permission prompt when the click gesture is interrupted by a re-render.
     try {
       const result = await requestCameraPermission();
+      setBusy(true);
       setPermission(result.state);
       setEnabled(isCameraScanningEnabled());
       if (result.ok) {
@@ -42,8 +46,10 @@ export function TransChapCameraSettings() {
       }
       await showInternalError();
     } catch {
+      setBusy(true);
       await showInternalError();
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
