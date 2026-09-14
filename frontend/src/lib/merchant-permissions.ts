@@ -47,6 +47,66 @@ export const RETAIL_STAFF_SECTIONS: MerchantSection[] = [
   "settings",
 ];
 
+/** Sections that map to Trans Chap screens (not the full shop dashboard). */
+export const TRANS_CHAP_STAFF_SECTIONS: MerchantSection[] = [
+  "dashboard",
+  "feeds",
+  "tickets",
+  "inventory",
+  "pos",
+  "customer",
+  "settings",
+];
+
+/** Trans Chap labels for the same merchant section keys. */
+export const TRANS_CHAP_SECTION_LABELS: Record<MerchantSection, string> = {
+  dashboard: "Home",
+  feeds: "Feeds",
+  tickets: "Chats",
+  inventory: "Inventory",
+  pos: "POS & sales",
+  customer: "Customers",
+  orders: "Orders",
+  delivery: "Delivery",
+  tools: "Tools",
+  settings: "Settings",
+};
+
+/** Default access for a Trans Chap cashier. Home is required to open the app. */
+export const TRANS_CHAP_DEFAULT_STAFF_SECTIONS: MerchantSection[] = [
+  "dashboard",
+  "inventory",
+  "pos",
+];
+
+const TRANS_CHAP_STAFF_SECTION_SET = new Set<string>(TRANS_CHAP_STAFF_SECTIONS);
+
+/** Keep only Trans Chap permission keys (used when inviting from Trans Chap). */
+export function clampToTransChapSections(sections: string[]): MerchantSection[] {
+  const seen = new Set<string>();
+  const out: MerchantSection[] = [];
+  for (const key of sections) {
+    if (!TRANS_CHAP_STAFF_SECTION_SET.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    out.push(key as MerchantSection);
+  }
+  return out;
+}
+
+/**
+ * Staff whose access was scoped to Trans Chap only (no Orders / Delivery / Tools).
+ * Requires Home (`dashboard`) so ordinary dashboard POS-only cashiers are not
+ * redirected into Trans Chap. Owners and platform admins never match.
+ */
+export function isTransChapOnlyStaff(user: AuthUser): boolean {
+  if (isShopOwner(user) || normalizeMerchantRole(user.user_role) === "superadmin") {
+    return false;
+  }
+  const allowed = userAllowedSections(user);
+  if (allowed.length === 0 || !allowed.includes("dashboard")) return false;
+  return allowed.every((section) => TRANS_CHAP_STAFF_SECTION_SET.has(section));
+}
+
 const PATH_SECTION_MAP: Array<{ prefix: string; section: MerchantSection }> = [
   { prefix: "/dashboard", section: "dashboard" },
   { prefix: "/feeds", section: "feeds" },
@@ -60,6 +120,14 @@ const PATH_SECTION_MAP: Array<{ prefix: string; section: MerchantSection }> = [
   { prefix: "/delivery", section: "delivery" },
   { prefix: "/trans-chap/feeds", section: "feeds" },
   { prefix: "/trans-chap/chats", section: "tickets" },
+  { prefix: "/trans-chap/stocks", section: "inventory" },
+  { prefix: "/trans-chap/purchases", section: "inventory" },
+  { prefix: "/trans-chap/make-a-sale", section: "pos" },
+  { prefix: "/trans-chap/transact", section: "pos" },
+  { prefix: "/trans-chap/pos", section: "pos" },
+  { prefix: "/trans-chap/credit", section: "customer" },
+  { prefix: "/trans-chap/customers", section: "customer" },
+  { prefix: "/trans-chap/settings", section: "settings" },
   { prefix: "/trans-chap", section: "dashboard" },
   { prefix: "/tools", section: "tools" },
   { prefix: "/bot", section: "tools" },
@@ -77,23 +145,35 @@ export function staffSectionsForMode(_mode?: "retail" | "service"): MerchantSect
   return [...RETAIL_STAFF_SECTIONS];
 }
 
+/** Match backend ``normalize_membership_role`` / ``User.normalize_role``. */
+export function normalizeMerchantRole(role: string | null | undefined): string {
+  return (role ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-\s]/g, "");
+}
+
+function activeMembershipForUser(user: AuthUser) {
+  const activeId = user.active_account?.id ?? user.account?.id;
+  if (activeId == null || !user.memberships?.length) return undefined;
+  return user.memberships.find(
+    (m) => String(m.account_id) === String(activeId),
+  );
+}
+
 export function isShopOwner(user: AuthUser): boolean {
-  if (user.memberships && user.active_account) {
-    const membership = user.memberships.find(
-      (m) => m.account_id === user.active_account?.id,
-    );
-    if (membership) return membership.role === "system_admin";
+  const membership = activeMembershipForUser(user);
+  if (membership) {
+    return normalizeMerchantRole(membership.role) === "systemadmin";
   }
-  return user.user_role === "system_admin";
+  return normalizeMerchantRole(user.user_role) === "systemadmin";
 }
 
 export function userAllowedSections(user: AuthUser): MerchantSection[] {
-  if (isShopOwner(user) || user.user_role === "super_admin") {
+  if (isShopOwner(user) || normalizeMerchantRole(user.user_role) === "superadmin") {
     return [...MERCHANT_SECTIONS];
   }
-  const activeMembership = user.memberships?.find(
-    (m) => m.account_id === user.active_account?.id,
-  );
+  const activeMembership = activeMembershipForUser(user);
   const raw = activeMembership?.allowed_sections ?? user.allowed_sections ?? [];
   return raw.filter((s): s is MerchantSection =>
     (MERCHANT_SECTIONS as readonly string[]).includes(s),
@@ -104,7 +184,7 @@ export function userCanAccessSection(
   user: AuthUser,
   section: MerchantSection,
 ): boolean {
-  if (isShopOwner(user) || user.user_role === "super_admin") {
+  if (isShopOwner(user) || normalizeMerchantRole(user.user_role) === "superadmin") {
     return true;
   }
   return userAllowedSections(user).includes(section);
@@ -144,6 +224,9 @@ export function firstAllowedPath(user: AuthUser): string {
   if (!hasShop && user.user_role !== "super_admin") {
     return "/onboarding";
   }
+  if (isTransChapOnlyStaff(user)) {
+    return "/trans-chap";
+  }
   const links = filterNavLinksForUser(user);
   if (links.length > 0) {
     return links[0].href;
@@ -157,6 +240,13 @@ export function userCanAccessPath(user: AuthUser, pathname: string): boolean {
   }
   if (isOwnerOnlyPath(pathname)) {
     return isShopOwner(user);
+  }
+  if (
+    isTransChapOnlyStaff(user) &&
+    !pathname.startsWith("/trans-chap") &&
+    pathnameToSection(pathname) != null
+  ) {
+    return false;
   }
   const section = pathnameToSection(pathname);
   if (!section) {

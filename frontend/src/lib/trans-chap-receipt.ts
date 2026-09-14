@@ -225,7 +225,7 @@ function normalizePaymentStatus(
   return payMode === "mpesa" || payMode === "credit" ? "pending" : "paid";
 }
 
-function paymentStatusFromOrder(
+export function paymentStatusFromOrder(
   order: Order,
   push?: OrderMpesaPushResult | null,
 ): TransChapPaymentStatus {

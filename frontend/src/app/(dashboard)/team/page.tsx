@@ -31,8 +31,7 @@ export default function TeamPage() {
         <div>
           <h1 className="settings-shell__title">Team</h1>
           <p className="settings-shell__lead">
-            Invite staff to sign in and work on your shop dashboard with section-based
-            access.
+            Create staff logins and choose which dashboard sections they can access.
           </p>
         </div>
       </header>

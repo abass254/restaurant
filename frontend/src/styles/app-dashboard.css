@@ -9776,6 +9776,22 @@ html[data-theme="dark"] .fb-app .cs-row.is-active .cs-row__chip {
   gap: 10px;
 }
 
+.fb-app .staff-credentials__row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.fb-app .staff-credentials__row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.fb-app .staff-credentials__secret {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.02em;
+}
+
 .fb-app .settings-field--checkbox {
   flex-direction: row;
   align-items: flex-start;

@@ -205,6 +205,7 @@ export const apiRoutes = {
     `${apiUrl}/api/v1/orders/${id}/assign-rider`,
   customers: `${apiUrl}/api/v1/customers`,
   customersOwing: `${apiUrl}/api/v1/customers?owing=1`,
+  customersImport: `${apiUrl}/api/v1/customers/import`,
   customer: (id: string) => `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}`,
   customerUpdate: (id: string) =>
     `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/update`,

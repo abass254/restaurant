@@ -86,6 +86,23 @@ def _auth_inventory_user(
     return user
 
 
+def _require_stock_qty_owner(user: User) -> None:
+    """Staff may view inventory / sell; only the shop owner may change quantities."""
+    from app.support.merchant_permissions import is_membership_owner, get_active_membership
+
+    if user.is_super_admin():
+        return
+    membership = get_active_membership(user)
+    if membership is not None and is_membership_owner(user):
+        return
+    if membership is None and user.is_system_admin():
+        return
+    raise HTTPException(
+        status.HTTP_403_FORBIDDEN,
+        detail="Only the shop owner can update inventory quantities.",
+    )
+
+
 class InventoryCreate(BaseModel):
     product_id: str = Field(min_length=1, max_length=64)
     selling_price: float | None = Field(default=None, ge=0, le=99_999_999.99)
@@ -344,6 +361,12 @@ def create_stock_movements(
             detail="History-only stock rows can only be recorded as purchases.",
         )
 
+    # Purchases (stock-in / receive) are allowed for inventory staff; other
+    # quantity changes stay owner-only (opening stock, adjustments, etc.).
+    is_purchase = payload.direction == "in" and reason == "receive"
+    if not is_purchase:
+        _require_stock_qty_owner(user)
+
     lines = [(line.inventory_item_id, line.quantity) for line in payload.lines]
     try:
         movements = adjust_stock(
@@ -449,6 +472,9 @@ def create_inventory_item(
     if product.is_service():
         stock_quantity = None
         low_stock_threshold = None
+    elif stock_quantity is not None and stock_quantity != 0:
+        # Zero qty is used when staff add a new product then record a purchase.
+        _require_stock_qty_owner(user)
 
     now = datetime.utcnow()
     item = InventoryItem(
@@ -493,6 +519,9 @@ def update_inventory_item(
 
     item = _get_owned_item(db, account_id, item_id)
     data = payload.model_dump(exclude_unset=True)
+
+    if "stock_quantity" in data:
+        _require_stock_qty_owner(user)
 
     if data.get("inventory_role") is None:
         data.pop("inventory_role", None)

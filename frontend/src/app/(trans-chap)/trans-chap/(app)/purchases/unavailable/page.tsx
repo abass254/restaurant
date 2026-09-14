@@ -1,7 +1,7 @@
 "use client";
 
-import { TransChapUnavailablePurchaseForm } from "@/components/trans-chap/TransChapUnavailablePurchaseForm";
+import { TransChapBulkPurchaseForm } from "@/components/trans-chap/TransChapBulkPurchaseForm";
 
 export default function TransChapUnavailablePurchasePage() {
-  return <TransChapUnavailablePurchaseForm />;
+  return <TransChapBulkPurchaseForm />;
 }

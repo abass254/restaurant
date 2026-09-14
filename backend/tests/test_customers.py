@@ -122,3 +122,70 @@ def test_collect_credit_rejects_when_nothing_owed() -> None:
     customer.outstanding_balance = Decimal("0.00")
     with pytest.raises(CustomerServiceError, match="does not owe"):
         CustomerService(MagicMock()).collect_credit(customer, Decimal("10.00"))
+
+
+def test_create_customer_accepts_opening_balance() -> None:
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+    captured = {}
+
+    def capture_add(obj) -> None:
+        captured["customer"] = obj
+        obj.id = "cust-2"
+
+    db.add.side_effect = capture_add
+
+    service = CustomerService(db)
+    customer = service.create_customer(
+        "acct-1",
+        name="Brian",
+        phone="0700000002",
+        credit_limit=8000,
+        outstanding_balance=1500,
+    )
+
+    assert captured["customer"].credit_limit == Decimal("8000.00")
+    assert captured["customer"].outstanding_balance == Decimal("1500.00")
+    assert customer is captured["customer"]
+
+
+def test_create_customer_rejects_opening_above_limit() -> None:
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+    service = CustomerService(db)
+    with pytest.raises(CustomerServiceError, match="Opening balance"):
+        service.create_customer(
+            "acct-1",
+            name="Brian",
+            phone="0700000002",
+            credit_limit=1000,
+            outstanding_balance=1500,
+        )
+
+
+def test_upsert_import_updates_existing_by_phone() -> None:
+    db = MagicMock()
+    existing = MagicMock()
+    existing.id = "cust-1"
+    existing.phone = normalize_phone("0700000001")
+    existing.outstanding_balance = Decimal("0.00")
+    existing.credit_limit = Decimal("1000.00")
+    db.query.return_value.filter.return_value.first.return_value = existing
+
+    service = CustomerService(db)
+    customer, status = service.upsert_import_customer(
+        "acct-1",
+        name="Amina Updated",
+        phone="0700000001",
+        credit_limit=6000,
+        outstanding_balance=2200,
+        notes="from excel",
+    )
+
+    assert status == "updated"
+    assert customer is existing
+    assert existing.name == "Amina Updated"
+    assert existing.credit_limit == Decimal("6000.00")
+    assert existing.outstanding_balance == Decimal("2200.00")
+    assert existing.notes == "from excel"
+    db.commit.assert_called_once()

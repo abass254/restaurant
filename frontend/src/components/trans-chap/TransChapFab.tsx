@@ -4,7 +4,8 @@ import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 
 export type TransChapFabOption = {
-  href: string;
+  href?: string;
+  onClick?: () => void;
   label: string;
   icon: string;
 };
@@ -12,12 +13,16 @@ export type TransChapFabOption = {
 export function TransChapFab({
   label,
   options,
+  href,
 }: {
   label: string;
-  options: TransChapFabOption[];
+  options?: TransChapFabOption[];
+  /** Direct link — skips the options menu (e.g. staff single purchase entry). */
+  href?: string;
 }) {
   const menuId = useId();
   const [open, setOpen] = useState(false);
+  const menuOptions = options ?? [];
 
   useEffect(() => {
     if (!open) return;
@@ -27,6 +32,16 @@ export function TransChapFab({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
+
+  if (href) {
+    return (
+      <div className="trans-chap-fab-wrap">
+        <Link href={href} className="trans-chap-fab" aria-label={label} title={label}>
+          <i className="fa-solid fa-plus" aria-hidden />
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className={`trans-chap-fab-wrap${open ? " is-open" : ""}`}>
@@ -40,18 +55,38 @@ export function TransChapFab({
       ) : null}
       {open ? (
         <div className="trans-chap-fab__options" id={menuId} role="menu" aria-label={label}>
-          {options.map((option) => (
-            <Link
-              key={option.href}
-              href={option.href}
-              className="trans-chap-fab__option"
-              role="menuitem"
-              onClick={() => setOpen(false)}
-            >
-              <span>{option.label}</span>
-              <i className={`fa-solid ${option.icon}`} aria-hidden />
-            </Link>
-          ))}
+          {menuOptions.map((option) => {
+            const key = option.href ?? option.label;
+            if (option.href) {
+              return (
+                <Link
+                  key={key}
+                  href={option.href}
+                  className="trans-chap-fab__option"
+                  role="menuitem"
+                  onClick={() => setOpen(false)}
+                >
+                  <span>{option.label}</span>
+                  <i className={`fa-solid ${option.icon}`} aria-hidden />
+                </Link>
+              );
+            }
+            return (
+              <button
+                key={key}
+                type="button"
+                className="trans-chap-fab__option"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  option.onClick?.();
+                }}
+              >
+                <span>{option.label}</span>
+                <i className={`fa-solid ${option.icon}`} aria-hidden />
+              </button>
+            );
+          })}
         </div>
       ) : null}
       <button

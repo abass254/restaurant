@@ -6,6 +6,7 @@ import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { TransChapCameraSettings } from "@/components/trans-chap/TransChapCameraSettings";
 import { TransChapInstallPanel } from "@/components/trans-chap/TransChapInstallPanel";
 import { TransChapMpesaSettings } from "@/components/trans-chap/TransChapMpesaSettings";
+import { TransChapTeamSettings } from "@/components/trans-chap/TransChapTeamSettings";
 import { apiFetch } from "@/lib/api";
 import { showInternalError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes, instagramAuthPath, resolveSameOriginUrl } from "@/lib/config";
@@ -18,7 +19,7 @@ import type { MerchantMpesaConfigResponse, SettingsResponse } from "@/lib/types"
 
 const SIGN_IN_PATH = "/trans-chap/sign-in";
 
-type SettingsPane = "list" | "mpesa" | "download" | "camera";
+type SettingsPane = "list" | "mpesa" | "download" | "camera" | "team";
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -35,6 +36,8 @@ export default function TransChapSettingsPage() {
   const [cameraReady, setCameraReady] = useState<boolean | null>(null);
   const [hasInstagram, setHasInstagram] = useState(Boolean(user.instagram_account));
   const [canManageInstagram, setCanManageInstagram] = useState(isShopOwner(user));
+  const [canManageTeam, setCanManageTeam] = useState(isShopOwner(user));
+  const owner = canManageTeam;
   const [autoRepliesEnabled, setAutoRepliesEnabled] = useState(
     Boolean(user.instagram_account?.auto_replies_enabled),
   );
@@ -47,10 +50,13 @@ export default function TransChapSettingsPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("pane") === "camera") {
+    const next = params.get("pane");
+    if (next === "camera") {
       setPane("camera");
+    } else if (next === "team" && owner) {
+      setPane("team");
     }
-  }, []);
+  }, [owner]);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,6 +105,20 @@ export default function TransChapSettingsPage() {
       })
       .catch(() => {
         /* keep defaults from auth user */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void apiFetch(apiRoutes.staff)
+      .then(() => {
+        if (!cancelled) setCanManageTeam(true);
+      })
+      .catch(() => {
+        if (!cancelled) setCanManageTeam(false);
       });
     return () => {
       cancelled = true;
@@ -180,6 +200,10 @@ export default function TransChapSettingsPage() {
         <TransChapInstallPanel showOpenLink={false} />
       </div>
     );
+  }
+
+  if (pane === "team" && owner) {
+    return <TransChapTeamSettings onClose={backToList} />;
   }
 
   return (
@@ -283,6 +307,28 @@ export default function TransChapSettingsPage() {
               : "Automatic replies are off. Customers won’t get AI responses."}
         </p>
       </section>
+
+      {owner ? (
+        <section className="ios-settings__group" aria-label="Team">
+          <h3 className="ios-settings__caption">Team</h3>
+          <div className="ios-settings__card">
+            <button
+              type="button"
+              className="ios-settings__row"
+              onClick={() => setPane("team")}
+            >
+              <span className="ios-settings__icon ios-settings__icon--team" aria-hidden>
+                <i className="fa-solid fa-users" />
+              </span>
+              <span className="ios-settings__label">Team members</span>
+              <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+            </button>
+          </div>
+          <p className="ios-settings__footer">
+            Invite staff, create a new login, and choose which areas they can open.
+          </p>
+        </section>
+      ) : null}
 
       <section className="ios-settings__group" aria-label="App">
         <h3 className="ios-settings__caption">App</h3>

@@ -13,6 +13,7 @@ import {
   MERCHANT_SECTION_LABELS,
   RETAIL_STAFF_SECTIONS,
 } from "@/lib/merchant-permissions";
+import { generateTempPassword } from "@/lib/temp-password";
 import type {
   MerchantSectionOption,
   StaffActionResponse,
@@ -23,13 +24,6 @@ import type {
 } from "@/lib/types";
 import { MotionModal } from "./MotionModal";
 import { Skeleton } from "./Skeleton";
-import {
-  EMPTY_INVITE_LOOKUP,
-  inviteLookupIsExisting,
-  inviteLookupReady,
-  UserInviteEmailLookup,
-  type UserInviteLookupState,
-} from "./UserInviteEmailLookup";
 
 type CreateForm = {
   name: string;
@@ -38,6 +32,8 @@ type CreateForm = {
   password: string;
   allowed_sections: string[];
   send_reset_email: boolean;
+  auto_generate_password: boolean;
+  require_change_password: boolean;
 };
 
 type EditForm = {
@@ -45,6 +41,12 @@ type EditForm = {
   phone: string;
   is_activated: boolean;
   allowed_sections: string[];
+};
+
+type CreatedCredentials = {
+  name: string;
+  email: string;
+  password: string;
 };
 
 function emptyCreateForm(defaultSections: string[]): CreateForm {
@@ -56,6 +58,8 @@ function emptyCreateForm(defaultSections: string[]): CreateForm {
     allowed_sections:
       defaultSections.length > 0 ? [...defaultSections] : ["dashboard"],
     send_reset_email: false,
+    auto_generate_password: true,
+    require_change_password: true,
   };
 }
 
@@ -88,6 +92,9 @@ export function StaffTeamSection() {
     emptyCreateForm(defaultSections),
   );
   const [creating, setCreating] = useState(false);
+  const [createdCredentials, setCreatedCredentials] =
+    useState<CreatedCredentials | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [editMember, setEditMember] = useState<StaffUser | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -96,8 +103,6 @@ export function StaffTeamSection() {
   const [mustChangePassword, setMustChangePassword] = useState(true);
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [linkSendingId, setLinkSendingId] = useState<string | null>(null);
-  const [inviteLookup, setInviteLookup] =
-    useState<UserInviteLookupState>(EMPTY_INVITE_LOOKUP);
 
   const loadTeam = useCallback(async () => {
     try {
@@ -144,11 +149,9 @@ export function StaffTeamSection() {
 
   async function handleCreate(event: FormEvent) {
     event.preventDefault();
-    if (!inviteLookupReady(inviteLookup)) {
-      await showError(
-        "Look up email first",
-        "Search for the email before adding this team member.",
-      );
+    const email = createForm.email.trim();
+    if (!email.includes("@")) {
+      await showError("Email required", "Enter a valid email address.");
       return;
     }
     if (createForm.allowed_sections.length === 0) {
@@ -157,36 +160,91 @@ export function StaffTeamSection() {
     }
     setCreating(true);
     try {
-      const password = createForm.password.trim();
-      const isExisting = inviteLookupIsExisting(inviteLookup);
-      if (!isExisting && password.length < 8) {
+      let lookup: UserInviteLookupResult;
+      try {
+        lookup = await apiFetch<UserInviteLookupResult>(apiRoutes.staffLookup(email));
+      } catch (err) {
+        await showError("Could not check email", extractErrorMessage(err));
+        setCreating(false);
+        return;
+      }
+      if (lookup.invite_blocked) {
         await showError(
-          "Password required",
-          "New users need a temporary password of at least 8 characters.",
+          "Cannot create this user",
+          lookup.invite_blocked_reason ?? "This account cannot be added.",
         );
         setCreating(false);
         return;
       }
+      if (lookup.already_member) {
+        await showError(
+          "Already on the team",
+          "This email already belongs to someone on this shop.",
+        );
+        setCreating(false);
+        return;
+      }
+      if (lookup.found) {
+        await showError(
+          "Account already exists",
+          "This email already has a DukAI login. Ask them to sign in, or remove them from another shop first.",
+        );
+        setCreating(false);
+        return;
+      }
+
+      const password = createForm.auto_generate_password
+        ? generateTempPassword()
+        : createForm.password.trim();
+      if (password.length < 8) {
+        await showError(
+          "Password required",
+          createForm.auto_generate_password
+            ? "Could not generate a password. Try again."
+            : "New users need a password of at least 8 characters.",
+        );
+        setCreating(false);
+        return;
+      }
+
       const res = await apiFetch<StaffActionResponse>(apiRoutes.staff, {
         method: "POST",
         body: JSON.stringify({
           name: createForm.name.trim(),
-          email: createForm.email.trim(),
+          email,
           phone: createForm.phone.trim() || null,
-          ...(password ? { password } : {}),
+          password,
           allowed_sections: createForm.allowed_sections,
-          require_change_password: !isExisting && password.length >= 8,
+          require_change_password: createForm.require_change_password,
           send_invite_email: createForm.send_reset_email,
         }),
       });
       setMembers((prev) => [...prev, res.data]);
-      await toastSuccess(res.message || "Staff member added");
       setShowCreate(false);
       setCreateForm(emptyCreateForm(defaultSections));
+      setCreatedCredentials({
+        name: res.data.name,
+        email: res.data.email ?? email,
+        password,
+      });
     } catch (err) {
       await showError("Could not add staff", extractErrorMessage(err));
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function copyText(value: string, field: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedField(field);
+      window.setTimeout(
+        () => setCopiedField((current) => (current === field ? null : current)),
+        2000,
+      );
+      await toastSuccess(`${field} copied`);
+    } catch {
+      await showError("Could not copy", "Copy it by hand from this screen.");
     }
   }
 
@@ -303,20 +361,11 @@ export function StaffTeamSection() {
     if (creating) return;
     setShowCreate(false);
     setCreateForm(emptyCreateForm(defaultSections));
-    setInviteLookup(EMPTY_INVITE_LOOKUP);
   }
 
-  function handleInviteLookupResolved(result: UserInviteLookupResult) {
-    if (!result.found || result.invite_blocked || result.already_member) {
-      return;
-    }
-    setCreateForm((f) => ({
-      ...f,
-      name: result.name?.trim() || f.name,
-      phone: result.phone?.trim() || f.phone,
-      password: "",
-      send_reset_email: false,
-    }));
+  function closeCredentials() {
+    setCreatedCredentials(null);
+    setCopiedField(null);
   }
 
   return (
@@ -332,8 +381,8 @@ export function StaffTeamSection() {
       </header>
       <div className="settings-card__body">
         <p className="settings-muted">
-          Add staff who can sign in at the same login page. Each person only sees
-          the dashboard sections you assign.
+          Create staff logins with a password you can hand over. Each person only
+          sees the dashboard sections you assign.
         </p>
 
         <div className="settings-card__actions">
@@ -343,7 +392,7 @@ export function StaffTeamSection() {
             onClick={() => setShowCreate(true)}
           >
             <i className="fa-solid fa-user-plus" aria-hidden="true" />
-            Add staff member
+            Create user
           </button>
         </div>
 
@@ -425,131 +474,253 @@ export function StaffTeamSection() {
         closeOnBackdrop={!creating}
         closeOnEscape={!creating}
       >
-          <header className="inventory-modal__head">
-            <h2 id="staff-create-title">Add staff member</h2>
-            <button
-              type="button"
-              className="fb-icon-btn"
-              aria-label="Close"
-              onClick={closeCreate}
-              disabled={creating}
-            >
-              <i className="fa-solid fa-xmark" aria-hidden="true" />
-            </button>
-          </header>
-          <form
-            className="settings-form settings-form--compact staff-modal-form"
-            onSubmit={(e) => void handleCreate(e)}
+        <header className="inventory-modal__head">
+          <h2 id="staff-create-title">Create user</h2>
+          <button
+            type="button"
+            className="fb-icon-btn"
+            aria-label="Close"
+            onClick={closeCreate}
+            disabled={creating}
           >
-            <div className="inventory-modal__body">
-              <UserInviteEmailLookup
-                email={createForm.email}
-                onEmailChange={(email) =>
-                  setCreateForm((f) => ({ ...f, email }))
+            <i className="fa-solid fa-xmark" aria-hidden="true" />
+          </button>
+        </header>
+        <form
+          className="settings-form settings-form--compact staff-modal-form"
+          onSubmit={(e) => void handleCreate(e)}
+        >
+          <div className="inventory-modal__body">
+            <p className="settings-muted">
+              Create a new login, auto-generate a password, then copy it once and
+              give it to them.
+            </p>
+            <label className="settings-field">
+              <span>Display name</span>
+              <input
+                required
+                autoComplete="name"
+                value={createForm.name}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, name: e.target.value }))
                 }
-                lookupUrl={apiRoutes.staffLookup(createForm.email)}
-                lookupState={inviteLookup}
-                onLookupStateChange={setInviteLookup}
-                onResolved={handleInviteLookupResolved}
-                disabled={creating}
-                emailInputId="staff-create-email"
               />
+            </label>
+            <label className="settings-field">
+              <span>Email</span>
+              <input
+                required
+                type="email"
+                autoComplete="email"
+                value={createForm.email}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, email: e.target.value }))
+                }
+              />
+            </label>
+            <label className="settings-field">
+              <span>Phone (optional)</span>
+              <input
+                type="tel"
+                autoComplete="tel"
+                value={createForm.phone}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, phone: e.target.value }))
+                }
+              />
+            </label>
 
-              {inviteLookupReady(inviteLookup) ? (
-                <>
-              <label className="settings-field">
-                <span>Name</span>
+            <fieldset className="staff-access-fieldset">
+              <legend>Password</legend>
+              <label className="settings-field settings-field--checkbox">
                 <input
-                  required
-                  autoComplete="name"
-                  value={createForm.name}
-                  onChange={(e) =>
-                    setCreateForm((f) => ({ ...f, name: e.target.value }))
-                  }
-                />
-              </label>
-              <label className="settings-field">
-                <span>Phone (optional)</span>
-                <input
-                  type="tel"
-                  autoComplete="tel"
-                  value={createForm.phone}
-                  onChange={(e) =>
-                    setCreateForm((f) => ({ ...f, phone: e.target.value }))
-                  }
-                />
-              </label>
-              {!inviteLookupIsExisting(inviteLookup) ? (
-              <label className="settings-field">
-                <span>Temporary password</span>
-                <input
-                  required
-                  type="password"
-                  minLength={8}
-                  autoComplete="new-password"
-                  value={createForm.password}
-                  onChange={(e) =>
-                    setCreateForm((f) => ({ ...f, password: e.target.value }))
-                  }
-                />
-              </label>
-              ) : null}
-              <fieldset className="staff-access-fieldset">
-                <legend>Dashboard access</legend>
-                <div className="staff-section-grid">
-                  {sectionOptions.map((section) => (
-                    <label key={section.key} className="staff-section-option">
-                      <input
-                        type="checkbox"
-                        checked={createForm.allowed_sections.includes(section.key)}
-                        onChange={(e) =>
-                          setCreateForm((f) => ({
-                            ...f,
-                            allowed_sections: toggleSection(
-                              f.allowed_sections,
-                              section.key,
-                              e.target.checked,
-                            ),
-                          }))
-                        }
-                      />
-                      <span>{section.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-                <label className="settings-field settings-field--checkbox">
-                <input
-                  type="checkbox"
-                  checked={createForm.send_reset_email}
-                  disabled={
-                    inviteLookupIsExisting(inviteLookup)
-                      ? false
-                      : !createForm.password.trim()
-                  }
-                  onChange={(e) =>
+                  type="radio"
+                  name="staff-password-mode"
+                  checked={createForm.auto_generate_password}
+                  onChange={() =>
                     setCreateForm((f) => ({
                       ...f,
-                      send_reset_email: e.target.checked,
+                      auto_generate_password: true,
+                      password: "",
                     }))
                   }
                 />
-                <span>
-                  {inviteLookupIsExisting(inviteLookup)
-                    ? "Email access notification (no password change)"
-                    : "Email password setup link after creating"}
-                </span>
+                <span>Auto-generate password</span>
+              </label>
+              <label className="settings-field settings-field--checkbox">
+                <input
+                  type="radio"
+                  name="staff-password-mode"
+                  checked={!createForm.auto_generate_password}
+                  onChange={() =>
+                    setCreateForm((f) => ({
+                      ...f,
+                      auto_generate_password: false,
+                    }))
+                  }
+                />
+                <span>Let me create the password</span>
+              </label>
+              {!createForm.auto_generate_password ? (
+                <label className="settings-field">
+                  <span>Password</span>
+                  <input
+                    required
+                    type="text"
+                    minLength={8}
+                    autoComplete="new-password"
+                    value={createForm.password}
+                    onChange={(e) =>
+                      setCreateForm((f) => ({ ...f, password: e.target.value }))
+                    }
+                  />
+                </label>
+              ) : null}
+              <label className="settings-field settings-field--checkbox">
+                <input
+                  type="checkbox"
+                  checked={createForm.require_change_password}
+                  onChange={(e) =>
+                    setCreateForm((f) => ({
+                      ...f,
+                      require_change_password: e.target.checked,
+                    }))
+                  }
+                />
+                <span>Require change on first sign-in</span>
+              </label>
+            </fieldset>
+
+            <fieldset className="staff-access-fieldset">
+              <legend>Dashboard access</legend>
+              <div className="staff-section-grid">
+                {sectionOptions.map((section) => (
+                  <label key={section.key} className="staff-section-option">
+                    <input
+                      type="checkbox"
+                      checked={createForm.allowed_sections.includes(section.key)}
+                      onChange={(e) =>
+                        setCreateForm((f) => ({
+                          ...f,
+                          allowed_sections: toggleSection(
+                            f.allowed_sections,
+                            section.key,
+                            e.target.checked,
+                          ),
+                        }))
+                      }
+                    />
+                    <span>{section.label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <label className="settings-field settings-field--checkbox">
+              <input
+                type="checkbox"
+                checked={createForm.send_reset_email}
+                onChange={(e) =>
+                  setCreateForm((f) => ({
+                    ...f,
+                    send_reset_email: e.target.checked,
+                  }))
+                }
+              />
+              <span>Also email a setup link</span>
+            </label>
+
+            <div className="settings-actions">
+              <button type="submit" className="btn btn-primary" disabled={creating}>
+                {creating ? "Creating…" : "Create user"}
+              </button>
+            </div>
+          </div>
+        </form>
+      </MotionModal>
+
+      <MotionModal
+        open={!!createdCredentials}
+        onClose={closeCredentials}
+        ariaLabelledBy="staff-credentials-title"
+      >
+        {createdCredentials ? (
+          <>
+            <header className="inventory-modal__head">
+              <h2 id="staff-credentials-title">New user</h2>
+              <button
+                type="button"
+                className="fb-icon-btn"
+                aria-label="Close"
+                onClick={closeCredentials}
+              >
+                <i className="fa-solid fa-xmark" aria-hidden="true" />
+              </button>
+            </header>
+            <div className="inventory-modal__body staff-credentials">
+              <p className="settings-muted">
+                {createdCredentials.name} can sign in now. Copy this password —
+                it will not be shown again.
+              </p>
+              <label className="settings-field">
+                <span>Email</span>
+                <div className="staff-credentials__row">
+                  <input readOnly value={createdCredentials.email} />
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => void copyText(createdCredentials.email, "Email")}
+                  >
+                    {copiedField === "Email" ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              </label>
+              <label className="settings-field">
+                <span>Password</span>
+                <div className="staff-credentials__row">
+                  <input
+                    readOnly
+                    className="staff-credentials__secret"
+                    value={createdCredentials.password}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() =>
+                      void copyText(createdCredentials.password, "Password")
+                    }
+                  >
+                    {copiedField === "Password" ? "Copied" : "Copy"}
+                  </button>
+                </div>
               </label>
               <div className="settings-actions">
-                <button type="submit" className="btn btn-primary" disabled={creating}>
-                  {creating ? "Creating…" : "Add team member"}
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() =>
+                    void copyText(
+                      `Email: ${createdCredentials.email}\nPassword: ${createdCredentials.password}`,
+                      "Sign-in details",
+                    )
+                  }
+                >
+                  {copiedField === "Sign-in details"
+                    ? "Copied"
+                    : "Copy email and password"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={closeCredentials}
+                >
+                  Done
                 </button>
               </div>
-                </>
-              ) : null}
             </div>
-          </form>
-        </MotionModal>
+          </>
+        ) : null}
+      </MotionModal>
 
       <MotionModal
         open={!!editMember && !!editForm}

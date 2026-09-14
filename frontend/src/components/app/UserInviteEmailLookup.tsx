@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback } from "react";
+import { useCallback, type KeyboardEvent } from "react";
 import { apiFetch } from "@/lib/api";
 import { extractErrorMessage } from "@/lib/alerts";
 import type { UserInviteLookupResult } from "@/lib/types";
@@ -36,7 +36,7 @@ type UserInviteEmailLookupProps = {
   onLookupStateChange: (state: UserInviteLookupState) => void;
   onResolved?: (result: UserInviteLookupResult, searchedEmail: string) => void;
   disabled?: boolean;
-  variant?: "dashboard" | "admin";
+  variant?: "dashboard" | "admin" | "transchap";
   emailInputId?: string;
 };
 
@@ -86,16 +86,80 @@ export function UserInviteEmailLookup({
     }
   }
 
-  function handleSubmit(event: FormEvent) {
+  function handleEmailKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter") return;
     event.preventDefault();
     void runLookup();
   }
 
   const isAdmin = variant === "admin";
+  const isTransChap = variant === "transchap";
+
+  if (isTransChap) {
+    const searching = lookupState.status === "searching";
+    const tone =
+      lookupState.status === "error"
+        ? "error"
+        : lookupState.status === "done"
+          ? lookupMessageTone(lookupState.result)
+          : null;
+    const message =
+      lookupState.status === "error"
+        ? lookupState.message
+        : lookupState.status === "done"
+          ? lookupMessage(lookupState.result)
+          : "Look up the email first. Existing DukAI users can be added without a new password.";
+    return (
+      <div className="user-invite-lookup user-invite-lookup--transchap">
+        <div className="ios-settings__group">
+          <h3 className="ios-settings__caption">Email</h3>
+          <div className="ios-settings__card">
+            <div className="ios-settings__row ios-settings__row--field">
+              <input
+                id={emailInputId}
+                type="email"
+                className="ios-settings__input"
+                value={email}
+                onChange={(e) => handleEmailChange(e.target.value)}
+                onKeyDown={handleEmailKeyDown}
+                required
+                disabled={disabled || searching}
+                autoComplete="email"
+                placeholder="name@email.com"
+                aria-label="Email"
+              />
+            </div>
+          </div>
+          <p
+            className={`ios-settings__footer${tone ? ` user-invite-lookup__message--${tone}` : ""}`}
+            role={tone === "error" ? "alert" : "status"}
+          >
+            {message}
+          </p>
+          {!(
+            lookupState.status === "done" &&
+            !lookupState.result.invite_blocked &&
+            !lookupState.result.already_member
+          ) ? (
+            <div className="ios-settings__actions">
+              <button
+                type="button"
+                className="auth-split__btn"
+                onClick={() => void runLookup()}
+                disabled={disabled || searching}
+              >
+                {searching ? "Searching…" : "Look up"}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`user-invite-lookup user-invite-lookup--${variant}`}>
-      <form className="user-invite-lookup__form" onSubmit={handleSubmit}>
+      <div className="user-invite-lookup__form">
         {isAdmin ? (
           <div className="admin-inline-editor__row">
             <label className="admin-field-label" htmlFor={emailInputId}>
@@ -108,13 +172,15 @@ export function UserInviteEmailLookup({
                 className="admin-inline-editor__input"
                 value={email}
                 onChange={(e) => handleEmailChange(e.target.value)}
+                onKeyDown={handleEmailKeyDown}
                 required
                 disabled={disabled || lookupState.status === "searching"}
                 autoComplete="email"
               />
               <button
-                type="submit"
+                type="button"
                 className="admin-btn admin-btn--secondary"
+                onClick={() => void runLookup()}
                 disabled={disabled || lookupState.status === "searching"}
               >
                 {lookupState.status === "searching" ? "Searching…" : "Look up"}
@@ -131,12 +197,14 @@ export function UserInviteEmailLookup({
                 autoComplete="email"
                 value={email}
                 onChange={(e) => handleEmailChange(e.target.value)}
+                onKeyDown={handleEmailKeyDown}
                 required
                 disabled={disabled || lookupState.status === "searching"}
               />
               <button
-                type="submit"
+                type="button"
                 className="btn btn-secondary"
+                onClick={() => void runLookup()}
                 disabled={disabled || lookupState.status === "searching"}
               >
                 {lookupState.status === "searching" ? "Searching…" : "Look up"}
@@ -144,7 +212,7 @@ export function UserInviteEmailLookup({
             </div>
           </label>
         )}
-      </form>
+      </div>
 
       {lookupState.status === "error" ? (
         <p className={`user-invite-lookup__message user-invite-lookup__message--error ${isAdmin ? "admin-error" : ""}`} role="alert">

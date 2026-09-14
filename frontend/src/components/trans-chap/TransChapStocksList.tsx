@@ -21,6 +21,8 @@ import { TransChapProductThumb } from "@/components/trans-chap/TransChapProductT
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { MotionItem, MotionList } from "@/components/app/MotionList";
+import { useAuthUser } from "@/components/app/AuthProvider";
+import { isShopOwner } from "@/lib/merchant-permissions";
 import type { InventoryItem, InventoryResponse, InventoryRole } from "@/lib/types";
 
 type RoleFilter = "all" | InventoryRole;
@@ -77,6 +79,11 @@ function roleTag(item: InventoryItem): string | undefined {
 }
 
 export function TransChapStocksList() {
+  const user = useAuthUser();
+  const canEditQty = isShopOwner(user);
+  const buyHref = canEditQty
+    ? "/trans-chap/purchases/new"
+    : "/trans-chap/purchases/unavailable";
   const listId = useId();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -181,7 +188,7 @@ export function TransChapStocksList() {
   }
 
   async function saveQty(item: InventoryItem) {
-    if (isHotelMenuItem(item) || qtySavingId === item.id || selecting) return;
+    if (!canEditQty || isHotelMenuItem(item) || qtySavingId === item.id || selecting) return;
     const raw = qtyDraftValue(item).trim();
     if (raw === "") {
       setQtyDrafts((prev) => {
@@ -385,7 +392,7 @@ export function TransChapStocksList() {
           <TransChapStatus tone="error">{error}</TransChapStatus>
         ) : items.length === 0 ? (
           <TransChapStatus
-            actionHref="/trans-chap/purchases/new"
+            actionHref={buyHref}
             actionLabel="Record a purchase"
           >
             No stock yet. Add products when you buy them.
@@ -487,7 +494,7 @@ export function TransChapStocksList() {
                       <td className="trans-chap-stock-table__qty">
                         {hotel ? (
                           <span className="trans-chap-stock-table__muted">—</span>
-                        ) : (
+                        ) : canEditQty ? (
                           <label className="trans-chap-panel__qty-edit">
                             <span className="sr-only">Qty</span>
                             <input
@@ -519,6 +526,10 @@ export function TransChapStocksList() {
                               }}
                             />
                           </label>
+                        ) : (
+                          <span className="trans-chap-stock-table__mono">
+                            {item.stock_quantity == null ? "—" : item.stock_quantity}
+                          </span>
                         )}
                       </td>
                       <td>{buy}</td>
@@ -566,7 +577,15 @@ export function TransChapStocksList() {
                           </Link>
                           {hotel ? null : (
                             <Link
-                              href="/trans-chap/purchases/new"
+                              href={
+                                canEditQty
+                                  ? "/trans-chap/purchases/new"
+                                  : `/trans-chap/purchases/unavailable?name=${encodeURIComponent(name)}${
+                                      sku && sku !== "—"
+                                        ? `&barcode=${encodeURIComponent(sku)}`
+                                        : ""
+                                    }`
+                              }
                               className="trans-chap-panel__link"
                             >
                               Buy
@@ -611,7 +630,7 @@ export function TransChapStocksList() {
                     : setOpenId(open ? null : item.id)
                 }
                 midAction={
-                  selecting || hotel ? null : (
+                  selecting || hotel || !canEditQty ? null : (
                     <label className="trans-chap-panel__qty-edit">
                       <span>Qty</span>
                       <input
@@ -682,7 +701,11 @@ export function TransChapStocksList() {
                     </Link>
                     {hotel ? null : (
                       <Link
-                        href="/trans-chap/purchases/new"
+                        href={
+                          canEditQty
+                            ? "/trans-chap/purchases/new"
+                            : `/trans-chap/purchases/unavailable?name=${encodeURIComponent(name)}`
+                        }
                         className="trans-chap-panel__link"
                       >
                         Buy more
@@ -763,21 +786,36 @@ export function TransChapStocksList() {
       ) : (
       <TransChapFab
         label="Add stock"
-        options={[
-          { href: "/trans-chap/purchases/new", label: "Scan buy", icon: "fa-barcode" },
-          { href: "/trans-chap/purchases/new?mode=select", label: "Select buy", icon: "fa-list" },
-          {
-            href: "/trans-chap/purchases/unavailable",
-            label: "Buy new item",
-            icon: "fa-cart-plus",
-          },
-          {
-            href: "/trans-chap/stocks/opening",
-            label: "Opening stock",
-            icon: "fa-boxes-stacked",
-          },
-          { href: "/trans-chap/stocks/menu", label: "Hotel menu", icon: "fa-utensils" },
-        ]}
+        options={
+          canEditQty
+            ? [
+                { href: "/trans-chap/purchases/new", label: "Scan buy", icon: "fa-barcode" },
+                {
+                  href: "/trans-chap/purchases/new?mode=select",
+                  label: "Select buy",
+                  icon: "fa-list",
+                },
+                {
+                  href: "/trans-chap/purchases/unavailable",
+                  label: "Buy new item",
+                  icon: "fa-cart-plus",
+                },
+                {
+                  href: "/trans-chap/stocks/opening",
+                  label: "Opening stock",
+                  icon: "fa-boxes-stacked",
+                },
+                { href: "/trans-chap/stocks/menu", label: "Hotel menu", icon: "fa-utensils" },
+              ]
+            : [
+                {
+                  href: "/trans-chap/purchases/unavailable",
+                  label: "Buy",
+                  icon: "fa-cart-plus",
+                },
+                { href: "/trans-chap/stocks/menu", label: "Hotel menu", icon: "fa-utensils" },
+              ]
+        }
       />
       )}
     </div>

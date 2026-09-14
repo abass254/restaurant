@@ -118,7 +118,8 @@ html[data-theme="dark"] .trans-chap-app {
     z-index: 4;
 }
 
-.trans-chap-header .fullscreen-toggle.trans-chap-header__icon {
+.trans-chap-header .fullscreen-toggle.trans-chap-header__icon,
+.trans-chap-header .theme-toggle {
     flex-shrink: 0;
     width: 48px;
     height: 48px;
@@ -126,6 +127,11 @@ html[data-theme="dark"] .trans-chap-app {
     font-size: 1.15rem;
     color: var(--app-primary);
     background: transparent;
+    border-color: transparent;
+}
+
+.trans-chap-header .theme-toggle:hover:not(:disabled) {
+    background: var(--app-surface-hover);
 }
 
 .trans-chap-header__side {
@@ -316,8 +322,14 @@ button.trans-chap-header__icon {
 }
 
 .trans-chap-pos-host.fb-app .pos-panel {
+    position: relative;
     min-height: auto;
     background: var(--app-bg);
+}
+
+.trans-chap-pos-host.fb-app .pos-panel.has-mpesa-wait {
+    min-height: 100%;
+    overflow: hidden;
 }
 
 .trans-chap-pos-host.fb-app .pos-title {
@@ -509,12 +521,18 @@ button.trans-chap-header__icon {
     color: var(--app-primary);
 }
 
-.trans-chap-pos-host.fb-app .pos-cart__row--pay .pos-pickers {
+.trans-chap-pos-host.fb-app .pos-cart__row--pay .pos-pickers,
+.trans-chap-pos-host.fb-app .pos-cart__row--pay-full .pos-pickers {
     width: 100%;
 }
 
 .trans-chap-pos-host.fb-app .pos-picker--credit.is-active {
     background: color-mix(in srgb, var(--app-primary) 14%, var(--app-surface));
+}
+
+.trans-chap-pos-host.fb-app .pos-picker--cash.is-active {
+    background: color-mix(in srgb, var(--trans-chap-cash) 14%, var(--app-surface));
+    color: var(--trans-chap-cash);
 }
 
 .trans-chap-pos-host.fb-app .pos-money-row--transchap {
@@ -665,6 +683,134 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
     outline-color: var(--app-primary);
 }
 
+.trans-chap-pos-host.fb-app .pos-mpesa-wait {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 1.15rem max(var(--trans-chap-gutter-x), env(safe-area-inset-left))
+        1.5rem max(var(--trans-chap-gutter-x), env(safe-area-inset-right));
+    background: color-mix(in srgb, var(--app-bg) 86%, transparent);
+    backdrop-filter: blur(8px);
+}
+
+.trans-chap-pos-host.fb-app .pos-mpesa-wait__card {
+    width: min(100%, 24rem);
+    margin-top: 0.75rem;
+    padding: 1.2rem 1.15rem 1.05rem;
+    border-radius: 18px;
+    border: 1px solid var(--app-border);
+    background: var(--app-surface);
+    box-shadow: 0 14px 36px rgba(26, 16, 12, 0.14);
+    text-align: center;
+}
+
+.trans-chap-pos-host.fb-app .pos-mpesa-wait__kicker {
+    margin: 0 0 0.35rem;
+    color: var(--app-text-secondary);
+    font-size: 0.78rem;
+    font-weight: 750;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.trans-chap-pos-host.fb-app .pos-mpesa-wait__title {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+
+.trans-chap-pos-host.fb-app .pos-mpesa-wait.is-waiting .pos-mpesa-wait__title {
+    color: #b45309;
+}
+
+.trans-chap-pos-host.fb-app .pos-mpesa-wait.is-failed .pos-mpesa-wait__title {
+    color: #be123c;
+}
+
+.trans-chap-pos-host.fb-app .pos-mpesa-wait.is-paid .pos-mpesa-wait__title {
+    color: #15803d;
+}
+
+.trans-chap-pos-host.fb-app .pos-mpesa-wait__amount {
+    margin: 0.55rem 0 0.2rem;
+    color: var(--app-text);
+    font-size: 1.35rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.trans-chap-pos-host.fb-app .pos-mpesa-wait__customer,
+.trans-chap-pos-host.fb-app .pos-mpesa-wait__copy {
+    margin: 0;
+    color: var(--app-text-secondary);
+    font-size: 0.88rem;
+    line-height: 1.4;
+}
+
+.trans-chap-pos-host.fb-app .pos-mpesa-wait__copy {
+    margin-top: 0.7rem;
+}
+
+.trans-chap-pos-host.fb-app .pos-mpesa-wait__actions {
+    display: grid;
+    gap: 0.55rem;
+    margin-top: 1.05rem;
+}
+
+.trans-chap-pos-host.fb-app .pos-mpesa-wait__retry,
+.trans-chap-pos-host.fb-app .pos-mpesa-wait__next {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    min-height: 48px;
+    padding: 0.7rem 0.85rem;
+    border-radius: 14px;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 750;
+    cursor: pointer;
+}
+
+.trans-chap-pos-host.fb-app .pos-mpesa-wait__retry {
+    border: 0;
+    background: var(--trans-chap-mpesa, #00a651);
+    color: #fff;
+}
+
+.trans-chap-pos-host.fb-app .pos-mpesa-wait__next {
+    border: 1px solid var(--app-border);
+    background: var(--app-bg);
+    color: var(--app-text);
+}
+
+.trans-chap-pos-host.fb-app .pos-mpesa-wait.is-paid .pos-mpesa-wait__next {
+    border: 0;
+    background: linear-gradient(
+        135deg,
+        var(--brown-800) 0%,
+        var(--brown-600) 60%,
+        var(--app-primary) 100%
+    );
+    color: #fff;
+}
+
+.trans-chap-pos-host.fb-app .pos-mpesa-wait__retry:disabled,
+.trans-chap-pos-host.fb-app .pos-mpesa-wait__next:disabled {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+@media print {
+    .trans-chap-pos-host.fb-app .pos-mpesa-wait {
+        display: none !important;
+    }
+}
+
 .trans-chap-form {
     flex: 1;
     min-height: 0;
@@ -711,6 +857,9 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
 
 .trans-chap-form__secondary {
     appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
     min-height: 48px;
     padding: 0.75rem 1rem;
@@ -721,12 +870,112 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
     font: inherit;
     font-size: 0.95rem;
     font-weight: 750;
+    text-decoration: none;
     cursor: pointer;
+    box-sizing: border-box;
 }
 
 .trans-chap-form__secondary:disabled {
     opacity: 0.55;
     cursor: not-allowed;
+}
+
+.trans-chap-import__file-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.trans-chap-import__dropzone {
+    appearance: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    width: 100%;
+    min-height: 7.5rem;
+    margin: 0;
+    padding: 1.1rem 1rem;
+    border: 1.5px dashed color-mix(in srgb, var(--app-primary) 40%, var(--app-border));
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--app-primary) 6%, var(--app-surface));
+    color: var(--app-text);
+    font: inherit;
+    text-align: center;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.trans-chap-import__dropzone:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.trans-chap-import__dropzone i {
+    font-size: 1.35rem;
+    color: var(--app-primary);
+}
+
+.trans-chap-import__dropzone strong {
+    font-size: 0.95rem;
+    font-weight: 750;
+}
+
+.trans-chap-import__dropzone span {
+    color: var(--app-text-secondary);
+    font-size: 0.82rem;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.trans-chap-import__results {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.85rem 0.95rem;
+    border-radius: 14px;
+    border: 1px solid var(--app-border);
+    background: var(--app-surface);
+}
+
+.trans-chap-import__summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem 1rem;
+    font-size: 0.88rem;
+    font-weight: 650;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-import__summary strong {
+    color: var(--app-text);
+    font-weight: 800;
+}
+
+.trans-chap-import__stat--error {
+    color: var(--app-danger, #b42318);
+}
+
+.trans-chap-import__columns summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.trans-chap-import__columns ul,
+.trans-chap-import__errors {
+    margin: 0.45rem 0 0;
+    padding-left: 1.1rem;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-import__columns code {
+    font-size: 0.78rem;
 }
 
 .trans-chap-form__hint a {
@@ -768,6 +1017,209 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
     grid-template-columns: 1fr 1fr;
     gap: var(--trans-chap-pad);
 }
+
+.trans-chap-form--bulk {
+    padding-inline: 20px;
+    padding-bottom: 1.25rem;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.trans-chap-form--bulk > .trans-chap-form__lead,
+.trans-chap-form--bulk > .auth-split__field,
+.trans-chap-form--bulk > .trans-chap-bulk-entry,
+.trans-chap-form--bulk > .trans-chap-bulk-basket,
+.trans-chap-form--bulk > .trans-chap-form__actions {
+    padding-inline: 0;
+}
+
+.trans-chap-bulk-entry {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    padding: 0.85rem 0.9rem 1rem;
+    border: 1px solid var(--app-border);
+    border-radius: 16px;
+    background: var(--app-bg);
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.trans-chap-bulk-entry__row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    min-width: 0;
+    width: 100%;
+}
+
+.trans-chap-bulk-entry__row > .auth-split__field,
+.trans-chap-bulk-entry__add {
+    min-width: 0;
+}
+
+.trans-chap-bulk-entry__add {
+    display: flex;
+    align-items: stretch;
+}
+
+.trans-chap-bulk-entry__add .auth-split__btn {
+    width: 100%;
+}
+
+.trans-chap-bulk-entry__select-wrap {
+    padding-inline: 16px;
+}
+
+.trans-chap-app .trans-chap-bulk-entry__select {
+    appearance: none;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23888' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.15rem center;
+    padding-right: 1.35rem !important;
+}
+
+.trans-chap-bulk-basket {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+}
+
+.trans-chap-bulk-basket__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    overflow: auto;
+}
+
+.trans-chap-bulk-basket__item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 0.55rem;
+    align-items: center;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--app-border);
+    border-radius: 14px;
+    background: var(--app-surface, var(--app-bg));
+}
+
+.trans-chap-bulk-basket__copy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.trans-chap-bulk-basket__copy strong {
+    color: var(--app-text);
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.trans-chap-bulk-basket__copy span {
+    color: var(--app-text-secondary);
+    font-size: 0.78rem;
+}
+
+.trans-chap-bulk-basket__item em {
+    color: var(--app-text);
+    font-style: normal;
+    font-weight: 800;
+    font-size: 0.92rem;
+    white-space: nowrap;
+}
+
+.trans-chap-bulk-basket__remove {
+    width: 2rem;
+    height: 2rem;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--app-text-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.trans-chap-bulk-basket__remove:hover,
+.trans-chap-bulk-basket__remove:focus-visible {
+    color: var(--app-text);
+    background: color-mix(in srgb, var(--app-text) 8%, transparent);
+}
+
+.trans-chap-bulk-basket__remove:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+@media (min-width: 900px) {
+    .trans-chap-form.trans-chap-form--bulk {
+        max-width: none;
+        margin-inline: 0;
+        width: 100%;
+        padding-inline: 1.25rem;
+        box-sizing: border-box;
+    }
+
+    .trans-chap-bulk-entry__row {
+        grid-template-columns:
+            minmax(0, 1.05fr)
+            minmax(0, 1.55fr)
+            minmax(0, 0.95fr)
+            minmax(72px, 0.45fr)
+            minmax(88px, 0.55fr)
+            auto;
+        gap: 0.65rem;
+        align-items: end;
+    }
+
+    .trans-chap-bulk-entry .auth-split__field {
+        gap: 0.4rem;
+    }
+
+    .trans-chap-bulk-entry .trans-chap-input,
+    .trans-chap-bulk-entry .trans-chap-product__scan,
+    .trans-chap-bulk-entry__add .auth-split__btn {
+        min-height: 48px;
+    }
+
+    .trans-chap-bulk-entry .trans-chap-barcode-row {
+        grid-template-columns: minmax(0, 1fr) 48px;
+        gap: 0.45rem;
+    }
+
+    .trans-chap-bulk-entry .trans-chap-product__scan {
+        width: 48px;
+        flex-basis: 48px;
+        font-size: 1.05rem;
+    }
+
+    .trans-chap-app .trans-chap-bulk-entry .trans-chap-input .auth-split__input {
+        height: 2.1rem;
+        font-size: 0.98rem;
+    }
+
+    .trans-chap-bulk-entry__add {
+        align-items: end;
+    }
+
+    .trans-chap-bulk-entry__add .auth-split__btn {
+        width: auto;
+        min-width: 5.25rem;
+        padding: 0 1.1rem;
+        font-size: 0.95rem;
+    }
+}
+
 
 .trans-chap-form__block {
     display: flex;
@@ -1762,6 +2214,13 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
     box-shadow: none !important;
 }
 
+.trans-chap-app .trans-chap-bulk-entry__select-wrap .trans-chap-bulk-entry__select {
+    width: 100%;
+    color: var(--app-text) !important;
+    font: inherit;
+    font-weight: 650;
+}
+
 .trans-chap-input:focus-within {
     box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--app-primary) 40%, transparent);
 }
@@ -1891,24 +2350,34 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
 }
 
 .trans-chap-app .mobile-nav--5 span.is-disabled,
-.trans-chap-app .mobile-nav--6 span.is-disabled {
+.trans-chap-app .mobile-nav--6 span.is-disabled,
+.trans-chap-app .mobile-nav--7 span.is-disabled {
     font-size: 0.58rem;
     letter-spacing: 0.03em;
     padding-inline: 0.12rem;
 }
 
 .trans-chap-app .mobile-nav--5 a,
-.trans-chap-app .mobile-nav--6 a {
+.trans-chap-app .mobile-nav--6 a,
+.trans-chap-app .mobile-nav--7 a {
     font-size: 0.58rem;
     letter-spacing: 0.03em;
     padding-inline: 0.12rem;
 }
 
 .trans-chap-app .mobile-nav--6 a,
-.trans-chap-app .mobile-nav--6 span.is-disabled {
+.trans-chap-app .mobile-nav--6 span.is-disabled,
+.trans-chap-app .mobile-nav--7 a,
+.trans-chap-app .mobile-nav--7 span.is-disabled {
     font-size: 0.52rem;
     letter-spacing: 0.02em;
     padding-inline: 0.08rem;
+}
+
+.trans-chap-app .mobile-nav--7 a,
+.trans-chap-app .mobile-nav--7 span.is-disabled {
+    font-size: 0.48rem;
+    padding-inline: 0.04rem;
 }
 
 .trans-chap-app .mobile-nav--create {
@@ -2579,6 +3048,70 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
 
 .ios-settings__icon--theme {
     background: #636366;
+}
+
+.ios-settings__icon--invite {
+    background: #5856d6;
+}
+
+.ios-settings__icon--team {
+    background: #007aff;
+}
+
+.ios-settings__secret {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.9rem;
+    letter-spacing: 0.02em;
+    word-break: break-all;
+    white-space: normal;
+}
+
+.ios-settings__avatar--sm {
+    width: 36px;
+    height: 36px;
+    font-size: 0.72rem;
+}
+
+.ios-settings__label-stack {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.12rem;
+}
+
+.ios-settings__label-stack strong {
+    color: var(--app-text);
+    font-size: 1.02rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ios-settings__label-stack span {
+    color: var(--app-text-secondary);
+    font-size: 0.78rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.user-invite-lookup--transchap .user-invite-lookup__message--success {
+    color: #1f7a3a;
+}
+
+.user-invite-lookup--transchap .user-invite-lookup__message--warn {
+    color: var(--app-text);
+}
+
+.user-invite-lookup--transchap .user-invite-lookup__message--error {
+    color: var(--app-danger);
+}
+
+html[data-theme="dark"] .user-invite-lookup--transchap .user-invite-lookup__message--success {
+    color: #34c759;
 }
 
 .ios-settings__label {
@@ -3938,6 +4471,17 @@ html[data-theme="dark"] .trans-chap-receipt {
     opacity: 0.55;
 }
 
+.trans-chap-panel__qty-edit.is-readonly strong {
+    min-width: 2.4rem;
+    text-align: center;
+    color: var(--app-text);
+    font-size: 0.92rem;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: none;
+    font-variant-numeric: tabular-nums;
+}
+
 .trans-chap-panel__qty-edit:focus-within {
     border-color: var(--app-primary);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-primary) 22%, transparent);
@@ -4644,12 +5188,19 @@ html[data-theme="dark"] .trans-chap-sale__add {
 }
 
 .trans-chap-fab__option {
+    appearance: none;
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: 0.7rem;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
     color: var(--app-text);
+    font: inherit;
     text-decoration: none;
+    cursor: pointer;
 }
 
 .trans-chap-fab__option span {
@@ -5559,6 +6110,55 @@ html[data-theme="dark"] .trans-chap-sale__add {
 @container trans-chap-dash (max-width: 360px) {
     .trans-chap-dash__grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@container trans-chap-dash (min-width: 40.5rem) {
+    .trans-chap-dash__analytics {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(17rem, 0.9fr);
+        grid-template-areas:
+            "spotlight panel"
+            "stats panel"
+            "owing owing"
+            "foot foot";
+        align-items: stretch;
+        gap: 0.9rem 1.15rem;
+    }
+
+    .trans-chap-dash__spotlight {
+        grid-area: spotlight;
+    }
+
+    .trans-chap-dash__stat-grid {
+        grid-area: stats;
+    }
+
+    .trans-chap-dash__panel {
+        grid-area: panel;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    .trans-chap-dash__mix {
+        flex: 1;
+        justify-content: center;
+        gap: 1.15rem;
+    }
+
+    .trans-chap-dash__empty {
+        flex: 1;
+        display: flex;
+        align-items: center;
+    }
+
+    .trans-chap-dash__owing {
+        grid-area: owing;
+    }
+
+    .trans-chap-dash__foot {
+        grid-area: foot;
     }
 }
 
@@ -7061,26 +7661,69 @@ html[data-trans-chap-machine="tablet"] .trans-chap-app--pos .trans-chap-app__con
 
 html[data-trans-chap-machine="tablet"] .trans-chap-pos-host {
     height: 100%;
+    overflow: hidden;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-pos-host.fb-app {
+    height: 100%;
+    min-height: 0;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-pos-host.fb-app .pos-panel {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Keep catalog + right cart, 3 product columns — only size tokens match stocks. */
 html[data-trans-chap-machine="tablet"] .trans-chap-pos-host.fb-app .pos-grid {
+    flex: 1;
+    min-height: 0;
     grid-template-columns: minmax(0, 1fr) clamp(300px, 28%, 380px);
     max-width: none;
     gap: 0.85rem;
     padding: 0.75rem var(--trans-chap-gutter-x) 1.25rem;
-    align-items: start;
+    align-items: stretch;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-pos-host.fb-app .pos-catalog {
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-pos-host.fb-app .pos-catalog__head,
+html[data-trans-chap-machine="tablet"] .trans-chap-pos-host.fb-app .pos-catalog > .app-error {
+    flex-shrink: 0;
+}
+
+/*
+ * Scrollbar lives on the catalog’s right edge (beside Current order),
+ * not on the whole page.
+ */
+html[data-trans-chap-machine="tablet"] .trans-chap-pos-host.fb-app .pos-catalog > .pos-cards,
+html[data-trans-chap-machine="tablet"] .trans-chap-pos-host.fb-app .pos-catalog > .pos-empty {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
+    padding-right: 0.15rem;
 }
 
 html[data-trans-chap-machine="tablet"] .trans-chap-pos-host.fb-app .pos-cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-content: start;
 }
 
 html[data-trans-chap-machine="tablet"] .trans-chap-pos-host.fb-app .pos-cart {
-    position: sticky;
-    top: 0.75rem;
-    align-self: start;
-    max-height: calc(100dvh - 5.5rem);
+    position: relative;
+    top: auto;
+    align-self: stretch;
+    height: 100%;
+    max-height: none;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -7253,36 +7896,106 @@ html[data-trans-chap-machine="tablet"] .trans-chap-app:has(.chat-app--thread-ope
 }
 
 html[data-trans-chap-machine="tablet"] .trans-chap-home.trans-chap-dash {
-    display: grid;
-    grid-template-columns: minmax(280px, 1.05fr) minmax(280px, 0.95fr);
-    align-items: start;
-    gap: 1.35rem 1.75rem;
-    max-width: 1080px;
+    display: flex;
+    flex-direction: column;
+    gap: 1.15rem;
+    max-width: 1120px;
     margin-inline: auto;
     width: 100%;
-    padding: 0.85rem 0.35rem 1.5rem;
+    padding: 0.55rem 0.1rem 1.75rem;
 }
 
-html[data-trans-chap-machine="tablet"] .trans-chap-dash__hello {
-    grid-column: 1 / -1;
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 1.25rem;
+    align-items: center;
+    padding: 0.15rem 0.1rem 0.05rem;
 }
 
-html[data-trans-chap-machine="tablet"] .trans-chap-dash__hello h2 {
-    font-size: 1.55rem;
-}
-
-html[data-trans-chap-machine="tablet"] .trans-chap-dash__today {
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__hero-date {
     grid-column: 1;
-    grid-row: 2 / span 2;
+    margin-bottom: 0.2rem;
+    font-size: 0.78rem;
 }
 
-html[data-trans-chap-machine="tablet"] .trans-chap-dash__section {
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__hero h2 {
+    grid-column: 1;
+    font-size: clamp(1.7rem, 3.4cqi, 2.2rem);
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__hero-shop {
     grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    margin: 0;
+    max-width: 18rem;
+    text-align: right;
+    font-size: 1rem;
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-html[data-trans-chap-machine="tablet"] .trans-chap-dash__grid,
-html[data-trans-chap-machine="tablet"] .trans-chap-dash__grid--quad {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__analytics {
+    gap: 0.9rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__spotlight {
+    min-height: 8.25rem;
+    padding: 1.3rem 1.3rem 1.35rem;
+    border-radius: 24px;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__spotlight-copy strong {
+    font-size: clamp(1.85rem, 4.6cqi, 2.5rem);
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__spotlight > i {
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 18px;
+    font-size: 1.3rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__stat {
+    padding: 1.15rem 1.05rem 1.2rem;
+    border-radius: 20px;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__stat strong {
+    font-size: clamp(1.2rem, 3.5cqi, 1.55rem);
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__panel {
+    padding: 1.15rem 1.15rem 1.2rem;
+    border-radius: 20px;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__mix {
+    gap: 0.95rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__mix-track {
+    height: 0.7rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__owing {
+    padding: 1.1rem 1.15rem;
+    border-radius: 20px;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__foot {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__foot span {
+    max-width: 28rem;
+    text-align: right;
 }
 
 html[data-trans-chap-machine="tablet"] .trans-chap-sales {
@@ -7339,6 +8052,48 @@ html[data-trans-chap-machine="tablet"] .trans-chap-form:not(.trans-chap-form--sc
     margin-inline: auto;
     width: 100%;
     padding-top: 0.75rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-form.trans-chap-form--bulk:not(.trans-chap-form--scan),
+html[data-trans-chap-machine="tablet"] .trans-chap-form.trans-chap-form--bulk {
+    max-width: none;
+    margin-inline: 0;
+    width: 100%;
+    padding-inline: 1.25rem;
+    box-sizing: border-box;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-bulk-entry__row {
+    grid-template-columns:
+        minmax(0, 1.05fr)
+        minmax(0, 1.55fr)
+        minmax(0, 0.95fr)
+        minmax(72px, 0.45fr)
+        minmax(88px, 0.55fr)
+        auto;
+    gap: 0.65rem;
+    align-items: end;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-bulk-entry .trans-chap-input,
+html[data-trans-chap-machine="tablet"] .trans-chap-bulk-entry .trans-chap-product__scan,
+html[data-trans-chap-machine="tablet"] .trans-chap-bulk-entry__add .auth-split__btn {
+    min-height: 48px;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-bulk-entry .trans-chap-barcode-row {
+    grid-template-columns: minmax(0, 1fr) 48px;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-bulk-entry .trans-chap-product__scan {
+    width: 48px;
+    flex-basis: 48px;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-bulk-entry__add .auth-split__btn {
+    width: auto;
+    min-width: 5.25rem;
+    padding-inline: 1.1rem;
 }
 
 html[data-trans-chap-machine="tablet"] .trans-chap-catalog--grid {

@@ -7,6 +7,7 @@ import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { MotionItem, MotionList } from "@/components/app/MotionList";
+import { isShopOwner } from "@/lib/merchant-permissions";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import { inventoryRoleLabel } from "@/lib/trans-chap-product";
@@ -24,7 +25,9 @@ function purchaseRoleTag(row: TransChapPurchase): string | undefined {
 
 export function TransChapPurchasesList() {
   const user = useAuthUser();
+  const owner = isShopOwner(user);
   const accountId = user.active_account?.id || user.account?.id;
+  const buyHref = "/trans-chap/purchases/unavailable";
   const listId = useId();
   const [purchases, setPurchases] = useState<TransChapPurchase[]>([]);
   const [query, setQuery] = useState("");
@@ -81,7 +84,7 @@ export function TransChapPurchasesList() {
           <TransChapStatus tone="error">{error}</TransChapStatus>
         ) : purchases.length === 0 ? (
           <TransChapStatus
-            actionHref="/trans-chap/purchases/new"
+            actionHref={owner ? "/trans-chap/purchases/new" : buyHref}
             actionLabel="Record a purchase"
           >
             No purchases yet.
@@ -149,18 +152,26 @@ export function TransChapPurchasesList() {
           <p className="trans-chap-sales__empty">Showing the most recent 2,000 purchases.</p>
         ) : null}
       </div>
-      <TransChapFab
-        label="New purchase"
-        options={[
-          { href: "/trans-chap/purchases/new", label: "Scan", icon: "fa-barcode" },
-          { href: "/trans-chap/purchases/new?mode=select", label: "Select", icon: "fa-list" },
-          {
-            href: "/trans-chap/purchases/unavailable",
-            label: "Buy new item",
-            icon: "fa-cart-plus",
-          },
-        ]}
-      />
+      {owner ? (
+        <TransChapFab
+          label="New purchase"
+          options={[
+            { href: "/trans-chap/purchases/new", label: "Scan", icon: "fa-barcode" },
+            {
+              href: "/trans-chap/purchases/new?mode=select",
+              label: "Select",
+              icon: "fa-list",
+            },
+            {
+              href: buyHref,
+              label: "Buy new item",
+              icon: "fa-cart-plus",
+            },
+          ]}
+        />
+      ) : (
+        <TransChapFab label="New purchase" href={buyHref} />
+      )}
     </div>
   );
 }

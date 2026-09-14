@@ -5,8 +5,11 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useOptionalAuthUser } from "@/components/app/AuthProvider";
 import { FullscreenToggle } from "@/components/app/FullscreenToggle";
+import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import {
+  isShopOwner,
+  userCanAccessPath,
   userCanAccessSection,
   type MerchantSection,
 } from "@/lib/merchant-permissions";
@@ -23,6 +26,7 @@ const NAV: Array<{
   exact?: boolean;
   section?: MerchantSection;
   requiresInstagram?: boolean;
+  ownerOnly?: boolean;
 }> = [
   { href: "/trans-chap", label: "Home", title: "Home", icon: "fa-house", exact: true },
   {
@@ -30,12 +34,14 @@ const NAV: Array<{
     label: "Inventory",
     title: "Inventory",
     icon: "fa-boxes-stacked",
+    section: "inventory",
   },
   {
     href: "/trans-chap/make-a-sale",
     label: "Sales",
     title: "Sales",
     icon: "fa-receipt",
+    section: "pos",
   },
   {
     href: "/trans-chap/pos",
@@ -45,16 +51,25 @@ const NAV: Array<{
     section: "pos",
   },
   {
+    href: "/trans-chap/customers",
+    label: "Customers",
+    title: "Customers",
+    icon: "fa-address-book",
+    section: "customer",
+  },
+  {
     href: "/trans-chap/purchases",
     label: "Purchases",
     title: "Purchases",
     icon: "fa-truck",
+    section: "inventory",
   },
   {
     href: "/trans-chap/settings",
     label: "Settings",
     title: "Settings",
     icon: "fa-gear",
+    section: "settings",
   },
 ];
 
@@ -69,7 +84,7 @@ function headerMeta(pathname: string, mode: string | null): { title: string; bac
     };
   }
   if (pathname.startsWith("/trans-chap/purchases/unavailable")) {
-    return { title: "Buy new item", backHref: "/trans-chap/purchases" };
+    return { title: "Buy", backHref: "/trans-chap/purchases" };
   }
   if (pathname.startsWith("/trans-chap/purchases/new")) {
     return {
@@ -90,7 +105,10 @@ function headerMeta(pathname: string, mode: string | null): { title: string; bac
     return { title: "Purchases", backHref: "/trans-chap/stocks" };
   }
   if (pathname.startsWith("/trans-chap/credit")) {
-    return { title: "On tab", backHref: "/trans-chap" };
+    return { title: "On tab", backHref: "/trans-chap/customers" };
+  }
+  if (pathname.startsWith("/trans-chap/customers")) {
+    return { title: "Customers", backHref: "/trans-chap" };
   }
   if (pathname.startsWith("/trans-chap/reports")) {
     return { title: "Reports", backHref: "/trans-chap" };
@@ -164,6 +182,9 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
   const items = useMemo(
     () =>
       NAV.filter((item) => {
+        if (item.ownerOnly && (user == null || !isShopOwner(user))) {
+          return false;
+        }
         if (item.section && (user == null || !userCanAccessSection(user, item.section))) {
           return false;
         }
@@ -198,6 +219,13 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
     if (!accountId) return;
     void migrateLegacyTransChapPurchases(accountId);
   }, [user?.account?.id, user?.active_account?.id]);
+
+  useEffect(() => {
+    if (!user || isSignIn) return;
+    if (!userCanAccessPath(user, pathname)) {
+      router.replace("/trans-chap");
+    }
+  }, [isSignIn, pathname, router, user]);
 
   function renderNavLink(item: (typeof NAV)[number]): ReactNode {
     const isActive = item.exact
@@ -248,6 +276,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
               </div>
               <div className="trans-chap-header__side trans-chap-header__side--end">
                 <FullscreenToggle className="trans-chap-header__icon" />
+                <ThemeToggle />
                 <span className="trans-chap-header__logo" aria-hidden>
                   <TransChapLogoMark size={34} color="currentColor" accentColor="#e8412a" />
                 </span>
@@ -257,7 +286,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
           <main className="trans-chap-app__content">{children}</main>
           {showNav ? (
             <nav
-              className={`mobile-nav mobile-nav--${Math.min(Math.max(items.length, 3), 6)}`}
+              className={`mobile-nav mobile-nav--${Math.min(Math.max(items.length, 3), 7)}`}
               aria-label="Trans Chap navigation"
             >
               <button

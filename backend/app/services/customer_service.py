@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+from typing import Literal
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -13,6 +14,7 @@ from app.support.datetime_utils import utc_now
 
 MONEY_QUANTUM = Decimal("0.01")
 MAX_CREDIT_LIMIT = Decimal("99999999.99")
+ImportUpsertStatus = Literal["created", "updated"]
 
 
 class CustomerServiceError(ValueError):
@@ -111,6 +113,8 @@ class CustomerService:
         address: str | None = None,
         notes: str | None = None,
         credit_limit: object | None = 0,
+        outstanding_balance: object | None = 0,
+        commit: bool = True,
     ) -> ShopCustomer:
         clean_name = (name or "").strip()
         clean_phone = normalize_phone(phone)
@@ -122,6 +126,13 @@ class CustomerService:
         if self._find_duplicate_phone(account_id, clean_phone):
             raise CustomerServiceError("A customer with this phone number already exists.")
 
+        limit = _money(credit_limit)
+        opening = _money(outstanding_balance, field="Opening balance")
+        if limit > 0 and opening > limit:
+            raise CustomerServiceError(
+                "Opening balance cannot be higher than the credit limit."
+            )
+
         now = utc_now()
         customer = ShopCustomer(
             account_id=account_id,
@@ -130,15 +141,74 @@ class CustomerService:
             email=clean_email,
             address=(address or "").strip() or None,
             notes=(notes or "").strip() or None,
-            credit_limit=_money(credit_limit),
-            outstanding_balance=Decimal("0.00"),
+            credit_limit=limit,
+            outstanding_balance=opening,
             created_at=now,
             updated_at=now,
         )
         self.db.add(customer)
-        self.db.commit()
-        self.db.refresh(customer)
+        if commit:
+            self.db.commit()
+            self.db.refresh(customer)
         return customer
+
+    def upsert_import_customer(
+        self,
+        account_id: str,
+        *,
+        name: str,
+        phone: str,
+        email: str | None = None,
+        address: str | None = None,
+        notes: str | None = None,
+        credit_limit: object | None = 0,
+        outstanding_balance: object | None = 0,
+        commit: bool = True,
+    ) -> tuple[ShopCustomer, ImportUpsertStatus]:
+        """Create or update by phone for Excel import (sets opening outstanding)."""
+        clean_phone = normalize_phone(phone)
+        if not clean_phone:
+            raise CustomerServiceError("Customer phone is required.")
+        existing = self._find_duplicate_phone(account_id, clean_phone)
+        if existing is None:
+            customer = self.create_customer(
+                account_id,
+                name=name,
+                phone=clean_phone,
+                email=email,
+                address=address,
+                notes=notes,
+                credit_limit=credit_limit,
+                outstanding_balance=outstanding_balance,
+                commit=commit,
+            )
+            return customer, "created"
+
+        clean_name = (name or "").strip()
+        if not clean_name:
+            raise CustomerServiceError("Customer name is required.")
+        limit = _money(credit_limit)
+        opening = _money(outstanding_balance, field="Opening balance")
+        if limit > 0 and opening > limit:
+            raise CustomerServiceError(
+                "Opening balance cannot be higher than the credit limit."
+            )
+
+        existing.name = clean_name
+        existing.phone = clean_phone
+        if email is not None:
+            existing.email = email.strip().lower() or None
+        if address is not None:
+            existing.address = address.strip() or None
+        if notes is not None:
+            existing.notes = notes.strip() or None
+        existing.credit_limit = limit
+        existing.outstanding_balance = opening
+        existing.updated_at = utc_now()
+        if commit:
+            self.db.commit()
+            self.db.refresh(existing)
+        return existing, "updated"
 
     def update_customer(
         self,

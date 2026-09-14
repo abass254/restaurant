@@ -279,6 +279,12 @@ def user_can_manage_platform_instagram(user: User) -> bool:
 
 def user_can_manage_channels(user: User) -> bool:
     """Only shop owners can connect or disconnect channels."""
+    from app.support.merchant_permissions import get_active_membership, is_membership_owner
+
+    if user.is_super_admin():
+        return True
+    if get_active_membership(user) is not None:
+        return is_membership_owner(user)
     return user.is_system_admin()
 
 

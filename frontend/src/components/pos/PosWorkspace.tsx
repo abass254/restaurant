@@ -9,6 +9,7 @@ import { usePlatformRuntime } from "@/lib/platform-runtime";
 import {
   extractErrorMessage,
   showError,
+  showInternalError,
   showSuccess,
   toastSuccess,
 } from "@/lib/alerts";
@@ -34,7 +35,9 @@ import {
   SOURCE_LABELS,
   STATUS_LABELS,
   formatMoney,
+  orderHasSuccessfulMpesa,
 } from "@/lib/orders";
+import { paymentStatusFromOrder } from "@/lib/trans-chap-receipt";
 import { findInventoryByBarcode } from "@/lib/barcode";
 import { inventoryRole, isSaleableRole } from "@/lib/trans-chap-product";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
@@ -44,12 +47,21 @@ import type {
   Order,
   OrderCreatePayload,
   OrderFulfillmentType,
+  OrderDetailResponse,
+  OrderMpesaPushResult,
   OrderMutationResponse,
   OrderPaymentMethod,
   OrderSource,
   ShopCustomer,
   ShopCustomersListResponse,
 } from "@/lib/types";
+
+const MPESA_POLL_MS = 4_000;
+
+type PendingMpesaSale = {
+  order: Order;
+  push: OrderMpesaPushResult | null;
+};
 
 export type PosWorkspaceProps = {
   /**
@@ -58,7 +70,7 @@ export type PosWorkspaceProps = {
    */
   completeInPlace?: boolean;
   /**
-   * Trans Chap counter sales: walk-in + pickup only, M-Pesa / credit.
+   * Trans Chap counter sales: walk-in + pickup only, cash / M-Pesa / credit.
    * Matches `/trans-chap/make-a-sale` payment rules.
    */
   salesProfile?: "full" | "transchap";
@@ -70,7 +82,11 @@ const IMMEDIATE_COMPLETE_PAYMENTS: ReadonlySet<OrderPaymentMethod> = new Set([
   "credit",
 ]);
 
-const TRANSCHAP_PAYMENT_METHODS: OrderPaymentMethod[] = ["mpesa", "credit"];
+const TRANSCHAP_PAYMENT_METHODS: OrderPaymentMethod[] = [
+  "cash",
+  "mpesa",
+  "credit",
+];
 
 type CartLine = {
   inventoryItemId: string;
@@ -116,11 +132,21 @@ export function PosWorkspace({
   const { mapEnabled } = useGoogleMapsPublicConfig();
   const isTransChapSale = salesProfile === "transchap";
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [catalogById, setCatalogById] = useState<Map<string, InventoryItem>>(
+    () => new Map(),
+  );
   const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
+  const [loadedQuery, setLoadedQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
+  const [pendingMpesa, setPendingMpesa] = useState<PendingMpesaSale | null>(null);
+  const [mpesaBusy, setMpesaBusy] = useState(false);
   const printAfterSaleRef = useRef(false);
+  const paidPrintIdRef = useRef<string | null>(null);
+  const inventoryRequestId = useRef(0);
+  const inventoryLoadedOnce = useRef(false);
 
   const [cart, setCart] = useState<CartLine[]>([]);
   // Visual "just-added" pulse: holds the inventoryItem id that should flash.
@@ -158,24 +184,47 @@ export function PosWorkspace({
   const AUTO_PRINT_STORAGE_KEY = "pos:auto_print_receipt";
   const QUICK_ADD_QTY_STORAGE_KEY = "pos:quick_add_qty";
 
-  const reload = useCallback(async (opts?: { silent?: boolean }) => {
-    if (!opts?.silent) setLoading(true);
+  const reload = useCallback(async (opts?: { silent?: boolean; q?: string }) => {
+    const requestId = ++inventoryRequestId.current;
+    const silent = opts?.silent ?? false;
+    if (!silent) setLoading(true);
+    else setSearching(true);
     try {
+      const params = new URLSearchParams({ active: "true" });
+      const term = (opts?.q ?? "").trim();
+      if (term) params.set("q", term);
       const data = await apiFetch<InventoryResponse>(
-        `${apiRoutes.inventory}?active=true`,
+        `${apiRoutes.inventory}?${params.toString()}`,
       );
+      if (requestId !== inventoryRequestId.current) return;
       setItems(data.data);
+      setLoadedQuery(term);
+      setCatalogById((prev) => {
+        const next = new Map(prev);
+        for (const item of data.data) next.set(item.id, item);
+        return next;
+      });
       setError(null);
     } catch (err) {
+      if (requestId !== inventoryRequestId.current) return;
       setError(extractErrorMessage(err, "Failed to load inventory."));
     } finally {
-      if (!opts?.silent) setLoading(false);
+      if (requestId !== inventoryRequestId.current) return;
+      if (!silent) setLoading(false);
+      setSearching(false);
     }
   }, []);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    const term = search.trim();
+    const firstLoad = !inventoryLoadedOnce.current;
+    const delay = firstLoad || !term ? 0 : 280;
+    const timer = window.setTimeout(() => {
+      inventoryLoadedOnce.current = true;
+      void reload({ silent: !firstLoad, q: term });
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [reload, search]);
 
   useEffect(() => {
     void apiFetch<ShopCustomersListResponse>(apiRoutes.customers)
@@ -337,7 +386,7 @@ export function PosWorkspace({
       );
     }
 
-    function onKeyDown(event: KeyboardEvent) {
+    async function onKeyDown(event: KeyboardEvent) {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (isEditableElement(document.activeElement)) return;
 
@@ -347,7 +396,25 @@ export function PosWorkspace({
         if (scanned.length < 3) return;
         event.preventDefault();
 
-        const matched = findInventoryByBarcode(items, scanned);
+        let matched =
+          findInventoryByBarcode(items, scanned) ??
+          findInventoryByBarcode([...catalogById.values()], scanned);
+        if (!matched) {
+          try {
+            const params = new URLSearchParams({ active: "true", q: scanned });
+            const data = await apiFetch<InventoryResponse>(
+              `${apiRoutes.inventory}?${params.toString()}`,
+            );
+            setCatalogById((prev) => {
+              const next = new Map(prev);
+              for (const item of data.data) next.set(item.id, item);
+              return next;
+            });
+            matched = findInventoryByBarcode(data.data, scanned);
+          } catch {
+            matched = undefined;
+          }
+        }
         if (!matched) {
           void handleUnknownBarcode(scanned);
           return;
@@ -386,30 +453,22 @@ export function PosWorkspace({
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [addToCart, clearScannerBuffer, items]);
+  }, [addToCart, catalogById, clearScannerBuffer, items]);
 
-  const itemsById = useMemo(() => {
-    const map = new Map<string, InventoryItem>();
-    for (const item of items) map.set(item.id, item);
-    return map;
-  }, [items]);
+  const itemsById = catalogById;
 
   const filteredItems = useMemo(() => {
-    const term = search.trim().toLowerCase();
     return items.filter((item) => {
       if (!item.is_active) return false;
       if (!isSaleableRole(inventoryRole(item))) return false;
-      if (!term) return true;
-      const haystacks = [
-        item.product?.name,
-        item.product?.brand,
-        item.product?.category,
-        item.product?.product_code,
-        item.product?.sku,
-      ];
-      return haystacks.some((h) => h && h.toLowerCase().includes(term));
+      return true;
     });
-  }, [items, search]);
+  }, [items]);
+
+  const catalogPending =
+    loading ||
+    searching ||
+    search.trim().toLowerCase() !== loadedQuery.trim().toLowerCase();
 
   function changeQuantity(inventoryItemId: string, delta: number) {
     const item = itemsById.get(inventoryItemId);
@@ -465,7 +524,7 @@ export function PosWorkspace({
     setDeliveryFee("");
     setDiscount("");
     setNotes("");
-    setPaymentMethod("");
+    setPaymentMethod(isTransChapSale ? "mpesa" : "");
     setSelectedCustomerId("");
   }
 
@@ -531,6 +590,46 @@ export function PosWorkspace({
     return () => window.clearTimeout(timer);
   }, [completeInPlace, receiptOrder]);
 
+  const pendingMpesaId = pendingMpesa?.order.id ?? null;
+  const pendingMpesaPaid = pendingMpesa
+    ? orderHasSuccessfulMpesa(pendingMpesa.order)
+    : false;
+
+  useEffect(() => {
+    if (!isTransChapSale || !pendingMpesaId || pendingMpesaPaid) return;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const data = await apiFetch<OrderDetailResponse>(apiRoutes.order(pendingMpesaId));
+        if (cancelled) return;
+        const paid = orderHasSuccessfulMpesa(data.data);
+        setPendingMpesa((current) => {
+          if (!current || current.order.id !== pendingMpesaId) return current;
+          return { ...current, order: data.data };
+        });
+        if (paid && paidPrintIdRef.current !== data.data.id) {
+          paidPrintIdRef.current = data.data.id;
+          setReceiptOrder(data.data);
+          printAfterSaleRef.current = autoPrintReceipt;
+          void toastSuccess("M-PESA payment received");
+        }
+      } catch {
+        /* keep the waiting prompt so the cashier can resend */
+      }
+    };
+
+    void poll();
+    const intervalId = window.setInterval(() => void poll(), MPESA_POLL_MS);
+    const onFocus = () => void poll();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [autoPrintReceipt, isTransChapSale, pendingMpesaId, pendingMpesaPaid]);
+
   const canCompleteSaleNow =
     completeInPlace &&
     (isTransChapSale || fulfillment === "pickup") &&
@@ -544,19 +643,23 @@ export function PosWorkspace({
   const placeDisabled =
     cart.length === 0 ||
     submitting ||
-    (isTransChapSale && paymentMethod !== "mpesa" && paymentMethod !== "credit");
+    (isTransChapSale &&
+      (paymentMethod === "" ||
+        !TRANSCHAP_PAYMENT_METHODS.includes(paymentMethod)));
 
   const placeLabel = (() => {
     if (submitting) {
       if (isTransChapSale) {
-        return paymentMethod === "mpesa"
-          ? "Sending M-Pesa…"
-          : "Saving on credit…";
+        if (paymentMethod === "mpesa") return "Sending M-Pesa…";
+        if (paymentMethod === "credit") return "Saving on credit…";
+        return "Completing cash sale…";
       }
       return canCompleteSaleNow ? "Completing…" : "Placing order…";
     }
     if (isTransChapSale) {
-      return paymentMethod === "mpesa" ? "Send M-Pesa prompt" : "Save on credit";
+      if (paymentMethod === "mpesa") return "Send M-Pesa prompt";
+      if (paymentMethod === "credit") return "Save on credit";
+      return "Complete cash sale";
     }
     return canCompleteSaleNow ? "Complete order" : "Place order";
   })();
@@ -565,10 +668,14 @@ export function PosWorkspace({
     if (cart.length === 0) return;
     const orderSource = isTransChapSale ? "walkin" : source;
     const orderFulfillment = isTransChapSale ? "pickup" : fulfillment;
-    if (isTransChapSale && (paymentMethod !== "mpesa" && paymentMethod !== "credit")) {
+    if (
+      isTransChapSale &&
+      (paymentMethod === "" ||
+        !TRANSCHAP_PAYMENT_METHODS.includes(paymentMethod))
+    ) {
       await showError(
         "Choose how they pay",
-        "Pick M-Pesa or credit before completing this sale.",
+        "Pick cash sale, M-Pesa, or credit before completing this sale.",
       );
       return;
     }
@@ -604,13 +711,6 @@ export function PosWorkspace({
       await showError(
         "Customer phone required",
         "Credit sales need a phone number so we can find this customer next time.",
-      );
-      return;
-    }
-    if (isTransChapSale && paymentMethod === "mpesa" && !customerName.trim()) {
-      await showError(
-        "Customer name required",
-        "Enter the customer's name so we can save them for this walk-in sale.",
       );
       return;
     }
@@ -658,9 +758,22 @@ export function PosWorkspace({
 
       // M-PESA: surface the STK push outcome separately so the cashier
       // knows whether the customer received the prompt. The order itself
-      // is always saved, even if the push failed (they can retry from
-      // the order detail page).
-      const push = data.mpesa_push;
+      // is always saved, even if the push failed. Trans Chap POS keeps a
+      // waiting panel so they can send the prompt again without leaving.
+      const push = data.mpesa_push ?? null;
+      if (isTransChapSale && paymentMethod === "mpesa") {
+        suppressMerchantOrderNotification(order.id);
+        clearCart();
+        void reload({ silent: true, q: search });
+        setPendingMpesa({ order, push });
+        setReceiptOrder(order);
+        printAfterSaleRef.current = false;
+        paidPrintIdRef.current = null;
+        if (push?.status === "sent") {
+          await toastSuccess("M-PESA prompt sent");
+        }
+        return;
+      }
       if (push && push.status === "sent") {
         await showSuccess(
           `Order ${order.order_number} · STK push sent`,
@@ -678,7 +791,7 @@ export function PosWorkspace({
       }
       suppressMerchantOrderNotification(order.id);
       clearCart();
-      void reload({ silent: true });
+      void reload({ silent: true, q: search });
 
       if (completeInPlace) {
         setReceiptOrder(order);
@@ -698,8 +811,104 @@ export function PosWorkspace({
     }
   }
 
+  async function resendPendingMpesaPrompt() {
+    if (!pendingMpesa) return;
+    setMpesaBusy(true);
+    try {
+      const data = await apiFetch<OrderMutationResponse>(
+        apiRoutes.orderMpesaStkPush(pendingMpesa.order.id),
+        { method: "POST", body: "{}" },
+      );
+      setPendingMpesa({
+        order: data.data,
+        push: data.mpesa_push ?? null,
+      });
+      if (data.mpesa_push?.status === "sent") {
+        await toastSuccess("M-PESA prompt sent");
+      } else {
+        await showInternalError();
+      }
+    } catch {
+      await showInternalError();
+    } finally {
+      setMpesaBusy(false);
+    }
+  }
+
+  function dismissPendingMpesa() {
+    setPendingMpesa(null);
+    setMpesaBusy(false);
+  }
+
+  const pendingMpesaStatus = pendingMpesa
+    ? paymentStatusFromOrder(pendingMpesa.order, pendingMpesa.push)
+    : null;
+  const pendingMpesaWaiting = pendingMpesaStatus === "pending";
+  const pendingMpesaFailed = pendingMpesaStatus === "failed";
+
   return (
-    <section className="app-panel pos-panel">
+    <section className={`app-panel pos-panel${isTransChapSale && pendingMpesa ? " has-mpesa-wait" : ""}`}>
+      {isTransChapSale && pendingMpesa ? (
+        <div
+          className={`pos-mpesa-wait${pendingMpesaPaid ? " is-paid" : pendingMpesaFailed ? " is-failed" : " is-waiting"}`}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pos-mpesa-wait-title"
+        >
+          <div className="pos-mpesa-wait__card">
+            <p className="pos-mpesa-wait__kicker">
+              Order #{pendingMpesa.order.order_number}
+            </p>
+            <h2 id="pos-mpesa-wait-title" className="pos-mpesa-wait__title">
+              {pendingMpesaPaid
+                ? "Payment received"
+                : pendingMpesaWaiting
+                  ? "Waiting for M-PESA"
+                  : "Payment not received"}
+            </h2>
+            <p className="pos-mpesa-wait__amount">
+              {formatMoney(pendingMpesa.order.total, pendingMpesa.order.currency)}
+            </p>
+            <p className="pos-mpesa-wait__customer">
+              {(pendingMpesa.order.customer_name ?? "Customer").trim()}
+              {pendingMpesa.order.customer_phone
+                ? ` · ${pendingMpesa.order.customer_phone}`
+                : ""}
+            </p>
+            <p className="pos-mpesa-wait__copy">
+              {pendingMpesaPaid
+                ? "You can print the receipt or start the next sale."
+                : pendingMpesaWaiting
+                  ? pendingMpesa.push?.message ||
+                    "Ask the customer to enter their PIN on the prompt."
+                  : pendingMpesa.push && pendingMpesa.push.status !== "sent"
+                    ? pendingMpesa.push.message
+                    : "Payment was not received. Send the prompt again."}
+            </p>
+            <div className="pos-mpesa-wait__actions">
+              {!pendingMpesaPaid ? (
+                <button
+                  type="button"
+                  className="pos-mpesa-wait__retry"
+                  onClick={() => void resendPendingMpesaPrompt()}
+                  disabled={mpesaBusy}
+                >
+                  <i className="fa-solid fa-rotate-right" aria-hidden="true" />
+                  {mpesaBusy ? "Sending…" : "Send prompt again"}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="pos-mpesa-wait__next"
+                onClick={dismissPendingMpesa}
+                disabled={mpesaBusy}
+              >
+                Next sale
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="pos-grid">
         {/* ── Catalog (left) ─────────────────────────────────────── */}
         <div className="pos-catalog">
@@ -736,7 +945,7 @@ export function PosWorkspace({
                   </button>
                 ))}
               </div>
-              <label className="pos-search">
+              <label className={`pos-search${catalogPending ? " is-searching" : ""}`}>
               <i
                 className="fa-solid fa-magnifying-glass pos-search__icon"
                 aria-hidden="true"
@@ -747,6 +956,7 @@ export function PosWorkspace({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 autoFocus
+                aria-busy={catalogPending}
               />
               {search ? (
                 <button
@@ -764,28 +974,42 @@ export function PosWorkspace({
 
           {error ? <p className="app-error">{error}</p> : null}
 
-          {loading ? (
-            <CatalogSkeleton />
+          <AnimatePresence mode="wait">
+          {catalogPending ? (
+            <CatalogSkeleton key="pos-catalog-skeleton" />
           ) : filteredItems.length === 0 ? (
-            <div className="pos-empty">
+            <motion.div
+              key="pos-catalog-empty"
+              className="pos-empty"
+              initial={reduce ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduce ? undefined : { opacity: 0, y: -6 }}
+              transition={{
+                duration: motionDuration.micro,
+                ease: easeOutExpressive,
+              }}
+            >
               <i className="fa-solid fa-boxes-stacked" aria-hidden="true" />
               <h3>
-                {items.length === 0
+                {items.length === 0 && !search.trim()
                   ? "Inventory is empty"
                   : "No items match your filters"}
               </h3>
               <p>
-                {items.length === 0
+                {items.length === 0 && !search.trim()
                   ? "Add products in Inventory and they'll appear here for one-tap selling."
                   : "Try a different search."}
               </p>
-            </div>
+            </motion.div>
           ) : (
             <motion.ul
+              key={`pos-catalog-${loadedQuery}`}
               className="pos-cards"
               variants={reduce ? undefined : staggerContainer}
               initial={reduce ? false : "hidden"}
               animate={reduce ? undefined : "visible"}
+              exit={reduce ? undefined : { opacity: 0 }}
+              transition={{ duration: motionDuration.micro }}
             >
               {filteredItems.map((item) => {
                 const coverUrl = item.product?.image_url ?? null;
@@ -935,6 +1159,7 @@ export function PosWorkspace({
               })}
             </motion.ul>
           )}
+          </AnimatePresence>
         </div>
 
         {/* ── Cart (right) ───────────────────────────────────────── */}
@@ -1010,7 +1235,13 @@ export function PosWorkspace({
               </>
             )}
 
-            <div className="pos-fields pos-fields--customer">
+            <div
+              className={`pos-fields pos-fields--customer${
+                isTransChapSale && paymentMethod === "cash"
+                  ? " pos-fields--customer-solo"
+                  : ""
+              }`}
+            >
               {customers.length > 0 ? (
                 <label className="pos-customer-pick">
                   <span className="pos-label">Customer</span>
@@ -1036,35 +1267,48 @@ export function PosWorkspace({
                   setSelectedCustomerId("");
                 }}
                 placeholder={
-                  isTransChapSale || paymentMethod === "credit"
+                  paymentMethod === "credit"
                     ? "Customer name (required)"
                     : "Customer name (optional)"
                 }
                 aria-label="Customer name"
-                aria-required={isTransChapSale || paymentMethod === "credit"}
+                aria-required={paymentMethod === "credit"}
               />
-              <input
-                type="tel"
-                value={customerPhone}
-                onChange={(e) => {
-                  setCustomerPhone(e.target.value);
-                  setSelectedCustomerId("");
-                }}
-                placeholder={
-                  paymentMethod === "mpesa"
-                    ? "M-PESA phone (required) · 2547…"
-                    : paymentMethod === "credit"
-                      ? "Credit phone (required) · 2547…"
-                      : "Phone"
-                }
-                aria-label="Customer phone"
-                aria-required={paymentMethod === "mpesa" || paymentMethod === "credit"}
-                className={
-                  (paymentMethod === "mpesa" || paymentMethod === "credit") && !customerPhone.trim()
-                    ? "pos-input--required"
-                    : undefined
-                }
-              />
+              {!isTransChapSale ||
+              paymentMethod === "mpesa" ||
+              paymentMethod === "credit" ? (
+                <input
+                  type="tel"
+                  value={customerPhone}
+                  onChange={(e) => {
+                    setCustomerPhone(e.target.value);
+                    setSelectedCustomerId("");
+                  }}
+                  placeholder={
+                    paymentMethod === "mpesa"
+                      ? "M-PESA phone (required) · 2547…"
+                      : paymentMethod === "credit"
+                        ? "Credit phone (required) · 2547…"
+                        : "Phone (optional)"
+                  }
+                  aria-label={
+                    paymentMethod === "mpesa"
+                      ? "M-PESA phone"
+                      : paymentMethod === "credit"
+                        ? "Credit phone"
+                        : "Customer phone"
+                  }
+                  aria-required={
+                    paymentMethod === "mpesa" || paymentMethod === "credit"
+                  }
+                  className={
+                    (paymentMethod === "mpesa" || paymentMethod === "credit") &&
+                    !customerPhone.trim()
+                      ? "pos-input--required"
+                      : undefined
+                  }
+                />
+              ) : null}
               {selectedCustomer && selectedCustomer.credit_limit > 0 ? (
                 <p className="pos-customer-credit">
                   Available credit {formatMoney(selectedCustomer.available_credit)} of{" "}
@@ -1244,14 +1488,11 @@ export function PosWorkspace({
 
           <footer className="pos-cart__footer">
             {isTransChapSale ? (
-              <div className="pos-cart__row pos-cart__row--pay">
-                <span className="pos-label" id="pos-pay-mode-label">
-                  How they pay
-                </span>
+              <div className="pos-cart__row pos-cart__row--pay pos-cart__row--pay-full">
                 <div
-                  className="pos-pickers pos-pickers--two"
+                  className="pos-pickers pos-pickers--three"
                   role="radiogroup"
-                  aria-labelledby="pos-pay-mode-label"
+                  aria-label="Payment method"
                 >
                   {paymentOptions.map((p) => (
                     <button
@@ -1259,10 +1500,12 @@ export function PosWorkspace({
                       type="button"
                       role="radio"
                       aria-checked={paymentMethod === p}
-                      className={`pos-picker pos-picker--wide${paymentMethod === p ? " is-active" : ""}${p === "credit" ? " pos-picker--credit" : ""}`}
+                      className={`pos-picker pos-picker--wide${paymentMethod === p ? " is-active" : ""}${p === "credit" ? " pos-picker--credit" : ""}${p === "cash" ? " pos-picker--cash" : ""}`}
                       onClick={() => setPaymentMethod(p)}
                     >
-                      <span>{PAYMENT_LABELS[p]}</span>
+                      <span>
+                        {p === "cash" ? "Cash sale" : PAYMENT_LABELS[p]}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -1459,11 +1702,25 @@ export function PosWorkspace({
 }
 
 function CatalogSkeleton() {
+  const reduce = useReducedMotion();
   const cards = Array.from({ length: 8 });
   return (
-    <ul className="pos-cards" aria-busy="true" aria-live="polite">
+    <motion.ul
+      className="pos-cards"
+      aria-busy="true"
+      aria-live="polite"
+      variants={reduce ? undefined : staggerContainer}
+      initial={reduce ? false : "hidden"}
+      animate={reduce ? undefined : "visible"}
+      exit={reduce ? undefined : { opacity: 0, y: -6 }}
+      transition={{ duration: motionDuration.base, ease: easeOutExpressive }}
+    >
       {cards.map((_, i) => (
-        <li key={i} className="pos-card pos-card--skeleton">
+        <motion.li
+          key={i}
+          className="pos-card pos-card--skeleton"
+          variants={reduce ? undefined : staggerItem}
+        >
           <div className="pos-card__hit">
             <div className="pos-card__thumb">
               <Skeleton variant="rect" width="100%" height="100%" />
@@ -1474,8 +1731,8 @@ function CatalogSkeleton() {
               <Skeleton variant="text" width="35%" height={13} />
             </div>
           </div>
-        </li>
+        </motion.li>
       ))}
-    </ul>
+    </motion.ul>
   );
 }

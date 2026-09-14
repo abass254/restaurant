@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from typing import NoReturn
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,7 @@ from app.core.session import require_user, validate_csrf
 from app.database import get_db
 from app.dependencies import get_request_session
 from app.models import MpesaTransaction, ShopCustomer
+from app.services.customer_import_service import import_customers_from_excel
 from app.services.customer_service import (
     CustomerService,
     CustomerServiceError,
@@ -162,6 +163,62 @@ def create_customer(
     except CustomerServiceError as exc:
         _raise_service_error(exc)
     return {"message": "Customer saved.", "data": _customer_out(customer)}
+
+
+@router.post("/import")
+async def import_customers_excel(
+    request: Request,
+    file: UploadFile = File(..., description="Customer list (.xlsx)"),
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Bulk-import customers with credit limits and opening balances."""
+    validate_csrf(request, session)
+    user = require_user(db, session)
+    assert_merchant_section_any_access(user, *TILL_CUSTOMER_SECTIONS)
+    account_id = require_merchant_account_id(user)
+
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".xlsx"):
+        raise HTTPException(
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Upload an Excel file (.xlsx).",
+        )
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="The file is empty.")
+
+    try:
+        result = import_customers_from_excel(
+            db,
+            content=content,
+            account_id=account_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    return {
+        "message": f"Import complete: {result.summary_message()}.",
+        "summary": {
+            "created": result.created,
+            "updated": result.updated,
+            "skipped": result.skipped,
+            "errors": result.errors,
+        },
+        "detected_columns": result.detected_columns,
+        "rows": [
+            {
+                "row": row.row,
+                "name": row.name,
+                "phone": row.phone,
+                "status": row.status,
+                "message": row.message,
+            }
+            for row in result.rows
+            if row.status in {"error", "skipped"}
+        ][:50],
+    }
 
 
 @router.get("/{customer_id}")

@@ -192,9 +192,19 @@ html[data-theme="dark"] .fb-app .pos-title__icon {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.fb-app .pos-search:focus-within {
-  border-color: var(--brown-400);
-  box-shadow: inset 0 0 0 2px rgba(133, 85, 56, 0.12);
+.fb-app .pos-search.is-searching .pos-search__icon {
+  color: var(--brown-500);
+  animation: pos-search-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes pos-search-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 
 .fb-app .pos-search__icon {
@@ -759,6 +769,14 @@ html[data-theme="dark"] .fb-app .pos-cart__head h2 > i {
   gap: 8px;
 }
 
+.fb-app .pos-cart__row--pay-full {
+  grid-template-columns: 1fr;
+}
+
+.fb-app .pos-cart__row--pay-full .pos-pickers {
+  width: 100%;
+}
+
 .fb-app .pos-label {
   font-size: 0.6875rem;
   font-weight: 600;
@@ -779,6 +797,10 @@ html[data-theme="dark"] .fb-app .pos-cart__head h2 > i {
 
 .fb-app .pos-pickers--two {
   grid-template-columns: 1fr 1fr;
+}
+
+.fb-app .pos-pickers--three {
+  grid-template-columns: 1fr 1fr 1fr;
 }
 
 .fb-app .pos-picker {
@@ -838,6 +860,10 @@ html[data-theme="dark"] .fb-app .pos-picker.is-active {
 
 .fb-app .pos-fields--customer {
   grid-template-columns: 1.4fr 1fr;
+}
+
+.fb-app .pos-fields--customer-solo {
+  grid-template-columns: 1fr;
 }
 
 .fb-app .pos-customer-pick,

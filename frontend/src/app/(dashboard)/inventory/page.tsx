@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import { motion, useReducedMotion } from "motion/react";
+import { useAuthUser } from "@/components/app/AuthProvider";
 import { apiFetch } from "@/lib/api";
 import { Skeleton } from "@/components/app/Skeleton";
 import { MotionModal } from "@/components/app/MotionModal";
@@ -22,6 +23,7 @@ import {
   toastSuccess,
 } from "@/lib/alerts";
 import { apiRoutes, resolveAssetUrl } from "@/lib/config";
+import { isShopOwner } from "@/lib/merchant-permissions";
 import {
   buildAutoDescription,
   categoriesFor,
@@ -119,6 +121,8 @@ async function runWithConcurrency<T>(
 }
 
 export default function InventoryPage() {
+  const user = useAuthUser();
+  const canEditQty = isShopOwner(user);
   const reduce = useReducedMotion();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -502,6 +506,7 @@ export default function InventoryPage() {
           generatingIds={generatingIds}
           onToggleSelection={toggleRowSelection}
           onItemUpdated={handleItemUpdated}
+          canEditQty={canEditQty}
         />
       ) : (
         <div className="inventory-table-wrap">
@@ -709,9 +714,11 @@ function parseStockField(value: string): number | null {
 function InventoryGridStockFields({
   item,
   onUpdated,
+  canEditQty = true,
 }: {
   item: InventoryItem;
   onUpdated: (item: InventoryItem) => void;
+  canEditQty?: boolean;
 }) {
   const unit = item.product?.unit;
   const [stockQty, setStockQty] = useState(() =>
@@ -733,6 +740,7 @@ function InventoryGridStockFields({
     parseStockField(minQty) !== item.low_stock_threshold;
 
   async function persist(nextStock = stockQty, nextMin = minQty) {
+    if (!canEditQty) return;
     const stock_quantity = parseStockField(nextStock);
     const low_stock_threshold = parseStockField(nextMin);
     if (
@@ -770,6 +778,7 @@ function InventoryGridStockFields({
   }
 
   function adjustStock(delta: number) {
+    if (!canEditQty) return;
     const current = parseStockField(stockQty) ?? 0;
     const next = String(Math.max(0, current + delta));
     setStockQty(next);
@@ -790,7 +799,9 @@ function InventoryGridStockFields({
             type="button"
             className="inventory-grid-stock__step"
             onClick={() => adjustStock(-1)}
-            disabled={saving || (parseStockField(stockQty) ?? 0) <= 0}
+            disabled={
+              !canEditQty || saving || (parseStockField(stockQty) ?? 0) <= 0
+            }
             aria-label="Decrease quantity"
           >
             <i className="fa-solid fa-minus" aria-hidden="true" />
@@ -800,7 +811,8 @@ function InventoryGridStockFields({
             min={0}
             className="inventory-grid-stock__input"
             value={stockQty}
-            disabled={saving}
+            disabled={saving || !canEditQty}
+            readOnly={!canEditQty}
             onChange={(e) => setStockQty(e.target.value)}
             onBlur={() => {
               if (dirty) void persist();
@@ -816,7 +828,7 @@ function InventoryGridStockFields({
             type="button"
             className="inventory-grid-stock__step"
             onClick={() => adjustStock(1)}
-            disabled={saving}
+            disabled={saving || !canEditQty}
             aria-label="Increase quantity"
           >
             <i className="fa-solid fa-plus" aria-hidden="true" />
@@ -831,7 +843,8 @@ function InventoryGridStockFields({
           min={0}
           className="inventory-grid-stock__input inventory-grid-stock__input--solo"
           value={minQty}
-          disabled={saving}
+          disabled={saving || !canEditQty}
+          readOnly={!canEditQty}
           onChange={(e) => setMinQty(e.target.value)}
           onBlur={() => {
             if (dirty) void persist();
@@ -857,6 +870,7 @@ function InventoryGrid({
   generatingIds,
   onToggleSelection,
   onItemUpdated,
+  canEditQty = true,
 }: {
   items: InventoryItem[];
   reduce: boolean | null;
@@ -865,6 +879,7 @@ function InventoryGrid({
   generatingIds: Set<string>;
   onToggleSelection: (itemId: string) => void;
   onItemUpdated: (item: InventoryItem) => void;
+  canEditQty?: boolean;
 }) {
   return (
     <div className="inventory-grid-wrap">
@@ -983,6 +998,7 @@ function InventoryGrid({
                 <InventoryGridStockFields
                   item={item}
                   onUpdated={onItemUpdated}
+                  canEditQty={canEditQty}
                 />
               ) : null}
             </motion.li>

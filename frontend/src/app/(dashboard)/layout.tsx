@@ -3,6 +3,7 @@ import "@/styles/bundles/dashboard.css";
 import { AuthProvider } from "@/components/app/AuthProvider";
 import { BackendUnavailablePanel } from "@/components/app/BackendUnavailablePanel";
 import { BackendUnavailableError, backendUrl } from "@/lib/backend";
+import { isTransChapOnlyStaff } from "@/lib/merchant-permissions";
 import { getServerUser } from "@/lib/server-auth";
 import { DashboardShell } from "./DashboardShell";
 
@@ -38,6 +39,10 @@ export default async function DashboardLayout({
   );
   if (!hasShop && user.user_role !== "super_admin") {
     redirect("/onboarding");
+  }
+
+  if (isTransChapOnlyStaff(user)) {
+    redirect("/trans-chap");
   }
 
   return (

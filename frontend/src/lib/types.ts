@@ -1677,6 +1677,26 @@ export type ShopCustomerMutationResponse = {
   data: ShopCustomer;
 };
 
+export type CustomerImportRowResult = {
+  row: number;
+  name: string | null;
+  phone: string | null;
+  status: "created" | "updated" | "skipped" | "error";
+  message: string | null;
+};
+
+export type CustomerImportResponse = {
+  message: string;
+  summary: {
+    created: number;
+    updated: number;
+    skipped: number;
+    errors: number;
+  };
+  detected_columns: Record<string, string>;
+  rows: CustomerImportRowResult[];
+};
+
 export type CreditCollection = {
   id: string;
   status: string;

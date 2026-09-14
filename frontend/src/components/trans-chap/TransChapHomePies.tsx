@@ -6,6 +6,7 @@ import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { TransChapTodaySkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { MotionFade } from "@/components/app/MotionList";
 import { useAuthUser } from "@/components/app/AuthProvider";
+import { isShopOwner, userCanAccessSection } from "@/lib/merchant-permissions";
 import { fetchWalkinOrders, isCountedWalkinSale } from "@/lib/trans-chap-orders";
 import { fetchTransChapPurchases } from "@/lib/trans-chap-purchases";
 import { fetchOwingCustomers } from "@/lib/trans-chap-credit";
@@ -35,6 +36,9 @@ function Money({ amount }: { amount: number }) {
 export function TransChapHomePies() {
   const user = useAuthUser();
   const accountId = user.active_account?.id || user.account?.id;
+  const owner = isShopOwner(user);
+  const canInventory = userCanAccessSection(user, "inventory");
+  const canCustomers = userCanAccessSection(user, "customer");
   const [salesTotal, setSalesTotal] = useState(0);
   const [salesCount, setSalesCount] = useState(0);
   const [cashTotal, setCashTotal] = useState(0);
@@ -52,8 +56,16 @@ export function TransChapHomePies() {
     const todayKey = nairobiDateKey(new Date());
     const [sales, purchases, owing] = await Promise.all([
       fetchWalkinOrders(),
-      fetchTransChapPurchases({ accountId }),
-      fetchOwingCustomers(),
+      canInventory
+        ? fetchTransChapPurchases({ accountId })
+        : Promise.resolve({ purchases: [], error: null as string | null, truncated: false }),
+      canCustomers
+        ? fetchOwingCustomers()
+        : Promise.resolve({
+            customers: [],
+            owingTotal: 0,
+            error: null as string | null,
+          }),
     ]);
     const paidToday = sales.orders.filter((order) => {
       if (!isCountedWalkinSale(order)) return false;
@@ -81,7 +93,7 @@ export function TransChapHomePies() {
     setOwingCount(owing.customers?.length ?? 0);
     setError(sales.error || purchases.error || owing.error);
     setLoading(false);
-  }, [accountId]);
+  }, [accountId, canCustomers, canInventory]);
 
   useEffect(() => {
     void reload();
@@ -188,36 +200,40 @@ export function TransChapHomePies() {
         )}
       </section>
 
-      {owingTotal > 0 ? (
-        <Link href="/trans-chap/credit" className="trans-chap-dash__owing">
-          <span>
-            <strong>{formatKsh(owingTotal)}</strong>
-            <em>
-              on the tab
-              {owingCount > 0
-                ? ` · ${owingCount} customer${owingCount === 1 ? "" : "s"}`
-                : ""}
-            </em>
-          </span>
-          <span className="trans-chap-dash__owing-cta">
-            Collect
-            <i className="fa-solid fa-chevron-right" aria-hidden />
-          </span>
-        </Link>
-      ) : (
-        <div className="trans-chap-dash__owing is-clear">
-          <span>
-            <strong>Tabs clear</strong>
-            <em>No customer credit outstanding</em>
-          </span>
-          <i className="fa-solid fa-check" aria-hidden />
-        </div>
-      )}
+      {canCustomers ? (
+        owingTotal > 0 ? (
+          <Link href="/trans-chap/credit" className="trans-chap-dash__owing">
+            <span>
+              <strong>{formatKsh(owingTotal)}</strong>
+              <em>
+                on the tab
+                {owingCount > 0
+                  ? ` · ${owingCount} customer${owingCount === 1 ? "" : "s"}`
+                  : ""}
+              </em>
+            </span>
+            <span className="trans-chap-dash__owing-cta">
+              Collect
+              <i className="fa-solid fa-chevron-right" aria-hidden />
+            </span>
+          </Link>
+        ) : (
+          <div className="trans-chap-dash__owing is-clear">
+            <span>
+              <strong>Tabs clear</strong>
+              <em>No customer credit outstanding</em>
+            </span>
+            <i className="fa-solid fa-check" aria-hidden />
+          </div>
+        )
+      ) : null}
 
-      <p className="trans-chap-dash__foot">
-        <Link href="/trans-chap/reports">Full reports</Link>
-        <span>Profit is sales minus restock. Credit stays on the tab.</span>
-      </p>
+      {owner ? (
+        <p className="trans-chap-dash__foot">
+          <Link href="/trans-chap/reports">Full reports</Link>
+          <span>Profit is sales minus restock. Credit stays on the tab.</span>
+        </p>
+      ) : null}
     </MotionFade>
   );
 }
