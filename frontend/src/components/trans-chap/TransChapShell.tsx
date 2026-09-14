@@ -25,6 +25,8 @@ const NAV: Array<{
   icon: string;
   exact?: boolean;
   section?: MerchantSection;
+  /** If set, user needs any one of these sections (overrides single `section`). */
+  anySections?: MerchantSection[];
   requiresInstagram?: boolean;
   ownerOnly?: boolean;
 }> = [
@@ -58,10 +60,17 @@ const NAV: Array<{
     section: "customer",
   },
   {
+    href: "/trans-chap/suppliers",
+    label: "Suppliers",
+    title: "Suppliers",
+    icon: "fa-truck-field",
+    anySections: ["supplier", "inventory"],
+  },
+  {
     href: "/trans-chap/purchases",
     label: "Purchases",
     title: "Purchases",
-    icon: "fa-truck",
+    icon: "fa-cart-shopping",
     section: "inventory",
   },
   {
@@ -88,7 +97,12 @@ function headerMeta(pathname: string, mode: string | null): { title: string; bac
   }
   if (pathname.startsWith("/trans-chap/purchases/new")) {
     return {
-      title: mode === "select" || mode === "single" ? "Select buy" : "Scan buy",
+      title:
+        mode === "scan"
+          ? "Scan buy"
+          : mode === "select" || mode === "single"
+            ? "Select buy"
+            : "New purchase",
       backHref: "/trans-chap/purchases",
     };
   }
@@ -109,6 +123,9 @@ function headerMeta(pathname: string, mode: string | null): { title: string; bac
   }
   if (pathname.startsWith("/trans-chap/customers")) {
     return { title: "Customers", backHref: "/trans-chap" };
+  }
+  if (pathname.startsWith("/trans-chap/suppliers")) {
+    return { title: "Suppliers", backHref: "/trans-chap" };
   }
   if (pathname.startsWith("/trans-chap/reports")) {
     return { title: "Reports", backHref: "/trans-chap" };
@@ -153,7 +170,9 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
   const { title, backHref } = headerMeta(pathname, searchParams.get("mode"));
   const isSignIn = pathname.startsWith("/trans-chap/sign-in");
   const isNewPost = pathname.startsWith("/trans-chap/feeds/new");
-  const isPos = pathname.startsWith("/trans-chap/pos");
+  const isPos =
+    pathname.startsWith("/trans-chap/pos") ||
+    pathname.startsWith("/trans-chap/purchases/new");
   const showNav = !isSignIn && !isNewPost;
   const showHeader = !isSignIn && !isNewPost;
   const instagramConnected = Boolean(user?.instagram_account);
@@ -185,7 +204,17 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
         if (item.ownerOnly && (user == null || !isShopOwner(user))) {
           return false;
         }
-        if (item.section && (user == null || !userCanAccessSection(user, item.section))) {
+        if (item.anySections?.length) {
+          if (
+            user == null ||
+            !item.anySections.some((section) => userCanAccessSection(user, section))
+          ) {
+            return false;
+          }
+        } else if (
+          item.section &&
+          (user == null || !userCanAccessSection(user, item.section))
+        ) {
           return false;
         }
         if (item.requiresInstagram && !instagramConnected) return false;
@@ -208,9 +237,11 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
     sync();
     window.addEventListener("resize", sync);
     window.addEventListener("orientationchange", sync);
+    window.visualViewport?.addEventListener("resize", sync);
     return () => {
       window.removeEventListener("resize", sync);
       window.removeEventListener("orientationchange", sync);
+      window.visualViewport?.removeEventListener("resize", sync);
     };
   }, []);
 

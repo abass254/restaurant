@@ -13,6 +13,14 @@ export async function requireTransChapSection(section: MerchantSection) {
   }
 }
 
+/** Allow any of the listed sections (e.g. suppliers for inventory or supplier staff). */
+export async function requireTransChapAnySection(...sections: MerchantSection[]) {
+  const user = await getServerUser();
+  if (!user || !sections.some((section) => userCanAccessSection(user, section))) {
+    redirect("/trans-chap");
+  }
+}
+
 /** Shop owner only (e.g. stock quantity / purchases). */
 export async function requireTransChapOwner() {
   const user = await getServerUser();

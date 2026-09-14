@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import { TransChapBarcodeCamera } from "@/components/trans-chap/TransChapBarcodeCamera";
 import { TransChapProductThumb } from "@/components/trans-chap/TransChapProductThumb";
@@ -22,11 +21,15 @@ export type PurchaseCatalogLine = {
   quantity: number;
   unitCost: number;
   role: InventoryRole;
+  sku?: string | null;
+  productCode?: string | null;
 };
 
 type Props = {
   scan: boolean;
   active: boolean;
+  /** POS-like workspace: catalog only (parent owns the cart panel). */
+  workspace?: boolean;
   basket: PurchaseCatalogLine[];
   inventory: InventoryItem[];
   catalog: CatalogProduct[];
@@ -36,19 +39,16 @@ type Props = {
   onScan: (code: string) => void;
   onAdd: (item: InventoryItem) => void;
   onAddCatalog: (product: CatalogProduct) => void;
+  onAddNew: (name: string) => void;
+  onRequestBuyNew?: (name?: string) => void;
   onQty: (key: string, quantity: number) => void;
   onContinue: () => void;
 };
 
-function unavailableHref(name?: string): string {
-  const trimmed = name?.trim();
-  if (!trimmed) return "/trans-chap/purchases/unavailable";
-  return `/trans-chap/purchases/unavailable?name=${encodeURIComponent(trimmed)}`;
-}
-
 export function TransChapPurchaseCatalog({
   scan,
   active,
+  workspace = false,
   basket,
   inventory,
   catalog,
@@ -58,6 +58,8 @@ export function TransChapPurchaseCatalog({
   onScan,
   onAdd,
   onAddCatalog,
+  onAddNew,
+  onRequestBuyNew,
   onQty,
   onContinue,
 }: Props) {
@@ -139,180 +141,332 @@ export function TransChapPurchaseCatalog({
   const showUnavailableCta = Boolean(draftName) && !exactExisting;
 
   const loading = inventoryLoading || catalogLoading;
-  const hasRows = filteredShop.length > 0 || filteredCatalog.length > 0;
+  const newBasketLines = useMemo(
+    () =>
+      basket.filter((line) => !line.inventoryItemId && !line.catalogProductId),
+    [basket],
+  );
+  const hasRows =
+    filteredShop.length > 0 ||
+    filteredCatalog.length > 0 ||
+    newBasketLines.length > 0;
   const noStockYet = shopItems.length === 0 && catalog.length === 0;
+  const compact = workspace || !scan;
 
-  return (
-    <div
-      className={`trans-chap-sale-scan trans-chap-purchase-scan${
-        scan ? "" : " trans-chap-sale-scan--select"
-      }`}
-    >
-      {scan ? (
+  function requestBuyNew(name?: string) {
+    if (onRequestBuyNew) {
+      onRequestBuyNew(name);
+      return;
+    }
+    if (name?.trim()) onAddNew(name.trim());
+  }
+
+  if (scan && !workspace) {
+    return (
+      <div className="trans-chap-sale-scan trans-chap-purchase-scan">
         <div className="trans-chap-sale-scan__camera">
           <TransChapBarcodeCamera active={active} onScan={onScan} />
         </div>
-      ) : null}
+        <div className="trans-chap-sale-scan__list">
+          <div className="trans-chap-purchase-scan__search">
+            <label className="trans-chap-sales__search">
+              <i className="fa-solid fa-magnifying-glass" aria-hidden />
+              <input
+                type="search"
+                value={query}
+                placeholder="Search inventory or type a new name…"
+                aria-label="Search products"
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  event.preventDefault();
+                  if (!showUnavailableCta) return;
+                  requestBuyNew(draftName);
+                  setQuery("");
+                }}
+              />
+            </label>
+          </div>
+          {renderAddCta()}
+          {renderProductList(false)}
+        </div>
+        {renderBar()}
+      </div>
+    );
+  }
 
-      <div className="trans-chap-sale-scan__list">
+  return (
+    <div
+      className={
+        workspace
+          ? "trans-chap-purchase-catalog"
+          : "trans-chap-sale-scan trans-chap-purchase-scan trans-chap-sale-scan--select"
+      }
+    >
+      <div
+        className={
+          workspace
+            ? "trans-chap-purchase-catalog__body"
+            : "trans-chap-sale-scan__list"
+        }
+      >
         <div className="trans-chap-purchase-scan__search">
           <label className="trans-chap-sales__search">
             <i className="fa-solid fa-magnifying-glass" aria-hidden />
             <input
               type="search"
               value={query}
-              placeholder={
-                scan
-                  ? "Search inventory or catalog…"
-                  : "Search products to buy…"
-              }
+              placeholder="Search products, SKU, or barcode…"
               aria-label="Search products"
-              autoFocus={!scan}
+              autoFocus
               onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                if (!showUnavailableCta) return;
+                requestBuyNew(draftName);
+                setQuery("");
+              }}
             />
           </label>
-        </div>
-
-        {showUnavailableCta ? (
-          <Link href={unavailableHref(draftName)} className="trans-chap-purchase-add-new">
-            <i className="fa-solid fa-cart-plus" aria-hidden />
-            <span>
-              Purchase <strong>{draftName}</strong> as new item
-            </span>
-          </Link>
-        ) : null}
-
-        {loading ? (
-          <p className="trans-chap-sale-scan__empty">Loading products…</p>
-        ) : !hasRows ? (
-          <TransChapStatus
-            actionHref={unavailableHref(draftName || undefined)}
-            actionLabel={draftName ? `Buy “${draftName}” as new` : "Buy a new product"}
+          <button
+            type="button"
+            className="trans-chap-purchase-catalog__new-btn"
+            onClick={() => requestBuyNew(draftName || undefined)}
           >
-            {draftName
-              ? exactExisting
-                ? "That name already matches a product above — tap it to add."
-                : `No match for “${draftName}”. Buy it as a new product.`
-              : noStockYet
-                ? "Nothing in stock or catalog yet. Buy a new product to start."
-                : "No match. Try another search, or buy a new product."}
-          </TransChapStatus>
-        ) : (
-          <ul className={`trans-chap-catalog${scan ? "" : " trans-chap-catalog--grid"}`}>
-            {filteredShop.map((item) => {
-              const name = inventoryProductName(item);
-              const line = lineByInventoryId.get(item.id);
-              const shownRole = line?.role ?? inventoryRole(item);
-              const lastBuy =
-                item.buying_price != null
-                  ? formatKsh(item.buying_price)
-                  : "No buy price";
-              const onHand =
-                item.stock_quantity == null ? "—" : String(item.stock_quantity);
-              return (
-                <li
-                  key={`inv-${item.id}`}
-                  className={`trans-chap-catalog__card${line ? " is-in-cart" : ""}${
-                    line?.key === lastScannedKey ? " is-fresh" : ""
-                  }`}
+            <i className="fa-solid fa-plus" aria-hidden />
+            New product
+          </button>
+        </div>
+        {renderAddCta()}
+        {renderProductList(compact)}
+      </div>
+      {workspace ? null : renderBar()}
+    </div>
+  );
+
+  function renderAddCta() {
+    if (showUnavailableCta) {
+      return (
+        <button
+          type="button"
+          className="trans-chap-purchase-add-new"
+          onClick={() => {
+            requestBuyNew(draftName);
+            setQuery("");
+          }}
+        >
+          <i className="fa-solid fa-cart-plus" aria-hidden />
+          <span>
+            Add <strong>{draftName}</strong> as new product
+          </span>
+        </button>
+      );
+    }
+    if (draftName || workspace) return null;
+    return (
+      <p className="trans-chap-purchase-add-new-hint">
+        Not in inventory? Type a name above, or tap{" "}
+        <button
+          type="button"
+          className="trans-chap-purchase-add-new-hint__link"
+          onClick={() => requestBuyNew()}
+        >
+          New product
+        </button>
+        .
+      </p>
+    );
+  }
+
+  function renderProductList(useCompact: boolean) {
+    if (loading) {
+      return <p className="trans-chap-sale-scan__empty">Loading products…</p>;
+    }
+    if (!hasRows) {
+      if (draftName && !exactExisting) {
+        return (
+          <p className="trans-chap-sale-scan__empty">
+            No match for “{draftName}”. Add it as a new product above.
+          </p>
+        );
+      }
+      return (
+        <TransChapStatus
+          actionLabel="Buy a new product"
+          onAction={() => requestBuyNew(draftName || undefined)}
+        >
+          {draftName
+            ? "That name already matches a product above — tap it to add."
+            : noStockYet
+              ? "Nothing in stock or catalog yet. Add a new product to start."
+              : "No match. Try another search, or add a new product."}
+        </TransChapStatus>
+      );
+    }
+
+    if (useCompact) {
+      return (
+        <ul className="trans-chap-purchase-cards">
+          {newBasketLines.map((line) => (
+            <li
+              key={`new-${line.key}`}
+              className={`trans-chap-purchase-card is-in-cart is-new-product${
+                line.key === lastScannedKey ? " is-fresh" : ""
+              }`}
+            >
+              <div className="trans-chap-purchase-card__main">
+                <TransChapProductThumb name={line.productName} size="sm" />
+                <span className="trans-chap-purchase-card__info">
+                  <strong className="trans-chap-purchase-card__name">
+                    {line.productName}
+                  </strong>
+                  <span className="trans-chap-purchase-card__meta">New product</span>
+                </span>
+              </div>
+              <div className="trans-chap-sale-scan__qty">
+                <button
+                  type="button"
+                  aria-label={`Decrease ${line.productName}`}
+                  onClick={() => onQty(line.key, line.quantity - 1)}
                 >
+                  −
+                </button>
+                <span>{line.quantity}</span>
+                <button
+                  type="button"
+                  aria-label={`Increase ${line.productName}`}
+                  onClick={() => onQty(line.key, line.quantity + 1)}
+                >
+                  +
+                </button>
+              </div>
+            </li>
+          ))}
+          {filteredShop.map((item) => {
+            const name = inventoryProductName(item);
+            const line = lineByInventoryId.get(item.id);
+            const shownRole = line?.role ?? inventoryRole(item);
+            const lastBuy =
+              item.buying_price != null
+                ? formatKsh(item.buying_price)
+                : "No buy price";
+            const onHand =
+              item.stock_quantity == null ? "—" : String(item.stock_quantity);
+            return (
+              <li
+                key={`inv-${item.id}`}
+                className={`trans-chap-purchase-card${line ? " is-in-cart" : ""}${
+                  line?.key === lastScannedKey ? " is-fresh" : ""
+                }`}
+              >
+                <button
+                  type="button"
+                  className="trans-chap-purchase-card__main"
+                  onClick={() => onAdd(item)}
+                >
+                  <TransChapProductThumb item={item} name={name} size="sm" />
+                  <span className="trans-chap-purchase-card__info">
+                    <strong className="trans-chap-purchase-card__name">{name}</strong>
+                    <span className="trans-chap-purchase-card__meta">
+                      {inventoryRoleShortLabel(shownRole)} · {lastBuy} · Stock {onHand}
+                    </span>
+                  </span>
+                </button>
+                {line ? (
+                  <div className="trans-chap-sale-scan__qty">
+                    <button
+                      type="button"
+                      aria-label={`Decrease ${name}`}
+                      onClick={() => onQty(line.key, line.quantity - 1)}
+                    >
+                      −
+                    </button>
+                    <span>{line.quantity}</span>
+                    <button
+                      type="button"
+                      aria-label={`Increase ${name}`}
+                      onClick={() => onQty(line.key, line.quantity + 1)}
+                    >
+                      +
+                    </button>
+                  </div>
+                ) : (
                   <button
                     type="button"
-                    className="trans-chap-catalog__main"
+                    className="trans-chap-purchase-card__add"
+                    aria-label={`Add ${name}`}
                     onClick={() => onAdd(item)}
                   >
-                    <TransChapProductThumb
-                      item={item}
-                      name={name}
-                      size={scan ? "md" : "lg"}
-                    />
-                    <span className="trans-chap-catalog__copy">
-                      <strong className="trans-chap-catalog__name">{name}</strong>
-                      <em className="trans-chap-panel__tag">
-                        {inventoryRoleShortLabel(shownRole)}
-                      </em>
-                      <span className="trans-chap-catalog__meta">
-                        <span>{lastBuy}</span>
-                        <span>Qty {onHand}</span>
-                      </span>
-                    </span>
+                    <i className="fa-solid fa-plus" aria-hidden />
                   </button>
-                  {line ? (
-                    <div className="trans-chap-sale-scan__qty">
-                      <button
-                        type="button"
-                        aria-label={`Decrease ${name}`}
-                        onClick={() => onQty(line.key, line.quantity - 1)}
-                      >
-                        −
-                      </button>
-                      <span>{line.quantity}</span>
-                      <button
-                        type="button"
-                        aria-label={`Increase ${name}`}
-                        onClick={() => onQty(line.key, line.quantity + 1)}
-                      >
-                        +
-                      </button>
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-            {filteredCatalog.map((product) => {
-              const line = lineByCatalogId.get(product.id);
-              const name = product.name.trim() || "Product";
-              return (
-                <li
-                  key={`cat-${product.id}`}
-                  className={`trans-chap-catalog__card${line ? " is-in-cart" : ""}${
-                    line?.key === lastScannedKey ? " is-fresh" : ""
-                  }`}
+                )}
+              </li>
+            );
+          })}
+          {filteredCatalog.map((product) => {
+            const line = lineByCatalogId.get(product.id);
+            const name = product.name.trim() || "Product";
+            return (
+              <li
+                key={`cat-${product.id}`}
+                className={`trans-chap-purchase-card${line ? " is-in-cart" : ""}${
+                  line?.key === lastScannedKey ? " is-fresh" : ""
+                }`}
+              >
+                <button
+                  type="button"
+                  className="trans-chap-purchase-card__main"
+                  onClick={() => onAddCatalog(product)}
                 >
+                  <TransChapProductThumb name={name} size="sm" />
+                  <span className="trans-chap-purchase-card__info">
+                    <strong className="trans-chap-purchase-card__name">{name}</strong>
+                    <span className="trans-chap-purchase-card__meta">
+                      Catalog · Not in stock yet
+                    </span>
+                  </span>
+                </button>
+                {line ? (
+                  <div className="trans-chap-sale-scan__qty">
+                    <button
+                      type="button"
+                      aria-label={`Decrease ${name}`}
+                      onClick={() => onQty(line.key, line.quantity - 1)}
+                    >
+                      −
+                    </button>
+                    <span>{line.quantity}</span>
+                    <button
+                      type="button"
+                      aria-label={`Increase ${name}`}
+                      onClick={() => onQty(line.key, line.quantity + 1)}
+                    >
+                      +
+                    </button>
+                  </div>
+                ) : (
                   <button
                     type="button"
-                    className="trans-chap-catalog__main"
+                    className="trans-chap-purchase-card__add"
+                    aria-label={`Add ${name}`}
                     onClick={() => onAddCatalog(product)}
                   >
-                    <TransChapProductThumb
-                      src={product.image_url}
-                      name={name}
-                      size={scan ? "md" : "lg"}
-                    />
-                    <span className="trans-chap-catalog__copy">
-                      <strong className="trans-chap-catalog__name">{name}</strong>
-                      <em className="trans-chap-panel__tag">Catalog</em>
-                      <span className="trans-chap-catalog__meta">
-                        <span>Not in your stock yet</span>
-                      </span>
-                    </span>
+                    <i className="fa-solid fa-plus" aria-hidden />
                   </button>
-                  {line ? (
-                    <div className="trans-chap-sale-scan__qty">
-                      <button
-                        type="button"
-                        aria-label={`Decrease ${name}`}
-                        onClick={() => onQty(line.key, line.quantity - 1)}
-                      >
-                        −
-                      </button>
-                      <span>{line.quantity}</span>
-                      <button
-                        type="button"
-                        aria-label={`Increase ${name}`}
-                        onClick={() => onQty(line.key, line.quantity + 1)}
-                      >
-                        +
-                      </button>
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      );
+    }
 
+    return null;
+  }
+
+  function renderBar() {
+    return (
       <div className="trans-chap-sale-scan__bar trans-chap-purchase-scan__bar">
         {basket.length ? (
           <p className="trans-chap-form__total">
@@ -321,7 +475,7 @@ export function TransChapPurchaseCatalog({
           </p>
         ) : (
           <p className="trans-chap-sale-scan__hint">
-            Search your stock or catalog. New products use Buy new item.
+            Search stock or catalog, or add a new product.
           </p>
         )}
         <button
@@ -333,6 +487,6 @@ export function TransChapPurchaseCatalog({
           Continue to buying costs
         </button>
       </div>
-    </div>
-  );
+    );
+  }
 }

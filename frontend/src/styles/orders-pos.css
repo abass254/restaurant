@@ -24,6 +24,49 @@
   align-items: start;
 }
 
+.fb-app .pos-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.fb-app .pos-ticket {
+  min-height: 8rem;
+  flex: 1 1 auto;
+}
+
+.fb-app .pos-ticket.has-lines {
+  min-height: 0;
+}
+
+.fb-app .pos-ticket__lines {
+  border: 1px solid var(--app-border-light, var(--app-border));
+  border-radius: 12px;
+  background: var(--app-surface);
+  padding: 8px;
+  max-height: min(42vh, 28rem);
+  overflow: auto;
+}
+
+.fb-app .pos-line__prices {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 4.5rem;
+}
+
+.fb-app .pos-line__prices.has-sell {
+  min-width: 11rem;
+}
+
+.fb-app .pos-cart--meta .pos-cart__body {
+  flex: 0 0 auto;
+}
+
 @media (max-width: 960px) {
   .fb-app .pos-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -498,6 +541,23 @@ html[data-theme="dark"] .fb-app .pos-card__price-amount {
   color: var(--app-danger);
 }
 
+.fb-app .pos-card__stock {
+  margin-top: 2px;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--app-text-secondary);
+  line-height: 1.3;
+}
+
+.fb-app .pos-card__stock.is-low {
+  color: var(--app-warning, #b45309);
+}
+
+.fb-app .pos-card__stock.is-out {
+  color: var(--app-danger);
+}
+
 .fb-app .pos-card__action {
   display: flex;
   align-items: center;
@@ -752,6 +812,166 @@ html[data-theme="dark"] .fb-app .pos-cart__head h2 > i {
   color: var(--app-text);
 }
 
+.fb-app .pos-cart__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fb-app .pos-cart__hold {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface);
+  border-radius: 8px;
+  color: var(--app-text);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 650;
+  font-family: var(--app-font);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.fb-app .pos-cart__hold > i {
+  font-size: 0.65rem;
+  color: var(--app-text-secondary);
+}
+
+.fb-app .pos-cart__hold:hover:not(:disabled) {
+  background: var(--app-surface-hover);
+  border-color: var(--app-border);
+}
+
+.fb-app .pos-cart__hold:disabled,
+.fb-app .pos-cart__reset:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fb-app .pos-held {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--app-border-light);
+  background: color-mix(in srgb, var(--app-surface-hover) 70%, transparent);
+}
+
+.fb-app .pos-held__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--app-text-secondary);
+}
+
+.fb-app .pos-held__label > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border-light);
+  color: var(--app-text-secondary);
+  font-size: 0.625rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fb-app .pos-held__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 132px;
+  overflow-y: auto;
+}
+
+.fb-app .pos-held__item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.fb-app .pos-held__resume {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--app-border-light);
+  border-radius: 8px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--app-font);
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.fb-app .pos-held__resume:hover:not(:disabled) {
+  background: var(--app-surface-hover);
+  border-color: var(--app-border);
+}
+
+.fb-app .pos-held__resume:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.fb-app .pos-held__resume > strong {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.fb-app .pos-held__resume > span {
+  font-size: 0.6875rem;
+  color: var(--app-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.fb-app .pos-held__discard {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--app-text-secondary);
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: background 0.12s, color 0.12s;
+}
+
+.fb-app .pos-held__discard:hover:not(:disabled) {
+  background: var(--app-surface-hover);
+  color: var(--app-text);
+}
+
+.fb-app .pos-held__discard:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .fb-app .pos-cart__body {
   flex: 1;
   overflow-y: auto;
@@ -859,7 +1079,7 @@ html[data-theme="dark"] .fb-app .pos-picker.is-active {
 }
 
 .fb-app .pos-fields--customer {
-  grid-template-columns: 1.4fr 1fr;
+  grid-template-columns: 1fr;
 }
 
 .fb-app .pos-fields--customer-solo {
@@ -887,6 +1107,10 @@ html[data-theme="dark"] .fb-app .pos-picker.is-active {
   width: 100%;
   height: 32px;
   outline: none;
+}
+
+.fb-app .pos-customer-pick select.pos-input--required {
+  border-color: color-mix(in srgb, var(--app-danger, #b42318) 55%, var(--app-border-light));
 }
 
 .fb-app .pos-customer-credit {
@@ -1030,6 +1254,10 @@ html[data-theme="dark"] .fb-app .pos-cart__lines {
   transition: background 0.12s;
 }
 
+.fb-app .pos-line--priced {
+  grid-template-columns: 28px minmax(0, 1fr) auto auto auto;
+}
+
 .fb-app .pos-line__thumb {
   width: 28px;
   height: 28px;
@@ -1087,7 +1315,8 @@ html[data-theme="dark"] .fb-app .pos-line__thumb {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-top: 2px;
+  min-width: 0;
+  flex-shrink: 0;
 }
 
 .fb-app .pos-line__price-label {
@@ -1096,10 +1325,14 @@ html[data-theme="dark"] .fb-app .pos-line__thumb {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--app-text-secondary);
+  flex-shrink: 0;
 }
 
 .fb-app .pos-line__price-edit input {
-  width: 72px;
+  width: 64px;
+  min-width: 0;
+  min-height: 0;
+  height: 28px;
   padding: 2px 6px;
   border: 1px solid var(--app-border);
   border-radius: 6px;

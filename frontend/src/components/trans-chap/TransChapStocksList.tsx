@@ -22,6 +22,7 @@ import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { MotionItem, MotionList } from "@/components/app/MotionList";
 import { useAuthUser } from "@/components/app/AuthProvider";
+import { isRestaurantStore } from "@/lib/onboarding";
 import { isShopOwner } from "@/lib/merchant-permissions";
 import type { InventoryItem, InventoryResponse, InventoryRole } from "@/lib/types";
 
@@ -30,12 +31,16 @@ type StocksView = "grid" | "list";
 
 const STOCKS_VIEW_KEY = "trans-chap-stocks-view";
 
-const ROLE_FILTERS: { id: RoleFilter; label: string }[] = [
+const BASE_ROLE_FILTERS: { id: RoleFilter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "both", label: "Buy & sell" },
   { id: "for_sale", label: "Sell only" },
-  { id: "raw_material", label: "Raw" },
 ];
+
+const RAW_ROLE_FILTER: { id: RoleFilter; label: string } = {
+  id: "raw_material",
+  label: "Raw",
+};
 
 function readStocksView(): StocksView {
   if (typeof window === "undefined") return "grid";
@@ -70,10 +75,10 @@ function stockQtyLabel(item: InventoryItem): string | undefined {
   return `Qty ${item.stock_quantity}`;
 }
 
-function roleTag(item: InventoryItem): string | undefined {
-  if (isHotelMenuItem(item)) return "Hotel";
+function roleTag(item: InventoryItem, restaurant: boolean): string | undefined {
+  if (isHotelMenuItem(item)) return restaurant ? "Hotel" : undefined;
   const role = inventoryRole(item);
-  if (role === "raw_material") return "Raw";
+  if (role === "raw_material") return restaurant ? "Raw" : undefined;
   if (role === "both") return "Buy & sell";
   return "Sell only";
 }
@@ -81,6 +86,10 @@ function roleTag(item: InventoryItem): string | undefined {
 export function TransChapStocksList() {
   const user = useAuthUser();
   const canEditQty = isShopOwner(user);
+  const restaurant = isRestaurantStore(user.active_account ?? user.account);
+  const roleFilters = restaurant
+    ? [...BASE_ROLE_FILTERS, RAW_ROLE_FILTER]
+    : BASE_ROLE_FILTERS;
   const buyHref = canEditQty
     ? "/trans-chap/purchases/new"
     : "/trans-chap/purchases/unavailable";
@@ -134,11 +143,19 @@ export function TransChapStocksList() {
     void reload();
   }, [reload]);
 
+  useEffect(() => {
+    if (!restaurant) {
+      setHotelOnly(false);
+      if (roleFilter === "raw_material") setRoleFilter("all");
+    }
+  }, [restaurant, roleFilter]);
+
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
+    const showHotelOnly = restaurant && hotelOnly;
     return items.filter((item) => {
       if (!item.is_active) return false;
-      if (hotelOnly && !isHotelMenuItem(item)) return false;
+      if (showHotelOnly && !isHotelMenuItem(item)) return false;
       if (outOnly && !isOutOfStock(item)) return false;
       if (roleFilter !== "all" && inventoryRole(item) !== roleFilter) return false;
       if (!needle) return true;
@@ -153,7 +170,7 @@ export function TransChapStocksList() {
         supplier.includes(needle)
       );
     });
-  }, [hotelOnly, items, outOnly, query, roleFilter]);
+  }, [hotelOnly, items, outOnly, query, restaurant, roleFilter]);
 
   const outOfStockFiltered = useMemo(
     () => filtered.filter(isOutOfStock),
@@ -344,14 +361,16 @@ export function TransChapStocksList() {
               <i className="fa-solid fa-list" aria-hidden />
             </button>
           </div>
-          <button
-            type="button"
-            className={`trans-chap-sales__chip${hotelOnly ? " is-active" : ""}`}
-            aria-pressed={hotelOnly}
-            onClick={() => setHotelOnly((value) => !value)}
-          >
-            Hotel
-          </button>
+          {restaurant ? (
+            <button
+              type="button"
+              className={`trans-chap-sales__chip${hotelOnly ? " is-active" : ""}`}
+              aria-pressed={hotelOnly}
+              onClick={() => setHotelOnly((value) => !value)}
+            >
+              Hotel
+            </button>
+          ) : null}
           <button
             type="button"
             className={`trans-chap-sales__chip${outOnly ? " is-active" : ""}`}
@@ -372,7 +391,7 @@ export function TransChapStocksList() {
           ) : null}
         </div>
         <div className="trans-chap-sales__chips" role="group" aria-label="Stock type">
-          {ROLE_FILTERS.map((chip) => (
+          {roleFilters.map((chip) => (
             <button
               key={chip.id}
               type="button"
@@ -489,7 +508,11 @@ export function TransChapStocksList() {
                         </div>
                       </td>
                       <td className="trans-chap-stock-table__mono">{sku}</td>
-                      <td>{hotel ? "Hotel menu" : inventoryRoleLabel(inventoryRole(item))}</td>
+                      <td>
+                        {restaurant && hotel
+                          ? "Hotel menu"
+                          : inventoryRoleLabel(inventoryRole(item))}
+                      </td>
                       <td>{unit}</td>
                       <td className="trans-chap-stock-table__qty">
                         {hotel ? (
@@ -617,7 +640,7 @@ export function TransChapStocksList() {
                 tone="stock"
                 title={name}
                 imageUrl={inventoryCoverUrl(item)}
-                tag={roleTag(item)}
+                tag={roleTag(item, restaurant)}
                 qty={stockQtyLabel(item)}
                 price={price}
                 badge={stockBadge(item)}
@@ -725,7 +748,11 @@ export function TransChapStocksList() {
                   )}
                   <div>
                     <dt>Type</dt>
-                    <dd>{hotel ? "Hotel menu" : inventoryRoleLabel(inventoryRole(item))}</dd>
+                    <dd>
+                      {restaurant && hotel
+                        ? "Hotel menu"
+                        : inventoryRoleLabel(inventoryRole(item))}
+                    </dd>
                   </div>
                   <div>
                     <dt>Selling price</dt>
@@ -789,11 +816,15 @@ export function TransChapStocksList() {
         options={
           canEditQty
             ? [
-                { href: "/trans-chap/purchases/new", label: "Scan buy", icon: "fa-barcode" },
                 {
-                  href: "/trans-chap/purchases/new?mode=select",
+                  href: "/trans-chap/purchases/new",
                   label: "Select buy",
                   icon: "fa-list",
+                },
+                {
+                  href: "/trans-chap/purchases/new?mode=scan",
+                  label: "Scan buy",
+                  icon: "fa-barcode",
                 },
                 {
                   href: "/trans-chap/purchases/unavailable",
@@ -805,7 +836,15 @@ export function TransChapStocksList() {
                   label: "Opening stock",
                   icon: "fa-boxes-stacked",
                 },
-                { href: "/trans-chap/stocks/menu", label: "Hotel menu", icon: "fa-utensils" },
+                ...(restaurant
+                  ? [
+                      {
+                        href: "/trans-chap/stocks/menu",
+                        label: "Hotel menu",
+                        icon: "fa-utensils",
+                      },
+                    ]
+                  : []),
               ]
             : [
                 {
@@ -813,7 +852,15 @@ export function TransChapStocksList() {
                   label: "Buy",
                   icon: "fa-cart-plus",
                 },
-                { href: "/trans-chap/stocks/menu", label: "Hotel menu", icon: "fa-utensils" },
+                ...(restaurant
+                  ? [
+                      {
+                        href: "/trans-chap/stocks/menu",
+                        label: "Hotel menu",
+                        icon: "fa-utensils",
+                      },
+                    ]
+                  : []),
               ]
         }
       />

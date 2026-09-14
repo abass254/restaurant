@@ -1,8 +1,11 @@
+export type StoreType = "retail" | "restaurant";
+
 export type BusinessAccount = {
   id: string;
   business_name: string;
   business_location: string | null;
   business_category: string | null;
+  store_type?: StoreType | string | null;
   logo_url?: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -281,12 +284,21 @@ export type AdminMerchantDetail = {
   business_name: string;
   business_location: string;
   business_category: string;
+  store_type?: string | null;
+  logo_url?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   created_at: string | null;
   updated_at: string | null;
   users: AdminUser[];
   instagram_connected: boolean;
   instagram_username: string | null;
   connected_channels: AdminMerchantChannel[];
+};
+
+export type AdminMerchantProfileResponse = {
+  message: string;
+  data: AdminMerchantDetail;
 };
 
 export type AdminDetachMerchantChannelResponse = {
@@ -1675,6 +1687,25 @@ export type ShopCustomersListResponse = {
 export type ShopCustomerMutationResponse = {
   message: string;
   data: ShopCustomer;
+};
+
+export type ShopSupplier = {
+  id: string;
+  name: string;
+  phone: string;
+  notes: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type ShopSuppliersListResponse = {
+  data: ShopSupplier[];
+  total: number;
+};
+
+export type ShopSupplierMutationResponse = {
+  message: string;
+  data: ShopSupplier;
 };
 
 export type CustomerImportRowResult = {

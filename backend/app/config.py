@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     app_debug: bool = True
     app_url: str = "http://127.0.0.1:7001"
     frontend_url: str = "http://127.0.0.1:7000"
+    # Public origin for /uploads/* when this stack talks to production media
+    # (e.g. https://merchants.dukai.app). DB still stores relative /uploads/...
+    # paths; browsers and Instagram resolve against this base when set.
+    uploads_public_base_url: str = ""
     app_key: str = ""
 
     session_secret: str = "change-me-in-production"

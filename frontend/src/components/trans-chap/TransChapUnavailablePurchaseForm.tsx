@@ -3,11 +3,13 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useOptionalAuthUser } from "@/components/app/AuthProvider";
 import { TransChapBarcodeScannerSheet } from "@/components/trans-chap/TransChapBarcodeScannerSheet";
 import { showError, showInternalError, toastSuccess } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { findInventoryByBarcode } from "@/lib/barcode";
 import { apiRoutes } from "@/lib/config";
+import { isRestaurantStore } from "@/lib/onboarding";
 import {
   addLiteInventoryProduct,
   findInventoryByName,
@@ -18,7 +20,7 @@ import {
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import type { InventoryItem, InventoryResponse, InventoryRole } from "@/lib/types";
 
-const ROLE_OPTIONS: { id: InventoryRole; label: string; hint: string }[] = [
+const ALL_ROLE_OPTIONS: { id: InventoryRole; label: string; hint: string }[] = [
   {
     id: "both",
     label: "Buy & sell",
@@ -33,6 +35,11 @@ const ROLE_OPTIONS: { id: InventoryRole; label: string; hint: string }[] = [
 
 export function TransChapUnavailablePurchaseForm() {
   const router = useRouter();
+  const user = useOptionalAuthUser();
+  const restaurant = isRestaurantStore(user?.active_account ?? user?.account);
+  const roleOptions = restaurant
+    ? ALL_ROLE_OPTIONS
+    : ALL_ROLE_OPTIONS.filter((option) => option.id !== "raw_material");
   const [product, setProduct] = useState("");
   const [barcode, setBarcode] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -94,8 +101,10 @@ export function TransChapUnavailablePurchaseForm() {
     }
     if (match && isHotelMenuItem(match)) {
       void showError(
-        "Hotel menu",
-        "That barcode matches a hotel menu dish — use Hotel menu instead.",
+        restaurant ? "Hotel menu" : "Can’t buy",
+        restaurant
+          ? "That barcode matches a hotel menu dish — use Hotel menu instead."
+          : "That product can’t be bought here.",
       );
       return;
     }
@@ -121,8 +130,10 @@ export function TransChapUnavailablePurchaseForm() {
     if (match) {
       if (isHotelMenuItem(match)) {
         await showError(
-          "Hotel menu",
-          "Menu dishes can’t be purchased as stock. Add them from Hotel menu.",
+          restaurant ? "Hotel menu" : "Can’t buy",
+          restaurant
+            ? "Menu dishes can’t be purchased as stock. Add them from Hotel menu."
+            : "That product can’t be bought here.",
         );
         return;
       }
@@ -252,36 +263,40 @@ export function TransChapUnavailablePurchaseForm() {
             ) : null}
             {existingHotel ? (
               <p className="trans-chap-form__hint">
-                That matches a hotel menu dish — use Hotel menu instead.
+                {restaurant
+                  ? "That matches a hotel menu dish — use Hotel menu instead."
+                  : "That product can’t be bought here."}
               </p>
             ) : null}
           </div>
 
-          <div className="auth-split__field">
-            <span className="trans-chap-form__label" id="unavailable-role-label">
-              Buy as
-            </span>
-            <div
-              className="trans-chap-form__chips"
-              role="group"
-              aria-labelledby="unavailable-role-label"
-            >
-              {ROLE_OPTIONS.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  className={`trans-chap-form__chip${role === option.id ? " is-active" : ""}`}
-                  aria-pressed={role === option.id}
-                  onClick={() => setRole(option.id)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            <p className="trans-chap-form__hint">
-              {ROLE_OPTIONS.find((option) => option.id === role)?.hint}
-            </p>
-          </div>
+            {roleOptions.length > 1 ? (
+                <div className="auth-split__field">
+                  <span className="trans-chap-form__label" id="unavailable-role-label">
+                    Buy as
+                  </span>
+                  <div
+                    className="trans-chap-form__chips"
+                    role="group"
+                    aria-labelledby="unavailable-role-label"
+                  >
+                    {roleOptions.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={`trans-chap-form__chip${role === option.id ? " is-active" : ""}`}
+                        aria-pressed={role === option.id}
+                        onClick={() => setRole(option.id)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="trans-chap-form__hint">
+                    {roleOptions.find((option) => option.id === role)?.hint}
+                  </p>
+                </div>
+            ) : null}
 
           <div className="trans-chap-form__row">
             <div className="auth-split__field">

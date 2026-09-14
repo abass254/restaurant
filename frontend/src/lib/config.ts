@@ -154,8 +154,6 @@ export const apiRoutes = {
   inventoryStockMovements: `${apiUrl}/api/v1/inventory/stock-movements`,
   inventoryItem: (id: string) => `${apiUrl}/api/v1/inventory/${id}`,
   inventoryMedia: (id: string) => `${apiUrl}/api/v1/inventory/${id}/media`,
-  inventoryMediaGenerate: (id: string) =>
-    `${apiUrl}/api/v1/inventory/${id}/media/generate`,
   inventoryMediaPost: (id: string) =>
     `${apiUrl}/api/v1/inventory/${id}/media/post`,
   inventoryUploadTokens: `${apiUrl}/api/v1/inventory/upload-tokens`,
@@ -213,6 +211,10 @@ export const apiRoutes = {
     `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/collect`,
   customerCollection: (id: string, transactionId: string) =>
     `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/collections/${encodeURIComponent(transactionId)}`,
+  suppliers: `${apiUrl}/api/v1/suppliers`,
+  supplier: (id: string) => `${apiUrl}/api/v1/suppliers/${encodeURIComponent(id)}`,
+  supplierUpdate: (id: string) =>
+    `${apiUrl}/api/v1/suppliers/${encodeURIComponent(id)}/update`,
   riders: `${apiUrl}/api/v1/riders`,
   riderSuspend: (id: string) => `${apiUrl}/api/v1/riders/${id}/suspend`,
   riderSetEmail: (id: string) => `${apiUrl}/api/v1/riders/${id}/email`,
@@ -264,6 +266,8 @@ export const apiRoutes = {
   adminOrder: (id: string) => `${apiUrl}/api/v1/admin/orders/${id}`,
   adminOrderTransition: (id: string) => `${apiUrl}/api/v1/admin/orders/${id}/transition`,
   adminMerchant: (id: string) => `${apiUrl}/api/v1/admin/merchants/${id}`,
+  adminMerchantProfile: (id: string) =>
+    `${apiUrl}/api/v1/admin/merchants/${id}/profile`,
   adminMerchantCoords: (id: string) =>
     `${apiUrl}/api/v1/admin/merchants/${id}/coords`,
   adminMerchantUsers: (merchantId: string) =>
@@ -304,6 +308,8 @@ export const apiRoutes = {
     `${apiUrl}/api/v1/admin/catalog/products/${id}/primary-image`,
   adminCatalogPrimaryImageAuto: (id: string) =>
     `${apiUrl}/api/v1/admin/catalog/products/${id}/primary-image/auto`,
+  adminCatalogGenerateImage: (id: string) =>
+    `${apiUrl}/api/v1/admin/catalog/products/${id}/generate-image`,
   adminBotSandbox: (merchantId: string) =>
     `${apiUrl}/api/v1/admin/bot-sandbox?merchant_id=${encodeURIComponent(merchantId)}`,
   adminBotSandboxMessage: (merchantId: string) =>
@@ -393,13 +399,24 @@ export const apiRoutes = {
 } as const;
 
 /**
+ * Public origin for production media when this stack uses prod data locally.
+ * Example: https://merchants.dukai.app — DB keeps relative /uploads/... paths.
+ */
+export const uploadsPublicBaseUrl = (
+  process.env.NEXT_PUBLIC_UPLOADS_PUBLIC_BASE_URL ?? ""
+).replace(/\/$/, "");
+
+/**
  * Resolve a backend-stored path (e.g. "/uploads/products/3/abc.jpg") into a
  * fully-qualified URL the browser can load. External URLs (http/https) are
- * returned unchanged.
+ * returned unchanged. /uploads/* uses the production media host when set.
  */
 export function resolveAssetUrl(path: string | null | undefined): string {
   if (!path) return "";
   if (/^https?:\/\//i.test(path)) return path;
+  if (path.startsWith("/uploads/") && uploadsPublicBaseUrl) {
+    return `${uploadsPublicBaseUrl}${path}`;
+  }
   if (path.startsWith("/")) return `${apiUrl}${path}`;
   return path;
 }

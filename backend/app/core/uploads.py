@@ -1,9 +1,13 @@
 """Local-disk storage for uploaded product photos.
 
-Files are written to `backend/uploads/products/<product_id>/<sha1>.<ext>` and
-served by the `/uploads/*` static mount in `app.main`. The URLs we store in
-the DB are *relative* (e.g. `/uploads/products/3/abc.jpg`) so they work in
-any environment without baking the host in.
+Files are written under `UPLOADS_DIR` (default `backend/uploads/`, or
+`/app/uploads` in Docker) as `products/<product_id>/<sha1>.<ext>` and served
+by the `/uploads/*` static mount in `app.main`. The URLs we store in the DB
+are *relative* (e.g. `/uploads/products/3/abc.jpg`) so the public host comes
+from `APP_URL` / `FRONTEND_URL` (prod: `https://merchants.dukai.app/uploads/...`).
+
+Override the on-disk root with `UPLOADS_DIR` (bare metal) or bind-mount the
+host folder onto `/app/uploads` via Compose `UPLOADS_HOST_PATH`.
 
 Why local disk for now?
 - Zero external infra; runs the same on every dev laptop.
@@ -14,14 +18,25 @@ Why local disk for now?
 from __future__ import annotations
 
 import hashlib
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, UploadFile, status
 
-# `backend/uploads/`
-UPLOADS_DIR = Path(__file__).resolve().parents[2] / "uploads"
+_DEFAULT_UPLOADS_DIR = Path(__file__).resolve().parents[2] / "uploads"
+
+
+def _resolve_uploads_dir() -> Path:
+    raw = (os.environ.get("UPLOADS_DIR") or "").strip()
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return _DEFAULT_UPLOADS_DIR
+
+
+# Default: `backend/uploads/` (repo) or `/app/uploads` (Docker image layout).
+UPLOADS_DIR = _resolve_uploads_dir()
 
 # Per-file limit, by media kind. Videos can be considerably larger than
 # photos so we treat them separately. Both still fit comfortably in memory on
@@ -298,15 +313,30 @@ def save_generated_image(
     }
 
 
+def _relative_uploads_path(image_url: str) -> str | None:
+    """Normalize a stored media URL to a path under /uploads/…, or None."""
+    raw = (image_url or "").strip()
+    if not raw:
+        return None
+    if raw.startswith("/uploads/"):
+        return raw[len("/uploads/") :]
+    # Absolute public URL (e.g. https://merchants.dukai.app/uploads/…).
+    marker = "/uploads/"
+    idx = raw.find(marker)
+    if idx >= 0 and raw.startswith(("http://", "https://")):
+        return raw[idx + len(marker) :]
+    return None
+
+
 def delete_upload(image_url: str) -> bool:
     """Remove a previously-uploaded file from disk. Returns True on success.
 
     Only deletes files inside our own uploads directory — anything else
     (external URLs, traversal attempts) is silently ignored.
     """
-    if not image_url.startswith("/uploads/"):
+    rel = _relative_uploads_path(image_url)
+    if rel is None:
         return False
-    rel = image_url[len("/uploads/"):]
     try:
         path = (UPLOADS_DIR / rel).resolve()
     except OSError:

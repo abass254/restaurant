@@ -1,14 +1,15 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useOptionalAuthUser } from "@/components/app/AuthProvider";
 import { TransChapPhotoField } from "@/components/trans-chap/TransChapPhotoField";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { apiFetch } from "@/lib/api";
 import { showInternalError, toastSuccess, internalErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
+import { isRestaurantStore } from "@/lib/onboarding";
 import {
-  generateInventoryPhoto,
   inventoryCoverUrl,
   inventoryProductName,
   inventoryRole,
@@ -21,7 +22,7 @@ import {
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import type { InventoryItem, InventoryItemDetailResponse, InventoryRole } from "@/lib/types";
 
-const ROLE_OPTIONS: { id: InventoryRole; label: string; hint: string }[] = [
+const ALL_ROLE_OPTIONS: { id: InventoryRole; label: string; hint: string }[] = [
   {
     id: "both",
     label: "Buy & sell",
@@ -41,6 +42,8 @@ const ROLE_OPTIONS: { id: InventoryRole; label: string; hint: string }[] = [
 
 export function TransChapProductEditForm() {
   const router = useRouter();
+  const user = useOptionalAuthUser();
+  const restaurant = isRestaurantStore(user?.active_account ?? user?.account);
   const [item, setItem] = useState<InventoryItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +51,6 @@ export function TransChapProductEditForm() {
   const [sellingPrice, setSellingPrice] = useState("");
   const [role, setRole] = useState<InventoryRole>("for_sale");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [generatingAi, setGeneratingAi] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -85,22 +87,12 @@ export function TransChapProductEditForm() {
 
   const hotel = item ? isHotelMenuItem(item) : false;
   const needsSellPrice = hotel || isSaleableRole(role);
-
-  async function handleGenerateAi() {
-    if (!item) return;
-    const promptName = name.trim() || inventoryProductName(item);
-    setGeneratingAi(true);
-    try {
-      const updated = await generateInventoryPhoto(item.id, { prompt: promptName });
-      setItem(updated);
-      setPhotoFile(null);
-      await toastSuccess("Photo generated");
-    } catch {
-      await showInternalError();
-    } finally {
-      setGeneratingAi(false);
-    }
-  }
+  const roleOptions = useMemo(() => {
+    return ALL_ROLE_OPTIONS.filter(
+      (option) =>
+        option.id !== "raw_material" || restaurant || role === "raw_material",
+    );
+  }, [restaurant, role]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -202,9 +194,7 @@ export function TransChapProductEditForm() {
           existingUrl={inventoryCoverUrl(item)}
           file={photoFile}
           onFileChange={setPhotoFile}
-          disabled={saving || generatingAi}
-          onGenerateAi={() => void handleGenerateAi()}
-          generatingAi={generatingAi}
+          disabled={saving}
         />
         {hotel ? null : (
           <div className="auth-split__field">
@@ -216,7 +206,7 @@ export function TransChapProductEditForm() {
               role="group"
               aria-labelledby="edit-product-role-label"
             >
-              {ROLE_OPTIONS.map((option) => (
+              {roleOptions.map((option) => (
                 <button
                   key={option.id}
                   type="button"
@@ -229,7 +219,7 @@ export function TransChapProductEditForm() {
               ))}
             </div>
             <p className="trans-chap-form__hint">
-              {ROLE_OPTIONS.find((option) => option.id === role)?.hint}
+              {roleOptions.find((option) => option.id === role)?.hint}
             </p>
           </div>
         )}
@@ -270,7 +260,7 @@ export function TransChapProductEditForm() {
         )}
       </div>
       <div className="trans-chap-form__actions">
-        <button type="submit" className="auth-split__btn" disabled={saving || generatingAi}>
+        <button type="submit" className="auth-split__btn" disabled={saving}>
           {saving ? "Saving…" : "Save changes"}
         </button>
       </div>

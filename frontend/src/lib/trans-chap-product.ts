@@ -8,7 +8,6 @@ import type {
   InventoryItem,
   InventoryItemMutationResponse,
   InventoryRole,
-  ProductImageGenerateResponse,
   ProductImageUploadResponse,
   StockMovementsResponse,
 } from "@/lib/types";
@@ -89,6 +88,7 @@ export async function addInventoryFromCatalogProduct(
   productId: string,
   extras?: {
     buying_price?: number | null;
+    selling_price?: number | null;
     stock_quantity?: number | null;
     inventory_role?: InventoryRole;
   },
@@ -99,7 +99,7 @@ export async function addInventoryFromCatalogProduct(
       method: "POST",
       body: JSON.stringify({
         product_id: productId,
-        selling_price: null,
+        selling_price: extras?.selling_price ?? null,
         buying_price: extras?.buying_price ?? null,
         stock_quantity: extras?.stock_quantity ?? 0,
         inventory_role: extras?.inventory_role ?? "both",
@@ -333,23 +333,6 @@ export async function uploadInventoryPhoto(
   const res = await apiFetch<ProductImageUploadResponse>(
     apiRoutes.inventoryMedia(itemId),
     { method: "POST", body: form },
-  );
-  return res.data;
-}
-
-export async function generateInventoryPhoto(
-  itemId: string,
-  opts?: { prompt?: string; quality?: "low" | "medium" | "high" },
-): Promise<InventoryItem> {
-  const res = await apiFetch<ProductImageGenerateResponse>(
-    apiRoutes.inventoryMediaGenerate(itemId),
-    {
-      method: "POST",
-      body: JSON.stringify({
-        prompt: opts?.prompt?.trim() || null,
-        quality: opts?.quality ?? null,
-      }),
-    },
   );
   return res.data;
 }

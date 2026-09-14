@@ -2506,6 +2506,26 @@ td.admin-table__actions {
   font-size: 1.4rem;
   background: var(--color-primary-subtle, #f8f0e8);
   color: var(--color-primary, #6b2e14);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.admin-merchant-header__logo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.admin-merchant-header__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.admin-merchant-header__title-row h1 {
+  margin: 0;
 }
 
 .admin-merchant-header__body h1 {
@@ -2534,6 +2554,231 @@ td.admin-table__actions {
   background: var(--color-surface-muted, #f7f4ef);
   padding: 0.1rem 0.45rem;
   border-radius: 6px;
+}
+
+.admin-section__lead {
+  margin: 0 0 1.25rem;
+  color: var(--color-text-muted, #5e5749);
+  font-size: 0.92rem;
+  line-height: 1.45;
+  max-width: 62ch;
+}
+
+.admin-merchant-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0;
+}
+
+.admin-merchant-facts__item {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 5.5rem;
+  padding: 1.15rem 1.25rem;
+  border: 1px solid var(--color-border, #e8e2d8);
+  border-radius: 14px;
+  background: var(--color-surface-muted, #f7f4ef);
+  box-sizing: border-box;
+}
+
+.admin-merchant-facts__item dt {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-subtle, #7a7262);
+}
+
+.admin-merchant-facts__item dd {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.35;
+  color: var(--color-text, #1a100c);
+  word-break: break-word;
+}
+
+.admin-merchant-type {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.admin-merchant-type__block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.admin-merchant-type__label {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-subtle, #7a7262);
+}
+
+.admin-merchant-type__cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.admin-merchant-type__card {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  width: 100%;
+  padding: 1.2rem 1.25rem;
+  border: 1px solid var(--color-border, #e8e2d8);
+  border-radius: 16px;
+  background: var(--color-surface, #fff);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.admin-merchant-type__card:hover {
+  border-color: color-mix(in srgb, var(--color-primary, #6b2e14) 35%, var(--color-border, #e8e2d8));
+  background: var(--color-surface-hover, #f3efe8);
+}
+
+.admin-merchant-type__card.is-selected {
+  border-color: var(--color-primary, #6b2e14);
+  background: color-mix(in srgb, var(--color-primary, #6b2e14) 8%, var(--color-surface, #fff));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary, #6b2e14) 35%, transparent);
+}
+
+.admin-merchant-type__card-icon {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 12px;
+  flex-shrink: 0;
+  background: var(--color-primary-subtle, #f8f0e8);
+  color: var(--color-primary, #6b2e14);
+  font-size: 1.1rem;
+}
+
+.admin-merchant-type__card.is-selected .admin-merchant-type__card-icon {
+  background: var(--color-primary, #6b2e14);
+  color: #fff;
+}
+
+.admin-merchant-type__card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  padding-top: 0.1rem;
+}
+
+.admin-merchant-type__card-copy strong {
+  font-size: 1.02rem;
+  color: var(--color-text, #1a100c);
+}
+
+.admin-merchant-type__card-copy span {
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--color-text-muted, #5e5749);
+}
+
+.admin-merchant-type__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.admin-merchant-type__chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.4rem;
+  padding: 0.45rem 1rem;
+  border: 1px solid var(--color-border, #e8e2d8);
+  border-radius: 999px;
+  background: var(--color-surface, #fff);
+  color: var(--color-text-muted, #5e5749);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.admin-merchant-type__chip:hover {
+  border-color: color-mix(in srgb, var(--color-primary, #6b2e14) 40%, var(--color-border, #e8e2d8));
+  color: var(--color-text, #1a100c);
+}
+
+.admin-merchant-type__chip.is-selected {
+  border-color: var(--color-primary, #6b2e14);
+  background: var(--color-primary, #6b2e14);
+  color: #fff;
+}
+
+.admin-merchant-type__fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.45rem 0;
+  align-items: stretch;
+}
+
+.admin-merchant-type__fields .admin-field-label {
+  margin: 0.55rem 0 0;
+}
+
+.admin-merchant-type__fields .admin-field-label:first-child {
+  margin-top: 0;
+}
+
+.admin-merchant-type__fields .admin-inline-editor__input {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.75rem 0.95rem;
+  box-sizing: border-box;
+}
+
+.admin-merchant-type__actions {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: 0.25rem;
+}
+
+.admin-merchant-header + .admin-section,
+.admin-section + .admin-section {
+  margin-top: 1.15rem;
+}
+
+@media (max-width: 860px) {
+  .admin-merchant-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem;
+  }
+
+  .admin-merchant-type__cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .admin-merchant-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-merchant-facts__item {
+    min-height: 0;
+    padding: 1rem 1.1rem;
+  }
 }
 
 /* Admin settings page -------------------------------------------- */
@@ -4702,6 +4947,14 @@ td.admin-table__actions {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
+}
+
+.admin-table td.admin-table__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
 }
 
 .admin-catalog-thumb {

@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { motion } from "motion/react";
 import { apiFetch, ApiError } from "@/lib/api";
 import { confirmAction } from "@/lib/alerts";
-import { apiRoutes } from "@/lib/config";
+import { apiRoutes, resolveAssetUrl } from "@/lib/config";
 import { MotionFade } from "@/components/app/MotionList";
 import { Skeleton } from "@/components/app/Skeleton";
 import { staggerContainer, staggerItem } from "@/lib/motion";
@@ -16,6 +16,7 @@ import type {
   AdminMerchantChannel,
   AdminMerchantDetail,
   AdminMerchantDetailResponse,
+  AdminMerchantProfileResponse,
   AdminMerchantSectionsResponse,
   AdminResetUserPasswordResponse,
   AdminSendPasswordResetLinkResponse,
@@ -34,6 +35,13 @@ import {
   type UserInviteLookupState,
 } from "@/components/app/UserInviteEmailLookup";
 import type { UserInviteLookupResult } from "@/lib/types";
+import {
+  categoriesForStoreType,
+  parseStoreType,
+  STORE_TYPES,
+  storeTypeLabel,
+  type StoreType,
+} from "@/lib/onboarding";
 
 function formatDate(value: string | null): string {
   if (!value) return "—";
@@ -118,6 +126,14 @@ export default function AdminMerchantDetailPage() {
   const [inviteSendEmail, setInviteSendEmail] = useState(true);
   const [inviteLookup, setInviteLookup] =
     useState<UserInviteLookupState>(EMPTY_INVITE_LOOKUP);
+  const [profileName, setProfileName] = useState("");
+  const [profileLocation, setProfileLocation] = useState("");
+  const [profileStoreType, setProfileStoreType] =
+    useState<StoreType>("retail");
+  const [profileCategory, setProfileCategory] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileSuccess, setProfileSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     if (!merchantId) return;
@@ -127,6 +143,10 @@ export default function AdminMerchantDetailPage() {
       .then((res) => {
         if (cancelled) return;
         setMerchant(res.data);
+        setProfileName(res.data.business_name);
+        setProfileLocation(res.data.business_location || "");
+        setProfileStoreType(parseStoreType(res.data.store_type));
+        setProfileCategory(res.data.business_category || "");
         setError(null);
       })
       .catch((err: unknown) => {
@@ -168,6 +188,88 @@ export default function AdminMerchantDetailPage() {
       cancelled = true;
     };
   }, [merchantId]);
+
+  const categoryOptions = useMemo(() => {
+    const allowed = categoriesForStoreType(profileStoreType);
+    return Array.from(
+      new Set([
+        ...allowed,
+        ...(profileCategory ? [profileCategory] : []),
+      ]),
+    );
+  }, [profileCategory, profileStoreType]);
+
+  const profileDirty = useMemo(() => {
+    if (!merchant) return false;
+    return (
+      profileName.trim() !== merchant.business_name ||
+      profileLocation.trim() !== (merchant.business_location || "") ||
+      profileStoreType !== parseStoreType(merchant.store_type) ||
+      profileCategory.trim() !== (merchant.business_category || "")
+    );
+  }, [
+    merchant,
+    profileCategory,
+    profileLocation,
+    profileName,
+    profileStoreType,
+  ]);
+
+  function chooseStoreType(next: StoreType) {
+    setProfileStoreType(next);
+    const allowed = categoriesForStoreType(next);
+    if (!allowed.includes(profileCategory as (typeof allowed)[number])) {
+      setProfileCategory(allowed[0]);
+    }
+    setProfileError(null);
+    setProfileSuccess(null);
+  }
+
+  async function saveMerchantProfile(e: React.FormEvent) {
+    e.preventDefault();
+    if (!merchantId) return;
+    const name = profileName.trim();
+    const category = profileCategory.trim();
+    if (!name) {
+      setProfileError("Business name is required.");
+      return;
+    }
+    if (!category) {
+      setProfileError("Choose what this merchant sells.");
+      return;
+    }
+    setProfileSaving(true);
+    setProfileError(null);
+    setProfileSuccess(null);
+    try {
+      const res = await apiFetch<AdminMerchantProfileResponse>(
+        apiRoutes.adminMerchantProfile(merchantId),
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            business_name: name,
+            business_location: profileLocation.trim(),
+            business_category: category,
+            store_type: profileStoreType,
+          }),
+        },
+      );
+      setMerchant(res.data);
+      setProfileName(res.data.business_name);
+      setProfileLocation(res.data.business_location || "");
+      setProfileStoreType(parseStoreType(res.data.store_type));
+      setProfileCategory(res.data.business_category || "");
+      setProfileSuccess(res.message);
+    } catch (err: unknown) {
+      setProfileError(
+        err instanceof ApiError
+          ? err.message
+          : "Could not save merchant profile.",
+      );
+    } finally {
+      setProfileSaving(false);
+    }
+  }
 
   function resetInviteForm() {
     setInviteName("");
@@ -404,12 +506,37 @@ export default function AdminMerchantDetailPage() {
               className="admin-merchant-header__avatar"
               aria-hidden="true"
             >
-              <i className="fas fa-store" />
+              {merchant.logo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={resolveAssetUrl(merchant.logo_url) || ""}
+                  alt=""
+                  className="admin-merchant-header__logo"
+                />
+              ) : (
+                <i className="fas fa-store" />
+              )}
             </span>
             <div className="admin-merchant-header__body">
-              <h1>{merchant.business_name}</h1>
+              <div className="admin-merchant-header__title-row">
+                <h1>{merchant.business_name}</h1>
+                <span className="admin-pill admin-pill--neutral">
+                  <i
+                    className={`fas ${
+                      parseStoreType(merchant.store_type) === "restaurant"
+                        ? "fa-utensils"
+                        : "fa-store"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  {storeTypeLabel(merchant.store_type)}
+                </span>
+              </div>
               <p>
-                {merchant.business_category} · {merchant.business_location}
+                {merchant.business_category || "Category not set"}
+                {merchant.business_location
+                  ? ` · ${merchant.business_location}`
+                  : ""}
               </p>
               <div className="admin-merchant-header__meta">
                 <span>
@@ -419,6 +546,11 @@ export default function AdminMerchantDetailPage() {
                 <span>
                   <i className="fas fa-calendar-plus" aria-hidden="true" />{" "}
                   Joined {formatDate(merchant.created_at)}
+                </span>
+                <span>
+                  <i className="fas fa-users" aria-hidden="true" />{" "}
+                  {merchant.users.length} user
+                  {merchant.users.length === 1 ? "" : "s"}
                 </span>
                 {merchant.instagram_connected ? (
                   <span className="admin-pill admin-pill--success">
@@ -435,6 +567,194 @@ export default function AdminMerchantDetailPage() {
               </div>
             </div>
           </header>
+
+          <section className="admin-section">
+            <header className="admin-section__head">
+              <h2 className="admin-section__title">Merchant overview</h2>
+              <span className="admin-chip">
+                <i className="fas fa-id-card" aria-hidden="true" />
+                Profile
+              </span>
+            </header>
+
+            <dl className="admin-merchant-facts">
+              <div className="admin-merchant-facts__item">
+                <dt>Store type</dt>
+                <dd>{storeTypeLabel(merchant.store_type)}</dd>
+              </div>
+              <div className="admin-merchant-facts__item">
+                <dt>What they sell</dt>
+                <dd>{merchant.business_category || "—"}</dd>
+              </div>
+              <div className="admin-merchant-facts__item">
+                <dt>Location</dt>
+                <dd>{merchant.business_location || "—"}</dd>
+              </div>
+              <div className="admin-merchant-facts__item">
+                <dt>Coordinates</dt>
+                <dd>
+                  {merchant.latitude != null && merchant.longitude != null
+                    ? `${merchant.latitude.toFixed(5)}, ${merchant.longitude.toFixed(5)}`
+                    : "Not set"}
+                </dd>
+              </div>
+              <div className="admin-merchant-facts__item">
+                <dt>Team</dt>
+                <dd>
+                  {merchant.users.length} registered user
+                  {merchant.users.length === 1 ? "" : "s"}
+                </dd>
+              </div>
+              <div className="admin-merchant-facts__item">
+                <dt>Last updated</dt>
+                <dd>{formatDate(merchant.updated_at)}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="admin-section">
+            <header className="admin-section__head">
+              <h2 className="admin-section__title">Merchant type</h2>
+              <span className="admin-chip">
+                <i className="fas fa-tags" aria-hidden="true" />
+                What they sell
+              </span>
+            </header>
+            <p className="admin-section__lead">
+              Choose how this shop operates, then pick the category that best
+              matches what they sell.
+            </p>
+
+            <form
+              className="admin-merchant-type"
+              onSubmit={(e) => void saveMerchantProfile(e)}
+            >
+              <div className="admin-merchant-type__block">
+                <h3 className="admin-merchant-type__label">Store type</h3>
+                <div
+                  className="admin-merchant-type__cards"
+                  role="radiogroup"
+                  aria-label="Store type"
+                >
+                  {STORE_TYPES.map((option) => {
+                    const selected = profileStoreType === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        className={`admin-merchant-type__card${
+                          selected ? " is-selected" : ""
+                        }`}
+                        onClick={() => chooseStoreType(option.value)}
+                      >
+                        <span
+                          className="admin-merchant-type__card-icon"
+                          aria-hidden="true"
+                        >
+                          <i className={`fas ${option.icon}`} />
+                        </span>
+                        <span className="admin-merchant-type__card-copy">
+                          <strong>{option.label}</strong>
+                          <span>{option.description}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="admin-merchant-type__block">
+                <h3 className="admin-merchant-type__label">What they sell</h3>
+                <div
+                  className="admin-merchant-type__chips"
+                  role="radiogroup"
+                  aria-label="Product category"
+                >
+                  {categoryOptions.map((option) => {
+                    const selected = profileCategory === option;
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        className={`admin-merchant-type__chip${
+                          selected ? " is-selected" : ""
+                        }`}
+                        onClick={() => {
+                          setProfileCategory(option);
+                          setProfileError(null);
+                          setProfileSuccess(null);
+                        }}
+                      >
+                        {option}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="admin-merchant-type__fields">
+                <label className="admin-field-label" htmlFor="merchant-name">
+                  Business name
+                </label>
+                <input
+                  id="merchant-name"
+                  className="admin-inline-editor__input"
+                  value={profileName}
+                  onChange={(e) => {
+                    setProfileName(e.target.value);
+                    setProfileError(null);
+                    setProfileSuccess(null);
+                  }}
+                  required
+                  maxLength={255}
+                />
+                <label
+                  className="admin-field-label"
+                  htmlFor="merchant-location"
+                >
+                  Location
+                </label>
+                <input
+                  id="merchant-location"
+                  className="admin-inline-editor__input"
+                  value={profileLocation}
+                  onChange={(e) => {
+                    setProfileLocation(e.target.value);
+                    setProfileError(null);
+                    setProfileSuccess(null);
+                  }}
+                  maxLength={255}
+                  placeholder="City, area, or address"
+                />
+              </div>
+
+              {profileError ? (
+                <p className="admin-error" role="alert">
+                  {profileError}
+                </p>
+              ) : null}
+              {profileSuccess ? (
+                <p className="admin-pill admin-pill--success">
+                  <i className="fas fa-check" aria-hidden="true" />
+                  {profileSuccess}
+                </p>
+              ) : null}
+
+              <div className="admin-merchant-type__actions">
+                <button
+                  type="submit"
+                  className="admin-btn admin-btn--primary"
+                  disabled={profileSaving || !profileDirty}
+                >
+                  {profileSaving ? "Saving…" : "Save merchant type"}
+                </button>
+              </div>
+            </form>
+          </section>
 
           <section className="admin-section">
             <header className="admin-section__head">

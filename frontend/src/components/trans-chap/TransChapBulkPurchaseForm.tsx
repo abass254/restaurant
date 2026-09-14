@@ -2,11 +2,14 @@
 
 import { FormEvent, useEffect, useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useOptionalAuthUser } from "@/components/app/AuthProvider";
 import { TransChapBarcodeScannerSheet } from "@/components/trans-chap/TransChapBarcodeScannerSheet";
+import { TransChapSupplierField } from "@/components/trans-chap/TransChapSupplierField";
 import { showError, showInternalError, toastSuccess } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { findInventoryByBarcode } from "@/lib/barcode";
 import { apiRoutes } from "@/lib/config";
+import { isRestaurantStore } from "@/lib/onboarding";
 import {
   addLiteInventoryProduct,
   findInventoryByName,
@@ -17,7 +20,7 @@ import {
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import type { InventoryItem, InventoryResponse, InventoryRole } from "@/lib/types";
 
-const ROLE_OPTIONS: { id: InventoryRole; label: string; hint: string }[] = [
+const ALL_ROLE_OPTIONS: { id: InventoryRole; label: string; hint: string }[] = [
   {
     id: "both",
     label: "Buy & sell",
@@ -46,6 +49,11 @@ function newLineKey(): string {
 
 export function TransChapBulkPurchaseForm() {
   const router = useRouter();
+  const user = useOptionalAuthUser();
+  const restaurant = isRestaurantStore(user?.active_account ?? user?.account);
+  const roleOptions = restaurant
+    ? ALL_ROLE_OPTIONS
+    : ALL_ROLE_OPTIONS.filter((option) => option.id !== "raw_material");
   const formId = useId();
   const [product, setProduct] = useState("");
   const [barcode, setBarcode] = useState("");
@@ -244,7 +252,7 @@ export function TransChapBulkPurchaseForm() {
     }
   }
 
-  const roleHint = ROLE_OPTIONS.find((option) => option.id === role)?.hint;
+  const roleHint = roleOptions.find((option) => option.id === role)?.hint;
 
   return (
     <>
@@ -257,21 +265,13 @@ export function TransChapBulkPurchaseForm() {
           once. New items are created; existing stock is topped up.
         </p>
 
-        <div className="auth-split__field">
-          <label htmlFor={`${formId}-supplier`}>Supplier</label>
-          <div className="trans-chap-input">
-            <input
-              id={`${formId}-supplier`}
-              type="text"
-              autoComplete="organization"
-              placeholder="Optional — applies to this whole purchase"
-              className="auth-split__input"
-              value={supplier}
-              disabled={saving}
-              onChange={(event) => setSupplier(event.target.value)}
-            />
-          </div>
-        </div>
+        <TransChapSupplierField
+          id={`${formId}-supplier`}
+          value={supplier}
+          disabled={saving}
+          placeholder="Optional — applies to this whole purchase"
+          onChange={setSupplier}
+        />
 
         <div className="trans-chap-bulk-entry">
           <div className="trans-chap-bulk-entry__row">
@@ -326,26 +326,28 @@ export function TransChapBulkPurchaseForm() {
               </div>
             </div>
 
-            <div className="auth-split__field trans-chap-bulk-entry__role">
-              <label htmlFor={`${formId}-role`}>Buy as</label>
-              <div className="trans-chap-input trans-chap-bulk-entry__select-wrap">
-                <select
-                  id={`${formId}-role`}
-                  className="auth-split__input trans-chap-bulk-entry__select"
-                  value={role}
-                  disabled={saving}
-                  onChange={(event) =>
-                    setRole(event.target.value as InventoryRole)
-                  }
-                >
-                  {ROLE_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+            {roleOptions.length > 1 ? (
+              <div className="auth-split__field trans-chap-bulk-entry__role">
+                <label htmlFor={`${formId}-role`}>Buy as</label>
+                <div className="trans-chap-input trans-chap-bulk-entry__select-wrap">
+                  <select
+                    id={`${formId}-role`}
+                    className="auth-split__input trans-chap-bulk-entry__select"
+                    value={role}
+                    disabled={saving}
+                    onChange={(event) =>
+                      setRole(event.target.value as InventoryRole)
+                    }
+                  >
+                    {roleOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
+            ) : null}
 
             <div className="auth-split__field trans-chap-bulk-entry__qty">
               <label htmlFor={`${formId}-qty`}>Quantity</label>
@@ -411,10 +413,12 @@ export function TransChapBulkPurchaseForm() {
           ) : null}
           {matchedHotel ? (
             <p className="trans-chap-form__hint">
-              That matches a hotel menu dish — use Hotel menu instead.
+              {restaurant
+                ? "That matches a hotel menu dish — use Hotel menu instead."
+                : "That product can’t be bought here."}
             </p>
           ) : null}
-          {!matched && !matchedHotel ? (
+          {!matched && !matchedHotel && roleOptions.length > 1 ? (
             <p className="trans-chap-form__hint">{roleHint}</p>
           ) : null}
         </div>

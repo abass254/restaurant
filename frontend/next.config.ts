@@ -21,6 +21,13 @@ function lanDevOrigins(): string[] {
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: lanDevOrigins(),
+  env: {
+    // Expose shared root .env UPLOADS_PUBLIC_BASE_URL to the browser bundle.
+    NEXT_PUBLIC_UPLOADS_PUBLIC_BASE_URL:
+      process.env.NEXT_PUBLIC_UPLOADS_PUBLIC_BASE_URL ||
+      process.env.UPLOADS_PUBLIC_BASE_URL ||
+      "",
+  },
   turbopack: {
     root: __dirname,
   },

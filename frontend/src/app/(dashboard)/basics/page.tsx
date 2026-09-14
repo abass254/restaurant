@@ -7,7 +7,7 @@ import { useAuthRefresh, useAuthUser } from "@/components/app/AuthProvider";
 import { apiFetch } from "@/lib/api";
 import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes, resolveAssetUrl } from "@/lib/config";
-import { RETAIL_BUSINESS_CATEGORIES } from "@/lib/onboarding";
+import { categoriesForStoreType, parseStoreType, STORE_TYPES } from "@/lib/onboarding";
 
 export default function BasicsPage() {
   const user = useAuthUser();
@@ -17,6 +17,7 @@ export default function BasicsPage() {
 
   const [name, setName] = useState(business?.business_name ?? "");
   const [category, setCategory] = useState(business?.business_category ?? "");
+  const [storeType, setStoreType] = useState(parseStoreType(business?.store_type));
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [removingLogo, setRemovingLogo] = useState(false);
@@ -24,7 +25,8 @@ export default function BasicsPage() {
   useEffect(() => {
     setName(business?.business_name ?? "");
     setCategory(business?.business_category ?? "");
-  }, [business?.business_name, business?.business_category]);
+    setStoreType(parseStoreType(business?.store_type));
+  }, [business?.business_name, business?.business_category, business?.store_type]);
 
   async function handleSaveProfile(event: FormEvent) {
     event.preventDefault();
@@ -46,6 +48,7 @@ export default function BasicsPage() {
         body: JSON.stringify({
           business_name: trimmedName,
           business_category: trimmedCategory,
+          store_type: storeType,
         }),
       });
       await refreshUser();
@@ -95,7 +98,7 @@ export default function BasicsPage() {
   const logoUrl = business?.logo_url ? resolveAssetUrl(business.logo_url) : null;
   const categoryOptions = Array.from(
     new Set([
-      ...RETAIL_BUSINESS_CATEGORIES,
+      ...categoriesForStoreType(storeType),
       ...(business?.business_category ? [business.business_category] : []),
     ]),
   );
@@ -106,7 +109,7 @@ export default function BasicsPage() {
         <div>
           <h1 className="settings-shell__title">Basics</h1>
           <p className="settings-shell__lead">
-            Update your store name, category, logo, location, and how DukAI
+            Update your store name, type, category, logo, location, and how DukAI
             pays you. Store location is optional until you connect the rider app.
           </p>
         </div>
@@ -140,7 +143,28 @@ export default function BasicsPage() {
                   />
                 </label>
                 <label className="settings-field">
-                  <span>Category</span>
+                  <span>Store type</span>
+                  <select
+                    value={storeType}
+                    onChange={(e) => {
+                      const next = parseStoreType(e.target.value);
+                      setStoreType(next);
+                      const allowed = categoriesForStoreType(next);
+                      if (!allowed.includes(category as (typeof allowed)[number])) {
+                        setCategory(allowed[0]);
+                      }
+                    }}
+                    required
+                  >
+                    {STORE_TYPES.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="settings-field">
+                  <span>What they sell</span>
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}

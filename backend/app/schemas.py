@@ -15,6 +15,7 @@ class AccountOut(BaseModel):
     business_name: str
     business_location: str
     business_category: str
+    store_type: str = "retail"
     logo_url: str | None = None
     latitude: float | None = None
     longitude: float | None = None

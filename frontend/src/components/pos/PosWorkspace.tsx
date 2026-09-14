@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api";
 import { apiRoutes, resolveAssetUrl } from "@/lib/config";
 import { usePlatformRuntime } from "@/lib/platform-runtime";
 import {
+  confirmAction,
   extractErrorMessage,
   showError,
   showInternalError,
@@ -98,6 +99,130 @@ type CartLine = {
   image_url: string | null;
 };
 
+type PosHeldSession = {
+  id: string;
+  label: string;
+  cart: CartLine[];
+  source: OrderSource;
+  fulfillment: OrderFulfillmentType;
+  paymentMethod: OrderPaymentMethod | "";
+  customerName: string;
+  customerPhone: string;
+  selectedCustomerId: string;
+  deliveryAddress: string;
+  deliveryCoords: { lat: number; lng: number } | null;
+  deliveryNotes: string;
+  deliveryFee: string;
+  discount: string;
+  notes: string;
+  updatedAt: number;
+};
+
+const MAX_HELD_SESSIONS = 8;
+
+function newHeldSessionId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `held-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function cartItemCount(cart: CartLine[]): number {
+  return cart.reduce((sum, line) => sum + line.quantity, 0);
+}
+
+function cartSubtotal(cart: CartLine[]): number {
+  return cart.reduce((sum, line) => sum + line.unit_price * line.quantity, 0);
+}
+
+function labelForHeldSession(input: {
+  customerName: string;
+  customerPhone: string;
+  cart: CartLine[];
+}): string {
+  const name = input.customerName.trim();
+  if (name) return name;
+  const phone = input.customerPhone.trim();
+  if (phone) return phone;
+  const count = cartItemCount(input.cart);
+  return count === 1 ? "1 item" : `${count} items`;
+}
+
+function isCartLine(value: unknown): value is CartLine {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Record<string, unknown>;
+  return (
+    typeof row.inventoryItemId === "string" &&
+    typeof row.name === "string" &&
+    typeof row.unit_price === "number" &&
+    typeof row.quantity === "number"
+  );
+}
+
+function parseHeldSessions(raw: string | null): PosHeldSession[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const sessions: PosHeldSession[] = [];
+    for (const entry of parsed) {
+      if (!entry || typeof entry !== "object") continue;
+      const row = entry as Record<string, unknown>;
+      if (typeof row.id !== "string" || !Array.isArray(row.cart)) continue;
+      const cart = row.cart.filter(isCartLine);
+      if (cart.length === 0) continue;
+      const customerName =
+        typeof row.customerName === "string" ? row.customerName : "";
+      const customerPhone =
+        typeof row.customerPhone === "string" ? row.customerPhone : "";
+      sessions.push({
+        id: row.id,
+        label:
+          typeof row.label === "string" && row.label.trim()
+            ? row.label
+            : labelForHeldSession({ customerName, customerPhone, cart }),
+        cart,
+        source: typeof row.source === "string" ? (row.source as OrderSource) : "walkin",
+        fulfillment:
+          typeof row.fulfillment === "string"
+            ? (row.fulfillment as OrderFulfillmentType)
+            : "pickup",
+        paymentMethod:
+          typeof row.paymentMethod === "string"
+            ? (row.paymentMethod as OrderPaymentMethod | "")
+            : "",
+        customerName,
+        customerPhone,
+        selectedCustomerId:
+          typeof row.selectedCustomerId === "string" ? row.selectedCustomerId : "",
+        deliveryAddress:
+          typeof row.deliveryAddress === "string" ? row.deliveryAddress : "",
+        deliveryCoords:
+          row.deliveryCoords &&
+          typeof row.deliveryCoords === "object" &&
+          typeof (row.deliveryCoords as { lat?: unknown }).lat === "number" &&
+          typeof (row.deliveryCoords as { lng?: unknown }).lng === "number"
+            ? {
+                lat: (row.deliveryCoords as { lat: number }).lat,
+                lng: (row.deliveryCoords as { lng: number }).lng,
+              }
+            : null,
+        deliveryNotes:
+          typeof row.deliveryNotes === "string" ? row.deliveryNotes : "",
+        deliveryFee: typeof row.deliveryFee === "string" ? row.deliveryFee : "",
+        discount: typeof row.discount === "string" ? row.discount : "",
+        notes: typeof row.notes === "string" ? row.notes : "",
+        updatedAt:
+          typeof row.updatedAt === "number" ? row.updatedAt : Date.now(),
+      });
+      if (sessions.length >= MAX_HELD_SESSIONS) break;
+    }
+    return sessions;
+  } catch {
+    return [];
+  }
+}
+
 function nameInitial(name: string | null | undefined): string {
   if (!name) return "?";
   const ch = name.trim().charAt(0);
@@ -120,6 +245,14 @@ function maxCartQty(item: InventoryItem): number | null {
   const stock = item.stock_quantity;
   if (stock == null || stock <= 0) return 0;
   return stock;
+}
+
+/** On-hand units still free to sell (stock minus what's already in the cart). */
+function availableToSell(item: InventoryItem, inCartQty: number): number | null {
+  if (isServiceItem(item)) return null;
+  const stock = item.stock_quantity;
+  if (stock == null) return null;
+  return Math.max(0, stock - Math.max(0, inCartQty));
 }
 
 export function PosWorkspace({
@@ -180,9 +313,25 @@ export function PosWorkspace({
   const [submitting, setSubmitting] = useState(false);
   const [autoPrintReceipt, setAutoPrintReceipt] = useState(true);
   const [quickAddQty, setQuickAddQty] = useState(1);
+  const [heldSessions, setHeldSessions] = useState<PosHeldSession[]>([]);
+  const [heldHydrated, setHeldHydrated] = useState(false);
 
   const AUTO_PRINT_STORAGE_KEY = "pos:auto_print_receipt";
   const QUICK_ADD_QTY_STORAGE_KEY = "pos:quick_add_qty";
+  const HELD_SESSIONS_STORAGE_KEY = `pos:held_sessions:${salesProfile}`;
+
+  const heldQtyByItemId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const session of heldSessions) {
+      for (const line of session.cart) {
+        map.set(
+          line.inventoryItemId,
+          (map.get(line.inventoryItemId) ?? 0) + line.quantity,
+        );
+      }
+    }
+    return map;
+  }, [heldSessions]);
 
   const reload = useCallback(async (opts?: { silent?: boolean; q?: string }) => {
     const requestId = ++inventoryRequestId.current;
@@ -269,6 +418,29 @@ export function PosWorkspace({
     }
   }, []);
 
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem(HELD_SESSIONS_STORAGE_KEY);
+      setHeldSessions(parseHeldSessions(raw));
+    } catch {
+      setHeldSessions([]);
+    } finally {
+      setHeldHydrated(true);
+    }
+  }, [HELD_SESSIONS_STORAGE_KEY]);
+
+  useEffect(() => {
+    if (!heldHydrated) return;
+    try {
+      window.sessionStorage.setItem(
+        HELD_SESSIONS_STORAGE_KEY,
+        JSON.stringify(heldSessions),
+      );
+    } catch {
+      // Ignore storage access failures; held sales still work this session.
+    }
+  }, [HELD_SESSIONS_STORAGE_KEY, heldHydrated, heldSessions]);
+
   function handleAutoPrintChange(next: boolean) {
     setAutoPrintReceipt(next);
     try {
@@ -332,7 +504,10 @@ export function PosWorkspace({
       return;
     }
 
-    const cap = maxCartQty(item);
+    const heldQty = heldQtyByItemId.get(item.id) ?? 0;
+    const stockCap = maxCartQty(item);
+    const cap =
+      stockCap === null ? null : Math.max(0, stockCap - heldQty);
     let blocked = false;
     setCart((prev) => {
       const existing = prev.find((c) => c.inventoryItemId === item.id);
@@ -363,13 +538,13 @@ export function PosWorkspace({
       void showError(
         "Not enough stock",
         cap === 1
-          ? `Only 1 unit of "${item.product?.name ?? "this item"}" is available.`
-          : `Only ${cap} units of "${item.product?.name ?? "this item"}" are available.`,
+          ? `Only 1 unit of "${item.product?.name ?? "this item"}" is available${heldQty > 0 ? " (some are on a held sale)" : ""}.`
+          : `Only ${cap} units of "${item.product?.name ?? "this item"}" are available${heldQty > 0 ? " after held sales" : ""}.`,
       );
       return;
     }
     flashPulse(item.id);
-  }, [priceEditEnabled, quickAddQty]);
+  }, [heldQtyByItemId, priceEditEnabled, quickAddQty]);
 
   useEffect(() => {
     function isEditableElement(el: Element | null): boolean {
@@ -472,7 +647,10 @@ export function PosWorkspace({
 
   function changeQuantity(inventoryItemId: string, delta: number) {
     const item = itemsById.get(inventoryItemId);
-    const cap = item ? maxCartQty(item) : null;
+    const stockCap = item ? maxCartQty(item) : null;
+    const heldQty = heldQtyByItemId.get(inventoryItemId) ?? 0;
+    const cap =
+      stockCap === null ? null : Math.max(0, stockCap - heldQty);
     setCart((prev) =>
       prev
         .map((c) => {
@@ -487,7 +665,10 @@ export function PosWorkspace({
 
   function setQuantity(inventoryItemId: string, value: string) {
     const item = itemsById.get(inventoryItemId);
-    const cap = item ? maxCartQty(item) : null;
+    const stockCap = item ? maxCartQty(item) : null;
+    const heldQty = heldQtyByItemId.get(inventoryItemId) ?? 0;
+    const cap =
+      stockCap === null ? null : Math.max(0, stockCap - heldQty);
     let next = Math.max(0, Math.floor(Number(value) || 0));
     if (cap !== null) next = Math.min(next, cap);
     setCart((prev) =>
@@ -526,6 +707,107 @@ export function PosWorkspace({
     setNotes("");
     setPaymentMethod(isTransChapSale ? "mpesa" : "");
     setSelectedCustomerId("");
+    if (!isTransChapSale) {
+      setSource("walkin");
+      setFulfillment("pickup");
+    }
+  }
+
+  function snapshotCurrentSale(): PosHeldSession {
+    return {
+      id: newHeldSessionId(),
+      label: labelForHeldSession({ customerName, customerPhone, cart }),
+      cart: cart.map((line) => ({ ...line })),
+      source,
+      fulfillment,
+      paymentMethod,
+      customerName,
+      customerPhone,
+      selectedCustomerId,
+      deliveryAddress,
+      deliveryCoords,
+      deliveryNotes,
+      deliveryFee,
+      discount,
+      notes,
+      updatedAt: Date.now(),
+    };
+  }
+
+  function applyHeldSession(session: PosHeldSession) {
+    setCart(session.cart.map((line) => ({ ...line })));
+    setSource(isTransChapSale ? "walkin" : session.source);
+    setFulfillment(isTransChapSale ? "pickup" : session.fulfillment);
+    setPaymentMethod(
+      isTransChapSale
+        ? session.paymentMethod &&
+          TRANSCHAP_PAYMENT_METHODS.includes(session.paymentMethod)
+          ? session.paymentMethod
+          : "mpesa"
+        : session.paymentMethod,
+    );
+    setCustomerName(session.customerName);
+    setCustomerPhone(session.customerPhone);
+    setSelectedCustomerId(session.selectedCustomerId);
+    setDeliveryAddress(session.deliveryAddress);
+    setDeliveryCoords(session.deliveryCoords);
+    setDeliveryNotes(session.deliveryNotes);
+    setDeliveryFee(session.deliveryFee);
+    setDiscount(session.discount);
+    setNotes(session.notes);
+  }
+
+  async function holdCurrentSale() {
+    if (cart.length === 0) {
+      await showError(
+        "Nothing to hold",
+        "Add items to the current sale before holding it.",
+      );
+      return;
+    }
+    if (heldSessions.length >= MAX_HELD_SESSIONS) {
+      await showError(
+        "Too many held sales",
+        `Resume or discard one of the ${MAX_HELD_SESSIONS} held sales first.`,
+      );
+      return;
+    }
+    const snapshot = snapshotCurrentSale();
+    setHeldSessions((prev) => [...prev, snapshot]);
+    clearCart();
+    void toastSuccess(`Held “${snapshot.label}”`);
+  }
+
+  async function resumeHeldSale(sessionId: string) {
+    const session = heldSessions.find((row) => row.id === sessionId);
+    if (!session) return;
+
+    if (cart.length > 0) {
+      const snapshot = snapshotCurrentSale();
+      setHeldSessions((prev) => [
+        ...prev.filter((row) => row.id !== sessionId),
+        snapshot,
+      ]);
+      applyHeldSession(session);
+      void toastSuccess(`Resumed “${session.label}” · held “${snapshot.label}”`);
+      return;
+    }
+
+    setHeldSessions((prev) => prev.filter((row) => row.id !== sessionId));
+    applyHeldSession(session);
+    void toastSuccess(`Resumed “${session.label}”`);
+  }
+
+  async function discardHeldSale(sessionId: string) {
+    const session = heldSessions.find((row) => row.id === sessionId);
+    if (!session) return;
+    const confirmed = await confirmAction(
+      "Discard held sale?",
+      `Remove “${session.label}” from held sales? This cannot be undone.`,
+      "Discard",
+    );
+    if (!confirmed) return;
+    setHeldSessions((prev) => prev.filter((row) => row.id !== sessionId));
   }
 
   const selectedCustomer = useMemo(
@@ -548,6 +830,97 @@ export function PosWorkspace({
       setDeliveryAddress(customer.address);
     }
   }
+
+  const creditNeedsCustomer = paymentMethod === "credit";
+  const showWalkInPhone =
+    !selectedCustomerId &&
+    (paymentMethod === "mpesa" ||
+      (!isTransChapSale && paymentMethod !== "credit"));
+  const showSelectedPhone =
+    Boolean(selectedCustomerId) &&
+    (paymentMethod === "mpesa" || paymentMethod === "credit" || !isTransChapSale);
+  const customerFields = (
+    <div className="pos-fields pos-fields--customer pos-fields--customer-solo">
+      <label className="pos-customer-pick">
+        <span className="pos-label">
+          Customer
+          {creditNeedsCustomer ? " (required)" : ""}
+        </span>
+        <select
+          value={selectedCustomerId}
+          onChange={(event) => applyCustomer(event.target.value)}
+          aria-label="Customer"
+          aria-required={creditNeedsCustomer}
+          className={
+            creditNeedsCustomer && !selectedCustomerId
+              ? "pos-input--required"
+              : undefined
+          }
+        >
+          <option value="">
+            {creditNeedsCustomer
+              ? customers.length > 0
+                ? "Select a customer…"
+                : "No customers saved yet"
+              : "Walk-in (optional)"}
+          </option>
+          {customers.map((customer) => (
+            <option key={customer.id} value={customer.id}>
+              {customer.name} · {customer.phone}
+            </option>
+          ))}
+        </select>
+      </label>
+      {creditNeedsCustomer && customers.length === 0 ? (
+        <p className="pos-customer-credit">
+          Add customers under Customers before selling on credit.
+        </p>
+      ) : null}
+      {showWalkInPhone ? (
+        <input
+          type="tel"
+          value={customerPhone}
+          onChange={(e) => setCustomerPhone(e.target.value)}
+          placeholder={
+            paymentMethod === "mpesa"
+              ? "M-PESA phone (required) · 2547…"
+              : "Phone (optional)"
+          }
+          aria-label={
+            paymentMethod === "mpesa" ? "M-PESA phone" : "Customer phone"
+          }
+          aria-required={paymentMethod === "mpesa"}
+          className={
+            paymentMethod === "mpesa" && !customerPhone.trim()
+              ? "pos-input--required"
+              : undefined
+          }
+        />
+      ) : null}
+      {showSelectedPhone ? (
+        <input
+          type="tel"
+          value={customerPhone}
+          onChange={(e) => setCustomerPhone(e.target.value)}
+          placeholder={
+            paymentMethod === "mpesa"
+              ? "M-PESA phone · 2547…"
+              : "Customer phone"
+          }
+          aria-label={
+            paymentMethod === "mpesa" ? "M-PESA phone" : "Customer phone"
+          }
+          readOnly={paymentMethod === "credit"}
+        />
+      ) : null}
+      {selectedCustomer && selectedCustomer.credit_limit > 0 ? (
+        <p className="pos-customer-credit">
+          Available credit {formatMoney(selectedCustomer.available_credit)} of{" "}
+          {formatMoney(selectedCustomer.credit_limit)}
+        </p>
+      ) : null}
+    </div>
+  );
 
   const itemCount = useMemo(
     () => cart.reduce((sum, c) => sum + c.quantity, 0),
@@ -700,17 +1073,19 @@ export function PosWorkspace({
       );
       return;
     }
-    if (paymentMethod === "credit" && !customerName.trim()) {
+    if (paymentMethod === "credit" && !selectedCustomerId) {
       await showError(
-        "Customer name required",
-        "Credit sales need the customer's name so we can put it on their tab.",
+        "Customer required",
+        customers.length > 0
+          ? "Pick a saved customer so we can put this sale on their tab."
+          : "Add a customer under Customers before selling on credit.",
       );
       return;
     }
     if (paymentMethod === "credit" && !customerPhone.trim()) {
       await showError(
         "Customer phone required",
-        "Credit sales need a phone number so we can find this customer next time.",
+        "The selected customer needs a phone number on file.",
       );
       return;
     }
@@ -910,7 +1285,8 @@ export function PosWorkspace({
         </div>
       ) : null}
       <div className="pos-grid">
-        {/* ── Catalog (left) ─────────────────────────────────────── */}
+        {/* ── Main: catalog + ticket ─────────────────────────────── */}
+        <div className="pos-main">
         <div className="pos-catalog">
           <header className="pos-catalog__head">
             <h1 className="pos-title">
@@ -1015,6 +1391,7 @@ export function PosWorkspace({
                 const coverUrl = item.product?.image_url ?? null;
                 const inCartQty =
                   cart.find((c) => c.inventoryItemId === item.id)?.quantity ?? 0;
+                const heldQty = heldQtyByItemId.get(item.id) ?? 0;
                 const isPulsing = pulseId === item.id;
                 const subtitleParts = [
                   item.product?.category,
@@ -1026,8 +1403,17 @@ export function PosWorkspace({
                 const canAdd =
                   (hasPrice || priceEditEnabled) && !outOfStock;
                 const stockCap = maxCartQty(item);
+                const effectiveCap =
+                  stockCap === null ? null : Math.max(0, stockCap - heldQty);
                 const atStockCap =
-                  stockCap !== null && inCartQty >= stockCap;
+                  effectiveCap !== null && inCartQty >= effectiveCap;
+                const availableQty = availableToSell(item, inCartQty + heldQty);
+                const stockIsLow =
+                  !outOfStock &&
+                  (item.is_low_stock ||
+                    (availableQty !== null &&
+                      item.low_stock_threshold != null &&
+                      availableQty <= item.low_stock_threshold));
                 return (
                   <motion.li
                     key={item.id}
@@ -1097,6 +1483,22 @@ export function PosWorkspace({
                               </span>
                             )}
                           </span>
+                          {isServiceItem(item) ? (
+                            <span className="pos-card__stock">Service</span>
+                          ) : outOfStock ? (
+                            <span className="pos-card__stock is-out">
+                              {item.stock_quantity == null
+                                ? "Stock not set"
+                                : `${item.stock_quantity} on hand`}
+                            </span>
+                          ) : availableQty !== null ? (
+                            <span
+                              className={`pos-card__stock${stockIsLow ? " is-low" : ""}`}
+                            >
+                              {`${availableQty} available`}
+                              {inCartQty > 0 ? ` · ${inCartQty} in order` : ""}
+                            </span>
+                          ) : null}
                         </div>
                       </button>
 
@@ -1122,7 +1524,7 @@ export function PosWorkspace({
                             <input
                               type="number"
                               min={0}
-                              max={stockCap ?? undefined}
+                              max={effectiveCap ?? undefined}
                               value={inCartQty}
                               onChange={(e) =>
                                 setQuantity(item.id, e.target.value)
@@ -1162,8 +1564,163 @@ export function PosWorkspace({
           </AnimatePresence>
         </div>
 
-        {/* ── Cart (right) ───────────────────────────────────────── */}
-        <aside className="pos-cart" aria-label="Current order">
+        <section
+          className={`pos-ticket${cart.length ? " has-lines" : ""}`}
+          aria-label="Order items"
+        >
+          {cart.length > 0 ? (
+            <div className="pos-cart__lines pos-ticket__lines">
+              <ul>
+                <AnimatePresence initial={false}>
+                  {cart.map((line) => {
+                    const lineTotal = line.unit_price * line.quantity;
+                    const stockItem = itemsById.get(line.inventoryItemId);
+                    const stockCap = stockItem ? maxCartQty(stockItem) : null;
+                    const heldQty = heldQtyByItemId.get(line.inventoryItemId) ?? 0;
+                    const effectiveCap =
+                      stockCap === null ? null : Math.max(0, stockCap - heldQty);
+                    const atStockCap =
+                      effectiveCap !== null && line.quantity >= effectiveCap;
+                    const showLinePriceEdit =
+                      priceEditEnabled && !isTransChapSale;
+                    return (
+                      <motion.li
+                        key={line.inventoryItemId}
+                        layout={!reduce}
+                        initial={
+                          reduce ? false : { opacity: 0, y: 6, scale: 0.98 }
+                        }
+                        animate={
+                          reduce
+                            ? undefined
+                            : { opacity: 1, y: 0, scale: 1 }
+                        }
+                        exit={
+                          reduce
+                            ? undefined
+                            : { opacity: 0, scale: 0.96, x: 8 }
+                        }
+                        transition={springSoft}
+                        className={`pos-line${
+                          showLinePriceEdit ? " pos-line--priced" : ""
+                        }${isTransChapSale ? " pos-line--simple" : ""}`}
+                      >
+                        {!isTransChapSale ? (
+                          <div className="pos-line__thumb" aria-hidden="true">
+                            {line.image_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={resolveAssetUrl(line.image_url)}
+                                alt=""
+                              />
+                            ) : (
+                              <span>{nameInitial(line.name)}</span>
+                            )}
+                          </div>
+                        ) : null}
+                        <div className="pos-line__main">
+                          <strong title={line.name}>{line.name}</strong>
+                          {!showLinePriceEdit && !isTransChapSale ? (
+                            <span>{formatMoney(line.unit_price)} ea</span>
+                          ) : null}
+                          {stockItem &&
+                          !isServiceItem(stockItem) &&
+                          !isTransChapSale ? (
+                            <span className="pos-line__stock">
+                              {stockItem.stock_quantity == null
+                                ? "Stock not set"
+                                : effectiveCap !== null
+                                  ? `${Math.max(0, effectiveCap - line.quantity)} of ${effectiveCap} left`
+                                  : null}
+                            </span>
+                          ) : null}
+                        </div>
+                        {showLinePriceEdit ? (
+                          <label className="pos-line__price-edit">
+                            <span className="pos-line__price-label">Price</span>
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={line.unit_price}
+                              onChange={(e) =>
+                                setUnitPrice(
+                                  line.inventoryItemId,
+                                  e.target.value,
+                                )
+                              }
+                              aria-label={`Unit price for ${line.name}`}
+                            />
+                          </label>
+                        ) : null}
+                        <div className="pos-line__qty">
+                          <button
+                            type="button"
+                            aria-label="Decrease quantity"
+                            onClick={() =>
+                              changeQuantity(line.inventoryItemId, -1)
+                            }
+                          >
+                            <i
+                              className="fa-solid fa-minus"
+                              aria-hidden="true"
+                            />
+                          </button>
+                          <input
+                            type="number"
+                            min={0}
+                            max={effectiveCap ?? undefined}
+                            value={line.quantity}
+                            onChange={(e) =>
+                              setQuantity(
+                                line.inventoryItemId,
+                                e.target.value,
+                              )
+                            }
+                            aria-label={`Quantity of ${line.name}`}
+                          />
+                          <button
+                            type="button"
+                            aria-label="Increase quantity"
+                            disabled={atStockCap}
+                            onClick={() =>
+                              changeQuantity(line.inventoryItemId, 1)
+                            }
+                          >
+                            <i
+                              className="fa-solid fa-plus"
+                              aria-hidden="true"
+                            />
+                          </button>
+                        </div>
+                        <div className="pos-line__total">
+                          <strong>{formatMoney(lineTotal)}</strong>
+                          <button
+                            type="button"
+                            className="pos-line__remove"
+                            aria-label={`Remove ${line.name}`}
+                            onClick={() =>
+                              removeLine(line.inventoryItemId)
+                            }
+                          >
+                            <i
+                              className="fa-solid fa-trash"
+                              aria-hidden="true"
+                            />
+                          </button>
+                        </div>
+                      </motion.li>
+                    );
+                  })}
+                </AnimatePresence>
+              </ul>
+            </div>
+          ) : null}
+        </section>
+        </div>
+
+        {/* ── Cart (right) — order meta only ─────────────────────── */}
+        <aside className="pos-cart pos-cart--meta" aria-label="Current order">
           <header className="pos-cart__head">
             <h2>
               <i className="fa-solid fa-receipt" aria-hidden="true" />
@@ -1172,17 +1729,78 @@ export function PosWorkspace({
                 {itemCount === 0 ? "empty" : `${itemCount}`}
               </span>
             </h2>
-            {cart.length > 0 ? (
-              <button
-                type="button"
-                className="pos-cart__reset"
-                onClick={clearCart}
-                title="Reset order"
-              >
-                <i className="fa-solid fa-rotate-left" aria-hidden="true" />
-              </button>
-            ) : null}
+            <div className="pos-cart__actions">
+              {cart.length > 0 ? (
+                <button
+                  type="button"
+                  className="pos-cart__hold"
+                  onClick={() => void holdCurrentSale()}
+                  title="Hold this sale and start a new one"
+                  disabled={submitting || Boolean(pendingMpesa)}
+                >
+                  <i className="fa-solid fa-pause" aria-hidden="true" />
+                  Hold
+                </button>
+              ) : null}
+              {cart.length > 0 ? (
+                <button
+                  type="button"
+                  className="pos-cart__reset"
+                  onClick={clearCart}
+                  title="Reset order"
+                  disabled={submitting}
+                >
+                  <i className="fa-solid fa-rotate-left" aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
           </header>
+
+          {heldSessions.length > 0 ? (
+            <div className="pos-held" aria-label="Held sales">
+              <div className="pos-held__label">
+                Held
+                <span>{heldSessions.length}</span>
+              </div>
+              <ul className="pos-held__list">
+                {heldSessions.map((session) => {
+                  const sessionCount = cartItemCount(session.cart);
+                  const sessionTotal = Math.max(
+                    0,
+                    cartSubtotal(session.cart) +
+                      (Number(session.deliveryFee) || 0) -
+                      (Number(session.discount) || 0),
+                  );
+                  return (
+                    <li key={session.id} className="pos-held__item">
+                      <button
+                        type="button"
+                        className="pos-held__resume"
+                        onClick={() => void resumeHeldSale(session.id)}
+                        disabled={submitting || Boolean(pendingMpesa)}
+                        title={`Resume “${session.label}”`}
+                      >
+                        <strong>{session.label}</strong>
+                        <span>
+                          {sessionCount} · {formatMoney(sessionTotal)}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="pos-held__discard"
+                        onClick={() => void discardHeldSale(session.id)}
+                        disabled={submitting || Boolean(pendingMpesa)}
+                        aria-label={`Discard held sale “${session.label}”`}
+                        title="Discard held sale"
+                      >
+                        <i className="fa-solid fa-xmark" aria-hidden="true" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
 
           <div className="pos-cart__body">
             {isTransChapSale ? (
@@ -1235,87 +1853,7 @@ export function PosWorkspace({
               </>
             )}
 
-            <div
-              className={`pos-fields pos-fields--customer${
-                isTransChapSale && paymentMethod === "cash"
-                  ? " pos-fields--customer-solo"
-                  : ""
-              }`}
-            >
-              {customers.length > 0 ? (
-                <label className="pos-customer-pick">
-                  <span className="pos-label">Customer</span>
-                  <select
-                    value={selectedCustomerId}
-                    onChange={(event) => applyCustomer(event.target.value)}
-                    aria-label="Saved customer"
-                  >
-                    <option value="">Walk-in / new customer</option>
-                    {customers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.name} · {customer.phone}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-              <input
-                type="text"
-                value={customerName}
-                onChange={(e) => {
-                  setCustomerName(e.target.value);
-                  setSelectedCustomerId("");
-                }}
-                placeholder={
-                  paymentMethod === "credit"
-                    ? "Customer name (required)"
-                    : "Customer name (optional)"
-                }
-                aria-label="Customer name"
-                aria-required={paymentMethod === "credit"}
-              />
-              {!isTransChapSale ||
-              paymentMethod === "mpesa" ||
-              paymentMethod === "credit" ? (
-                <input
-                  type="tel"
-                  value={customerPhone}
-                  onChange={(e) => {
-                    setCustomerPhone(e.target.value);
-                    setSelectedCustomerId("");
-                  }}
-                  placeholder={
-                    paymentMethod === "mpesa"
-                      ? "M-PESA phone (required) · 2547…"
-                      : paymentMethod === "credit"
-                        ? "Credit phone (required) · 2547…"
-                        : "Phone (optional)"
-                  }
-                  aria-label={
-                    paymentMethod === "mpesa"
-                      ? "M-PESA phone"
-                      : paymentMethod === "credit"
-                        ? "Credit phone"
-                        : "Customer phone"
-                  }
-                  aria-required={
-                    paymentMethod === "mpesa" || paymentMethod === "credit"
-                  }
-                  className={
-                    (paymentMethod === "mpesa" || paymentMethod === "credit") &&
-                    !customerPhone.trim()
-                      ? "pos-input--required"
-                      : undefined
-                  }
-                />
-              ) : null}
-              {selectedCustomer && selectedCustomer.credit_limit > 0 ? (
-                <p className="pos-customer-credit">
-                  Available credit {formatMoney(selectedCustomer.available_credit)} of{" "}
-                  {formatMoney(selectedCustomer.credit_limit)}
-                </p>
-              ) : null}
-            </div>
+            {!isTransChapSale ? customerFields : null}
 
             <AnimatePresence initial={false}>
               {!isTransChapSale && fulfillment === "delivery" ? (
@@ -1349,141 +1887,6 @@ export function PosWorkspace({
                 </motion.div>
               ) : null}
             </AnimatePresence>
-
-            <div className="pos-cart__lines-wrap">
-              <div className="pos-cart__lines">
-                {cart.length === 0 ? (
-                  <div className="pos-cart__empty">
-                    <i className="fa-solid fa-cart-plus" aria-hidden="true" />
-                    <p>Tap a product on the left to add it to the order.</p>
-                  </div>
-                ) : (
-                  <ul>
-                    <AnimatePresence initial={false}>
-                      {cart.map((line) => {
-                        const lineTotal = line.unit_price * line.quantity;
-                        const stockItem = itemsById.get(line.inventoryItemId);
-                        const stockCap = stockItem ? maxCartQty(stockItem) : null;
-                        const atStockCap =
-                          stockCap !== null && line.quantity >= stockCap;
-                        return (
-                          <motion.li
-                            key={line.inventoryItemId}
-                            layout={!reduce}
-                            initial={
-                              reduce ? false : { opacity: 0, y: 6, scale: 0.98 }
-                            }
-                            animate={
-                              reduce
-                                ? undefined
-                                : { opacity: 1, y: 0, scale: 1 }
-                            }
-                            exit={
-                              reduce
-                                ? undefined
-                                : { opacity: 0, scale: 0.96, x: 8 }
-                            }
-                            transition={springSoft}
-                            className="pos-line"
-                          >
-                            <div className="pos-line__thumb" aria-hidden="true">
-                              {line.image_url ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={resolveAssetUrl(line.image_url)}
-                                  alt=""
-                                />
-                              ) : (
-                                <span>{nameInitial(line.name)}</span>
-                              )}
-                            </div>
-                            <div className="pos-line__main">
-                              <strong>{line.name}</strong>
-                              {priceEditEnabled ? (
-                                <label className="pos-line__price-edit">
-                                  <span className="pos-line__price-label">Price</span>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    step="0.01"
-                                    value={line.unit_price}
-                                    onChange={(e) =>
-                                      setUnitPrice(
-                                        line.inventoryItemId,
-                                        e.target.value,
-                                      )
-                                    }
-                                    aria-label={`Unit price for ${line.name}`}
-                                  />
-                                </label>
-                              ) : (
-                                <span>{formatMoney(line.unit_price)} ea</span>
-                              )}
-                            </div>
-                            <div className="pos-line__qty">
-                              <button
-                                type="button"
-                                aria-label="Decrease quantity"
-                                onClick={() =>
-                                  changeQuantity(line.inventoryItemId, -1)
-                                }
-                              >
-                                <i
-                                  className="fa-solid fa-minus"
-                                  aria-hidden="true"
-                                />
-                              </button>
-                              <input
-                                type="number"
-                                min={0}
-                                max={stockCap ?? undefined}
-                                value={line.quantity}
-                                onChange={(e) =>
-                                  setQuantity(
-                                    line.inventoryItemId,
-                                    e.target.value,
-                                  )
-                                }
-                                aria-label={`Quantity of ${line.name}`}
-                              />
-                              <button
-                                type="button"
-                                aria-label="Increase quantity"
-                                disabled={atStockCap}
-                                onClick={() =>
-                                  changeQuantity(line.inventoryItemId, 1)
-                                }
-                              >
-                                <i
-                                  className="fa-solid fa-plus"
-                                  aria-hidden="true"
-                                />
-                              </button>
-                            </div>
-                            <div className="pos-line__total">
-                              <strong>{formatMoney(lineTotal)}</strong>
-                              <button
-                                type="button"
-                                className="pos-line__remove"
-                                aria-label={`Remove ${line.name}`}
-                                onClick={() =>
-                                  removeLine(line.inventoryItemId)
-                                }
-                              >
-                                <i
-                                  className="fa-solid fa-trash"
-                                  aria-hidden="true"
-                                />
-                              </button>
-                            </div>
-                          </motion.li>
-                        );
-                      })}
-                    </AnimatePresence>
-                  </ul>
-                )}
-              </div>
-            </div>
           </div>
 
           <footer className="pos-cart__footer">
@@ -1557,6 +1960,8 @@ export function PosWorkspace({
                 </select>
               ) : null}
             </div>
+
+            {isTransChapSale ? customerFields : null}
 
             <dl className="pos-totals">
               <div>

@@ -12,7 +12,76 @@ export const RETAIL_BUSINESS_CATEGORIES = [
   "Other",
 ] as const;
 
-export const ALL_BUSINESS_CATEGORIES = [...RETAIL_BUSINESS_CATEGORIES] as const;
+export const RESTAURANT_BUSINESS_CATEGORIES = [
+  "Fast Food",
+  "Cafe & Coffee",
+  "Bakery",
+  "Restaurant & Dining",
+  "Juice & Smoothies",
+  "Grocery & Provisions",
+  "Other",
+] as const;
+
+export const STORE_TYPES = [
+  {
+    value: "retail",
+    label: "Retail shop",
+    description: "Sells products — fashion, electronics, home goods, and more.",
+    icon: "fa-store",
+  },
+  {
+    value: "restaurant",
+    label: "Restaurant / F&B",
+    description: "Sells food and drinks — cafe, bakery, kitchen, or dining.",
+    icon: "fa-utensils",
+  },
+] as const;
+
+export type StoreType = (typeof STORE_TYPES)[number]["value"];
+
+export const DEFAULT_STORE_TYPE: StoreType = "retail";
+
+export function parseStoreType(value: string | null | undefined): StoreType {
+  if (value === "restaurant" || value === "retail") return value;
+  return DEFAULT_STORE_TYPE;
+}
+
+export function storeTypeFromAccount(
+  account: { store_type?: string | null } | null | undefined,
+): StoreType {
+  return parseStoreType(account?.store_type);
+}
+
+/** Restaurant / F&B shops get hotel menu + raw-material inventory roles. */
+export function isRestaurantStore(
+  account: { store_type?: string | null } | null | undefined,
+): boolean {
+  return storeTypeFromAccount(account) === "restaurant";
+}
+
+export function storeTypeLabel(value: string | null | undefined): string {
+  const parsed = parseStoreType(value);
+  return STORE_TYPES.find((option) => option.value === parsed)?.label ?? "Retail shop";
+}
+
+export function categoriesForStoreType(
+  storeType: string | null | undefined,
+): readonly string[] {
+  return parseStoreType(storeType) === "restaurant"
+    ? RESTAURANT_BUSINESS_CATEGORIES
+    : RETAIL_BUSINESS_CATEGORIES;
+}
+
+export function defaultCategoryForStoreType(
+  storeType: string | null | undefined,
+): string {
+  return categoriesForStoreType(storeType)[0];
+}
+
+export const ALL_BUSINESS_CATEGORIES = [
+  ...RETAIL_BUSINESS_CATEGORIES,
+  ...RESTAURANT_BUSINESS_CATEGORIES,
+] as const;
 
 export type BusinessVertical = "service" | "retail";
 

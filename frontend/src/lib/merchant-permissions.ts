@@ -12,6 +12,7 @@ export const MERCHANT_SECTIONS = [
   "inventory",
   "pos",
   "customer",
+  "supplier",
   "orders",
   "delivery",
   "tools",
@@ -27,6 +28,7 @@ export const MERCHANT_SECTION_LABELS: Record<MerchantSection, string> = {
   inventory: "Inventory",
   pos: "POS",
   customer: "Customers",
+  supplier: "Suppliers",
   orders: "Orders",
   delivery: "Delivery",
   tools: "Tools",
@@ -41,6 +43,7 @@ export const RETAIL_STAFF_SECTIONS: MerchantSection[] = [
   "inventory",
   "pos",
   "customer",
+  "supplier",
   "orders",
   "delivery",
   "tools",
@@ -55,6 +58,7 @@ export const TRANS_CHAP_STAFF_SECTIONS: MerchantSection[] = [
   "inventory",
   "pos",
   "customer",
+  "supplier",
   "settings",
 ];
 
@@ -66,6 +70,7 @@ export const TRANS_CHAP_SECTION_LABELS: Record<MerchantSection, string> = {
   inventory: "Inventory",
   pos: "POS & sales",
   customer: "Customers",
+  supplier: "Suppliers",
   orders: "Orders",
   delivery: "Delivery",
   tools: "Tools",
@@ -76,6 +81,7 @@ export const TRANS_CHAP_SECTION_LABELS: Record<MerchantSection, string> = {
 export const TRANS_CHAP_DEFAULT_STAFF_SECTIONS: MerchantSection[] = [
   "dashboard",
   "inventory",
+  "supplier",
   "pos",
 ];
 
@@ -116,6 +122,7 @@ const PATH_SECTION_MAP: Array<{ prefix: string; section: MerchantSection }> = [
   { prefix: "/pos", section: "pos" },
   { prefix: "/station", section: "pos" },
   { prefix: "/customer", section: "customer" },
+  { prefix: "/supplier", section: "supplier" },
   { prefix: "/orders", section: "orders" },
   { prefix: "/delivery", section: "delivery" },
   { prefix: "/trans-chap/feeds", section: "feeds" },
@@ -127,6 +134,7 @@ const PATH_SECTION_MAP: Array<{ prefix: string; section: MerchantSection }> = [
   { prefix: "/trans-chap/pos", section: "pos" },
   { prefix: "/trans-chap/credit", section: "customer" },
   { prefix: "/trans-chap/customers", section: "customer" },
+  { prefix: "/trans-chap/suppliers", section: "supplier" },
   { prefix: "/trans-chap/settings", section: "settings" },
   { prefix: "/trans-chap", section: "dashboard" },
   { prefix: "/tools", section: "tools" },
@@ -247,6 +255,16 @@ export function userCanAccessPath(user: AuthUser, pathname: string): boolean {
     pathnameToSection(pathname) != null
   ) {
     return false;
+  }
+  // Purchases staff can also manage the supplier directory.
+  if (
+    pathname === "/trans-chap/suppliers" ||
+    pathname.startsWith("/trans-chap/suppliers/")
+  ) {
+    return (
+      userCanAccessSection(user, "supplier") ||
+      userCanAccessSection(user, "inventory")
+    );
   }
   const section = pathnameToSection(pathname);
   if (!section) {

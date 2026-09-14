@@ -58,6 +58,13 @@ export const merchantNavLinks: MerchantNavLink[] = [
     group: "work",
   },
   {
+    href: "/supplier",
+    icon: "fa-truck-field",
+    label: "Suppliers",
+    section: "supplier",
+    group: "work",
+  },
+  {
     href: "/tickets",
     icon: "fa-ticket",
     label: "Tickets",

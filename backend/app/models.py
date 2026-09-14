@@ -49,6 +49,8 @@ class Account(Base):
     business_name: Mapped[str] = mapped_column(String(255))
     business_location: Mapped[str] = mapped_column(String(255))
     business_category: Mapped[str] = mapped_column(String(100))
+    # Commerce mode: general retail vs restaurant / F&B.
+    store_type: Mapped[str] = mapped_column(String(32), default="retail")
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -448,6 +450,30 @@ class ShopCustomer(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     credit_limit: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
     outstanding_balance: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    account: Mapped[Account] = relationship()
+
+
+class ShopSupplier(Base):
+    """Vendor / wholesaler contact for a shop."""
+
+    __tablename__ = "shop_suppliers"
+    __table_args__ = (
+        UniqueConstraint(
+            "account_id",
+            "phone",
+            name="shop_suppliers_account_phone_unique",
+        ),
+        Index("shop_suppliers_account_name_index", "account_id", "name"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    account_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("accounts.id"))
+    name: Mapped[str] = mapped_column(String(255))
+    phone: Mapped[str] = mapped_column(String(32))
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -1549,6 +1575,34 @@ RETAIL_BUSINESS_CATEGORIES = frozenset(
         "Other",
     }
 )
+
+RESTAURANT_BUSINESS_CATEGORIES = frozenset(
+    {
+        "Fast Food",
+        "Cafe & Coffee",
+        "Bakery",
+        "Restaurant & Dining",
+        "Juice & Smoothies",
+        "Grocery & Provisions",
+        "Other",
+    }
+)
+
+STORE_TYPES = frozenset({"retail", "restaurant"})
+DEFAULT_STORE_TYPE = "retail"
+
+
+def categories_for_store_type(store_type: str | None) -> frozenset[str]:
+    if (store_type or "").strip().lower() == "restaurant":
+        return RESTAURANT_BUSINESS_CATEGORIES
+    return RETAIL_BUSINESS_CATEGORIES
+
+
+def is_valid_business_category(category: str, store_type: str | None) -> bool:
+    cleaned = (category or "").strip()
+    if not cleaned:
+        return False
+    return cleaned in categories_for_store_type(store_type)
 
 
 class BookingSettings(Base):

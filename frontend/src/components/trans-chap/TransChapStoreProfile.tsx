@@ -13,7 +13,7 @@ import { useAuthRefresh, useAuthUser } from "@/components/app/AuthProvider";
 import { apiFetch } from "@/lib/api";
 import { showError, showInternalError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes, resolveAssetUrl } from "@/lib/config";
-import { RETAIL_BUSINESS_CATEGORIES } from "@/lib/onboarding";
+import { categoriesForStoreType, STORE_TYPES, parseStoreType, storeTypeLabel } from "@/lib/onboarding";
 import { userCanAccessSection } from "@/lib/merchant-permissions";
 
 function shopInitials(name: string): string {
@@ -34,6 +34,7 @@ export function TransChapStoreProfile({ children }: { children: ReactNode }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(business?.business_name ?? "");
   const [category, setCategory] = useState(business?.business_category ?? "");
+  const [storeType, setStoreType] = useState(parseStoreType(business?.store_type));
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [removingLogo, setRemovingLogo] = useState(false);
@@ -41,14 +42,15 @@ export function TransChapStoreProfile({ children }: { children: ReactNode }) {
   useEffect(() => {
     setName(business?.business_name ?? "");
     setCategory(business?.business_category ?? "");
-  }, [business?.business_name, business?.business_category]);
+    setStoreType(parseStoreType(business?.store_type));
+  }, [business?.business_name, business?.business_category, business?.store_type]);
 
   const shopName = business?.business_name?.trim() || "Your store";
   const logoUrl = business?.logo_url ? resolveAssetUrl(business.logo_url) : null;
   const location = business?.business_location?.trim() || "";
   const categoryOptions = Array.from(
     new Set([
-      ...RETAIL_BUSINESS_CATEGORIES,
+      ...categoriesForStoreType(storeType),
       ...(business?.business_category ? [business.business_category] : []),
     ]),
   );
@@ -74,6 +76,7 @@ export function TransChapStoreProfile({ children }: { children: ReactNode }) {
         body: JSON.stringify({
           business_name: trimmedName,
           business_category: trimmedCategory,
+          store_type: storeType,
         }),
       });
       await refreshUser();
@@ -123,6 +126,7 @@ export function TransChapStoreProfile({ children }: { children: ReactNode }) {
   function cancelEdit() {
     setName(business?.business_name ?? "");
     setCategory(business?.business_category ?? "");
+    setStoreType(parseStoreType(business?.store_type));
     setEditing(false);
   }
 
@@ -200,7 +204,29 @@ export function TransChapStoreProfile({ children }: { children: ReactNode }) {
               />
             </label>
             <label className="auth-split__field">
-              <span>Category</span>
+              <span>Store type</span>
+              <select
+                className="auth-split__input"
+                value={storeType}
+                onChange={(e) => {
+                  const next = parseStoreType(e.target.value);
+                  setStoreType(next);
+                  const allowed = categoriesForStoreType(next);
+                  if (!allowed.includes(category as (typeof allowed)[number])) {
+                    setCategory(allowed[0]);
+                  }
+                }}
+                required
+              >
+                {STORE_TYPES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="auth-split__field">
+              <span>What you sell</span>
               <select
                 className="auth-split__input"
                 value={category}
@@ -244,6 +270,7 @@ export function TransChapStoreProfile({ children }: { children: ReactNode }) {
           </div>
           <div className="trans-chap-store__copy">
             <strong>{shopName}</strong>
+            <span>{storeTypeLabel(business.store_type)}</span>
             {business.business_category ? <span>{business.business_category}</span> : null}
             {location ? (
               <span className="trans-chap-store__location-line">{location}</span>

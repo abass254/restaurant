@@ -13,6 +13,7 @@ import {
 import { apiRoutes } from "@/lib/config";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { accountNeedsLocationSetup } from "@/lib/account-location";
+import { storeTypeLabel } from "@/lib/onboarding";
 import { ChannelsSection } from "@/components/app/ChannelsSection";
 import { InventoryIntegrationSection } from "@/components/app/InventoryIntegrationSection";
 import { KraSettingsSection } from "@/components/app/KraSettingsSection";
@@ -279,6 +280,10 @@ export default function SettingsPage() {
                 <div className="settings-grid__cell">
                   <dt>Name</dt>
                   <dd>{business?.business_name ?? "—"}</dd>
+                </div>
+                <div className="settings-grid__cell">
+                  <dt>Store type</dt>
+                  <dd>{business ? storeTypeLabel(business.store_type) : "—"}</dd>
                 </div>
                 <div className="settings-grid__cell">
                   <dt>Category</dt>

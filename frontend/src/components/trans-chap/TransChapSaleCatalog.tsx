@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useOptionalAuthUser } from "@/components/app/AuthProvider";
 import { TransChapBarcodeCamera } from "@/components/trans-chap/TransChapBarcodeCamera";
 import { TransChapProductThumb } from "@/components/trans-chap/TransChapProductThumb";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
+import { isRestaurantStore } from "@/lib/onboarding";
 import {
   canSellInventoryItem,
   inventoryProductName,
@@ -47,6 +49,8 @@ export function TransChapSaleCatalog({
   onQty,
   onContinue,
 }: Props) {
+  const user = useOptionalAuthUser();
+  const restaurant = isRestaurantStore(user?.active_account ?? user?.account);
   const [query, setQuery] = useState("");
   const listRef = useRef<HTMLDivElement | null>(null);
   const total = useMemo(
@@ -158,7 +162,7 @@ export function TransChapSaleCatalog({
                     <span className="trans-chap-catalog__copy">
                       <strong>
                         {name}
-                        {hotel ? (
+                        {restaurant && hotel ? (
                           <em className="trans-chap-panel__tag">Hotel</em>
                         ) : null}
                       </strong>

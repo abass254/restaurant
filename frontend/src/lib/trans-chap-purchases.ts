@@ -45,9 +45,18 @@ export function purchaseFromMovement(movement: StockMovement): TransChapPurchase
     quantity,
     unitCost,
     total: unitCost * quantity,
-    supplier: movement.note?.trim() || null,
+    supplier: supplierLabelFromNote(movement.note),
     paidAt: movement.created_at || new Date().toISOString(),
   };
+}
+
+function supplierLabelFromNote(note: string | null | undefined): string | null {
+  const raw = note?.trim();
+  if (!raw) return null;
+  const first = raw.split(" · ")[0]?.trim() || "";
+  if (!first) return null;
+  if (/^(Ref|Status|Date|Pay|Loc|Doc)\b/i.test(first)) return null;
+  return first;
 }
 
 export async function fetchTransChapPurchases(options?: {

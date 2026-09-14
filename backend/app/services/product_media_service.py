@@ -71,7 +71,12 @@ def absolute_media_url(path: str, settings: Settings, *, for_instagram: bool = F
     if path.startswith(("http://", "https://")):
         return path
     if path.startswith("/"):
-        if for_instagram and path.startswith("/uploads/"):
+        uploads_base = (settings.uploads_public_base_url or "").rstrip("/")
+        if path.startswith("/uploads/") and uploads_base:
+            # Production media host (this platform may run against prod data
+            # while APP_URL/FRONTEND_URL stay on localhost).
+            base = uploads_base
+        elif for_instagram and path.startswith("/uploads/"):
             # Served by FastAPI's static mount — use the API origin so Meta's
             # crawler hits the file directly instead of a frontend proxy layer.
             base = (settings.app_url or settings.frontend_url or "").rstrip("/")

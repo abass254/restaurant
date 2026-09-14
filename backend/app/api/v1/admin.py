@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -21,6 +22,7 @@ from app.api.v1.admin_auth import require_super_admin
 from app.config import get_settings
 from app.core.session import require_user
 from app.core.security import hash_password
+from app.core.uploads import save_generated_image
 from app.database import get_db
 from app.dependencies import ServiceContainer, get_request_session, get_services
 from app.models import (
@@ -35,8 +37,10 @@ from app.models import (
     Order,
     OrderStatusHistory,
     Product,
+    STORE_TYPES,
     User,
     UserMembership,
+    is_valid_business_category,
 )
 from app.schemas import OrderOut, ProductOut, attach_order_mpesa_settlement
 from app.services import mpesa_service
@@ -57,6 +61,12 @@ from app.support.mpesa_order_link import (
     link_mpesa_transaction_to_order,
     order_requires_mpesa_receipt_confirmation,
     validate_mpesa_receipt_for_order,
+)
+from app.services.image_generation_service import (
+    ImageGenerationDisabled,
+    ImageGenerationError,
+    build_prompt_for_product,
+    generate_product_image,
 )
 from app.services.inventory_stock_service import restore_stock_for_order
 from app.services.product_media_service import (
@@ -152,12 +162,28 @@ class AdminMerchantDetail(BaseModel):
     business_name: str
     business_location: str
     business_category: str
+    store_type: str = "retail"
+    logo_url: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     created_at: datetime | None
     updated_at: datetime | None
     users: list[AdminUserOut]
     instagram_connected: bool
     instagram_username: str | None
     connected_channels: list[AdminMerchantChannel] = []
+
+
+class AdminMerchantProfileUpdate(BaseModel):
+    business_name: str = Field(min_length=1, max_length=255)
+    business_location: str = Field(default="", max_length=255)
+    business_category: str = Field(min_length=1, max_length=100)
+    store_type: str = Field(default="retail", min_length=1, max_length=32)
+
+
+class AdminMerchantProfileResponse(BaseModel):
+    message: str
+    data: AdminMerchantDetail
 
 
 class AdminMerchantsResponse(BaseModel):
@@ -910,6 +936,42 @@ def transition_order_admin(
     }
 
 
+def _admin_merchant_detail(db: Session, account: Account) -> AdminMerchantDetail:
+    users = (
+        db.query(User)
+        .join(UserMembership, UserMembership.user_id == User.id)
+        .options(joinedload(User.memberships).joinedload(UserMembership.account))
+        .filter(
+            UserMembership.account_id == account.id,
+            UserMembership.is_active.is_(True),
+        )
+        .all()
+    )
+    for user in users:
+        setattr(user, "_active_account_id", account.id)
+    users = sorted(users, key=lambda u: (u.created_at or datetime.min))
+
+    connected_channels = _merchant_connected_channels(db, account.id)
+    ig_row = get_merchant_channel_account(db, account.id, "instagram")
+
+    return AdminMerchantDetail(
+        id=account.id,
+        business_name=account.business_name,
+        business_location=account.business_location or "",
+        business_category=account.business_category or "",
+        store_type=(account.store_type or "retail").strip().lower() or "retail",
+        logo_url=account.logo_url,
+        latitude=account.latitude,
+        longitude=account.longitude,
+        created_at=account.created_at,
+        updated_at=account.updated_at,
+        users=[_admin_user_out(u) for u in users],
+        instagram_connected=ig_row is not None,
+        instagram_username=ig_row.username if ig_row else None,
+        connected_channels=connected_channels,
+    )
+
+
 @router.get("/merchants/{merchant_id}", response_model=AdminMerchantDetailResponse)
 def merchant_detail(
     merchant_id: str,
@@ -927,36 +989,60 @@ def merchant_detail(
             detail="Merchant not found.",
         )
 
-    users = (
-        db.query(User)
-        .join(UserMembership, UserMembership.user_id == User.id)
-        .options(joinedload(User.memberships).joinedload(UserMembership.account))
-        .filter(
-            UserMembership.account_id == merchant_id,
-            UserMembership.is_active.is_(True),
+    return AdminMerchantDetailResponse(data=_admin_merchant_detail(db, account))
+
+
+@router.patch(
+    "/merchants/{merchant_id}/profile",
+    response_model=AdminMerchantProfileResponse,
+)
+def update_merchant_profile(
+    merchant_id: str,
+    payload: AdminMerchantProfileUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+    _: User = Depends(require_super_admin),
+):
+    """Update merchant identity, store type, and what they sell."""
+    validate_csrf(request, session)
+    account = db.query(Account).filter(Account.id == merchant_id).first()
+    if account is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Merchant not found.")
+
+    name = payload.business_name.strip()
+    location = (payload.business_location or "").strip()
+    category = payload.business_category.strip()
+    store_type = payload.store_type.strip().lower()
+
+    if not name:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Business name is required.",
         )
-        .all()
-    )
-    for user in users:
-        setattr(user, "_active_account_id", merchant_id)
-    users = sorted(users, key=lambda u: (u.created_at or datetime.min))
+    if store_type not in STORE_TYPES:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Choose a valid store type (retail or restaurant).",
+        )
+    if not is_valid_business_category(category, store_type):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Choose a valid category for what this merchant sells.",
+        )
 
-    connected_channels = _merchant_connected_channels(db, account.id)
-    ig_row = get_merchant_channel_account(db, account.id, "instagram")
+    account.business_name = name
+    account.business_location = location[:255]
+    account.business_category = category
+    account.store_type = store_type
+    account.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.commit()
+    db.refresh(account)
 
-    detail = AdminMerchantDetail(
-        id=account.id,
-        business_name=account.business_name,
-        business_location=account.business_location,
-        business_category=account.business_category,
-        created_at=account.created_at,
-        updated_at=account.updated_at,
-        users=[_admin_user_out(u) for u in users],
-        instagram_connected=ig_row is not None,
-        instagram_username=ig_row.username if ig_row else None,
-        connected_channels=connected_channels,
+    return AdminMerchantProfileResponse(
+        message="Merchant profile saved.",
+        data=_admin_merchant_detail(db, account),
     )
-    return AdminMerchantDetailResponse(data=detail)
 
 
 @router.delete(
@@ -2392,6 +2478,69 @@ def reset_catalog_primary_image_auto(
 
     return AdminSetPrimaryImageResponse(
         message="Platform primary image reset to automatic selection.",
+        data=ProductOut.model_validate(product),
+    )
+
+
+class AdminGenerateCatalogImageIn(BaseModel):
+    prompt: str | None = Field(default=None, max_length=2000)
+    quality: Literal["low", "medium", "high"] | None = None
+    provider: Literal["openai", "gemini", "cloudflare", "pollinations"] | None = None
+
+
+@router.post(
+    "/catalog/products/{product_id}/generate-image",
+    response_model=AdminSetPrimaryImageResponse,
+)
+async def generate_catalog_primary_image(
+    product_id: str,
+    payload: AdminGenerateCatalogImageIn,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_super_admin),
+):
+    """Generate an AI image and lock it as the platform primary (missing only)."""
+    product = db.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Product not found.")
+    if product.product_type == "service":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="AI images are only available for products, not services.",
+        )
+    if product.image_url:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="This catalog product already has a primary image.",
+        )
+
+    prompt = build_prompt_for_product(product, override=payload.prompt)
+    try:
+        body, content_type, _meta = await generate_product_image(
+            prompt,
+            quality=payload.quality,
+            provider=payload.provider,
+        )
+    except ImageGenerationDisabled as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
+    except ImageGenerationError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+    record = save_generated_image(
+        product.id,
+        body,
+        content_type,
+        uploader_id=admin.id,
+        original_name=f"{product.slug or 'product'}-ai.png",
+    )
+
+    product.image_url = str(record["url"])
+    product.primary_image_locked = True
+    product.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(product)
+
+    return AdminSetPrimaryImageResponse(
+        message="Generated and set platform primary image.",
         data=ProductOut.model_validate(product),
     )
 

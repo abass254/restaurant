@@ -32,7 +32,23 @@ Minimum values to set for a fresh install:
 - `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN` — from your Meta app.
 - `INSTAGRAM_REDIRECT_URI` — must match the Meta app's registered OAuth redirect URI.
 
-For a production deployment behind nginx/TLS, set:
+For a production deployment on **merchants.dukai.app**, set:
+
+```env
+APP_URL=https://merchants.dukai.app
+FRONTEND_URL=https://merchants.dukai.app
+CORS_ALLOWED_ORIGINS=https://merchants.dukai.app
+UPLOADS_HOST_PATH=/home/ubuntu/agents/uploads
+APP_DEBUG=false
+APP_ENV=production
+NEXT_PUBLIC_DEBUG=false
+```
+
+`UPLOADS_HOST_PATH` bind-mounts the host folder onto `/app/uploads` so media
+is public at `https://merchants.dukai.app/uploads/...`. See [UPLOADS.md](./UPLOADS.md).
+
+For a generic production host behind nginx/TLS, set the same pattern with your
+domain:
 
 ```env
 APP_URL=https://your.domain
@@ -102,9 +118,12 @@ curl http://127.0.0.1:7071/up               # backend health
 ## File / volume layout
 
 - `mysql_data` — persistent MySQL data dir.
-- `backend_uploads` — product photos/videos served at `/uploads/*`.
+- Uploads at `/app/uploads` inside the backend container, served at `/uploads/*`:
+  - **Local:** named volume `backend_uploads` (default when `UPLOADS_HOST_PATH` is unset).
+  - **Prod (merchants.dukai.app):** bind mount `UPLOADS_HOST_PATH=/home/ubuntu/agents/uploads`.
 
-Both survive `docker compose down`. Use `-v` to wipe them.
+Named volumes survive `docker compose down`. Use `-v` to wipe them. Bind-mounted
+host folders are not removed by Compose.
 
 ## Troubleshooting
 
@@ -126,7 +145,9 @@ port, and path.
 
 **`/uploads/...` returns 404 in the browser.** Check the volume is mounted:
 `docker compose exec backend ls /app/uploads`. New uploads land there and are
-proxied through Next at `/uploads/*`.
+proxied through Next at `/uploads/*`. On merchants.dukai.app, confirm
+`UPLOADS_HOST_PATH=/home/ubuntu/agents/uploads` and that
+`APP_URL` / `FRONTEND_URL` are `https://merchants.dukai.app`.
 
 **Port 7070 already in use.** Stop the host-side Next dev server (`npm run
 dev` on :7000 won't clash, but a previous container will). `docker compose

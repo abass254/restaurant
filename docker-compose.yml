@@ -65,7 +65,11 @@ services:
       DB_HOST: db
       DB_PORT: "3306"
     volumes:
-      - backend_uploads:/app/uploads
+      # Local/dev: named volume `backend_uploads`.
+      # Production (merchants.dukai.app): set in `.env`
+      #   UPLOADS_HOST_PATH=/home/ubuntu/agents/uploads
+      # Public URLs: https://merchants.dukai.app/uploads/...
+      - ${UPLOADS_HOST_PATH:-backend_uploads}:/app/uploads
     ports:
       - "127.0.0.1:7071:7071"
     depends_on:

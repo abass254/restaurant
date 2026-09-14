@@ -11,7 +11,11 @@ from app.support.merchant_permissions import (
     assert_merchant_section_any_access,
 )
 from app.dependencies import ServiceContainer, get_request_session, get_services
-from app.models import RETAIL_BUSINESS_CATEGORIES, Account
+from app.models import (
+    STORE_TYPES,
+    Account,
+    is_valid_business_category,
+)
 from app.schemas import AccountOut, InstagramAccountOut, UserOut, build_user_out
 from app.services.catalog.inventory_integration import (
     HttpAuthConfig,
@@ -54,6 +58,7 @@ class BusinessLocationUpdate(BaseModel):
 class BusinessProfileUpdate(BaseModel):
     business_name: str = Field(min_length=1, max_length=255)
     business_category: str = Field(min_length=1, max_length=100)
+    store_type: str = Field(default="retail", min_length=1, max_length=32)
 
 
 class HttpAuthConfigRequest(BaseModel):
@@ -286,16 +291,23 @@ def update_business_profile(
 
     name = payload.business_name.strip()
     category = payload.business_category.strip()
+    store_type = payload.store_type.strip().lower()
     if not name:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Business name is required.")
-    if category not in RETAIL_BUSINESS_CATEGORIES:
+    if store_type not in STORE_TYPES:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Choose a valid business category.",
+            detail="Choose a valid store type (retail or restaurant).",
+        )
+    if not is_valid_business_category(category, store_type):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Choose a valid category for what this merchant sells.",
         )
 
     account.business_name = name
     account.business_category = category
+    account.store_type = store_type
     services.db.commit()
     services.db.refresh(account)
 

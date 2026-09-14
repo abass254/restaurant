@@ -15,6 +15,10 @@ import {
   isCameraScanningEnabled,
   queryCameraPermission,
 } from "@/lib/trans-chap-camera";
+import {
+  isAdjustSellingPriceEnabled,
+  setAdjustSellingPriceEnabled,
+} from "@/lib/trans-chap-purchase-prefs";
 import type { MerchantMpesaConfigResponse, SettingsResponse } from "@/lib/types";
 
 const SIGN_IN_PATH = "/trans-chap/sign-in";
@@ -42,6 +46,7 @@ export default function TransChapSettingsPage() {
     Boolean(user.instagram_account?.auto_replies_enabled),
   );
   const [autoRepliesSaving, setAutoRepliesSaving] = useState(false);
+  const [adjustSellingPrice, setAdjustSellingPrice] = useState(true);
 
   const shopName =
     user.active_account?.business_name ||
@@ -124,6 +129,20 @@ export default function TransChapSettingsPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    setAdjustSellingPrice(isAdjustSellingPriceEnabled());
+  }, []);
+
+  function handleAdjustSellingPriceToggle(enabled: boolean) {
+    setAdjustSellingPrice(enabled);
+    setAdjustSellingPriceEnabled(enabled);
+    void toastSuccess(
+      enabled
+        ? "Selling price shown on purchases"
+        : "Selling price hidden on purchases",
+    );
+  }
 
   async function handleAutoRepliesToggle(enabled: boolean) {
     if (autoRepliesSaving || !canManageInstagram) return;
@@ -305,6 +324,35 @@ export default function TransChapSettingsPage() {
             : autoRepliesEnabled
               ? "DukAI replies to matching customer DMs automatically."
               : "Automatic replies are off. Customers won’t get AI responses."}
+        </p>
+      </section>
+
+      <section className="ios-settings__group" aria-label="Purchases">
+        <h3 className="ios-settings__caption">Purchases</h3>
+        <div className="ios-settings__card">
+          <div className="ios-settings__row ios-settings__row--static">
+            <span className="ios-settings__icon ios-settings__icon--purchase" aria-hidden>
+              <i className="fa-solid fa-tags" />
+            </span>
+            <span className="ios-settings__label">Adjust selling price</span>
+            <span className="ios-settings__trailing">
+              <button
+                type="button"
+                role="switch"
+                className={`theme-switch${adjustSellingPrice ? " is-on" : ""}`}
+                aria-checked={adjustSellingPrice}
+                aria-label="Adjust selling price on purchases"
+                onClick={() => handleAdjustSellingPriceToggle(!adjustSellingPrice)}
+              >
+                <span className="theme-switch__thumb" aria-hidden />
+              </button>
+            </span>
+          </div>
+        </div>
+        <p className="ios-settings__footer">
+          {adjustSellingPrice
+            ? "New purchase lets you set selling price next to buying price."
+            : "New purchase only asks for buying price. Turn on to edit selling price too."}
         </p>
       </section>
 

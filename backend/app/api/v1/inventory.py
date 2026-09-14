@@ -30,17 +30,11 @@ from app.core.upload_tokens import (
     read_product_upload_token,
     revoke_product_upload_token,
 )
-from app.core.uploads import delete_upload, save_generated_image, save_upload
+from app.core.uploads import delete_upload, save_upload
 from app.database import get_db
 from app.dependencies import ServiceContainer, get_request_session, get_services
 from app.models import InventoryItem, Product, StockMovement, User
 from app.schemas import InventoryItemOut, StockMovementOut
-from app.services.image_generation_service import (
-    ImageGenerationDisabled,
-    ImageGenerationError,
-    build_prompt_for_product,
-    generate_product_image,
-)
 from app.services.inventory_import_service import import_inventory_from_excel
 from app.services.inventory_stock_service import (
     InsufficientStockError,
@@ -620,69 +614,6 @@ async def upload_inventory_media(
     return {
         "message": f"Uploaded {len(added)} {kind}{'' if len(added) == 1 else 's'}.",
         "added": added,
-        "data": InventoryItemOut.from_model(item),
-    }
-
-
-class GenerateInventoryMediaRequest(BaseModel):
-    prompt: str | None = Field(default=None, max_length=2000)
-    quality: Literal["low", "medium", "high"] | None = None
-    provider: Literal["openai", "gemini", "cloudflare", "pollinations"] | None = None
-
-
-@router.post("/{item_id}/media/generate", status_code=status.HTTP_201_CREATED)
-async def generate_inventory_media(
-    item_id: str,
-    payload: GenerateInventoryMediaRequest,
-    request: Request,
-    db: Session = Depends(get_db),
-    session: dict = Depends(get_request_session),
-):
-    """Generate an AI image and attach it to this shop's media gallery."""
-    validate_csrf(request, session)
-    user = _auth_inventory_user(db, session)
-    account_id = _require_shop(user)
-
-    item = _get_owned_item(db, account_id, item_id)
-    product = item.product
-    if product is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Catalog product not found.")
-
-    prompt = build_prompt_for_product(product, override=payload.prompt)
-    try:
-        body, content_type, meta = await generate_product_image(
-            prompt,
-            quality=payload.quality,
-            provider=payload.provider,
-        )
-    except ImageGenerationDisabled as exc:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
-    except ImageGenerationError as exc:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc))
-
-    record = save_generated_image(
-        product.id,
-        body,
-        content_type,
-        uploader_id=user.id,
-        original_name=f"{product.slug or 'product'}-ai.png",
-    )
-    record["prompt"] = prompt
-    record["generation"] = meta
-
-    existing = inventory_media_for_item(item)
-    if not any(img["url"] == record["url"] for img in existing):
-        existing.append(record)
-    item.media = existing
-    flag_modified(item, "media")
-    item.updated_at = datetime.utcnow()
-    after_inventory_media_change(db, product.id)
-    db.commit()
-    db.refresh(item)
-
-    return {
-        "message": "Generated a product image.",
-        "added": record,
         "data": InventoryItemOut.from_model(item),
     }
 

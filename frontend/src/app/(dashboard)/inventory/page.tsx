@@ -40,7 +40,6 @@ import type {
   InventoryItemMutationResponse,
   InventoryImportResponse,
   InventoryResponse,
-  ProductImageGenerateResponse,
   ProductType,
 } from "@/lib/types";
 
@@ -71,10 +70,6 @@ function itemCoverUrl(item: InventoryItem): string | null {
   );
 }
 
-function canBulkGenerateImage(item: InventoryItem): boolean {
-  return item.product?.product_type === "product";
-}
-
 function isServiceItem(item: InventoryItem): boolean {
   return item.product?.product_type === "service";
 }
@@ -83,41 +78,6 @@ function isOutOfStock(item: InventoryItem): boolean {
   if (isServiceItem(item)) return false;
   const stock = item.stock_quantity;
   return stock == null || stock <= 0;
-}
-
-async function generateItemImage(
-  item: InventoryItem,
-  opts?: { quality?: "low" | "medium" | "high"; prompt?: string },
-): Promise<InventoryItem> {
-  const res = await apiFetch<ProductImageGenerateResponse>(
-    apiRoutes.inventoryMediaGenerate(item.id),
-    {
-      method: "POST",
-      body: JSON.stringify({
-        prompt: opts?.prompt?.trim() || null,
-        quality: opts?.quality ?? null,
-      }),
-    },
-  );
-  return res.data;
-}
-
-async function runWithConcurrency<T>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<void>,
-): Promise<void> {
-  if (items.length === 0) return;
-  let index = 0;
-  async function worker() {
-    while (index < items.length) {
-      const current = index;
-      index += 1;
-      await fn(items[current]);
-    }
-  }
-  const workers = Math.min(limit, items.length);
-  await Promise.all(Array.from({ length: workers }, () => worker()));
 }
 
 export default function InventoryPage() {
@@ -130,11 +90,6 @@ export default function InventoryPage() {
 
   const [filterText, setFilterText] = useState("");
   const [viewMode, setViewMode] = useState<InventoryViewMode>("table");
-
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [generatingIds, setGeneratingIds] = useState<Set<string>>(() => new Set());
-  const [bulkGenerating, setBulkGenerating] = useState(false);
-  const selectAllRef = useRef<HTMLInputElement>(null);
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelView, setPanelView] = useState<AddPanelView>("search");
@@ -192,71 +147,6 @@ export default function InventoryPage() {
     });
   }, [items, filterText]);
 
-  const selectableFilteredItems = useMemo(
-    () => filteredItems.filter(canBulkGenerateImage),
-    [filteredItems],
-  );
-
-  const selectedCount = selectedIds.size;
-  const allSelectableSelected =
-    selectableFilteredItems.length > 0 &&
-    selectableFilteredItems.every((item) => selectedIds.has(item.id));
-  const someSelectableSelected =
-    selectableFilteredItems.some((item) => selectedIds.has(item.id)) &&
-    !allSelectableSelected;
-
-  useEffect(() => {
-    if (selectAllRef.current) {
-      selectAllRef.current.indeterminate = someSelectableSelected;
-    }
-  }, [someSelectableSelected, selectedCount, selectableFilteredItems.length]);
-
-  function toggleRowSelection(itemId: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(itemId)) next.delete(itemId);
-      else next.add(itemId);
-      return next;
-    });
-  }
-
-  function toggleSelectAllVisible() {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (allSelectableSelected) {
-        for (const item of selectableFilteredItems) next.delete(item.id);
-      } else {
-        for (const item of selectableFilteredItems) next.add(item.id);
-      }
-      return next;
-    });
-  }
-
-  function clearSelection() {
-    setSelectedIds(new Set());
-  }
-
-  // After a product is added without a photo we quietly kick off an AI
-  // generation. The result patches into the list when it lands — there's no
-  // blocking spinner, so the user can carry on with their day.
-  const maybeGenerateCover = useCallback((inventoryItem: InventoryItem) => {
-    const hasPhoto =
-      (inventoryItem.media?.length ?? 0) > 0 || !!inventoryItem.product?.image_url;
-    const product = inventoryItem.product;
-    if (!product || hasPhoto || product.product_type !== "product") return;
-
-    void generateItemImage(inventoryItem)
-      .then((updated) => {
-        setItems((prev) =>
-          prev.map((item) => (item.id === updated.id ? updated : item)),
-        );
-        void toastSuccess(`AI image ready for "${product.name}"`);
-      })
-      .catch(() => {
-        /* Silent — optional background generation. */
-      });
-  }, []);
-
   async function handleAddFromCatalog(product: CatalogProduct) {
     try {
       const data = await apiFetch<InventoryItemMutationResponse>(
@@ -269,78 +159,8 @@ export default function InventoryPage() {
       setItems((prev) => [data.data, ...prev]);
       await toastSuccess(`Added "${product.name}" to your inventory`);
       setPanelOpen(false);
-      maybeGenerateCover(data.data);
     } catch (err) {
       await showError("Could not add product", extractErrorMessage(err));
-    }
-  }
-
-  async function handleBulkGenerate() {
-    const selected = items.filter(
-      (item) => selectedIds.has(item.id) && canBulkGenerateImage(item),
-    );
-    if (selected.length === 0) {
-      await showError(
-        "Nothing to generate",
-        "Select product rows to generate images. Services are skipped.",
-      );
-      return;
-    }
-
-    if (selected.length > 3) {
-      const confirmed = await confirmAction(
-        "Generate AI images?",
-        `This will generate images for ${selected.length} products. Each one can take up to a minute.`,
-        "Generate",
-      );
-      if (!confirmed) return;
-    }
-
-    setBulkGenerating(true);
-    setGeneratingIds(new Set(selected.map((item) => item.id)));
-    let succeeded = 0;
-    let failed = 0;
-    let lastError: unknown = null;
-
-    await runWithConcurrency(selected, 2, async (item) => {
-      try {
-        const updated = await generateItemImage(item);
-        setItems((prev) =>
-          prev.map((row) => (row.id === updated.id ? updated : row)),
-        );
-        succeeded += 1;
-      } catch (err) {
-        lastError = err;
-        failed += 1;
-      } finally {
-        setGeneratingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(item.id);
-          return next;
-        });
-      }
-    });
-
-    setBulkGenerating(false);
-    clearSelection();
-
-    if (succeeded > 0 && failed === 0) {
-      await toastSuccess(
-        `Generated ${succeeded} image${succeeded === 1 ? "" : "s"}`,
-      );
-    } else if (succeeded > 0) {
-      await showError(
-        "Partial success",
-        `Generated ${succeeded} image${succeeded === 1 ? "" : "s"}, ${failed} failed.`,
-      );
-    } else {
-      await showError(
-        "Generation failed",
-        extractErrorMessage(
-          lastError,
-          "Could not generate images. Check your AI provider settings and try again.",
-        ),
-      );
     }
   }
 
@@ -360,12 +180,6 @@ export default function InventoryPage() {
     try {
       await apiFetch(apiRoutes.inventoryItem(item.id), { method: "DELETE" });
       setItems((prev) => prev.filter((i) => i.id !== item.id));
-      setSelectedIds((prev) => {
-        if (!prev.has(item.id)) return prev;
-        const next = new Set(prev);
-        next.delete(item.id);
-        return next;
-      });
       await toastSuccess("Removed from inventory");
     } catch (err) {
       await showError("Could not remove", extractErrorMessage(err));
@@ -457,34 +271,6 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {selectedCount > 0 ? (
-        <div className="inventory-bulk-bar" role="toolbar" aria-label="Bulk actions">
-          <span className="inventory-bulk-bar__count">
-            {selectedCount} selected
-          </span>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            disabled={bulkGenerating}
-            onClick={() => void handleBulkGenerate()}
-          >
-            <i
-              className={`fa-solid ${bulkGenerating ? "fa-spinner fa-spin" : "fa-wand-magic-sparkles"}`}
-              aria-hidden="true"
-            />
-            {bulkGenerating ? "Generating…" : "Generate images"}
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            disabled={bulkGenerating}
-            onClick={clearSelection}
-          >
-            Clear selection
-          </button>
-        </div>
-      ) : null}
-
       {error ? <p className="app-error">{error}</p> : null}
 
       {loading ? (
@@ -501,10 +287,6 @@ export default function InventoryPage() {
         <InventoryGrid
           items={filteredItems}
           reduce={reduce}
-          bulkGenerating={bulkGenerating}
-          selectedIds={selectedIds}
-          generatingIds={generatingIds}
-          onToggleSelection={toggleRowSelection}
           onItemUpdated={handleItemUpdated}
           canEditQty={canEditQty}
         />
@@ -513,19 +295,6 @@ export default function InventoryPage() {
           <table className="inventory-table">
             <thead>
               <tr>
-                <th className="inventory-th-select" aria-label="Select">
-                  <input
-                    ref={selectAllRef}
-                    type="checkbox"
-                    className="inventory-row-checkbox"
-                    checked={allSelectableSelected}
-                    disabled={
-                      bulkGenerating || selectableFilteredItems.length === 0
-                    }
-                    onChange={toggleSelectAllVisible}
-                    aria-label="Select all visible products"
-                  />
-                </th>
                 <th className="inventory-th-image" aria-label="Image" />
                 <th>Product</th>
                 <th>SKU</th>
@@ -549,30 +318,12 @@ export default function InventoryPage() {
                 const coverUrl = itemCoverUrl(item);
                 const productName = item.product?.name ?? `#${item.product_id}`;
                 const detailHref = `/inventory/${item.id}`;
-                const selectable = canBulkGenerateImage(item);
-                const isSelected = selectedIds.has(item.id);
-                const isGenerating = generatingIds.has(item.id);
                 return (
                   <motion.tr
                     key={item.id}
                     variants={reduce ? undefined : staggerItem}
                     layout={reduce ? false : "position"}
-                    className={isSelected ? "is-selected" : undefined}
                   >
-                    <td className="inventory-cell-select">
-                      <input
-                        type="checkbox"
-                        className="inventory-row-checkbox"
-                        checked={isSelected}
-                        disabled={bulkGenerating || !selectable}
-                        onChange={() => toggleRowSelection(item.id)}
-                        aria-label={
-                          selectable
-                            ? `Select ${productName}`
-                            : `${productName} (services cannot be bulk-generated)`
-                        }
-                      />
-                    </td>
                     <td className="inventory-cell-image">
                       <Link
                         href={detailHref}
@@ -595,11 +346,6 @@ export default function InventoryPage() {
                             {nameInitial(item.product?.name)}
                           </span>
                         )}
-                        {isGenerating ? (
-                          <span className="inventory-thumb__generating" aria-hidden="true">
-                            <i className="fa-solid fa-spinner fa-spin" />
-                          </span>
-                        ) : null}
                       </Link>
                     </td>
                     <td>
@@ -865,19 +611,11 @@ function InventoryGridStockFields({
 function InventoryGrid({
   items,
   reduce,
-  bulkGenerating,
-  selectedIds,
-  generatingIds,
-  onToggleSelection,
   onItemUpdated,
   canEditQty = true,
 }: {
   items: InventoryItem[];
   reduce: boolean | null;
-  bulkGenerating: boolean;
-  selectedIds: Set<string>;
-  generatingIds: Set<string>;
-  onToggleSelection: (itemId: string) => void;
   onItemUpdated: (item: InventoryItem) => void;
   canEditQty?: boolean;
 }) {
@@ -894,9 +632,6 @@ function InventoryGrid({
           const coverUrl = itemCoverUrl(item);
           const productName = item.product?.name ?? `#${item.product_id}`;
           const detailHref = `/inventory/${item.id}`;
-          const selectable = canBulkGenerateImage(item);
-          const isSelected = selectedIds.has(item.id);
-          const isGenerating = generatingIds.has(item.id);
           const subtitleParts = [
             cat?.label,
             item.product?.brand,
@@ -911,23 +646,9 @@ function InventoryGrid({
               key={item.id}
               variants={reduce ? undefined : staggerItem}
               layout={reduce ? false : "position"}
-              className={`pos-card inventory-grid-card${isSelected ? " is-selected" : ""}${!item.is_active ? " is-paused" : ""}`}
+              className={`pos-card inventory-grid-card${!item.is_active ? " is-paused" : ""}`}
             >
               <div className="pos-card__hit">
-                {selectable ? (
-                  <input
-                    type="checkbox"
-                    className="inventory-grid-checkbox"
-                    checked={isSelected}
-                    disabled={bulkGenerating}
-                    onChange={() => onToggleSelection(item.id)}
-                    aria-label={
-                      isSelected
-                        ? `Deselect ${productName}`
-                        : `Select ${productName}`
-                    }
-                  />
-                ) : null}
                 <Link
                   href={detailHref}
                   className="pos-card__main"
@@ -945,11 +666,6 @@ function InventoryGrid({
                         {nameInitial(item.product?.name)}
                       </span>
                     )}
-                    {isGenerating ? (
-                      <span className="inventory-thumb__generating" aria-hidden="true">
-                        <i className="fa-solid fa-spinner fa-spin" />
-                      </span>
-                    ) : null}
                   </div>
 
                   <div className="pos-card__info">

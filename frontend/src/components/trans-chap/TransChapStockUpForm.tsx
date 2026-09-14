@@ -10,7 +10,6 @@ import { apiRoutes } from "@/lib/config";
 import {
   addLiteInventoryProduct,
   findInventoryByName,
-  generateInventoryPhoto,
   inventoryCoverUrl,
   isHotelMenuItem,
   receiveStock,
@@ -26,8 +25,6 @@ export function TransChapStockUpForm() {
   const [sellingPrice, setSellingPrice] = useState("");
   const [buyingPrice, setBuyingPrice] = useState("");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [aiQueued, setAiQueued] = useState(false);
-  const [generatingAi, setGeneratingAi] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [saving, setSaving] = useState(false);
@@ -76,37 +73,6 @@ export function TransChapStockUpForm() {
       item = findInventoryByName(fresh.data, name) ?? null;
     }
     return item;
-  }
-
-  async function handleGenerateAi() {
-    const name = product.trim();
-    if (!name) {
-      await showError("Product name needed", "Type the product name first, then generate a photo.");
-      return;
-    }
-
-    const existing = selectedItem ?? findInventoryByName(inventory, name) ?? null;
-    if (existing) {
-      setGeneratingAi(true);
-      try {
-        const updated = await generateInventoryPhoto(existing.id, { prompt: name });
-        setSelectedItem(updated);
-        setInventory((prev) =>
-          prev.map((row) => (row.id === updated.id ? updated : row)),
-        );
-        setPhotoFile(null);
-        setAiQueued(false);
-        await toastSuccess("Photo generated");
-      } catch {
-        await showInternalError();
-      } finally {
-        setGeneratingAi(false);
-      }
-      return;
-    }
-
-    setPhotoFile(null);
-    setAiQueued(true);
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -166,20 +132,11 @@ export function TransChapStockUpForm() {
           if (!bulk) router.push("/trans-chap/stocks");
           return;
         }
-      } else if (item && aiQueued) {
-        try {
-          await generateInventoryPhoto(item.id, { prompt: name });
-        } catch {
-          await showInternalError();
-          if (!bulk) router.push("/trans-chap/stocks");
-          return;
-        }
       }
       if (bulk) {
         setProduct("");
         setQuantity("");
         setPhotoFile(null);
-        setAiQueued(false);
         setSelectedItem(null);
         await toastSuccess("Stock added. Add another?");
       } else {
@@ -209,12 +166,10 @@ export function TransChapStockUpForm() {
             selectedItem={selectedItem}
             onNameChange={(value) => {
               setProduct(value);
-              setAiQueued(false);
             }}
             onAmountChange={() => undefined}
             onSelectItem={(item) => {
               setSelectedItem(item);
-              setAiQueued(false);
             }}
             onItemsChange={handleItemsChange}
             fillAmountFrom="none"
@@ -235,7 +190,6 @@ export function TransChapStockUpForm() {
                 onChange={(event) => {
                   setProduct(event.target.value);
                   setSelectedItem(null);
-                  setAiQueued(false);
                 }}
               />
             </div>
@@ -245,11 +199,7 @@ export function TransChapStockUpForm() {
           existingUrl={selectedItem ? inventoryCoverUrl(selectedItem) : null}
           file={photoFile}
           onFileChange={setPhotoFile}
-          disabled={saving || generatingAi}
-          onGenerateAi={() => void handleGenerateAi()}
-          generatingAi={generatingAi}
-          aiQueued={aiQueued}
-          onClearAiQueue={() => setAiQueued(false)}
+          disabled={saving}
         />
         <div className="auth-split__field">
           <label htmlFor="stock-up-qty">{bulk ? "Quantity to add" : "Quantity"}</label>
@@ -301,7 +251,7 @@ export function TransChapStockUpForm() {
         )}
       </div>
       <div className="trans-chap-form__actions">
-        <button type="submit" className="auth-split__btn" disabled={saving || generatingAi}>
+        <button type="submit" className="auth-split__btn" disabled={saving}>
           {saving
             ? bulk
               ? "Adding stock…"

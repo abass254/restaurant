@@ -8,6 +8,7 @@ from app.api.v1 import (
     channels,
     conversation_starters,
     customers,
+    suppliers,
     deliveries,
     feeds,
     google_maps,
@@ -79,5 +80,6 @@ router.include_router(store_status.router)
 router.include_router(storefront.router)
 router.include_router(staff.router)
 router.include_router(customers.router)
+router.include_router(suppliers.router)
 router.include_router(admin.router)
 router.include_router(meta.router)

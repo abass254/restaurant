@@ -28,7 +28,6 @@ import type {
   InventoryItemDetailResponse,
   InventoryItemMutationResponse,
   ProductImage,
-  ProductImageGenerateResponse,
   ProductImageUploadResponse,
   InventoryMediaPostResponse,
   ProductUploadTokenResponse,
@@ -747,8 +746,6 @@ function MediaTab({
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
-  const [aiOpen, setAiOpen] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [postTarget, setPostTarget] = useState<ProductImage | null>(null);
   const [posting, setPosting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -759,34 +756,6 @@ function MediaTab({
 
   const images = item.media ?? [];
   const platformCoverUrl = product.image_url ?? null;
-  const isService = product.product_type === "service";
-
-  async function handleGenerate(opts: {
-    prompt?: string;
-    quality?: "low" | "medium" | "high";
-    replaceCover?: boolean;
-  }) {
-    setGenerating(true);
-    try {
-      const res = await apiFetch<ProductImageGenerateResponse>(
-        apiRoutes.inventoryMediaGenerate(item.id),
-        {
-          method: "POST",
-          body: JSON.stringify({
-            prompt: opts.prompt?.trim() || null,
-            quality: opts.quality ?? null,
-          }),
-        },
-      );
-      onItemUpdated(res.data);
-      setAiOpen(false);
-      await toastSuccess(res.message);
-    } catch (err) {
-      await showError("Could not generate image", extractErrorMessage(err));
-    } finally {
-      setGenerating(false);
-    }
-  }
 
   const imageCount = images.filter((m) => !isVideoMedia(m)).length;
   const videoCount = images.length - imageCount;
@@ -883,21 +852,6 @@ function MediaTab({
           ) : null}
         </div>
         <div className="inv-detail__media-actions">
-          {!isService ? (
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={() => setAiOpen(true)}
-              disabled={generating}
-              title="Generate a product image with AI from the description"
-            >
-              <i
-                className={`fa-solid ${generating ? "fa-spinner fa-spin" : "fa-wand-magic-sparkles"}`}
-                aria-hidden="true"
-              />
-              {generating ? "Generating…" : "Generate with AI"}
-            </button>
-          ) : null}
           <button
             type="button"
             className="btn btn-ghost btn-sm"
@@ -1049,15 +1003,6 @@ function MediaTab({
         onItemRefresh={onItemUpdated}
       />
 
-      <AiGenerateModal
-        open={aiOpen}
-        product={product}
-        generating={generating}
-        hasCover={imageCount > 0 || !!platformCoverUrl}
-        onClose={() => (generating ? undefined : setAiOpen(false))}
-        onGenerate={handleGenerate}
-      />
-
       <PostToInstagramModal
         open={postTarget !== null}
         media={postTarget}
@@ -1202,160 +1147,6 @@ function PostToInstagramModal({
           </button>
         </div>
       </div>
-    </MotionModal>
-  );
-}
-
-function AiGenerateModal({
-  open,
-  product,
-  generating,
-  hasCover,
-  onClose,
-  onGenerate,
-}: {
-  open: boolean;
-  product: CatalogProduct;
-  generating: boolean;
-  hasCover: boolean;
-  onClose: () => void;
-  onGenerate: (opts: {
-    prompt?: string;
-    quality?: "low" | "medium" | "high";
-    replaceCover?: boolean;
-  }) => Promise<void>;
-}) {
-  // Seed the prompt textarea with whatever description the product already
-  // has. Users tend to tweak this once and then leave the rest to defaults.
-  const seedPrompt = useMemo(() => {
-    const parts: string[] = [product.name];
-    if (product.brand) parts.push(`by ${product.brand}`);
-    if (product.description) parts.push(product.description);
-    return parts.filter(Boolean).join(". ");
-  }, [product.name, product.brand, product.description]);
-
-  const [prompt, setPrompt] = useState(seedPrompt);
-  const [quality, setQuality] = useState<"low" | "medium" | "high">("high");
-  const [replaceCover, setReplaceCover] = useState(hasCover);
-
-  return (
-    <MotionModal
-      open={open}
-      onClose={onClose}
-      ariaLabel="Generate product image with AI"
-      panelClassName="inv-ai-modal"
-      closeOnBackdrop={!generating}
-      closeOnEscape={!generating}
-    >
-      <header className="inventory-modal__head">
-        <div>
-          <h2>
-            <i className="fa-solid fa-wand-magic-sparkles" aria-hidden="true" />{" "}
-            Generate product image
-          </h2>
-          <span className="app-muted">
-            We'll draft a clean catalog photo from the description below.
-          </span>
-        </div>
-        <button
-          type="button"
-          className="fb-icon-btn"
-          aria-label="Close"
-          onClick={onClose}
-          disabled={generating}
-        >
-          <i className="fa-solid fa-xmark" aria-hidden="true" />
-        </button>
-      </header>
-
-      <div className="inventory-modal__body">
-          <label className="settings-field">
-            <span>Prompt</span>
-            <textarea
-              rows={5}
-              maxLength={2000}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="e.g. Coca-Cola 500ml plastic bottle, red label, condensation on glass"
-              disabled={generating}
-            />
-            <small className="app-muted inventory-field-help">
-              We add a "studio product photo on white background" style on top of
-              whatever you type.
-            </small>
-          </label>
-
-          <div className="settings-form__row">
-            <label className="settings-field">
-              <span>Quality</span>
-              <select
-                value={quality}
-                onChange={(e) =>
-                  setQuality(e.target.value as "low" | "medium" | "high")
-                }
-                disabled={generating}
-              >
-                <option value="low">Low — fastest, cheapest</option>
-                <option value="medium">Medium — balanced</option>
-                <option value="high">High — slow, best detail</option>
-              </select>
-            </label>
-            {hasCover ? (
-              <label className="settings-field">
-                <span>Cover</span>
-                <div className="settings-toggle settings-toggle--compact">
-                  <div className="settings-toggle__copy">
-                    <strong>Replace current cover</strong>
-                    <span>
-                      {replaceCover
-                        ? "New image will become the cover."
-                        : "New image is added to the gallery only."}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={replaceCover}
-                    className={`settings-toggle__switch${replaceCover ? " is-on" : ""}`}
-                    onClick={() => setReplaceCover((v) => !v)}
-                    disabled={generating}
-                  >
-                    <span className="settings-toggle__thumb" aria-hidden="true" />
-                  </button>
-                </div>
-              </label>
-            ) : null}
-          </div>
-
-          <div className="settings-actions">
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              disabled={generating || !prompt.trim()}
-              onClick={() =>
-                void onGenerate({
-                  prompt,
-                  quality,
-                  replaceCover: hasCover ? replaceCover : true,
-                })
-              }
-            >
-              <i
-                className={`fa-solid ${generating ? "fa-spinner fa-spin" : "fa-wand-magic-sparkles"}`}
-                aria-hidden="true"
-              />
-              {generating ? "Generating…" : "Generate"}
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={onClose}
-              disabled={generating}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
     </MotionModal>
   );
 }
