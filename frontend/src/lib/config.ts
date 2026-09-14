@@ -212,6 +212,7 @@ export const apiRoutes = {
   customerCollection: (id: string, transactionId: string) =>
     `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/collections/${encodeURIComponent(transactionId)}`,
   suppliers: `${apiUrl}/api/v1/suppliers`,
+  suppliersImport: `${apiUrl}/api/v1/suppliers/import`,
   supplier: (id: string) => `${apiUrl}/api/v1/suppliers/${encodeURIComponent(id)}`,
   supplierUpdate: (id: string) =>
     `${apiUrl}/api/v1/suppliers/${encodeURIComponent(id)}/update`,

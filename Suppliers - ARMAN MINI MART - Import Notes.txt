@@ -1,0 +1,21 @@
+Arman Mini Mart → TransChap supplier import
+==================================================
+Source data rows: 25
+Import rows (after dedupe): 22
+
+Rules applied:
+- Headers on row 1 for TransChap import
+- Name = Business Name if present, else Name
+- Mobile → Phone (07… / 01…)
+- Deduped by normalized phone
+- Tiny purchase due (< KSh 1) ignored; larger amounts kept in Notes
+- Light spelling fixes (supplier, crisps, refill, superloaf)
+
+Skipped:
+- (none)
+
+Merges:
+- 0726218365 ← ['moha', 'mount']
+- 0712308767 ← ['HILWA STORES']
+
+Import in TransChap: Suppliers → + → Import Excel

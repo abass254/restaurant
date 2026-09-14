@@ -9,7 +9,7 @@ export function TransChapStatus({
   onAction,
 }: {
   children: ReactNode;
-  tone?: "muted" | "error";
+  tone?: "muted" | "error" | "draft";
   actionHref?: string;
   actionLabel?: string;
   onAction?: () => void;

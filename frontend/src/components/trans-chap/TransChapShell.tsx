@@ -13,6 +13,7 @@ import {
   userCanAccessSection,
   type MerchantSection,
 } from "@/lib/merchant-permissions";
+import { logoutToSignIn } from "@/lib/logout";
 import { migrateLegacyTransChapPurchases } from "@/lib/trans-chap-purchases";
 import { detectTransChapMachine, syncTransChapMachine } from "@/lib/trans-chap-machine";
 
@@ -308,6 +309,17 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
               <div className="trans-chap-header__side trans-chap-header__side--end">
                 <FullscreenToggle className="trans-chap-header__icon" />
                 <ThemeToggle />
+                <button
+                  type="button"
+                  className="trans-chap-header__icon"
+                  aria-label="Log out"
+                  title="Log out"
+                  onClick={() =>
+                    void logoutToSignIn({ href: "/trans-chap/sign-in" })
+                  }
+                >
+                  <i className="fa-solid fa-right-from-bracket" aria-hidden />
+                </button>
                 <span className="trans-chap-header__logo" aria-hidden>
                   <TransChapLogoMark size={34} color="currentColor" accentColor="#e8412a" />
                 </span>

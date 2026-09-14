@@ -1,0 +1,11 @@
+Arman Mini Mart → TransChap products/qty import
+==================================================
+Clean product rows: 660
+Skipped: 1
+Sum of Current stock (rounded): 55579
+
+Import: Inventory / Stocks → Import Excel (or POST /inventory/import)
+Matching: SKU (then barcode/name). Current stock overwrites on-hand qty.
+
+Skipped rows:
+- Row 662: junk/empty name

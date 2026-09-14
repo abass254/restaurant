@@ -1564,6 +1564,7 @@ export type OrderCreatePayload = {
     product_sku?: string | null;
     quantity: number;
     unit_price?: number | null;
+    sell_unit?: string | null;
     notes?: string | null;
   }[];
 };
@@ -1706,6 +1707,26 @@ export type ShopSuppliersListResponse = {
 export type ShopSupplierMutationResponse = {
   message: string;
   data: ShopSupplier;
+};
+
+export type SupplierImportRowResult = {
+  row: number;
+  name: string | null;
+  phone: string | null;
+  status: "created" | "updated" | "skipped" | "error";
+  message: string | null;
+};
+
+export type SupplierImportResponse = {
+  message: string;
+  summary: {
+    created: number;
+    updated: number;
+    skipped: number;
+    errors: number;
+  };
+  detected_columns: Record<string, string>;
+  rows: SupplierImportRowResult[];
 };
 
 export type CustomerImportRowResult = {

@@ -231,11 +231,15 @@ def apply_unit_costs(
 
 
 def lines_from_order(order: Order) -> list[tuple[str, int]]:
-    return [
-        (str(item.inventory_item_id), int(item.quantity))
-        for item in (order.items or [])
-        if item.inventory_item_id
-    ]
+    lines: list[tuple[str, int]] = []
+    for item in order.items or []:
+        if not item.inventory_item_id:
+            continue
+        factor = int(getattr(item, "unit_factor", None) or 1)
+        if factor < 1:
+            factor = 1
+        lines.append((str(item.inventory_item_id), int(item.quantity) * factor))
+    return lines
 
 
 def deduct_stock_for_order(db: Session, order: Order) -> bool:

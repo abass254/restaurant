@@ -50,6 +50,19 @@ import {
   receiveStock,
   updateInventoryItem,
 } from "@/lib/trans-chap-product";
+import {
+  allSellUnits,
+  hasPackUnits,
+  normalizeUnitName,
+  resolveSellUnit,
+  sellUnitCost,
+  type SellUnit,
+} from "@/lib/sell-units";
+import {
+  clearPurchaseDraft,
+  loadPurchaseDraft,
+  savePurchaseDraft,
+} from "@/lib/trans-chap-purchase-draft";
 import { isAdjustSellingPriceEnabled } from "@/lib/trans-chap-purchase-prefs";
 import type {
   CatalogProduct,
@@ -72,6 +85,8 @@ type BasketLine = {
   imageUrl: string | null;
   sku?: string | null;
   productCode?: string | null;
+  sellUnit: string | null;
+  unitFactor: number;
 };
 
 const ALL_ROLE_OPTIONS: { id: InventoryRole; label: string }[] = [
@@ -97,23 +112,36 @@ function basketKey(
   name: string,
   itemId: string | null,
   catalogProductId: string | null = null,
+  sellUnit: string | null = null,
 ): string {
-  if (itemId) return itemId;
-  if (catalogProductId) return `catalog:${catalogProductId}`;
-  return name.trim().toLowerCase();
+  const unitPart = sellUnit ? `::${normalizeUnitName(sellUnit)}` : "";
+  if (itemId) return `${itemId}${unitPart}`;
+  if (catalogProductId) return `catalog:${catalogProductId}${unitPart}`;
+  return `${name.trim().toLowerCase()}${unitPart}`;
 }
 
-function lineFromItem(item: InventoryItem, qty = 1): BasketLine {
+function lineFromItem(
+  item: InventoryItem,
+  qty = 1,
+  unit?: SellUnit,
+): BasketLine {
   const name = inventoryProductName(item);
+  const resolved = unit ?? resolveSellUnit(item, null);
   const unitCost =
-    item.buying_price != null && item.buying_price >= 0 ? item.buying_price : 0;
+    sellUnitCost(resolved) ??
+    (item.buying_price != null && item.buying_price >= 0
+      ? item.buying_price * resolved.factor
+      : 0);
   const sellingPrice =
-    item.selling_price != null && item.selling_price >= 0
-      ? item.selling_price
-      : 0;
+    resolved.selling_price != null && resolved.selling_price >= 0
+      ? resolved.selling_price
+      : item.selling_price != null && item.selling_price >= 0
+        ? item.selling_price
+        : 0;
   const role = inventoryRole(item);
+  const sellUnit = resolved.factor > 1 ? resolved.name : null;
   return {
-    key: basketKey(name, item.id),
+    key: basketKey(name, item.id, null, sellUnit),
     productName: name,
     inventoryItemId: item.id,
     catalogProductId: null,
@@ -124,6 +152,8 @@ function lineFromItem(item: InventoryItem, qty = 1): BasketLine {
     sellingPriceInput: sellingPrice > 0 ? String(sellingPrice) : "",
     role: role === "for_sale" ? "both" : role,
     imageUrl: inventoryCoverUrl(item),
+    sellUnit,
+    unitFactor: resolved.factor,
   };
 }
 
@@ -141,6 +171,8 @@ function lineFromCatalog(product: CatalogProduct, role: InventoryRole): BasketLi
     sellingPriceInput: "",
     role,
     imageUrl: product.image_url ?? null,
+    sellUnit: null,
+    unitFactor: 1,
   };
 }
 
@@ -167,6 +199,8 @@ function lineFromNewProduct(
     imageUrl: null,
     sku: extras?.sku?.trim() || null,
     productCode: extras?.productCode?.trim() || null,
+    sellUnit: null,
+    unitFactor: 1,
   };
 }
 
@@ -207,6 +241,9 @@ export function TransChapPurchaseForm() {
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [basket, setBasket] = useState<BasketLine[]>([]);
+  const [selectedUnitByItemId, setSelectedUnitByItemId] = useState<
+    Record<string, string>
+  >({});
   const [pulseId, setPulseId] = useState<string | null>(null);
   const [purchaseMeta, setPurchaseMeta] = useState<PurchaseMeta>(() =>
     emptyPurchaseMeta(),
@@ -216,13 +253,16 @@ export function TransChapPurchaseForm() {
   const [buyModalName, setBuyModalName] = useState("");
   const [quickAddQty, setQuickAddQty] = useState(1);
   const [adjustSellingPrice, setAdjustSellingPrice] = useState(true);
+  const [draftReady, setDraftReady] = useState(false);
 
   const inventoryRef = useRef<InventoryItem[]>([]);
   const pulseTimer = useRef<number | null>(null);
   const scannerBuffer = useRef("");
   const scannerLastKeyAt = useRef(0);
   const scannerResetTimer = useRef<number | null>(null);
+  const draftHydratedRef = useRef(false);
 
+  const accountId = user?.active_account?.id || user?.account?.id || null;
   const shopLocation = useMemo(() => businessLocationLabel(user), [user]);
 
   const purchaseTotal = useMemo(
@@ -243,10 +283,20 @@ export function TransChapPurchaseForm() {
   const lineByInventoryId = useMemo(() => {
     const map = new Map<string, BasketLine>();
     for (const line of basket) {
-      if (line.inventoryItemId) map.set(line.inventoryItemId, line);
+      if (!line.inventoryItemId) continue;
+      const selected = selectedUnitByItemId[line.inventoryItemId];
+      const selectedKey = selected ? normalizeUnitName(selected) : "";
+      const lineKey = line.sellUnit ? normalizeUnitName(line.sellUnit) : "";
+      if (selected && selectedKey === lineKey) {
+        map.set(line.inventoryItemId, line);
+        continue;
+      }
+      if (!map.has(line.inventoryItemId)) {
+        map.set(line.inventoryItemId, line);
+      }
     }
     return map;
-  }, [basket]);
+  }, [basket, selectedUnitByItemId]);
 
   const lineByCatalogId = useMemo(() => {
     const map = new Map<string, BasketLine>();
@@ -335,6 +385,40 @@ export function TransChapPurchaseForm() {
   }, []);
 
   useEffect(() => {
+    if (draftHydratedRef.current) return;
+    draftHydratedRef.current = true;
+    const draft = loadPurchaseDraft(accountId);
+    if (draft?.lines.length) {
+      setBasket(
+        draft.lines.map((line) => ({
+          ...line,
+          sellUnit: line.sellUnit ?? null,
+          unitFactor:
+            line.unitFactor && line.unitFactor >= 1 ? line.unitFactor : 1,
+        })),
+      );
+      setPurchaseMeta(draft.meta);
+      void toastSuccess(
+        draft.lines.length === 1
+          ? "Purchase draft restored"
+          : `Purchase draft restored · ${draft.lines.length} items`,
+      );
+    }
+    setDraftReady(true);
+    // Restore once on mount; accountId is stable for a signed-in session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot hydrate
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    if (!basket.length) {
+      clearPurchaseDraft(accountId);
+      return;
+    }
+    savePurchaseDraft(accountId, { lines: basket, meta: purchaseMeta });
+  }, [accountId, basket, draftReady, purchaseMeta]);
+
+  useEffect(() => {
     if (!shopLocation) return;
     setPurchaseMeta((prev) =>
       prev.businessLocation.trim()
@@ -415,7 +499,7 @@ export function TransChapPurchaseForm() {
   }
 
   const addItem = useCallback(
-    (item: InventoryItem, qty = quickAddQty) => {
+    (item: InventoryItem, qty = quickAddQty, unit?: SellUnit) => {
       if (isHotelMenuItem(item)) {
         void showError(
           "Hotel menu",
@@ -424,11 +508,14 @@ export function TransChapPurchaseForm() {
         return;
       }
       if (!item.is_active) return;
-      const line = lineFromItem(item, Math.max(1, qty));
+      const resolved =
+        unit ??
+        resolveSellUnit(item, selectedUnitByItemId[item.id] ?? null);
+      const line = lineFromItem(item, Math.max(1, qty), resolved);
       setBasket((prev) => mergeBasketLine(prev, line));
       pulse(line.key);
     },
-    [quickAddQty],
+    [quickAddQty, selectedUnitByItemId],
   );
 
   const addCatalogProduct = useCallback(
@@ -501,6 +588,7 @@ export function TransChapPurchaseForm() {
 
   function clearBasket() {
     setBasket([]);
+    clearPurchaseDraft(accountId);
   }
 
   function updateLine(key: string, patch: Partial<BasketLine>) {
@@ -716,11 +804,42 @@ export function TransChapPurchaseForm() {
 
         item = await receiveStock({
           item,
-          quantity: line.quantity,
+          quantity: line.quantity * Math.max(1, line.unitFactor || 1),
           reason: "receive",
-          unitCost: cost,
-          note,
+          // Persist buying price per stock (base) unit.
+          unitCost:
+            Math.max(1, line.unitFactor || 1) > 1
+              ? Math.round((cost / Math.max(1, line.unitFactor || 1)) * 100) / 100
+              : cost,
+          note:
+            line.unitFactor > 1 && line.sellUnit
+              ? [note, `${line.quantity} ${line.sellUnit}`].filter(Boolean).join(" · ")
+              : note,
         });
+        // If this was a pack buy, also store pack buying price on attributes.
+        if (line.unitFactor > 1 && line.sellUnit) {
+          const packs = allSellUnits(item)
+            .filter((unit) => unit.factor > 1)
+            .map((unit) =>
+              normalizeUnitName(unit.name) === normalizeUnitName(line.sellUnit)
+                ? { ...unit, buying_price: cost }
+                : unit,
+            );
+          const attrs = {
+            ...(item.attributes || {}),
+            sell_units: packs.map((unit) => ({
+              name: unit.name,
+              factor: unit.factor,
+              ...(unit.selling_price != null
+                ? { selling_price: unit.selling_price }
+                : {}),
+              ...(unit.buying_price != null
+                ? { buying_price: unit.buying_price }
+                : {}),
+            })),
+          };
+          item = await updateInventoryItem(item.id, { attributes: attrs });
+        }
         if (
           sellingPrice != null &&
           item.selling_price !== sellingPrice
@@ -735,6 +854,8 @@ export function TransChapPurchaseForm() {
         ];
       }
       setInventory(nextInventory);
+      clearPurchaseDraft(accountId);
+      setBasket([]);
       await toastSuccess(
         basket.length === 1
           ? "Purchase saved"
@@ -884,7 +1005,20 @@ export function TransChapPurchaseForm() {
                   {filteredShop.map((item) => {
                     const name = inventoryProductName(item);
                     const coverUrl = inventoryCoverUrl(item);
-                    const line = lineByInventoryId.get(item.id);
+                    const selected = resolveSellUnit(
+                      item,
+                      selectedUnitByItemId[item.id] ?? null,
+                    );
+                    const lineKey = basketKey(
+                      name,
+                      item.id,
+                      null,
+                      selected.factor > 1 ? selected.name : null,
+                    );
+                    const line =
+                      lineByInventoryId.get(item.id)?.key === lineKey
+                        ? lineByInventoryId.get(item.id)
+                        : basket.find((entry) => entry.key === lineKey);
                     const inCartQty = line?.quantity ?? 0;
                     const isPulsing = pulseId === line?.key;
                     const subtitleParts = [
@@ -892,9 +1026,11 @@ export function TransChapPurchaseForm() {
                       item.product?.brand,
                     ].filter(Boolean) as string[];
                     const buyPrice =
-                      item.buying_price != null && item.buying_price >= 0
-                        ? item.buying_price
-                        : null;
+                      sellUnitCost(selected) ??
+                      (item.buying_price != null && item.buying_price >= 0
+                        ? Math.round(item.buying_price * selected.factor * 100) /
+                          100
+                        : null);
                     return (
                       <motion.li
                         key={item.id}
@@ -945,7 +1081,7 @@ export function TransChapPurchaseForm() {
                                       {formatMoney(buyPrice)}
                                     </span>
                                     <span className="pos-card__price-unit">
-                                      /buy
+                                      /{selected.factor > 1 ? selected.name : "buy"}
                                     </span>
                                   </>
                                 ) : (
@@ -959,11 +1095,50 @@ export function TransChapPurchaseForm() {
                                   ? "Stock not set"
                                   : `${item.stock_quantity} on hand`}
                                 {inCartQty > 0
-                                  ? ` · ${inCartQty} in purchase`
+                                  ? ` · ${inCartQty}${
+                                      line?.unitFactor && line.unitFactor > 1 && line.sellUnit
+                                        ? ` ${line.sellUnit}`
+                                        : ""
+                                    } in purchase`
                                   : ""}
                               </span>
                             </div>
                           </button>
+                          {hasPackUnits(item) ? (
+                            <div
+                              className="trans-chap-catalog__units"
+                              role="group"
+                              aria-label={`${name} units`}
+                            >
+                              {allSellUnits(item).map((unit) => {
+                                const selected = resolveSellUnit(
+                                  item,
+                                  selectedUnitByItemId[item.id] ?? null,
+                                );
+                                const activeUnit =
+                                  normalizeUnitName(unit.name) ===
+                                  normalizeUnitName(selected.name);
+                                return (
+                                  <button
+                                    key={unit.name}
+                                    type="button"
+                                    className={`trans-chap-catalog__unit${
+                                      activeUnit ? " is-active" : ""
+                                    }`}
+                                    aria-pressed={activeUnit}
+                                    onClick={() =>
+                                      setSelectedUnitByItemId((prev) => ({
+                                        ...prev,
+                                        [item.id]: unit.name,
+                                      }))
+                                    }
+                                  >
+                                    {unit.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : null}
                           <div className="pos-card__action">
                             {inCartQty > 0 && line ? (
                               <div
@@ -1187,6 +1362,9 @@ export function TransChapPurchaseForm() {
                           <div className="pos-line__main">
                             <strong title={line.productName}>
                               {line.productName}
+                              {line.unitFactor > 1 && line.sellUnit
+                                ? ` (${line.sellUnit})`
+                                : ""}
                             </strong>
                             {roleOptions.length > 1 ? (
                               <div

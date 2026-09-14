@@ -2362,9 +2362,30 @@ def list_catalog_products(
             ),
         )
     rows = query.limit(200).all()
+
+    product_ids = [row.id for row in rows]
+    counts: dict[str, int] = {}
+    if product_ids:
+        rows_counts = (
+            db.query(
+                InventoryItem.product_id,
+                func.count(func.distinct(InventoryItem.account_id)),
+            )
+            .filter(InventoryItem.product_id.in_(product_ids))
+            .group_by(InventoryItem.product_id)
+            .all()
+        )
+        counts = {pid: cnt for pid, cnt in rows_counts}
+
+    items: list[ProductOut] = []
+    for row in rows:
+        out = ProductOut.model_validate(row)
+        out.shops_carrying_count = counts.get(row.id, 0)
+        items.append(out)
+
     return AdminCatalogProductsResponse(
-        data=[ProductOut.model_validate(row) for row in rows],
-        total=len(rows),
+        data=items,
+        total=len(items),
     )
 
 

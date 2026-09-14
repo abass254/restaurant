@@ -42,6 +42,7 @@ from app.services.inventory_stock_service import (
     adjust_stock,
     apply_unit_costs,
 )
+from app.services.sell_units import normalize_sell_units_payload
 from app.services.feed_post_link_service import add_post_link
 from app.services.platform_instagram import require_merchant_instagram_account
 from app.services.product_media_service import (
@@ -519,6 +520,16 @@ def update_inventory_item(
 
     if data.get("inventory_role") is None:
         data.pop("inventory_role", None)
+
+    if "attributes" in data and data["attributes"] is not None:
+        attrs = dict(data["attributes"])
+        if "sell_units" in attrs:
+            packs = normalize_sell_units_payload(attrs.get("sell_units"))
+            if packs:
+                attrs["sell_units"] = packs
+            else:
+                attrs.pop("sell_units", None)
+        data["attributes"] = attrs or None
 
     if item.product and item.product.is_service():
         data["stock_quantity"] = None

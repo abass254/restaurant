@@ -1,0 +1,26 @@
+Arman Mini Mart → TransChap customer import
+==================================================
+Source rows (usable): 27
+Import rows (after dedupe): 22
+Customers with opening balance > 0: 17
+Total opening balance (owed): 64955.0
+
+Rules applied:
+- Headers row 1 for TransChap import
+- Walk-In Customer excluded
+- Total Sale Due → Opening Balance (owed)
+- Credit Limit 'No Limit' → 0 (unlimited in TransChap)
+- Deduped by normalized phone; kept max due to avoid double-count
+- Inactive flag moved into Notes; preferred active name
+
+Skipped:
+- Excluded Walk-In: Walk-In Customer (due=-3898534.00, advance=-1360.00)
+
+Merges:
+- Merged 0794343330 ← ['h18'] → opening 1560.0
+- Merged 0799672744 ← ['deka 8b deka 8b', 'deka yusufu 8b'] → opening 3535.0
+- Merged 0740778747 ← ['1108 amara', 'amara'] → opening 0.0
+- Merged 0740370106 ← ['alii h8', 'alii h8 Inactive'] → opening 8275.0
+- Merged 0726664565 ← ['leila 1a leila', 'lelia 1a 222 leila'] → opening 5795.0
+
+Import in TransChap: Customers → Import → select this xlsx

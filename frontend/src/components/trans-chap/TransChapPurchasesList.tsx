@@ -8,6 +8,7 @@ import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { MotionItem, MotionList } from "@/components/app/MotionList";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
+import { purchaseDraftSummary } from "@/lib/trans-chap-purchase-draft";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import { inventoryRoleLabel } from "@/lib/trans-chap-product";
 import {
@@ -33,6 +34,10 @@ export function TransChapPurchasesList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
+  const [draftSummary, setDraftSummary] = useState<{
+    itemCount: number;
+    lineCount: number;
+  } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -49,6 +54,15 @@ export function TransChapPurchasesList() {
     };
   }, [accountId]);
 
+  useEffect(() => {
+    function refreshDraft() {
+      setDraftSummary(purchaseDraftSummary(accountId));
+    }
+    refreshDraft();
+    window.addEventListener("focus", refreshDraft);
+    return () => window.removeEventListener("focus", refreshDraft);
+  }, [accountId]);
+
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return purchases;
@@ -63,6 +77,17 @@ export function TransChapPurchasesList() {
 
   return (
     <div className="trans-chap-sales">
+      {draftSummary ? (
+        <TransChapStatus
+          tone="draft"
+          actionHref="/trans-chap/purchases/new"
+          actionLabel="Continue"
+        >
+          {draftSummary.lineCount === 1
+            ? `You have a purchase draft (${draftSummary.itemCount} qty).`
+            : `You have a purchase draft (${draftSummary.lineCount} items · ${draftSummary.itemCount} qty).`}
+        </TransChapStatus>
+      ) : null}
       <div className="trans-chap-sales__filters">
         <label className="trans-chap-sales__search">
           <i className="fa-solid fa-magnifying-glass" aria-hidden />

@@ -16,6 +16,23 @@ function canGenerateCatalogImage(product: CatalogProduct): boolean {
   return product.product_type === "product" && !product.image_url;
 }
 
+function shopsLabel(count: number): string {
+  return `${count} shop${count === 1 ? "" : "s"}`;
+}
+
+function imageStatus(product: CatalogProduct): {
+  label: string;
+  tone: "success" | "warning" | "muted";
+} {
+  if (product.image_url && product.primary_image_locked) {
+    return { label: "Locked", tone: "success" };
+  }
+  if (product.image_url) {
+    return { label: "Ready", tone: "success" };
+  }
+  return { label: "Missing", tone: "warning" };
+}
+
 async function generateCatalogImage(productId: string): Promise<CatalogProduct> {
   const res = await apiFetch<{ data: CatalogProduct; message: string }>(
     apiRoutes.adminCatalogGenerateImage(productId),
@@ -203,45 +220,75 @@ export default function AdminCatalogPage() {
         <p className="app-muted">No catalog products found.</p>
       ) : (
         <div className="admin-table-wrap">
-          <table className="admin-table">
+          <table className="admin-table admin-table--catalog">
             <thead>
               <tr>
                 <th>Product</th>
                 <th>Code</th>
-                <th>Primary image</th>
                 <th>Shops</th>
-                <th />
+                <th>Image</th>
+                <th aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
               {products.map((product) => {
                 const canGenerate = canGenerateCatalogImage(product);
                 const isGenerating = generatingIds.has(product.id);
+                const shops = product.shops_carrying_count ?? 0;
+                const status = imageStatus(product);
+                const meta = [product.brand, product.unit].filter(Boolean).join(" · ");
+
                 return (
                   <tr key={product.id}>
                     <td>
-                      <strong>{product.name}</strong>
-                      {product.brand ? (
-                        <span className="app-muted"> · {product.brand}</span>
-                      ) : null}
+                      <Link
+                        href={`/admin/catalog/${product.id}`}
+                        className="admin-table__primary admin-catalog-product"
+                      >
+                        {product.image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={resolveAssetUrl(product.image_url)}
+                            alt=""
+                            className="admin-catalog-thumb"
+                          />
+                        ) : (
+                          <span
+                            className="admin-catalog-thumb admin-catalog-thumb--empty"
+                            aria-hidden="true"
+                          >
+                            <i className="fas fa-box" />
+                          </span>
+                        )}
+                        <span className="admin-table__stack">
+                          <strong>{product.name}</strong>
+                          {meta ? (
+                            <span className="admin-table__muted">{meta}</span>
+                          ) : null}
+                        </span>
+                      </Link>
                     </td>
-                    <td>{product.product_code ?? "—"}</td>
                     <td>
-                      {product.image_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={resolveAssetUrl(product.image_url)}
-                          alt=""
-                          className="admin-catalog-thumb"
-                        />
-                      ) : (
-                        <span className="app-muted">Missing</span>
-                      )}
-                      {product.primary_image_locked ? (
-                        <span className="admin-pill">Locked</span>
-                      ) : null}
+                      <span className="admin-catalog-code">
+                        {product.product_code ?? "—"}
+                      </span>
                     </td>
-                    <td>{product.shops_carrying_count ?? 0}</td>
+                    <td>
+                      <span
+                        className={
+                          shops > 0
+                            ? "admin-pill admin-pill--neutral"
+                            : "admin-pill admin-pill--muted"
+                        }
+                      >
+                        {shopsLabel(shops)}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`admin-pill admin-pill--${status.tone}`}>
+                        {status.label}
+                      </span>
+                    </td>
                     <td className="admin-table__actions">
                       {canGenerate ? (
                         <button

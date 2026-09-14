@@ -1,7 +1,17 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useId, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import { MotionItem, MotionList } from "@/components/app/MotionList";
+import { TransChapFab } from "@/components/trans-chap/TransChapFab";
 import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
@@ -14,7 +24,11 @@ import {
 } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { fetchShopSuppliers } from "@/lib/trans-chap-suppliers";
-import type { ShopSupplier, ShopSupplierMutationResponse } from "@/lib/types";
+import type {
+  ShopSupplier,
+  ShopSupplierMutationResponse,
+  SupplierImportResponse,
+} from "@/lib/types";
 
 type SupplierForm = {
   name: string;
@@ -22,7 +36,7 @@ type SupplierForm = {
   notes: string;
 };
 
-type View = "list" | "create";
+type View = "list" | "create" | "import";
 
 const EMPTY_FORM: SupplierForm = {
   name: "",
@@ -40,6 +54,7 @@ function formFromSupplier(supplier: ShopSupplier): SupplierForm {
 
 export function TransChapSuppliersList() {
   const listId = useId();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<View>("list");
   const [suppliers, setSuppliers] = useState<ShopSupplier[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +65,10 @@ export function TransChapSuppliersList() {
   const [createForm, setCreateForm] = useState<SupplierForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<SupplierImportResponse | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -80,6 +99,14 @@ export function TransChapSuppliersList() {
     setCreateForm(EMPTY_FORM);
     setOpenId(null);
     setView("create");
+  }
+
+  function openImport() {
+    setImportFile(null);
+    setImportError(null);
+    setImportResult(null);
+    setOpenId(null);
+    setView("import");
   }
 
   function toggle(supplier: ShopSupplier) {
@@ -181,6 +208,41 @@ export function TransChapSuppliersList() {
     }
   }
 
+  function onImportFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const picked = event.target.files?.[0] ?? null;
+    setImportFile(picked);
+    setImportError(null);
+    setImportResult(null);
+    event.target.value = "";
+  }
+
+  async function handleImport() {
+    if (!importFile) return;
+    setImporting(true);
+    setImportError(null);
+    try {
+      const form = new FormData();
+      form.append("file", importFile);
+      const res = await apiFetch<SupplierImportResponse>(apiRoutes.suppliersImport, {
+        method: "POST",
+        body: form,
+      });
+      setImportResult(res);
+      if (res.summary.created > 0 || res.summary.updated > 0) {
+        await reload();
+        await toastSuccess(res.message);
+      } else if (res.summary.errors > 0) {
+        await showError("Import finished with errors", res.message);
+      } else {
+        await toastSuccess(res.message);
+      }
+    } catch (err) {
+      setImportError(extractErrorMessage(err, "Import failed."));
+    } finally {
+      setImporting(false);
+    }
+  }
+
   if (view === "create") {
     return (
       <form className="auth-split__form trans-chap-form" onSubmit={(e) => void handleCreate(e)}>
@@ -251,6 +313,141 @@ export function TransChapSuppliersList() {
     );
   }
 
+  if (view === "import") {
+    const detectedEntries = importResult
+      ? Object.entries(importResult.detected_columns)
+      : [];
+    return (
+      <div className="auth-split__form trans-chap-form">
+        <p className="trans-chap-form__lead">
+          Upload an <strong>.xlsx</strong> with <code>Name</code>, <code>Phone</code>, and
+          optional <code>Notes</code>. Matching uses phone — existing suppliers are updated.
+        </p>
+        <div className="trans-chap-form__fields">
+          <button
+            type="button"
+            className="trans-chap-sale-scan__back"
+            onClick={() => {
+              if (importing) return;
+              setView("list");
+            }}
+          >
+            <i className="fa-solid fa-chevron-left" aria-hidden />
+            Suppliers
+          </button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            className="trans-chap-import__file-input"
+            onChange={onImportFileChange}
+          />
+
+          <button
+            type="button"
+            className="trans-chap-import__dropzone"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+          >
+            <i className="fa-solid fa-cloud-arrow-up" aria-hidden />
+            {importFile ? (
+              <>
+                <strong>{importFile.name}</strong>
+                <span>
+                  {(importFile.size / 1024).toFixed(1)} KB — tap to choose another file
+                </span>
+              </>
+            ) : (
+              <>
+                <strong>Choose an Excel file</strong>
+                <span>.xlsx only, up to 5 MB</span>
+              </>
+            )}
+          </button>
+
+          {importError ? (
+            <TransChapStatus tone="error">{importError}</TransChapStatus>
+          ) : null}
+
+          {importResult ? (
+            <div className="trans-chap-import__results">
+              <div className="trans-chap-import__summary">
+                <span>
+                  <strong>{importResult.summary.created}</strong> added
+                </span>
+                <span>
+                  <strong>{importResult.summary.updated}</strong> updated
+                </span>
+                {importResult.summary.skipped ? (
+                  <span>
+                    <strong>{importResult.summary.skipped}</strong> skipped
+                  </span>
+                ) : null}
+                {importResult.summary.errors ? (
+                  <span className="trans-chap-import__stat--error">
+                    <strong>{importResult.summary.errors}</strong> failed
+                  </span>
+                ) : null}
+              </div>
+
+              {detectedEntries.length > 0 ? (
+                <details className="trans-chap-import__columns">
+                  <summary>Columns detected ({detectedEntries.length})</summary>
+                  <ul>
+                    {detectedEntries.map(([field, header]) => (
+                      <li key={field}>
+                        <code>{header}</code>
+                        <span> → {field.replace(/_/g, " ")}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+
+              {importResult.rows.some((row) => row.status === "error") ? (
+                <ul className="trans-chap-import__errors">
+                  {importResult.rows
+                    .filter((row) => row.status === "error")
+                    .slice(0, 8)
+                    .map((row) => (
+                      <li key={row.row}>
+                        Row {row.row}
+                        {row.name ? `: ${row.name}` : ""} — {row.message}
+                      </li>
+                    ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+        <div className="trans-chap-form__actions">
+          <button
+            type="button"
+            className="auth-split__btn"
+            disabled={!importFile || importing || !!importResult}
+            onClick={() => void handleImport()}
+          >
+            {importing ? "Importing…" : "Import suppliers"}
+          </button>
+          {importResult ? (
+            <button
+              type="button"
+              className="trans-chap-form__secondary"
+              onClick={() => {
+                setImportFile(null);
+                setImportError(null);
+                setImportResult(null);
+              }}
+            >
+              Import another file
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="trans-chap-sales">
       <div className="trans-chap-sales__filters">
@@ -274,7 +471,7 @@ export function TransChapSuppliersList() {
         <TransChapStatus tone="error">{error}</TransChapStatus>
       ) : suppliers.length === 0 ? (
         <TransChapStatus>
-          No suppliers yet. Tap + to add people you buy from.
+          No suppliers yet. Tap + to add people you buy from, or import from Excel.
         </TransChapStatus>
       ) : filtered.length === 0 ? (
         <p className="trans-chap-sales__empty">No names match this search.</p>
@@ -364,16 +561,21 @@ export function TransChapSuppliersList() {
         </MotionList>
       )}
 
-      <div className="trans-chap-fab-wrap">
-        <button
-          type="button"
-          className="trans-chap-fab"
-          aria-label="Add supplier"
-          onClick={openCreate}
-        >
-          <i className="fa-solid fa-plus" aria-hidden />
-        </button>
-      </div>
+      <TransChapFab
+        label="Suppliers"
+        options={[
+          {
+            label: "Add supplier",
+            icon: "fa-truck-field",
+            onClick: openCreate,
+          },
+          {
+            label: "Import Excel",
+            icon: "fa-file-excel",
+            onClick: openImport,
+          },
+        ]}
+      />
     </div>
   );
 }

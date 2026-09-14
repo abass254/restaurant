@@ -73,6 +73,7 @@ class SupplierService:
         name: str,
         phone: str,
         notes: str | None = None,
+        commit: bool = True,
     ) -> ShopSupplier:
         clean_name = (name or "").strip()
         clean_phone = normalize_phone(phone)
@@ -93,9 +94,47 @@ class SupplierService:
             updated_at=now,
         )
         self.db.add(supplier)
-        self.db.commit()
-        self.db.refresh(supplier)
+        if commit:
+            self.db.commit()
+            self.db.refresh(supplier)
         return supplier
+
+    def upsert_import_supplier(
+        self,
+        account_id: str,
+        *,
+        name: str,
+        phone: str,
+        notes: str | None = None,
+        commit: bool = True,
+    ) -> tuple[ShopSupplier, str]:
+        """Create or update by phone for Excel import."""
+        clean_phone = normalize_phone(phone)
+        if not clean_phone:
+            raise SupplierServiceError("Supplier phone is required.")
+        existing = self._find_duplicate_phone(account_id, clean_phone)
+        if existing is None:
+            supplier = self.create_supplier(
+                account_id,
+                name=name,
+                phone=clean_phone,
+                notes=notes,
+                commit=commit,
+            )
+            return supplier, "created"
+
+        clean_name = (name or "").strip()
+        if not clean_name:
+            raise SupplierServiceError("Supplier name is required.")
+        existing.name = clean_name
+        existing.phone = clean_phone
+        if notes is not None:
+            existing.notes = notes.strip() or None
+        existing.updated_at = utc_now()
+        if commit:
+            self.db.commit()
+            self.db.refresh(existing)
+        return existing, "updated"
 
     def update_supplier(
         self,

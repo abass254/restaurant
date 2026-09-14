@@ -7,6 +7,15 @@ import { TransChapProductThumb } from "@/components/trans-chap/TransChapProductT
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { isRestaurantStore } from "@/lib/onboarding";
 import {
+  allSellUnits,
+  canSellInUnit,
+  hasPackUnits,
+  normalizeUnitName,
+  resolveSellUnit,
+  sellUnitPrice,
+  type SellUnit,
+} from "@/lib/sell-units";
+import {
   canSellInventoryItem,
   inventoryProductName,
   inventoryRole,
@@ -22,6 +31,8 @@ export type SaleCatalogLine = {
   inventoryItemId: string | null;
   quantity: number;
   unitPrice: number;
+  sellUnit: string | null;
+  unitFactor: number;
 };
 
 type Props = {
@@ -31,8 +42,10 @@ type Props = {
   inventory: InventoryItem[];
   inventoryLoading: boolean;
   lastScannedKey: string | null;
+  selectedUnitByItemId: Record<string, string>;
   onScan: (code: string) => void;
-  onAdd: (item: InventoryItem) => void;
+  onSelectUnit: (itemId: string, unitName: string) => void;
+  onAdd: (item: InventoryItem, unit?: SellUnit) => void;
   onQty: (key: string, quantity: number) => void;
   onContinue: () => void;
 };
@@ -44,7 +57,9 @@ export function TransChapSaleCatalog({
   inventory,
   inventoryLoading,
   lastScannedKey,
+  selectedUnitByItemId,
   onScan,
+  onSelectUnit,
   onAdd,
   onQty,
   onContinue,
@@ -57,10 +72,10 @@ export function TransChapSaleCatalog({
     () => basket.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0),
     [basket],
   );
-  const qtyById = useMemo(() => {
+  const qtyByKey = useMemo(() => {
     const map = new Map<string, SaleCatalogLine>();
     for (const line of basket) {
-      if (line.inventoryItemId) map.set(line.inventoryItemId, line);
+      map.set(line.key, line);
     }
     return map;
   }, [basket]);
@@ -139,12 +154,18 @@ export function TransChapSaleCatalog({
           <ul className={`trans-chap-catalog${scan ? "" : " trans-chap-catalog--grid"}`}>
             {filtered.map((item) => {
               const name = inventoryProductName(item);
-              const line = qtyById.get(item.id);
+              const units = allSellUnits(item);
+              const selected =
+                resolveSellUnit(item, selectedUnitByItemId[item.id] ?? null);
+              const lineKey = `${item.id}::${normalizeUnitName(selected.name)}`;
+              const line = qtyByKey.get(lineKey);
               const canSell = canSellInventoryItem(item);
               const hotel = isHotelMenuItem(item);
               const out =
                 !hotel && item.stock_quantity != null && item.stock_quantity <= 0;
-              const noPrice = item.selling_price == null || item.selling_price <= 0;
+              const price = sellUnitPrice(selected);
+              const noPrice = price == null || price <= 0;
+              const showUnits = hasPackUnits(item);
               return (
                 <li
                   key={item.id}
@@ -155,8 +176,8 @@ export function TransChapSaleCatalog({
                   <button
                     type="button"
                     className="trans-chap-catalog__main"
-                    disabled={!canSell}
-                    onClick={() => onAdd(item)}
+                    disabled={!canSell || !canSellInUnit(item, selected)}
+                    onClick={() => onAdd(item, selected)}
                   >
                     <TransChapProductThumb item={item} name={name} size={scan ? "md" : "lg"} />
                     <span className="trans-chap-catalog__copy">
@@ -171,10 +192,40 @@ export function TransChapSaleCatalog({
                           ? "Out of stock"
                           : noPrice
                             ? "No price"
-                            : formatKsh(item.selling_price ?? 0)}
+                            : `${formatKsh(price)}${
+                                selected.factor > 1 ? ` / ${selected.name}` : ""
+                              }`}
                       </span>
                     </span>
                   </button>
+                  {showUnits ? (
+                    <div
+                      className="trans-chap-catalog__units"
+                      role="group"
+                      aria-label={`${name} units`}
+                    >
+                      {units.map((unit) => {
+                        const activeUnit =
+                          normalizeUnitName(unit.name) ===
+                          normalizeUnitName(selected.name);
+                        const enabled = canSell && canSellInUnit(item, unit);
+                        return (
+                          <button
+                            key={unit.name}
+                            type="button"
+                            className={`trans-chap-catalog__unit${
+                              activeUnit ? " is-active" : ""
+                            }`}
+                            disabled={!enabled && !activeUnit}
+                            aria-pressed={activeUnit}
+                            onClick={() => onSelectUnit(item.id, unit.name)}
+                          >
+                            {unit.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                   {line ? (
                     <div className="trans-chap-sale-scan__qty">
                       <button
@@ -184,7 +235,12 @@ export function TransChapSaleCatalog({
                       >
                         −
                       </button>
-                      <span>{line.quantity}</span>
+                      <span>
+                        {line.quantity}
+                        {line.unitFactor > 1 && line.sellUnit
+                          ? ` ${line.sellUnit}`
+                          : ""}
+                      </span>
                       <button
                         type="button"
                         aria-label={`Increase ${name}`}

@@ -361,6 +361,8 @@ class OrderItemOut(BaseModel):
     quantity: int
     unit_price: float
     line_total: float
+    sell_unit: str | None = None
+    unit_factor: int = 1
     notes: str | None
     # Current on-hand stock for the linked inventory item (if any).
     stock_quantity: int | None = None
@@ -371,6 +373,9 @@ class OrderItemOut(BaseModel):
         inv = getattr(item, "inventory_item", None)
         if inv is not None:
             stock = getattr(inv, "stock_quantity", None)
+        factor = int(getattr(item, "unit_factor", None) or 1)
+        if factor < 1:
+            factor = 1
         return cls(
             id=item.id,
             inventory_item_id=item.inventory_item_id,
@@ -380,6 +385,8 @@ class OrderItemOut(BaseModel):
             quantity=item.quantity,
             unit_price=float(item.unit_price),
             line_total=float(item.line_total),
+            sell_unit=getattr(item, "sell_unit", None),
+            unit_factor=factor,
             notes=item.notes,
             stock_quantity=stock,
         )

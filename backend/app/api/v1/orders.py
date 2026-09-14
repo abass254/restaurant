@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -60,6 +60,7 @@ from app.services.inventory_stock_service import (
     deduct_stock,
     restore_stock_for_order,
 )
+from app.services.sell_units import resolve_sell_unit
 from app.support.order_delivery_details import order_needs_delivery_details
 from app.support.account_location import (
     STORE_LOCATION_REQUIRED_FOR_RIDERS,
@@ -160,6 +161,8 @@ class OrderItemPayload(BaseModel):
     product_sku: str | None = Field(default=None, max_length=120)
     quantity: int = Field(ge=1, le=10_000)
     unit_price: float | None = Field(default=None, ge=0, le=99_999_999.99)
+    # Pack/crate name (e.g. "Crate"). Stock deducts quantity × unit factor.
+    sell_unit: str | None = Field(default=None, max_length=64)
     notes: str | None = Field(default=None, max_length=1000)
 
 
@@ -850,9 +853,15 @@ def create_order(
 
     # Resolve & snapshot every line up front so we either accept the whole
     # order or fail before writing anything.
-    resolved_lines: list[tuple[OrderItemPayload, InventoryItem | None, Decimal, str, str | None]] = []
+    # Tuple: payload, inv, price, display_name, sku, sell_unit_label, unit_factor
+    resolved_lines: list[
+        tuple[OrderItemPayload, InventoryItem | None, Decimal, str, str | None, str | None, int]
+    ] = []
     for idx, line in enumerate(payload.items):
         inv_item: InventoryItem | None = None
+        sell_unit_label: str | None = None
+        unit_factor = 1
+        resolved_unit: dict[str, Any] | None = None
         if line.inventory_item_id:
             inv_item = (
                 db.query(InventoryItem)
@@ -885,22 +894,53 @@ def create_order(
                         },
                     },
                 )
+            try:
+                resolved_unit = resolve_sell_unit(inv_item, line.sell_unit)
+            except ValueError as exc:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "errors": {
+                            f"items.{idx}.sell_unit": [str(exc)],
+                        },
+                    },
+                ) from exc
+            unit_factor = int(resolved_unit["factor"])
+            sell_unit_label = str(resolved_unit["name"]) if unit_factor > 1 else None
 
         # Resolve display name + price from the snapshot or the explicit payload.
         if inv_item and inv_item.product:
             name = (line.product_name or inv_item.product.name).strip()
             sku = line.product_sku or inv_item.product.sku
+            pack_price = (resolved_unit or {}).get("selling_price")
             default_price = (
-                Decimal(str(inv_item.selling_price))
-                if inv_item.selling_price is not None
-                else Decimal("0")
+                Decimal(str(pack_price))
+                if pack_price is not None
+                else (
+                    Decimal(str(inv_item.selling_price))
+                    if inv_item.selling_price is not None
+                    else Decimal("0")
+                )
             )
             price = (
                 _money(line.unit_price)
                 if line.unit_price is not None
                 else default_price
             )
+            if unit_factor > 1 and resolved_unit:
+                name = f"{name} ({resolved_unit['name']})"
         else:
+            if line.sell_unit and str(line.sell_unit).strip():
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "errors": {
+                            f"items.{idx}.sell_unit": [
+                                "Sell units require an inventory item.",
+                            ],
+                        },
+                    },
+                )
             if not line.product_name or not line.product_name.strip():
                 raise HTTPException(
                     status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -927,10 +967,15 @@ def create_order(
             sku = (line.product_sku or "").strip() or None
             price = _money(line.unit_price)
 
-        resolved_lines.append((line, inv_item, price, name, sku))
+        resolved_lines.append(
+            (line, inv_item, price, name, sku, sell_unit_label, unit_factor),
+        )
 
     # Money roll-up.
-    subtotal = sum((price * line.quantity for line, _, price, _, _ in resolved_lines), Decimal("0"))
+    subtotal = sum(
+        (price * line.quantity for line, _, price, _, _, _, _ in resolved_lines),
+        Decimal("0"),
+    )
     delivery_fee = _money(payload.delivery_fee)
     discount = _money(payload.discount)
     total = (subtotal + delivery_fee - discount).quantize(Decimal("0.01"))
@@ -964,7 +1009,7 @@ def create_order(
     db.add(order)
     db.flush()  # need order.id for the FKs below
 
-    for line, inv_item, price, name, sku in resolved_lines:
+    for line, inv_item, price, name, sku, sell_unit_label, unit_factor in resolved_lines:
         item = OrderItem(
             order_id=order.id,
             inventory_item_id=inv_item.id if inv_item else None,
@@ -974,6 +1019,8 @@ def create_order(
             quantity=line.quantity,
             unit_price=price,
             line_total=(price * line.quantity).quantize(Decimal("0.01")),
+            sell_unit=sell_unit_label,
+            unit_factor=unit_factor,
             notes=line.notes,
             created_at=now,
             updated_at=now,
@@ -995,8 +1042,8 @@ def create_order(
         if deduct_stock(
             db,
             [
-                (inv_item.id, line.quantity)
-                for line, inv_item, _, _, _ in resolved_lines
+                (inv_item.id, line.quantity * unit_factor)
+                for line, inv_item, _, _, _, _, unit_factor in resolved_lines
                 if inv_item
             ],
             account_id=account_id,

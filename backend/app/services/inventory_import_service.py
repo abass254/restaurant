@@ -45,7 +45,7 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "internal ref",
         "sku (leave blank to auto generate sku)",
     ),
-    "barcode": ("barcode", "ean", "upc", "ean13"),
+    "barcode": ("barcode", "barcodes", "ean", "upc", "ean13"),
     "category": (
         "product category",
         "category",
@@ -91,6 +91,7 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "standard price",
         "cost price",
         "purchase price",
+        "unit purchase price",
         "purchase price (excluding tax)",
         "purchase price (including tax)",
     ),
@@ -100,6 +101,7 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "quantity on hand",
         "qty on hand",
         "on hand",
+        "current stock",
         "quantity",
         "qty available",
         "available quantity",
@@ -358,7 +360,8 @@ def _cell_int(value: Any) -> int | None:
     parsed = _cell_float(value)
     if parsed is None:
         return None
-    return int(parsed)
+    # POS exports often send "12.00" / fractional kg — store nearest whole unit.
+    return int(round(parsed))
 
 
 def _cell_bool01(value: Any) -> bool | None:

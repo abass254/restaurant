@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import NoReturn
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from app.database import get_db
 from app.dependencies import get_request_session
 from app.models import ShopSupplier
 from app.services.platform_instagram import require_merchant_account_id
+from app.services.supplier_import_service import import_suppliers_from_excel
 from app.services.supplier_service import SupplierService, SupplierServiceError
 from app.support.datetime_utils import as_utc
 from app.support.merchant_permissions import (
@@ -106,6 +107,62 @@ def create_supplier(
     except SupplierServiceError as exc:
         _raise_service_error(exc)
     return {"message": "Supplier saved.", "data": _supplier_out(supplier)}
+
+
+@router.post("/import")
+async def import_suppliers_excel(
+    request: Request,
+    file: UploadFile = File(..., description="Supplier list (.xlsx)"),
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Bulk-import suppliers (name, phone, optional notes)."""
+    validate_csrf(request, session)
+    user = require_user(db, session)
+    assert_merchant_section_any_access(user, *TILL_SUPPLIER_SECTIONS)
+    account_id = require_merchant_account_id(user)
+
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".xlsx"):
+        raise HTTPException(
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Upload an Excel file (.xlsx).",
+        )
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="The file is empty.")
+
+    try:
+        result = import_suppliers_from_excel(
+            db,
+            content=content,
+            account_id=account_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    return {
+        "message": f"Import complete: {result.summary_message()}.",
+        "summary": {
+            "created": result.created,
+            "updated": result.updated,
+            "skipped": result.skipped,
+            "errors": result.errors,
+        },
+        "detected_columns": result.detected_columns,
+        "rows": [
+            {
+                "row": row.row,
+                "name": row.name,
+                "phone": row.phone,
+                "status": row.status,
+                "message": row.message,
+            }
+            for row in result.rows
+            if row.status in {"error", "skipped"}
+        ][:50],
+    }
 
 
 @router.get("/{supplier_id}")

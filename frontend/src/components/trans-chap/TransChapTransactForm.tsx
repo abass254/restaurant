@@ -16,6 +16,13 @@ import {
   inventoryProductName,
 } from "@/lib/trans-chap-product";
 import {
+  canSellInUnit,
+  normalizeUnitName,
+  resolveSellUnit,
+  sellUnitPrice,
+  type SellUnit,
+} from "@/lib/sell-units";
+import {
   ensureShopCustomer,
   fetchShopCustomers,
 } from "@/lib/trans-chap-customers";
@@ -38,18 +45,27 @@ type BasketLine = {
   inventoryItemId: string | null;
   quantity: number;
   unitPrice: number;
+  sellUnit: string | null;
+  unitFactor: number;
 };
 
-function basketKey(name: string, itemId: string | null): string {
-  return itemId ?? name.trim().toLowerCase();
+function basketKey(name: string, itemId: string | null, sellUnit: string | null): string {
+  const unitPart = sellUnit ? `::${normalizeUnitName(sellUnit)}` : "";
+  return `${itemId ?? name.trim().toLowerCase()}${unitPart}`;
 }
 
 function mergeBasketLine(
   lines: BasketLine[],
-  draft: { name: string; qty: number; unitPrice: number },
+  draft: {
+    name: string;
+    qty: number;
+    unitPrice: number;
+    sellUnit: string | null;
+    unitFactor: number;
+  },
   item: InventoryItem | null,
 ): BasketLine[] {
-  const key = basketKey(draft.name, item?.id ?? null);
+  const key = basketKey(draft.name, item?.id ?? null, draft.sellUnit);
   const existing = lines.find((line) => line.key === key);
   if (existing) {
     const updated = { ...existing, quantity: existing.quantity + draft.qty };
@@ -62,6 +78,8 @@ function mergeBasketLine(
       inventoryItemId: item?.id ?? null,
       quantity: draft.qty,
       unitPrice: draft.unitPrice,
+      sellUnit: draft.sellUnit,
+      unitFactor: draft.unitFactor,
     },
     ...lines,
   ];
@@ -79,6 +97,9 @@ export function TransChapTransactForm() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [inventoryLoading, setInventoryLoading] = useState(true);
   const [basket, setBasket] = useState<BasketLine[]>([]);
+  const [selectedUnitByItemId, setSelectedUnitByItemId] = useState<Record<string, string>>(
+    {},
+  );
   const [lastScannedKey, setLastScannedKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [mpesaReady, setMpesaReady] = useState<boolean | null>(null);
@@ -129,14 +150,36 @@ export function TransChapTransactForm() {
     };
   }, []);
 
-  const addItem = useCallback((item: InventoryItem) => {
+  const addItem = useCallback((item: InventoryItem, unit?: SellUnit) => {
     if (!canSellInventoryItem(item)) return;
+    const resolved = unit ?? resolveSellUnit(item, selectedUnitByItemId[item.id] ?? null);
+    if (!canSellInUnit(item, resolved)) {
+      void showError(
+        "Not enough stock",
+        `${inventoryProductName(item)} needs ${resolved.factor} in stock to sell as ${resolved.name}.`,
+      );
+      return;
+    }
     const name = inventoryProductName(item);
-    const unitPrice = item.selling_price ?? 0;
-    const key = basketKey(name, item.id);
-    setBasket((prev) => mergeBasketLine(prev, { name, qty: 1, unitPrice }, item));
+    const unitPrice = sellUnitPrice(resolved) ?? 0;
+    if (unitPrice <= 0) return;
+    const sellUnit = resolved.factor > 1 ? resolved.name : null;
+    const key = basketKey(name, item.id, sellUnit);
+    setBasket((prev) =>
+      mergeBasketLine(
+        prev,
+        {
+          name,
+          qty: 1,
+          unitPrice,
+          sellUnit,
+          unitFactor: resolved.factor,
+        },
+        item,
+      ),
+    );
     setLastScannedKey(key);
-  }, []);
+  }, [selectedUnitByItemId]);
 
   const handleScan = useCallback((code: string) => {
     const scanned = code.trim();
@@ -153,7 +196,9 @@ export function TransChapTransactForm() {
       );
       return;
     }
-    addItem(item);
+    // Barcode scan always sells the base (piece) unit.
+    const base = resolveSellUnit(item, null);
+    addItem(item, base);
     void toastSuccess(inventoryProductName(item));
   }, [addItem]);
 
@@ -288,6 +333,7 @@ export function TransChapTransactForm() {
           quantity: line.quantity,
           unit_price: line.unitPrice,
           inventory_item_id: item?.id ?? null,
+          sell_unit: line.sellUnit,
         });
       }
       setInventory(nextInventory);
@@ -358,7 +404,11 @@ export function TransChapTransactForm() {
           inventory={inventory}
           inventoryLoading={inventoryLoading}
           lastScannedKey={lastScannedKey}
+          selectedUnitByItemId={selectedUnitByItemId}
           onScan={handleScan}
+          onSelectUnit={(itemId, unitName) => {
+            setSelectedUnitByItemId((prev) => ({ ...prev, [itemId]: unitName }));
+          }}
           onAdd={addItem}
           onQty={(key, quantity) => {
             if (quantity <= 0) {

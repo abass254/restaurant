@@ -1212,6 +1212,9 @@ class OrderItem(Base):
     quantity: Mapped[int] = mapped_column(Integer)
     unit_price: Mapped[Any] = mapped_column(Numeric(12, 2))
     line_total: Mapped[Any] = mapped_column(Numeric(12, 2))
+    # Pack/crate sold: quantity is in this unit; stock uses quantity * unit_factor.
+    sell_unit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    unit_factor: Mapped[int] = mapped_column(Integer, default=1)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

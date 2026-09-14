@@ -6,9 +6,15 @@ import { useOptionalAuthUser } from "@/components/app/AuthProvider";
 import { TransChapPhotoField } from "@/components/trans-chap/TransChapPhotoField";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { apiFetch } from "@/lib/api";
-import { showInternalError, toastSuccess, internalErrorMessage } from "@/lib/alerts";
+import { showError, showInternalError, toastSuccess, internalErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { isRestaurantStore } from "@/lib/onboarding";
+import {
+  baseUnitName,
+  mergeSellUnitsIntoAttributes,
+  packUnits,
+  type SellUnit,
+} from "@/lib/sell-units";
 import {
   inventoryCoverUrl,
   inventoryProductName,
@@ -20,7 +26,12 @@ import {
   uploadInventoryPhoto,
 } from "@/lib/trans-chap-product";
 import { formatKsh } from "@/lib/trans-chap-receipt";
-import type { InventoryItem, InventoryItemDetailResponse, InventoryRole } from "@/lib/types";
+import type {
+  CatalogProductMutationResponse,
+  InventoryItem,
+  InventoryItemDetailResponse,
+  InventoryRole,
+} from "@/lib/types";
 
 const ALL_ROLE_OPTIONS: { id: InventoryRole; label: string; hint: string }[] = [
   {
@@ -40,6 +51,37 @@ const ALL_ROLE_OPTIONS: { id: InventoryRole; label: string; hint: string }[] = [
   },
 ];
 
+type PackDraft = {
+  key: string;
+  name: string;
+  factor: string;
+  sellingPrice: string;
+};
+
+function packDraftsFromItem(item: InventoryItem): PackDraft[] {
+  return packUnits(item).map((pack, index) => ({
+    key: `pack-${index}-${pack.name}`,
+    name: pack.name,
+    factor: String(pack.factor),
+    sellingPrice:
+      pack.selling_price == null ? "" : String(pack.selling_price),
+  }));
+}
+
+function draftsToSellUnits(drafts: PackDraft[]): SellUnit[] {
+  return drafts.map((draft) => {
+    const unit: SellUnit = {
+      name: draft.name.trim(),
+      factor: Math.floor(Number(draft.factor)),
+    };
+    const price = draft.sellingPrice.trim() === "" ? null : Number(draft.sellingPrice);
+    if (price != null && Number.isFinite(price) && price >= 0) {
+      unit.selling_price = price;
+    }
+    return unit;
+  });
+}
+
 export function TransChapProductEditForm() {
   const router = useRouter();
   const user = useOptionalAuthUser();
@@ -49,6 +91,8 @@ export function TransChapProductEditForm() {
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [sellingPrice, setSellingPrice] = useState("");
+  const [baseUnit, setBaseUnit] = useState("Piece");
+  const [packs, setPacks] = useState<PackDraft[]>([]);
   const [role, setRole] = useState<InventoryRole>("for_sale");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
@@ -69,10 +113,12 @@ export function TransChapProductEditForm() {
         setItem(row);
         setName(inventoryProductName(row));
         setSellingPrice(row.selling_price == null ? "" : String(row.selling_price));
+        setBaseUnit(baseUnitName(row));
+        setPacks(packDraftsFromItem(row));
         setRole(inventoryRole(row));
         setError(null);
       })
-      .catch((err) => {
+      .catch(() => {
         if (!alive) return;
         setItem(null);
         setError(internalErrorMessage());
@@ -94,6 +140,28 @@ export function TransChapProductEditForm() {
     );
   }, [restaurant, role]);
 
+  function addPack() {
+    setPacks((prev) => [
+      ...prev,
+      {
+        key: `pack-${Date.now()}`,
+        name: "",
+        factor: "",
+        sellingPrice: "",
+      },
+    ]);
+  }
+
+  function updatePack(key: string, patch: Partial<PackDraft>) {
+    setPacks((prev) =>
+      prev.map((pack) => (pack.key === key ? { ...pack, ...patch } : pack)),
+    );
+  }
+
+  function removePack(key: string) {
+    setPacks((prev) => prev.filter((pack) => pack.key !== key));
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!item) return;
@@ -108,6 +176,29 @@ export function TransChapProductEditForm() {
       return;
     }
 
+    for (const pack of packs) {
+      const packName = pack.name.trim();
+      const factor = Number(pack.factor);
+      if (!packName && pack.factor.trim() === "" && pack.sellingPrice.trim() === "") {
+        continue;
+      }
+      if (!packName) {
+        await showError("Pack name", "Enter a name like Crate or Dozen.");
+        return;
+      }
+      if (!Number.isFinite(factor) || factor < 2) {
+        await showError("Pack size", "Enter how many stock units are in the pack (2 or more).");
+        return;
+      }
+      if (pack.sellingPrice.trim() !== "") {
+        const packPrice = Number(pack.sellingPrice);
+        if (!Number.isFinite(packPrice) || packPrice < 0) {
+          await showError("Pack price", "Enter a valid pack selling price.");
+          return;
+        }
+      }
+    }
+
     setSaving(true);
     try {
       if (nextName !== inventoryProductName(item)) {
@@ -118,14 +209,40 @@ export function TransChapProductEditForm() {
             : prev,
         );
       }
+      const nextBaseUnit = baseUnit.trim() || "Piece";
+      if (!hotel && nextBaseUnit !== (item.product?.unit || "Piece")) {
+        const product = await apiFetch<CatalogProductMutationResponse>(
+          apiRoutes.product(item.product_id),
+          {
+            method: "PATCH",
+            body: JSON.stringify({ unit: nextBaseUnit }),
+          },
+        );
+        setItem((prev) =>
+          prev
+            ? {
+                ...prev,
+                product: prev.product
+                  ? { ...prev.product, ...product.data }
+                  : product.data,
+              }
+            : prev,
+        );
+      }
+
       const payload: {
         selling_price?: number | null;
         inventory_role?: InventoryRole;
+        attributes?: Record<string, unknown> | null;
       } = {
         selling_price: needsSellPrice ? sell : sell,
       };
       if (!hotel) {
         payload.inventory_role = role;
+        payload.attributes = mergeSellUnitsIntoAttributes(
+          item.attributes,
+          draftsToSellUnits(packs),
+        );
       }
       let updated = await updateInventoryItem(item.id, payload);
       if (photoFile) {
@@ -228,7 +345,9 @@ export function TransChapProductEditForm() {
             <div className="auth-split__field">
               <span className="trans-chap-form__label">Quantity on hand</span>
               <p className="trans-chap-form__readonly">{qtyLabel}</p>
-              <p className="trans-chap-form__hint">Updates when you buy or sell.</p>
+              <p className="trans-chap-form__hint">
+                Counted in {baseUnit.trim() || "Piece"}s. Updates when you buy or sell.
+              </p>
             </div>
             <div className="auth-split__field">
               <span className="trans-chap-form__label">Buying price</span>
@@ -237,9 +356,30 @@ export function TransChapProductEditForm() {
             </div>
           </div>
         )}
+        {hotel ? null : (
+          <div className="auth-split__field">
+            <label htmlFor="edit-product-base-unit">Stock unit</label>
+            <div className="trans-chap-input">
+              <input
+                id="edit-product-base-unit"
+                type="text"
+                autoComplete="off"
+                placeholder="Piece"
+                className="auth-split__input"
+                value={baseUnit}
+                onChange={(event) => setBaseUnit(event.target.value)}
+              />
+            </div>
+            <p className="trans-chap-form__hint">
+              Stock is always kept in this unit (e.g. Piece, Egg, Bottle).
+            </p>
+          </div>
+        )}
         {needsSellPrice ? (
           <div className="auth-split__field">
-            <label htmlFor="edit-product-sell">Selling price</label>
+            <label htmlFor="edit-product-sell">
+              Selling price{hotel ? "" : ` / ${baseUnit.trim() || "Piece"}`}
+            </label>
             <div className="trans-chap-input">
               <input
                 id="edit-product-sell"
@@ -257,6 +397,75 @@ export function TransChapProductEditForm() {
           <p className="trans-chap-form__hint">
             Raw materials don’t need a selling price and won’t show in New sale.
           </p>
+        )}
+        {hotel ? null : (
+          <div className="auth-split__field">
+            <span className="trans-chap-form__label">Also sell as packs</span>
+            <p className="trans-chap-form__hint">
+              e.g. a crate of 30 eggs. Stock still drops by pieces when you sell a pack.
+            </p>
+            <div className="trans-chap-pack-list">
+              {packs.map((pack) => (
+                <div key={pack.key} className="trans-chap-pack-row">
+                  <div className="trans-chap-input">
+                    <input
+                      type="text"
+                      autoComplete="off"
+                      placeholder="Crate"
+                      aria-label="Pack name"
+                      className="auth-split__input"
+                      value={pack.name}
+                      onChange={(event) =>
+                        updatePack(pack.key, { name: event.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="trans-chap-input">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="30"
+                      aria-label="Units per pack"
+                      className="auth-split__input"
+                      value={pack.factor}
+                      onChange={(event) =>
+                        updatePack(pack.key, { factor: event.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="trans-chap-input">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="Pack price"
+                      aria-label="Pack selling price"
+                      className="auth-split__input"
+                      value={pack.sellingPrice}
+                      onChange={(event) =>
+                        updatePack(pack.key, { sellingPrice: event.target.value })
+                      }
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="trans-chap-pack-row__remove"
+                    aria-label="Remove pack"
+                    onClick={() => removePack(pack.key)}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="trans-chap-form__chip"
+              onClick={addPack}
+              disabled={saving}
+            >
+              + Add pack
+            </button>
+          </div>
         )}
       </div>
       <div className="trans-chap-form__actions">

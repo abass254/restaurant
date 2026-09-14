@@ -1,6 +1,7 @@
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { isVideoMedia } from "@/lib/media";
+import { allSellUnits, unitHasSellPrice } from "@/lib/sell-units";
 import type {
   CatalogProduct,
   CatalogProductMutationResponse,
@@ -65,9 +66,8 @@ export function inventoryRoleShortLabel(role: InventoryRole): string {
 export function canSellInventoryItem(item: InventoryItem): boolean {
   if (!item.is_active) return false;
   if (!isSaleableRole(inventoryRole(item))) return false;
-  if (item.selling_price == null || item.selling_price <= 0) return false;
   if (item.stock_quantity != null && item.stock_quantity <= 0) return false;
-  return true;
+  return allSellUnits(item).some((unit) => unitHasSellPrice(unit));
 }
 
 /** Active shop inventory except hotel menu — available on Purchases select/scan. */
@@ -180,6 +180,7 @@ export async function updateInventoryItem(
     buying_price?: number | null;
     stock_quantity?: number | null;
     inventory_role?: InventoryRole;
+    attributes?: Record<string, unknown> | null;
   },
 ): Promise<InventoryItem> {
   const inventory = await apiFetch<InventoryItemMutationResponse>(
