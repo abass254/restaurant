@@ -34,6 +34,8 @@ export type TransChapReceipt = {
   customerEmail: string | null;
   mpesaReceiptNumber: string | null;
   mpesaMessage: string | null;
+  creditOutstanding: number | null;
+  payBillUrl: string | null;
 };
 
 export function transChapPayLabel(payMode: TransChapPayMode): string {
@@ -115,6 +117,11 @@ export function loadTransChapReceipt(): TransChapReceipt | null {
       customerEmail: parsed.customerEmail ?? null,
       mpesaReceiptNumber: parsed.mpesaReceiptNumber ?? null,
       mpesaMessage: parsed.mpesaMessage ?? null,
+      creditOutstanding:
+        parsed.creditOutstanding != null && Number.isFinite(Number(parsed.creditOutstanding))
+          ? Number(parsed.creditOutstanding)
+          : null,
+      payBillUrl: parsed.payBillUrl ?? null,
     };
   } catch {
     return null;
@@ -141,7 +148,7 @@ export function transChapReceiptMessage(receipt: TransChapReceipt): string {
         ? `Paid via M-PESA. Receipt ${receipt.mpesaReceiptNumber}.`
         : "Paid via M-PESA."
       : receipt.payMode === "credit"
-        ? "On credit. Pay later."
+        ? "On credit."
         : "Paid in cash.";
   return [
     `${receipt.orderNumber} Confirmed.`,
@@ -150,6 +157,10 @@ export function transChapReceiptMessage(receipt: TransChapReceipt): string {
       : `${total} paid to ${receipt.shopName} for ${receipt.productName}.`,
     receipt.customerName ? `Customer ${receipt.customerName}.` : "",
     paymentLine,
+    receipt.payMode === "credit" && receipt.creditOutstanding != null
+      ? `Your tab is now ${formatKsh(receipt.creditOutstanding)}.`
+      : "",
+    receipt.payBillUrl ? `Pay your bill: ${receipt.payBillUrl}` : "",
     "Thank you for shopping with us.",
   ]
     .filter(Boolean)
@@ -171,6 +182,10 @@ export function receiptFromOrder(
   order: Order,
   shopName: string,
   push?: OrderMpesaPushResult | null,
+  creditTab?: {
+    outstanding_balance?: number | null;
+    pay_bill_url?: string | null;
+  } | null,
 ): TransChapReceipt {
   const payMode = payModeFromMethod(order.payment_method);
   const items: TransChapReceiptLine[] = (order.items ?? []).map((line) => ({
@@ -204,6 +219,9 @@ export function receiptFromOrder(
     customerEmail: order.customer_email,
     mpesaReceiptNumber: mpesaReceiptNumberFromOrder(order),
     mpesaMessage: push?.message ?? null,
+    creditOutstanding:
+      creditTab?.outstanding_balance != null ? Number(creditTab.outstanding_balance) : null,
+    payBillUrl: creditTab?.pay_bill_url ?? null,
   };
 }
 

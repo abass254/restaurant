@@ -186,6 +186,8 @@ export const apiRoutes = {
     `${apiUrl}/api/v1/mpesa/transactions/${encodeURIComponent(id)}/retry-stk`,
   orderSendReceiptEmail: (id: string) =>
     `${apiUrl}/api/v1/orders/${id}/send-receipt-email`,
+  orderSendReceiptWhatsApp: (id: string) =>
+    `${apiUrl}/api/v1/orders/${id}/send-receipt-whatsapp`,
   orderMpesaTransaction: (orderId: string, transactionId: string) =>
     `${apiUrl}/api/v1/orders/${orderId}/mpesa-transactions/${transactionId}`,
   orderMetaOptions: `${apiUrl}/api/v1/orders/meta/options`,
@@ -257,6 +259,12 @@ export const apiRoutes = {
     `${apiUrl}/api/v1/pay/${encodeURIComponent(token)}`,
   orderPaySubmit: (token: string) =>
     `${apiUrl}/api/v1/pay/${encodeURIComponent(token)}/submit`,
+  payBill: (token: string) =>
+    `${apiUrl}/api/v1/pay-bill/${encodeURIComponent(token)}`,
+  payBillSubmit: (token: string) =>
+    `${apiUrl}/api/v1/pay-bill/${encodeURIComponent(token)}/submit`,
+  payBillCollection: (token: string, transactionId: string) =>
+    `${apiUrl}/api/v1/pay-bill/${encodeURIComponent(token)}/collections/${encodeURIComponent(transactionId)}`,
   adminLogin: `${apiUrl}/api/v1/auth/admin/login`,
   adminStats: `${apiUrl}/api/v1/admin/stats`,
   adminSuperAdmins: `${apiUrl}/api/v1/admin/super-admins`,
@@ -331,6 +339,10 @@ export const apiRoutes = {
   adminTigoTestValidateAccount: `${apiUrl}/api/v1/tigo/test/validate-account`,
   adminTigoTestPaymentAuth: `${apiUrl}/api/v1/tigo/test/payment-auth`,
   adminTigoTestDisburse: `${apiUrl}/api/v1/tigo/test/disburse`,
+  adminWhatsappStatus: `${apiUrl}/api/v1/admin/whatsapp/status`,
+  adminWhatsappSend: `${apiUrl}/api/v1/admin/whatsapp/send-message`,
+  adminWhatsappLogout: `${apiUrl}/api/v1/admin/whatsapp/logout`,
+  adminWhatsappRestart: `${apiUrl}/api/v1/admin/whatsapp/restart`,
   googleMapsConfig: `${apiUrl}/api/v1/google-maps/config`,
   googleMapsDeliveryRate: `${apiUrl}/api/v1/google-maps/config/delivery-rate`,
   googleMapsPublicConfig: `${apiUrl}/api/v1/google-maps/public-config`,

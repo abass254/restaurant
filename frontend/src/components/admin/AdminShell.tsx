@@ -48,6 +48,12 @@ const links: NavLink[] = [
     matchPrefix: true,
   },
   {
+    href: "/admin/whatsapp",
+    icon: "fa-brands fa-whatsapp",
+    label: "WhatsApp",
+    matchPrefix: true,
+  },
+  {
     href: "/admin/users",
     icon: "fa-user-shield",
     label: "Platform admins",

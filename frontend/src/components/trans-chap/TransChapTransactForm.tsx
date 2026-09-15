@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { TransChapSaleCatalog } from "@/components/trans-chap/TransChapSaleCatalog";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { apiFetch } from "@/lib/api";
-import { showError, showInternalError, toastInfo, toastSuccess } from "@/lib/alerts";
+import { showError, showInternalError, toastInfo, toastSuccess, promptMpesaCheckoutAction, promptMpesaReceipt, extractErrorMessage } from "@/lib/alerts";
 import { findInventoryByBarcode } from "@/lib/barcode";
 import { apiRoutes } from "@/lib/config";
 import {
@@ -281,15 +281,33 @@ export function TransChapTransactForm() {
     if (!lines.length) return;
 
     const creditMsisdn = payMode === "credit" ? toWhatsAppMsisdn(phone) : null;
-    const msisdn = payMode === "mpesa" ? toWhatsAppMsisdn(phone) : creditMsisdn;
-    if (payMode === "mpesa" && !mpesaReady) {
-      await showError(
-        "M-PESA isn't set up",
-        "Add your Till, Paybill, Pochi, or phone in Settings before taking M-PESA.",
-      );
-      return;
+    let mpesaAction: "resend" | "enter_code" | null = null;
+    let mpesaReceiptCode: string | null = null;
+
+    if (payMode === "mpesa") {
+      if (!mpesaReady) {
+        await showError(
+          "M-PESA isn't set up",
+          "Add your Till, Paybill, Pochi, or phone in Settings before taking M-PESA.",
+        );
+        return;
+      }
+      mpesaAction = await promptMpesaCheckoutAction();
+      if (!mpesaAction) return;
+      if (mpesaAction === "enter_code") {
+        mpesaReceiptCode = await promptMpesaReceipt(
+          "Enter M-PESA code",
+          "Type the transaction code from the customer’s SMS. Use this when they already paid you directly.",
+        );
+        if (!mpesaReceiptCode) return;
+      }
     }
-    if (payMode === "mpesa" && !msisdn) {
+
+    const msisdn =
+      payMode === "mpesa"
+        ? toWhatsAppMsisdn(phone)
+        : creditMsisdn;
+    if (payMode === "mpesa" && mpesaAction === "resend" && !msisdn) {
       await showError(
         "M-PESA phone needed",
         "Enter the customer's M-PESA number so we can send the payment prompt.",
@@ -346,6 +364,7 @@ export function TransChapTransactForm() {
         customer_name: customerName.trim() || null,
         customer_phone: customerPhone,
         items: payloadItems,
+        ...(mpesaReceiptCode ? { mpesa_receipt_number: mpesaReceiptCode } : {}),
       };
 
       try {
@@ -365,12 +384,17 @@ export function TransChapTransactForm() {
             } satisfies OrderCreatePayload),
           });
         }
-        const receipt = receiptFromOrder(created.data, shopName, created.mpesa_push);
+        const receipt = receiptFromOrder(
+          created.data,
+          shopName,
+          created.mpesa_push,
+          created.credit_tab,
+        );
         saveTransChapReceipt(receipt);
         router.push(transChapReceiptHref(created.data.id));
         return;
-      } catch {
-        await showInternalError();
+      } catch (err) {
+        await showError("Could not save sale", extractErrorMessage(err));
       }
     } finally {
       setSaving(false);
@@ -546,10 +570,10 @@ export function TransChapTransactForm() {
             >
               {saving
                 ? payMode === "mpesa"
-                  ? "Sending prompt…"
+                  ? "Saving…"
                   : "Saving on credit…"
                 : payMode === "mpesa"
-                  ? "Send M-PESA prompt"
+                  ? "Take M-PESA"
                   : "Save on credit"}
             </button>
           </div>

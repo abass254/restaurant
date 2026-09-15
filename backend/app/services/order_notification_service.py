@@ -15,7 +15,7 @@ from app.services.email_templates import render_branded_email
 from app.services.instagram_api import InstagramApiService
 from app.services.order_dm_templates import format_order_ref
 from app.services.order_tracking_service import OrderTrackingService
-from app.services.wasender_service import WasenderApiService
+from app.services.openwa_service import OpenWaAgentService
 from app.support.order_status import (
     AWAITING_DELIVERY_CONFIRMATION,
     AWAITING_PAYMENT,
@@ -218,6 +218,69 @@ def _mpesa_receipt_for_order(order: Order) -> str | None:
     return None
 
 
+def build_customer_receipt_whatsapp(
+    order: Order,
+    *,
+    shop_name: str,
+    receipt_pdf_url: str | None = None,
+    credit_outstanding: float | None = None,
+    pay_bill_url: str | None = None,
+) -> str:
+    """Plain-text till receipt for WhatsApp (openWA text-only)."""
+    currency = order.currency or "KES"
+    ref = order.order_number
+    pay = order.payment_method or ""
+    total = _format_money(order.total, currency)
+    receipt = _mpesa_receipt_for_order(order)
+    customer = (order.customer_name or "").strip()
+
+    if pay == PAYMENT_CREDIT:
+        headline = f"{total} on credit at {shop_name}."
+        payment_line = "On credit."
+    elif pay == PAYMENT_MPESA:
+        headline = f"{total} paid to {shop_name}."
+        payment_line = (
+            f"Paid via M-PESA. Receipt {receipt}."
+            if receipt
+            else "Paid via M-PESA."
+        )
+    else:
+        headline = f"{total} paid to {shop_name}."
+        payment_line = PAYMENT_METHOD_LABELS.get(
+            pay,
+            (pay or "Paid").replace("_", " ").title(),
+        )
+        if pay == PAYMENT_CASH:
+            payment_line = "Paid in cash."
+
+    lines: list[str] = [f"{ref} Confirmed.", headline]
+    items = list(order.items or [])
+    if len(items) == 1:
+        name = (items[0].product_name or "Sale").strip() or "Sale"
+        qty = int(items[0].quantity or 1)
+        lines.append(f"{name}" if qty <= 1 else f"{qty} × {name}")
+    elif items:
+        for item in items:
+            name = (item.product_name or "Item").strip() or "Item"
+            qty = int(item.quantity or 1)
+            amount = _format_money(item.line_total, currency)
+            label = name if qty <= 1 else f"{qty} × {name}"
+            lines.append(f"{label}: {amount}")
+    if customer:
+        lines.append(f"Customer {customer}.")
+    lines.append(payment_line)
+    if pay == PAYMENT_CREDIT and credit_outstanding is not None:
+        lines.append(
+            f"Your tab is now {_format_money(credit_outstanding, currency)}."
+        )
+    if pay_bill_url:
+        lines.append(f"Pay your bill: {pay_bill_url}")
+    if receipt_pdf_url:
+        lines.append(f"Receipt PDF: {receipt_pdf_url}")
+    lines.append("Thank you for shopping with us.")
+    return "\n".join(line for line in lines if line)
+
+
 def build_customer_receipt_email(
     order: Order,
     *,
@@ -310,7 +373,7 @@ def build_customer_receipt_email(
 # Statuses worth emailing the merchant about (avoid emailing on every step).
 MERCHANT_EMAIL_STATUSES = frozenset({PLACED, PAYMENT_RECEIVED, CANCELLED})
 
-# Customer WhatsApp via Wasender — paid / completed, plus till cash/card placed.
+# Customer WhatsApp via platform openWA — paid / completed, plus till cash/card placed.
 CUSTOMER_WHATSAPP_STATUSES = frozenset({PAYMENT_RECEIVED, DELIVERED, PICKED_UP})
 TILL_PAID_METHODS = frozenset({PAYMENT_CASH, PAYMENT_CARD})
 
@@ -331,7 +394,7 @@ class OrderNotificationService:
             InstagramApiService(self.settings),
         )
         self.email = EmailService(self.settings)
-        self.whatsapp = WasenderApiService(self.settings)
+        self.whatsapp = OpenWaAgentService(self.settings)
 
     def notify_customer_whatsapp(
         self,
@@ -398,6 +461,72 @@ class OrderNotificationService:
             html=html,
             category="customer-receipt",
         )
+
+    def notify_customer_receipt_whatsapp(
+        self,
+        order: Order,
+        phone: str,
+        *,
+        credit_outstanding: float | None = None,
+        pay_bill_url: str | None = None,
+        include_pdf: bool = True,
+    ):
+        """Send a till-style receipt via the platform openWA agent.
+
+        Returns ``OpenWaSendResult``. Never raises.
+        """
+        from app.services.openwa_service import OpenWaSendResult
+        from app.services.receipt_pdf_service import ensure_order_receipt_pdf_url
+
+        to = (phone or "").strip()
+        if not to:
+            return OpenWaSendResult(ok=False, error="Enter the customer's WhatsApp number.")
+        if not self.whatsapp.configured:
+            return OpenWaSendResult(
+                ok=False,
+                error="WhatsApp agent is not configured. Set OPENWA_AGENT_TOKEN.",
+            )
+        shop_name = _shop_name_for_order(order, self.db)
+        pdf_url = None
+        if include_pdf:
+            pdf_url = ensure_order_receipt_pdf_url(
+                self.db,
+                order,
+                shop_name=shop_name,
+                settings=self.settings,
+            )
+
+        resolved_pay_bill = pay_bill_url
+        resolved_outstanding = credit_outstanding
+        if (order.payment_method or "") == PAYMENT_CREDIT:
+            from app.services.credit_pay_service import CreditPayService
+            from app.services.customer_service import CustomerService
+
+            if resolved_pay_bill is None or resolved_outstanding is None:
+                try:
+                    customer = CustomerService(self.db).find_by_phone(
+                        str(order.account_id),
+                        order.customer_phone or "",
+                    )
+                except Exception:
+                    customer = None
+                if customer is not None:
+                    if resolved_outstanding is None:
+                        resolved_outstanding = float(customer.outstanding_balance or 0)
+                    if resolved_pay_bill is None:
+                        resolved_pay_bill = CreditPayService.pay_bill_url(
+                            customer.id,
+                            self.settings,
+                        )
+
+        body = build_customer_receipt_whatsapp(
+            order,
+            shop_name=shop_name,
+            receipt_pdf_url=pdf_url,
+            credit_outstanding=resolved_outstanding,
+            pay_bill_url=resolved_pay_bill,
+        )
+        return self.whatsapp.send_text(to=to, text=body)
 
     def notify_status_change(
         self,

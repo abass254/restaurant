@@ -230,19 +230,64 @@ export async function confirmAction(
   return result.isConfirmed;
 }
 
-export async function promptPendingStk(): Promise<"resend" | "check" | null> {
+export async function promptPendingStk(): Promise<
+  "resend" | "check" | "enter_code" | null
+> {
   const result = await fireDialog({
     icon: "question",
-    title: "M-PESA is still waiting",
-    text: "The customer hasn’t finished on their phone. Check if they already paid, or send the prompt again.",
+    title: "Complete M-PESA payment",
+    text: "Send a phone prompt, or type the code from the customer’s SMS if they already paid (including directly to your Till).",
+    input: "radio",
+    inputOptions: {
+      resend: "Send M-PESA prompt",
+      enter_code: "Enter M-PESA code",
+      check: "Check if already paid",
+    },
+    inputValue: "resend",
     showCancelButton: true,
-    showDenyButton: true,
-    confirmButtonText: "Send prompt again",
-    denyButtonText: "Check if paid",
+    confirmButtonText: "Continue",
     cancelButtonText: "Close",
+    preConfirm: (value) => {
+      if (!value) {
+        dukaiSwal.showValidationMessage("Choose how to complete M-PESA.");
+        return false;
+      }
+      return value;
+    },
   });
-  if (result.isConfirmed) return "resend";
-  if (result.isDenied) return "check";
+  if (!result.isConfirmed || !result.value) return null;
+  const choice = String(result.value);
+  if (choice === "resend" || choice === "check" || choice === "enter_code") {
+    return choice;
+  }
+  return null;
+}
+
+export async function promptMpesaCheckoutAction(): Promise<"resend" | "enter_code" | null> {
+  const result = await fireDialog({
+    icon: "question",
+    title: "How did they pay M-PESA?",
+    text: "Send a prompt to their phone, or enter the SMS code if they already paid you directly.",
+    input: "radio",
+    inputOptions: {
+      resend: "Send M-PESA prompt",
+      enter_code: "Enter M-PESA code",
+    },
+    inputValue: "resend",
+    showCancelButton: true,
+    confirmButtonText: "Continue",
+    cancelButtonText: "Cancel",
+    preConfirm: (value) => {
+      if (!value) {
+        dukaiSwal.showValidationMessage("Choose how to take M-PESA.");
+        return false;
+      }
+      return value;
+    },
+  });
+  if (!result.isConfirmed || !result.value) return null;
+  const choice = String(result.value);
+  if (choice === "resend" || choice === "enter_code") return choice;
   return null;
 }
 
@@ -359,8 +404,13 @@ export async function promptWhatsAppPhone(
   title = "Send receipt on WhatsApp",
   text = "Enter the WhatsApp number to send this receipt to.",
   initialValue = "",
-  onConfirm?: (phone: string) => void,
+  options?: {
+    confirmButtonText?: string;
+    onConfirm?: (phone: string) => void;
+  },
 ) {
+  const confirmButtonText = options?.confirmButtonText ?? "Send";
+  const onConfirm = options?.onConfirm;
   const result = await fireDialog({
     icon: "question",
     title,
@@ -377,7 +427,7 @@ export async function promptWhatsAppPhone(
       "aria-label": "WhatsApp number",
     },
     showCancelButton: true,
-    confirmButtonText: "Open WhatsApp",
+    confirmButtonText,
     preConfirm: (value) => {
       const phone = String(value ?? "").trim();
       if (!phone) {

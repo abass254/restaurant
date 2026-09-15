@@ -8,7 +8,7 @@ import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { MotionItem, MotionList } from "@/components/app/MotionList";
-import { showError, showInternalError, toastSuccess, promptPendingStk } from "@/lib/alerts";
+import { showError, showInternalError, toastSuccess, promptMpesaReceipt, promptPendingStk, extractErrorMessage } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { formatNairobiDateTime, nairobiDateKey, parseIso } from "@/lib/nairobi-time";
@@ -187,6 +187,23 @@ export function TransChapSalesList() {
     if (!choice) return;
     setStkBusyId(order.id);
     try {
+      if (choice === "enter_code") {
+        const receipt = await promptMpesaReceipt(
+          "Enter M-PESA code",
+          "Type the transaction code from the customer’s SMS. Use this when they paid you directly or already finished on their phone.",
+        );
+        if (!receipt) return;
+        const data = await apiFetch<OrderMutationResponse>(apiRoutes.orderTransition(order.id), {
+          method: "POST",
+          body: JSON.stringify({
+            to_status: "payment_received",
+            mpesa_receipt_number: receipt,
+          }),
+        });
+        setOrders((prev) => prev.map((row) => (row.id === data.data.id ? data.data : row)));
+        await toastSuccess("M-PESA sale closed");
+        return;
+      }
       if (choice === "check") {
         const data = await apiFetch<OrderMutationResponse>(apiRoutes.orderMpesaCheck(order.id), {
           method: "POST",
@@ -210,8 +227,8 @@ export function TransChapSalesList() {
       } else {
         await showInternalError();
       }
-    } catch {
-      await showInternalError();
+    } catch (err) {
+      await showError("Could not complete M-PESA", extractErrorMessage(err));
     } finally {
       setStkBusyId(null);
     }
@@ -379,7 +396,7 @@ export function TransChapSalesList() {
                         disabled={stkBusyId === order.id || undoingId === order.id}
                         onClick={() => void handlePendingStk(order)}
                       >
-                        {stkBusyId === order.id ? "Working…" : "M-PESA prompt"}
+                        {stkBusyId === order.id ? "Working…" : "Complete M-PESA"}
                       </button>
                     ) : null}
                     {undo ? (
@@ -412,8 +429,8 @@ export function TransChapSalesList() {
                         : sale.tone === "ok"
                           ? "Payment received."
                           : sale.tone === "wait"
-                            ? "Waiting for the customer to complete M-PESA. Tap the person to check or send the prompt again."
-                            : "M-PESA didn’t go through."}
+                            ? "Waiting for M-PESA. Tap Complete M-PESA to send a prompt or enter the SMS code."
+                            : "M-PESA didn’t go through. Tap Complete M-PESA to try again or enter the SMS code."}
                 </p>
                 {order.payment_method === "mpesa" && order.mpesa_transaction ? (
                   <MpesaFlowStatus

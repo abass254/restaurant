@@ -353,3 +353,21 @@ def delete_upload(image_url: str) -> bool:
     except OSError:
         return False
     return True
+
+
+def receipt_pdf_relative_url(*, account_id: str, order_id: str) -> str:
+    return f"/uploads/receipts/{account_id}/{order_id}.pdf"
+
+
+def receipt_pdf_path(*, account_id: str, order_id: str) -> Path:
+    return UPLOADS_DIR / "receipts" / str(account_id) / f"{order_id}.pdf"
+
+
+def save_receipt_pdf_bytes(*, account_id: str, order_id: str, body: bytes) -> str:
+    """Write a receipt PDF under uploads/receipts and return the relative URL."""
+    if not body:
+        raise ValueError("Receipt PDF was empty.")
+    path = receipt_pdf_path(account_id=account_id, order_id=order_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(body)
+    return receipt_pdf_relative_url(account_id=account_id, order_id=order_id)

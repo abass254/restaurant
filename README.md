@@ -62,6 +62,18 @@ The script rejects `BACKEND_RUNTIME` values other than `fastapi`.
 
 Development ports: frontend `7100` (`npm run dev`), backend `7001`. Open [http://127.0.0.1:7100/sign-in](http://127.0.0.1:7100/sign-in).
 
+### 4) WhatsApp agent (openWA — primary order notifier)
+
+Customer order WhatsApp alerts use a Node sidecar (until Meta Cloud API):
+
+```bash
+# OPENWA_AGENT_TOKEN must match backend .env; OPENWA_ENABLED=true for alerts
+cd whatsapp-agent && ./run.sh
+```
+
+Open **Admin → WhatsApp**, scan QR with the DukAI number, keep the agent running.
+Alerts fire on payment received / delivered / picked up (and till cash/card placed).
+
 ## Docker
 
 ```bash

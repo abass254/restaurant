@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { QRCodeSVG } from "qrcode.react";
 import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
-import { showError, showInternalError, toastSuccess, promptEmail, promptPendingStk, promptWhatsAppPhone } from "@/lib/alerts";
+import { showError, showInternalError, toastSuccess, promptEmail, promptMpesaReceipt, promptPendingStk, promptWhatsAppPhone, extractErrorMessage } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
@@ -20,11 +20,9 @@ import {
   saveTransChapReceipt,
   transChapPayLabel,
   transChapReceiptMessage,
-  whatsappChatUrl,
   type TransChapReceipt,
 } from "@/lib/trans-chap-receipt";
 import { buildTransChapReceiptPdf, saveReceiptFile } from "@/lib/trans-chap-receipt-pdf";
-import { openExternalUrl, startFileShare } from "@/lib/trans-chap-receipt-share";
 import type { OrderDetailResponse, OrderMutationResponse } from "@/lib/types";
 
 const ORDER_POLL_MS = 4_000;
@@ -145,45 +143,37 @@ export function TransChapReceiptView() {
 
   async function openWhatsApp() {
     if (!receipt) return;
+    if (!receipt.orderId) {
+      await showError(
+        "Sale not on the server",
+        "Make the sale again to send the receipt on WhatsApp.",
+      );
+      return;
+    }
+    const entered = await promptWhatsAppPhone(
+      "Send receipt on WhatsApp",
+      "We'll send this till receipt from DukAI WhatsApp.",
+      receipt.customerPhone ?? "",
+      { confirmButtonText: "Send" },
+    );
+    if (!entered) return;
+
     setOpeningWhatsApp(true);
     try {
-      const file = buildTransChapReceiptPdf(receipt);
-      const caption = transChapReceiptMessage(receipt);
-      let sharePromise: Promise<void> | null = null;
-
-      const openChatWithPdf = (phone: string) => {
-        saveReceiptFile(file);
-        const url = whatsappChatUrl(phone, "254", caption);
-        if (url) openExternalUrl(url);
-      };
-
-      const entered = await promptWhatsAppPhone(
-        "Send receipt on WhatsApp",
-        "Enter the WhatsApp number, then choose WhatsApp so the PDF receipt is attached.",
-        receipt.customerPhone ?? "",
-        (phone) => {
-          sharePromise = startFileShare(file);
-          if (!sharePromise) openChatWithPdf(phone);
-        },
+      const data = await apiFetch<OrderMutationResponse>(
+        apiRoutes.orderSendReceiptWhatsApp(receipt.orderId),
+        { method: "POST", body: JSON.stringify({ phone: entered }) },
       );
-      if (!entered) return;
-
+      applyReceipt({
+        ...receipt,
+        ...receiptFromOrder(data.data, receipt.shopName),
+        customerPhone: data.recipient ?? entered,
+        customerEmail: receipt.customerEmail,
+      });
+      await toastSuccess(data.message || `Receipt sent to ${entered}`);
+    } catch (err) {
       applyReceipt({ ...receipt, customerPhone: entered });
-
-      if (sharePromise) {
-        try {
-          await sharePromise;
-          void toastSuccess("Receipt PDF attached — choose that number in WhatsApp");
-          return;
-        } catch (err) {
-          if (err instanceof Error && err.name === "AbortError") return;
-          openChatWithPdf(entered);
-        }
-      }
-
-      void toastSuccess("Receipt PDF saved — attach it in the chat");
-    } catch {
-      await showInternalError();
+      await showError("Could not send WhatsApp", extractErrorMessage(err));
     } finally {
       setOpeningWhatsApp(false);
     }
@@ -244,6 +234,34 @@ export function TransChapReceiptView() {
     if (!choice) return;
     setResending(true);
     try {
+      if (choice === "enter_code") {
+        const code = await promptMpesaReceipt(
+          "Enter M-PESA code",
+          "Type the transaction code from the customer’s SMS. Use this when they paid you directly or already finished on their phone.",
+        );
+        if (!code) return;
+        const data = await apiFetch<OrderMutationResponse>(
+          apiRoutes.orderTransition(receipt.orderId),
+          {
+            method: "POST",
+            body: JSON.stringify({
+              to_status: "payment_received",
+              mpesa_receipt_number: code,
+            }),
+          },
+        );
+        const next = receiptFromOrder(data.data, receipt.shopName);
+        const updated = {
+          ...receipt,
+          ...next,
+          customerPhone: receipt.customerPhone,
+          customerEmail: receipt.customerEmail,
+        };
+        saveTransChapReceipt(updated);
+        setReceipt(updated);
+        await toastSuccess("M-PESA sale closed");
+        return;
+      }
       if (choice === "check") {
         const data = await apiFetch<OrderMutationResponse>(
           apiRoutes.orderMpesaCheck(receipt.orderId),
@@ -283,8 +301,8 @@ export function TransChapReceiptView() {
       } else {
         await showInternalError();
       }
-    } catch {
-      await showInternalError();
+    } catch (err) {
+      await showError("Could not complete M-PESA", extractErrorMessage(err));
     } finally {
       setResending(false);
     }
@@ -355,7 +373,9 @@ export function TransChapReceiptView() {
             : ""
       }`
     : onCredit
-      ? "This sale is on the customer’s tab. It is not paid yet."
+      ? receipt.creditOutstanding != null
+        ? `On the customer’s tab. Tab total is now Ksh${formatKesDigits(receipt.creditOutstanding)}. We sent a pay link on WhatsApp.`
+        : "This sale is on the customer’s tab. It is not paid yet."
       : !paid
         ? waiting
           ? receipt.mpesaMessage || "Ask the customer to enter their PIN on the prompt."
@@ -394,6 +414,13 @@ export function TransChapReceiptView() {
           <p className="trans-chap-slip__mpesa">
             <span>M-PESA code</span>
             <strong>{receipt.mpesaReceiptNumber}</strong>
+          </p>
+        ) : null}
+
+        {onCredit && receipt.creditOutstanding != null ? (
+          <p className="trans-chap-slip__mpesa">
+            <span>Tab total</span>
+            <strong>{formatKesDigits(receipt.creditOutstanding)}</strong>
           </p>
         ) : null}
 
@@ -468,7 +495,7 @@ export function TransChapReceiptView() {
               disabled={openingWhatsApp || sendingEmail || downloading || undoing}
             >
               <i className="fa-brands fa-whatsapp" aria-hidden />
-              {openingWhatsApp ? "Sharing…" : "WhatsApp"}
+              {openingWhatsApp ? "Sending…" : "WhatsApp"}
             </button>
             <button
               type="button"
@@ -497,7 +524,7 @@ export function TransChapReceiptView() {
             disabled={resending || undoing}
           >
             <i className="fa-solid fa-rotate-right" aria-hidden />
-            {resending ? "Sending…" : waiting ? "Resend prompt" : "Send prompt again"}
+            {resending ? "Working…" : "Complete M-PESA"}
           </button>
         )}
         {undo && !closed ? (

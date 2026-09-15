@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -129,3 +131,96 @@ def validate_mpesa_receipt_for_order(
     raise ValueError(
         "That M-PESA code does not match a successful payment for this order amount.",
     )
+
+
+def _receipt_already_used(db: Session, normalized: str, *, exclude_order_id: str | None) -> bool:
+    q = db.query(MpesaTransaction).filter(
+        MpesaTransaction.status == "success",
+        MpesaTransaction.mpesa_receipt_number == normalized,
+    )
+    for txn in q.all():
+        if txn.order_id and exclude_order_id and txn.order_id == exclude_order_id:
+            continue
+        if txn.order_id:
+            linked = db.query(Order).filter(Order.id == txn.order_id).first()
+            if linked and linked.paid_at:
+                return True
+        elif txn.account_id:
+            return True
+    return False
+
+
+def record_merchant_direct_mpesa_for_order(
+    db: Session,
+    order: Order,
+    receipt_code: str,
+    *,
+    confirmed_by_user_id: str | None = None,
+) -> MpesaTransaction:
+    """Bookkeep a payment made straight to the merchant (not via DukAI STK).
+
+    Creates a successful ``mpesa_transactions`` row with payout skipped — the
+    money never sat in the hub Paybill, so nothing should be swept out.
+    """
+    normalized = normalize_mpesa_receipt(receipt_code)
+    if not normalized:
+        raise ValueError("Enter the M-PESA transaction code from the customer's SMS.")
+    if not _RECEIPT_RE.match(normalized):
+        raise ValueError("Enter a valid M-PESA transaction code (6–20 letters/numbers).")
+    if _receipt_already_used(db, normalized, exclude_order_id=order.id):
+        raise ValueError("That M-PESA code is already linked to another paid order.")
+
+    phone = (order.customer_phone or "").strip() or "254700000000"
+    amount = _expected_order_amount(order)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    txn = MpesaTransaction(
+        initiated_by_user_id=confirmed_by_user_id,
+        account_id=order.account_id,
+        phone_number=phone[:20],
+        amount=amount,
+        account_reference=(order.order_number or order.id)[:12],
+        transaction_desc=f"Direct M-PESA {order.order_number or order.id}"[:200],
+        merchant_request_id=None,
+        checkout_request_id=f"DIRECT-{uuid.uuid4().hex[:24].upper()}",
+        status="success",
+        result_code=0,
+        result_desc="Merchant confirmed direct M-PESA payment with SMS code.",
+        mpesa_receipt_number=normalized,
+        completed_at=now,
+        callback_payload={
+            "merchant_direct_confirm": True,
+            "confirmed_by": confirmed_by_user_id,
+        },
+        payout_status="skipped",
+        payout_result_desc="Customer paid the merchant directly (not via DukAI hub).",
+        payout_amount=amount,
+        payout_completed_at=now,
+        order_id=order.id,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(txn)
+    db.flush()
+    return txn
+
+
+def confirm_mpesa_receipt_for_order(
+    db: Session,
+    order: Order,
+    receipt_code: str,
+    *,
+    confirmed_by_user_id: str | None = None,
+) -> MpesaTransaction:
+    """Match an existing hub payment, or record a merchant-confirmed direct code."""
+    try:
+        return validate_mpesa_receipt_for_order(db, order, receipt_code)
+    except ValueError as exc:
+        message = str(exc)
+        if "does not match a successful payment" not in message:
+            raise
+        return record_merchant_direct_mpesa_for_order(
+            db,
+            order,
+            receipt_code,
+            confirmed_by_user_id=confirmed_by_user_id,
+        )

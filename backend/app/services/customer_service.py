@@ -263,6 +263,19 @@ class CustomerService:
         self.db.refresh(customer)
         return customer
 
+    def find_by_phone(self, account_id: str, phone: str) -> ShopCustomer | None:
+        normalized = normalize_phone(phone)
+        if not normalized:
+            return None
+        return (
+            self.db.query(ShopCustomer)
+            .filter(
+                ShopCustomer.account_id == account_id,
+                ShopCustomer.phone == normalized,
+            )
+            .first()
+        )
+
     def _locked_by_phone(self, account_id: str, phone: str) -> ShopCustomer | None:
         normalized = normalize_phone(phone)
         if not normalized:

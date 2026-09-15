@@ -1536,6 +1536,13 @@ export type OrderMutationResponse = {
   mpesa_push?: OrderMpesaPushResult;
   outcome?: "paid" | "failed" | "pending" | "resent";
   recipient?: string;
+  credit_tab?: {
+    customer_id: string;
+    customer_name: string;
+    outstanding_balance: number;
+    credit_limit: number;
+    pay_bill_url?: string | null;
+  };
 };
 
 export type OrderMetaOptionsResponse = {
@@ -1558,6 +1565,8 @@ export type OrderCreatePayload = {
   discount?: number | null;
   currency?: string;
   notes?: string | null;
+  /** When set with payment_method=mpesa, closes the sale with this SMS code (no STK). */
+  mpesa_receipt_number?: string | null;
   items: {
     inventory_item_id?: string | null;
     product_name?: string | null;
@@ -1983,12 +1992,41 @@ export type WhatsappToolsStatus = {
   enabled: boolean;
   configured: boolean;
   ready: boolean;
+  message?: string;
 };
 
 export type WhatsappTestSendResponse = {
   sent: boolean;
   message: string;
   message_id: string | null;
+};
+
+export type AdminWhatsappStatus = {
+  enabled: boolean;
+  configured: boolean;
+  reachable: boolean;
+  ready: boolean;
+  starting: boolean;
+  state: string;
+  host_number: string | null;
+  connected_at: string | null;
+  has_qr: boolean;
+  qr: string | null;
+  error: string | null;
+  session_id: string | null;
+  agent_error: string | null;
+  agent_url: string;
+};
+
+export type AdminWhatsappTestSendResponse = {
+  sent: boolean;
+  message: string;
+  message_id: string | null;
+};
+
+export type AdminWhatsappActionResponse = {
+  ok: boolean;
+  message: string;
 };
 
 export type SmsToolsStatus = {

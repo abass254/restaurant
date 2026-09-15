@@ -257,13 +257,13 @@ class Settings(BaseSettings):
     mail_from_name: str = "DUKAI PLATFORM"
     mail_timeout_seconds: float = 20.0
 
-    # --- WhatsApp (WasenderAPI, interim unofficial session gateway) ----------
-    # Master switch for automatic customer order alerts. The Tools tester can
-    # still send when WASENDER_API_KEY is set, even if this is false.
-    wasender_enabled: bool = False
-    wasender_api_key: str = ""
-    wasender_api_url: str = "https://www.wasenderapi.com"
-    wasender_timeout_seconds: float = 15.0
+    # --- WhatsApp (openWA platform agent — primary order notifier for now) --
+    # Automatic customer order alerts. Admin → WhatsApp can still test-send
+    # when OPENWA_AGENT_TOKEN is set, even if this is false.
+    openwa_enabled: bool = True
+    openwa_agent_url: str = "http://127.0.0.1:7010"
+    openwa_agent_token: str = ""
+    openwa_timeout_seconds: float = 30.0
 
     # --- SMS (Africa's Talking) ---------------------------------------------
     # Phone OTPs for merchant + rider login. Sandbox username is always

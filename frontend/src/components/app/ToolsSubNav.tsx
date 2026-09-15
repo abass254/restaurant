@@ -19,7 +19,6 @@ const paymentsTab = {
 
 const internalTabs = [
   { href: "/tools/login-codes", label: "Login codes", icon: "fa-key" },
-  { href: "/tools/whatsapp", label: "WhatsApp", icon: "fa-brands fa-whatsapp" },
   { href: "/tools/sms", label: "SMS", icon: "fa-comment-sms" },
   { href: "/tools/qa", label: "QA", icon: "fa-bug" },
 ];

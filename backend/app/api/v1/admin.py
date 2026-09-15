@@ -58,9 +58,9 @@ from app.support.order_status import (
     can_transition,
 )
 from app.support.mpesa_order_link import (
+    confirm_mpesa_receipt_for_order,
     link_mpesa_transaction_to_order,
     order_requires_mpesa_receipt_confirmation,
-    validate_mpesa_receipt_for_order,
 )
 from app.services.image_generation_service import (
     ImageGenerationDisabled,
@@ -870,7 +870,12 @@ def transition_order_admin(
         receipt = (payload.mpesa_receipt_number or "").strip()
         if receipt:
             try:
-                matched_txn = validate_mpesa_receipt_for_order(db, row, receipt)
+                matched_txn = confirm_mpesa_receipt_for_order(
+                    db,
+                    row,
+                    receipt,
+                    confirmed_by_user_id=admin.id,
+                )
             except ValueError as exc:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
             link_mpesa_transaction_to_order(db, row, matched_txn)

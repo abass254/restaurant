@@ -38,8 +38,8 @@ from app.models import (
 from app.schemas import OrderOut, attach_order_mpesa_settlement
 from app.support.mpesa_order_link import (
     link_mpesa_transaction_to_order,
+    confirm_mpesa_receipt_for_order,
     order_requires_mpesa_receipt_confirmation,
-    validate_mpesa_receipt_for_order,
 )
 from app.services import mpesa_service
 from app.services.mpesa_service import (
@@ -191,6 +191,9 @@ class OrderCreate(BaseModel):
     currency: str = Field(default="KES", min_length=2, max_length=8)
 
     notes: str | None = Field(default=None, max_length=4000)
+    # When set with payment_method=mpesa, skip STK and close the sale with this SMS code
+    # (customer paid the merchant's Till/Paybill/phone directly).
+    mpesa_receipt_number: str | None = Field(default=None, max_length=50)
 
     items: list[OrderItemPayload] = Field(min_length=1, max_length=100)
 
@@ -268,6 +271,10 @@ class TestDeliveryRequest(BaseModel):
 
 class SendReceiptEmailIn(BaseModel):
     email: EmailStr | None = None
+
+
+class SendReceiptWhatsAppIn(BaseModel):
+    phone: str | None = Field(default=None, max_length=32)
 
 
 # --- Endpoints --------------------------------------------------------------
@@ -795,12 +802,16 @@ def create_order(
             },
         )
 
-    # M-PESA orders need a working phone number to push the prompt to. We
-    # validate up-front so we don't create an unpayable order. The actual
-    # STK push happens after the order row is committed (below) so the
-    # receipt can be linked back to a real order id.
-    if payload.payment_method == PAYMENT_MPESA and not (
-        payload.customer_phone and payload.customer_phone.strip()
+    # STK push needs a phone; typing an SMS code for a direct payment does not.
+    direct_mpesa_receipt = (
+        (payload.mpesa_receipt_number or "").strip()
+        if payload.payment_method == PAYMENT_MPESA
+        else ""
+    )
+    if (
+        payload.payment_method == PAYMENT_MPESA
+        and not direct_mpesa_receipt
+        and not (payload.customer_phone and payload.customer_phone.strip())
     ):
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -1056,17 +1067,18 @@ def create_order(
             detail=str(exc),
         ) from exc
 
+    credit_customer = None
     if payload.payment_method == PAYMENT_CREDIT:
         try:
             customers = CustomerService(db)
-            customer = customers.get_or_create_for_sale(
+            credit_customer = customers.get_or_create_for_sale(
                 str(account_id),
                 name=payload.customer_name or "",
                 phone=payload.customer_phone or "",
             )
-            customers.charge_credit(customer, total)
-            order.customer_name = customer.name
-            order.customer_phone = customer.phone
+            customers.charge_credit(credit_customer, total)
+            order.customer_name = credit_customer.name
+            order.customer_phone = credit_customer.phone
         except CustomerServiceError as exc:
             db.rollback()
             raise HTTPException(
@@ -1074,13 +1086,61 @@ def create_order(
                 detail=str(exc),
             ) from exc
 
+    # Direct M-PESA SMS code: confirm in the same transaction so a bad code
+    # never leaves an unpaid walk-in order behind.
+    push_result: dict[str, str] | None = None
+    if payload.payment_method == PAYMENT_MPESA and direct_mpesa_receipt:
+        try:
+            matched_txn = confirm_mpesa_receipt_for_order(
+                db,
+                order,
+                direct_mpesa_receipt,
+                confirmed_by_user_id=user.id,
+            )
+        except ValueError as exc:
+            db.rollback()
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+        link_mpesa_transaction_to_order(db, order, matched_txn)
+        prev_status = order.status
+        now_paid = datetime.utcnow()
+        order.status = PAYMENT_RECEIVED
+        order.paid_at = now_paid
+        order.updated_at = now_paid
+        db.add(
+            OrderStatusHistory(
+                order_id=order.id,
+                from_status=prev_status,
+                to_status=PAYMENT_RECEIVED,
+                changed_by_user_id=user.id,
+                note=(
+                    "M-PESA payment confirmed with SMS code "
+                    f"{matched_txn.mpesa_receipt_number}."
+                ),
+                created_at=now_paid,
+            ),
+        )
+        push_result = {
+            "status": "confirmed",
+            "message": (
+                f"M-PESA code {matched_txn.mpesa_receipt_number} recorded. Sale closed."
+            ),
+        }
+
     db.commit()
     db.refresh(order)
+    if credit_customer is not None:
+        db.refresh(credit_customer)
 
     try:
         from app.services.merchant_notification_service import MerchantNotificationService
 
-        MerchantNotificationService(db).notify_order_status(order, PLACED)
+        MerchantNotificationService(db).notify_order_status(
+            order,
+            order.status if order.status == PAYMENT_RECEIVED else PLACED,
+        )
     except Exception:
         logger.exception("Merchant dashboard notification failed order_id=%s", order.id)
 
@@ -1099,12 +1159,37 @@ def create_order(
         except Exception:
             logger.exception("Customer WhatsApp notification failed order_id=%s", order.id)
 
-    # M-PESA flow: now that the order has a stable id and order_number we
-    # can fire an STK push and link the resulting transaction. Failures
-    # here are non-fatal — the cashier still has a valid order and can
-    # retry the push or switch payment methods.
-    push_result: dict[str, str] | None = None
-    if payload.payment_method == PAYMENT_MPESA:
+    credit_tab: dict[str, object] | None = None
+    if credit_customer is not None:
+        from app.services.credit_pay_service import CreditPayService
+        from app.services.order_notification_service import OrderNotificationService
+
+        outstanding = float(credit_customer.outstanding_balance or 0)
+        pay_bill_url = CreditPayService.pay_bill_url(credit_customer.id)
+        credit_tab = {
+            "customer_id": credit_customer.id,
+            "customer_name": credit_customer.name,
+            "outstanding_balance": outstanding,
+            "credit_limit": float(credit_customer.credit_limit or 0),
+            "pay_bill_url": pay_bill_url,
+        }
+        if (order.customer_phone or "").strip():
+            try:
+                OrderNotificationService(db).notify_customer_receipt_whatsapp(
+                    order,
+                    order.customer_phone,
+                    credit_outstanding=outstanding,
+                    pay_bill_url=pay_bill_url,
+                )
+            except Exception:
+                logger.exception(
+                    "Credit WhatsApp receipt failed order_id=%s",
+                    order.id,
+                )
+
+    # STK push after commit so the receipt can link to a real order id.
+    # Failures are non-fatal — cashier can retry or enter a code later.
+    if payload.payment_method == PAYMENT_MPESA and not direct_mpesa_receipt:
         push_result = _trigger_mpesa_for_order(
             db,
             order,
@@ -1122,6 +1207,8 @@ def create_order(
     }
     if push_result is not None:
         response["mpesa_push"] = push_result
+    if credit_tab is not None:
+        response["credit_tab"] = credit_tab
     return response
 
 
@@ -1315,7 +1402,12 @@ def transition_order(
         receipt = (payload.mpesa_receipt_number or "").strip()
         if receipt:
             try:
-                matched_txn = validate_mpesa_receipt_for_order(db, order, receipt)
+                matched_txn = confirm_mpesa_receipt_for_order(
+                    db,
+                    order,
+                    receipt,
+                    confirmed_by_user_id=user.id,
+                )
             except ValueError as exc:
                 raise HTTPException(
                     status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -1729,6 +1821,69 @@ def send_receipt_email(
     return {
         "message": f"Receipt sent to {to}.",
         "recipient": to,
+        "data": OrderOut.from_model(
+            order,
+            allowed_next=allowed_next_statuses(order.status, order.fulfillment_type),
+        ),
+    }
+
+
+@router.post("/{order_id}/send-receipt-whatsapp")
+def send_receipt_whatsapp(
+    order_id: str,
+    payload: SendReceiptWhatsAppIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Send a till-style receipt via the platform WhatsApp agent (openWA)."""
+    validate_csrf(request, session)
+    user = _auth_orders_user(db, session, pos_ok=True)
+    account_id = _require_shop(user)
+    order = _get_owned_order(db, account_id, order_id)
+
+    from app.services.openwa_service import OpenWaAgentService
+    from app.services.order_notification_service import OrderNotificationService
+    from app.services.rider_service import normalize_phone
+
+    agent = OpenWaAgentService()
+    if not agent.configured:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "WhatsApp is not configured. Set OPENWA_AGENT_TOKEN and start the "
+                "WhatsApp agent (Admin → WhatsApp)."
+            ),
+        )
+
+    raw_phone = str(payload.phone or order.customer_phone or "").strip()
+    phone = normalize_phone(raw_phone) if raw_phone else ""
+    if not phone:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "errors": {
+                    "phone": ["Enter the customer's WhatsApp number."],
+                },
+            },
+        )
+
+    if (order.customer_phone or "").strip() != phone:
+        order.customer_phone = phone
+        db.commit()
+        db.refresh(order)
+
+    result = OrderNotificationService(db).notify_customer_receipt_whatsapp(order, phone)
+    if not result.ok:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail=result.error or "Could not send the WhatsApp receipt. Try again.",
+        )
+
+    db.refresh(order, attribute_names=["items", "status_history", "mpesa_transaction", "mpesa_transactions"])
+    return {
+        "message": f"Receipt sent on WhatsApp to {phone}.",
+        "recipient": phone,
         "data": OrderOut.from_model(
             order,
             allowed_next=allowed_next_statuses(order.status, order.fulfillment_type),

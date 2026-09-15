@@ -2,11 +2,13 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     admin,
+    admin_whatsapp,
     ai_agent,
     auth,
     auto_reply,
     channels,
     conversation_starters,
+    credit_pay,
     customers,
     suppliers,
     deliveries,
@@ -73,6 +75,7 @@ router.include_router(inventory.router)
 router.include_router(orders.router)
 router.include_router(deliveries.router)
 router.include_router(order_payment.router)
+router.include_router(credit_pay.router)
 router.include_router(integrations.router)
 router.include_router(riders.router)
 router.include_router(rider_deliveries.router)
@@ -82,4 +85,5 @@ router.include_router(staff.router)
 router.include_router(customers.router)
 router.include_router(suppliers.router)
 router.include_router(admin.router)
+router.include_router(admin_whatsapp.router)
 router.include_router(meta.router)

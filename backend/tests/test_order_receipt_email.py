@@ -9,6 +9,7 @@ from app.config import Settings
 from app.services.order_notification_service import (
     OrderNotificationService,
     build_customer_receipt_email,
+    build_customer_receipt_whatsapp,
 )
 
 
@@ -107,3 +108,63 @@ def test_receipt_email_sends_via_mailer(_track) -> None:
     assert kwargs["to_name"] == "Amina"
     assert kwargs["category"] == "customer-receipt"
     assert "ORD-000001" in kwargs["subject"]
+
+
+def test_receipt_whatsapp_includes_shop_and_payment() -> None:
+    text = build_customer_receipt_whatsapp(_order(), shop_name="Mama Mboga")
+    assert "ORD-000001 Confirmed." in text
+    assert "Mama Mboga" in text
+    assert "2 × Coffee" in text
+    assert "Paid in cash." in text
+    assert "Thank you for shopping with us." in text
+
+
+def test_receipt_whatsapp_includes_pdf_and_credit_tab() -> None:
+    text = build_customer_receipt_whatsapp(
+        _order(payment_method="credit"),
+        shop_name="Mama Mboga",
+        receipt_pdf_url="https://example.com/uploads/receipts/a/o.pdf",
+        credit_outstanding=1200,
+        pay_bill_url="https://example.com/pay-bill/tok",
+    )
+    assert "On credit." in text
+    assert "Your tab is now KES 1,200.00." in text
+    assert "Pay your bill: https://example.com/pay-bill/tok" in text
+    assert "Receipt PDF: https://example.com/uploads/receipts/a/o.pdf" in text
+
+
+def test_receipt_whatsapp_includes_mpesa_code() -> None:
+    txn = MagicMock()
+    txn.mpesa_receipt_number = "QJK7ABC123"
+    text = build_customer_receipt_whatsapp(
+        _order(payment_method="mpesa", mpesa_transaction=txn),
+        shop_name="Mama Mboga",
+    )
+    assert "Paid via M-PESA. Receipt QJK7ABC123." in text
+
+
+def test_receipt_whatsapp_send_uses_openwa() -> None:
+    from app.services.openwa_service import OpenWaSendResult
+
+    service = OrderNotificationService(MagicMock(), Settings())
+    service.whatsapp = MagicMock()
+    service.whatsapp.configured = True
+    service.whatsapp.send_text.return_value = OpenWaSendResult(ok=True, message_id="1")
+    with patch(
+        "app.services.receipt_pdf_service.ensure_order_receipt_pdf_url",
+        return_value="https://example.com/r.pdf",
+    ):
+        result = service.notify_customer_receipt_whatsapp(_order(), "+254712345678")
+    assert result.ok is True
+    kwargs = service.whatsapp.send_text.call_args.kwargs
+    assert kwargs["to"] == "+254712345678"
+    assert "ORD-000001 Confirmed." in kwargs["text"]
+    assert "Receipt PDF: https://example.com/r.pdf" in kwargs["text"]
+
+
+def test_receipt_whatsapp_skipped_without_phone() -> None:
+    service = OrderNotificationService(MagicMock(), Settings())
+    service.whatsapp = MagicMock()
+    result = service.notify_customer_receipt_whatsapp(_order(), "  ")
+    assert result.ok is False
+    service.whatsapp.send_text.assert_not_called()

@@ -1,0 +1,19 @@
+{
+  "name": "dukai-whatsapp-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Platform openWA sidecar for DukAI order notifications and alerts",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "postinstall": "node scripts/patch-openwa.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@open-wa/wa-automate": "^4.76.0",
+    "express": "^4.21.2"
+  }
+}
