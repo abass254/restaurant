@@ -13,8 +13,10 @@ from sqlalchemy.orm import Session
 from app.core.session import require_user, validate_csrf
 from app.database import get_db
 from app.dependencies import get_request_session
-from app.models import MpesaTransaction, ShopCustomer
+from app.models import Account, MpesaTransaction, ShopCustomer
 from app.services.customer_import_service import import_customers_from_excel
+from app.services.credit_pay_service import CreditPayService
+from app.services.openwa_service import OpenWaAgentService
 from app.services.customer_service import (
     CustomerService,
     CustomerServiceError,
@@ -73,6 +75,7 @@ class CustomerOut(BaseModel):
     credit_limit: float
     outstanding_balance: float
     available_credit: float
+    pay_bill_url: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -89,6 +92,12 @@ def _iso(dt) -> str | None:
 def _customer_out(customer: ShopCustomer) -> CustomerOut:
     limit = customer.credit_limit
     outstanding = customer.outstanding_balance
+    pay_url = None
+    if (outstanding or 0) > 0:
+        try:
+            pay_url = CreditPayService.pay_bill_url(customer.id)
+        except Exception:
+            pay_url = None
     return CustomerOut(
         id=customer.id,
         name=customer.name,
@@ -99,6 +108,7 @@ def _customer_out(customer: ShopCustomer) -> CustomerOut:
         credit_limit=_money_out(limit),
         outstanding_balance=_money_out(outstanding),
         available_credit=_money_out(available_credit(limit, outstanding)),
+        pay_bill_url=pay_url,
         created_at=_iso(customer.created_at),
         updated_at=_iso(customer.updated_at),
     )
@@ -408,3 +418,61 @@ def get_credit_collection(
             "collected": bool(txn.credit_collected_at),
         },
     }
+
+
+@router.post("/{customer_id}/send-whatsapp-reminder")
+def send_customer_whatsapp_reminder(
+    customer_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    validate_csrf(request, session)
+    user = require_user(db, session)
+    assert_merchant_section_any_access(user, *TILL_CUSTOMER_SECTIONS)
+    account_id = require_merchant_account_id(user)
+    try:
+        customer = CustomerService(db).get_customer(account_id, customer_id)
+    except CustomerServiceError as exc:
+        _raise_service_error(exc)
+
+    if customer.outstanding_balance <= 0:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="This customer does not owe anything right now.",
+        )
+
+    account = db.query(Account).filter(Account.id == account_id).first()
+    shop = (account.business_name if account else None) or "the shop"
+    formatted_amount = f"Ksh{customer.outstanding_balance:,.2f}"
+    first_name = customer.name.strip().split()[0] if customer.name else ""
+    greeting = f"Hi {first_name}, " if first_name else "Hi, "
+
+    pay_bill_url = CreditPayService.pay_bill_url(customer.id)
+    text = f"{greeting}this is a payment reminder from {shop} regarding your outstanding tab balance of {formatted_amount}."
+    if pay_bill_url:
+        text += f"\n\nYou can view your bill details and pay securely via M-PESA here:\n{pay_bill_url}"
+    else:
+        text += "\n\nPlease reach out to clear your balance via M-PESA. Thank you!"
+
+    agent = OpenWaAgentService()
+    if not agent.configured:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="WhatsApp agent is not configured. Set OPENWA_AGENT_TOKEN.",
+        )
+
+    result = agent.send_text(to=customer.phone, text=text)
+    if not result.ok:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail=result.error or "WhatsApp message could not be sent.",
+        )
+
+    return {
+        "message": f"WhatsApp reminder sent to {customer.name} ({customer.phone}).",
+        "sent": True,
+        "message_id": result.message_id,
+        "pay_bill_url": pay_bill_url,
+    }
+

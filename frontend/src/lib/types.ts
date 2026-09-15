@@ -1684,6 +1684,7 @@ export type ShopCustomer = {
   credit_limit: number;
   outstanding_balance: number;
   available_credit: number;
+  pay_bill_url?: string | null;
   created_at: string | null;
   updated_at: string | null;
 };

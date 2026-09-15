@@ -10034,3 +10034,391 @@ html[data-trans-chap-machine="tablet"] .trans-chap-swal-popup {
     border-radius: 22px !important;
     padding-bottom: 1.15rem !important;
 }
+
+/* ==========================================================================
+   TRANS CHAP MODERN UI/UX ENHANCEMENTS (COMPUTER DESKTOP & MOBILE PHONE)
+   ========================================================================== */
+
+/* 1. Desktop Sidebar Brand Section */
+html[data-trans-chap-machine="phone"] .mobile-nav__brand {
+    display: none !important;
+}
+
+html[data-trans-chap-machine="tablet"] .mobile-nav__brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.75rem 0.85rem;
+    margin-bottom: 0.45rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--app-border) 60%, transparent);
+}
+
+html[data-trans-chap-machine="tablet"] .mobile-nav__brand-icon {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+}
+
+html[data-trans-chap-machine="tablet"] .mobile-nav__brand-meta {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+html[data-trans-chap-machine="tablet"] .mobile-nav__brand-title {
+    font-size: 0.95rem;
+    font-weight: 850;
+    color: var(--app-primary);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+}
+
+html[data-trans-chap-machine="tablet"] .mobile-nav__brand-shop {
+    font-size: 0.72rem;
+    font-weight: 650;
+    color: var(--app-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 0.1rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-app--nav-collapsed .mobile-nav__brand {
+    justify-content: center;
+    padding: 0.4rem 0 0.65rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-app--nav-collapsed .mobile-nav__brand-meta {
+    display: none;
+}
+
+/* 2. Enhanced Hero Banner & Quick Actions */
+.trans-chap-dash__hero {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 0.65rem 0.2rem 0.85rem;
+}
+
+.trans-chap-dash__hero-main {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+}
+
+.trans-chap-dash__hero-avatar {
+    width: 3.25rem;
+    height: 3.25rem;
+    border-radius: 18px;
+    background: linear-gradient(135deg, var(--app-primary) 0%, #e8412a 100%);
+    color: #ffffff;
+    display: grid;
+    place-items: center;
+    font-size: 1.35rem;
+    font-weight: 850;
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--app-primary) 32%, transparent);
+    flex-shrink: 0;
+}
+
+.trans-chap-dash__hero-text {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.trans-chap-dash__hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-primary) 10%, var(--app-surface));
+    color: var(--app-primary);
+    font-size: 0.72rem;
+    font-weight: 750;
+    margin-bottom: 0.25rem;
+    width: fit-content;
+}
+
+.trans-chap-dash__quick-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.trans-chap-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.55rem 0.95rem;
+    border-radius: 14px;
+    font-size: 0.84rem;
+    font-weight: 750;
+    text-decoration: none;
+    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    cursor: pointer;
+    border: 1px solid transparent;
+}
+
+.trans-chap-btn--primary {
+    background: var(--app-primary);
+    color: #ffffff;
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--app-primary) 28%, transparent);
+}
+
+.trans-chap-btn--primary:hover {
+    background: color-mix(in srgb, var(--app-primary) 88%, #000);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px color-mix(in srgb, var(--app-primary) 36%, transparent);
+}
+
+.trans-chap-btn--secondary {
+    background: color-mix(in srgb, var(--app-primary) 12%, var(--app-surface));
+    color: var(--app-primary);
+    border-color: color-mix(in srgb, var(--app-primary) 25%, transparent);
+}
+
+.trans-chap-btn--secondary:hover {
+    background: color-mix(in srgb, var(--app-primary) 20%, var(--app-surface));
+    transform: translateY(-1px);
+}
+
+.trans-chap-btn--ghost {
+    background: var(--app-surface);
+    color: var(--app-text);
+    border-color: var(--app-border);
+}
+
+.trans-chap-btn--ghost:hover {
+    background: var(--app-surface-hover);
+    transform: translateY(-1px);
+}
+
+/* 3. Computer Desktop Multi-Column Dashboard & Polish */
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__hero {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.85rem 0.2rem 1rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__analytics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.15rem;
+    align-items: start;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__spotlight {
+    grid-column: 1 / -1;
+    padding: 1.35rem 1.4rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__stat-grid {
+    gap: 1.15rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__panel {
+    padding: 1.25rem 1.35rem;
+}
+
+/* 4. Glassmorphic Mobile Navigation & Safe Areas */
+html[data-trans-chap-machine="phone"] .trans-chap-app .mobile-nav {
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    background: color-mix(in srgb, var(--app-surface) 92%, transparent);
+    border-top: 1px solid var(--app-border);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
+}
+
+html[data-trans-chap-machine="phone"] .trans-chap-app .mobile-nav a.is-active {
+    color: var(--app-primary);
+    background: color-mix(in srgb, var(--app-primary) 12%, transparent);
+    border-radius: 12px;
+}
+
+/* 5. Mobile Phone 5-Tab Bar & More Drawer Sheet */
+html[data-trans-chap-machine="tablet"] .mobile-nav__more-btn {
+    display: none !important;
+}
+
+html[data-trans-chap-machine="phone"] .mobile-nav {
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    align-items: center;
+    gap: 0.15rem !important;
+    padding: 0.4rem 0.4rem max(0.4rem, env(safe-area-inset-bottom)) !important;
+}
+
+html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/make-a-sale"],
+html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/suppliers"],
+html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/purchases"],
+html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/settings"] {
+    display: none !important;
+}
+
+.mobile-nav__more-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem;
+    height: 100%;
+    min-height: 48px;
+    padding: 0.3rem 0;
+    border: 0;
+    background: transparent;
+    color: var(--app-text-secondary);
+    font: inherit;
+    font-size: 0.68rem;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 12px;
+    text-decoration: none;
+}
+
+.mobile-nav__more-btn.is-active,
+.mobile-nav__more-btn:hover {
+    color: var(--app-primary);
+    background: color-mix(in srgb, var(--app-primary) 10%, transparent);
+}
+
+.trans-chap-more-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+}
+
+.trans-chap-more-sheet {
+    width: 100%;
+    max-width: 560px;
+    background: var(--app-surface);
+    border-radius: 24px 24px 0 0;
+    border-top: 1px solid var(--app-border);
+    padding: 1.15rem 1.25rem max(1.25rem, env(safe-area-inset-bottom));
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.25);
+}
+
+.trans-chap-more-sheet__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    padding-bottom: 0.65rem;
+    border-bottom: 1px solid var(--app-border);
+}
+
+.trans-chap-more-sheet__head h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 850;
+    color: var(--app-text);
+}
+
+.trans-chap-more-sheet__close {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    border: 0;
+    background: var(--app-bg);
+    color: var(--app-text-secondary);
+    display: grid;
+    place-items: center;
+    font-size: 1.1rem;
+    cursor: pointer;
+}
+
+.trans-chap-more-sheet__grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.trans-chap-more-sheet__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.95rem 0.5rem;
+    border-radius: 16px;
+    background: var(--app-bg);
+    border: 1px solid var(--app-border);
+    color: var(--app-text);
+    text-decoration: none;
+    font-size: 0.82rem;
+    font-weight: 750;
+    transition: all 0.15s ease;
+}
+
+.trans-chap-more-sheet__item:hover,
+.trans-chap-more-sheet__item:focus-visible {
+    background: color-mix(in srgb, var(--app-primary) 10%, var(--app-surface));
+    border-color: color-mix(in srgb, var(--app-primary) 30%, transparent);
+    color: var(--app-primary);
+}
+
+.trans-chap-more-sheet__item i {
+    font-size: 1.25rem;
+    color: var(--app-primary);
+}
+
+.trans-chap-more-sheet__item--logout {
+    border: 0;
+    cursor: pointer;
+    font: inherit;
+    color: #ef4444;
+}
+
+.trans-chap-more-sheet__item--logout i {
+    color: #ef4444;
+}
+
+/* 6. Card Edge Clipping Prevention */
+.trans-chap-dash__panel-head span {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+}
+
+.trans-chap-dash__owing-cta {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+}
+
+.trans-chap-header__brand-logo {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--app-primary) 10%, transparent);
+}
+
+.trans-chap-credit__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem;
+    margin-block: 0.85rem;
+}
+
+.trans-chap-btn--whatsapp {
+    background: #25d366;
+    color: #ffffff !important;
+    box-shadow: 0 4px 12px rgba(37, 211, 102, 0.28);
+}
+
+.trans-chap-btn--whatsapp:hover {
+    background: #1eb956;
+    color: #ffffff !important;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(37, 211, 102, 0.38);
+}

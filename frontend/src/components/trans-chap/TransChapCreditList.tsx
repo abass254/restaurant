@@ -2,14 +2,15 @@
 
 import { FormEvent, useCallback, useEffect, useId, useMemo, useState } from "react";
 import Link from "next/link";
+import { useAuthUser } from "@/components/app/AuthProvider";
 import { MotionItem, MotionList } from "@/components/app/MotionList";
 import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { apiFetch } from "@/lib/api";
-import { showError, showInternalError, toastSuccess } from "@/lib/alerts";
+import { extractErrorMessage, showError, showInternalError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
-import { fetchOwingCustomers } from "@/lib/trans-chap-credit";
+import { buildDebtReminderWhatsAppUrl, fetchOwingCustomers } from "@/lib/trans-chap-credit";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import type {
   CreditCollectionStatusResponse,
@@ -27,6 +28,8 @@ function parseAmount(value: string): number | null {
 }
 
 export function TransChapCreditList() {
+  const user = useAuthUser();
+  const shopName = user.active_account?.business_name || user.account?.business_name;
   const listId = useId();
   const [customers, setCustomers] = useState<ShopCustomer[]>([]);
   const [owingTotal, setOwingTotal] = useState(0);
@@ -37,7 +40,35 @@ export function TransChapCreditList() {
   const [amount, setAmount] = useState("");
   const [mpesaReady, setMpesaReady] = useState<boolean | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [sendingWaId, setSendingWaId] = useState<string | null>(null);
   const [waiting, setWaiting] = useState<{ customerId: string; txnId: string } | null>(null);
+
+  async function handleSendWhatsAppReminder(customer: ShopCustomer) {
+    setSendingWaId(customer.id);
+    try {
+      const res = await apiFetch<{ message: string; sent: boolean }>(
+        apiRoutes.customerSendWhatsAppReminder(customer.id),
+        { method: "POST" },
+      );
+      await toastSuccess(res.message || "WhatsApp reminder sent via OpenWA!");
+    } catch (err) {
+      const waUrl = buildDebtReminderWhatsAppUrl({
+        customerName: customer.name,
+        shopName,
+        amount: customer.outstanding_balance,
+        phone: customer.phone,
+        payBillUrl: customer.pay_bill_url,
+      });
+      if (waUrl) {
+        window.open(waUrl, "_blank");
+        await toastSuccess("Opening WhatsApp to send reminder...");
+      } else {
+        await showError("Could not send WhatsApp reminder", extractErrorMessage(err));
+      }
+    } finally {
+      setSendingWaId(null);
+    }
+  }
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -202,6 +233,13 @@ export function TransChapCreditList() {
             const open = openId === customer.id;
             const panelId = `${listId}-${customer.id}`;
             const collecting = savingId === customer.id || waiting?.customerId === customer.id;
+            const waUrl = buildDebtReminderWhatsAppUrl({
+              customerName: customer.name,
+              shopName,
+              amount: customer.outstanding_balance,
+              phone: customer.phone,
+              payBillUrl: customer.pay_bill_url,
+            });
             return (
               <MotionItem key={customer.id} as="div">
                 <TransChapPanel
@@ -214,7 +252,7 @@ export function TransChapCreditList() {
                   onToggle={() => toggle(customer)}
                 >
                   <p className="trans-chap-panel__lead">
-                    On their tab. Send an M-PESA prompt to collect.
+                    On their tab. Send a WhatsApp reminder with payment link, or send an M-PESA prompt directly.
                   </p>
                   <dl className="trans-chap-panel__facts">
                     <div>
@@ -226,9 +264,40 @@ export function TransChapCreditList() {
                       <dd>{customer.phone}</dd>
                     </div>
                   </dl>
+
+                  <div className="trans-chap-credit__actions">
+                    {waUrl ? (
+                      <button
+                        type="button"
+                        className="trans-chap-btn trans-chap-btn--whatsapp"
+                        disabled={sendingWaId === customer.id}
+                        onClick={() => void handleSendWhatsAppReminder(customer)}
+                      >
+                        <i className="fa-brands fa-whatsapp" aria-hidden />
+                        <span>
+                          {sendingWaId === customer.id ? "Sending via OpenWA…" : "Send WhatsApp Reminder"}
+                        </span>
+                      </button>
+                    ) : null}
+
+                    {customer.pay_bill_url ? (
+                      <button
+                        type="button"
+                        className="trans-chap-btn trans-chap-btn--ghost"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(customer.pay_bill_url!);
+                          void toastSuccess("Pay link copied!");
+                        }}
+                      >
+                        <i className="fa-solid fa-copy" aria-hidden />
+                        <span>Copy Pay Link</span>
+                      </button>
+                    ) : null}
+                  </div>
+
                   {mpesaReady === false ? (
                     <p className="trans-chap-mpesa-gate">
-                      Set your M-PESA details in Settings before collecting.{" "}
+                      Set your M-PESA details in Settings before collecting via STK Push.{" "}
                       <Link href="/trans-chap/settings">Set M-PESA details</Link>
                     </p>
                   ) : waitingThis && waiting?.customerId === customer.id ? (
@@ -240,7 +309,7 @@ export function TransChapCreditList() {
                       className="trans-chap-form__block"
                       onSubmit={(event) => void collect(event, customer)}
                     >
-                      <p className="trans-chap-form__block-title">Collect</p>
+                      <p className="trans-chap-form__block-title">STK Push Prompt</p>
                       <div className="auth-split__field">
                         <label htmlFor={`${panelId}-amount`}>Amount</label>
                         <div className="trans-chap-input">

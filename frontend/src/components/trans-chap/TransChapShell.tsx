@@ -279,6 +279,13 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const isHome = pathname === "/trans-chap" || pathname === "/trans-chap/";
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  useEffect(() => {
+    setMoreOpen(false);
+  }, [pathname]);
+
   return (
     <div className={`auth-split trans-chap-root${isSignIn ? " trans-chap-root--signin" : ""}`}>
       <section className="auth-split__panel">
@@ -288,7 +295,11 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
           {showHeader ? (
             <header className="trans-chap-header">
               <div className="trans-chap-header__side">
-                {backHref ? (
+                {isHome ? (
+                  <span className="trans-chap-header__brand-logo" aria-label="Trans Chap">
+                    <TransChapLogoMark size={28} color="var(--app-primary)" accentColor="#e8412a" />
+                  </span>
+                ) : backHref ? (
                   <Link href={backHref} className="trans-chap-header__icon" aria-label="Back">
                     <i className="fa-solid fa-chevron-left" aria-hidden />
                   </Link>
@@ -307,7 +318,6 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                 <h1>{title}</h1>
               </div>
               <div className="trans-chap-header__side trans-chap-header__side--end">
-                <FullscreenToggle className="trans-chap-header__icon" />
                 <ThemeToggle />
                 <button
                   type="button"
@@ -320,36 +330,128 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                 >
                   <i className="fa-solid fa-right-from-bracket" aria-hidden />
                 </button>
-                <span className="trans-chap-header__logo" aria-hidden>
-                  <TransChapLogoMark size={34} color="currentColor" accentColor="#e8412a" />
-                </span>
               </div>
             </header>
           ) : null}
           <main className="trans-chap-app__content">{children}</main>
           {showNav ? (
-            <nav
-              className={`mobile-nav mobile-nav--${Math.min(Math.max(items.length, 3), 7)}`}
-              aria-label="Trans Chap navigation"
-            >
-              <button
-                type="button"
-                className="mobile-nav__collapse"
-                aria-label={navCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                aria-pressed={navCollapsed}
-                title={navCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                onClick={toggleNavCollapsed}
+            <>
+              <nav
+                className={`mobile-nav mobile-nav--${Math.min(Math.max(items.length, 3), 7)}`}
+                aria-label="Trans Chap navigation"
               >
-                <i
-                  className={`fa-solid ${navCollapsed ? "fa-angles-right" : "fa-angles-left"}`}
-                  aria-hidden
-                />
-                <span className="mobile-nav__label">
-                  {navCollapsed ? "Expand" : "Collapse"}
-                </span>
-              </button>
-              {items.map((item) => renderNavLink(item))}
-            </nav>
+                <div className="mobile-nav__brand">
+                  <span className="mobile-nav__brand-icon" aria-hidden>
+                    <TransChapLogoMark size={30} color="var(--app-primary)" accentColor="#e8412a" />
+                  </span>
+                  <div className="mobile-nav__brand-meta">
+                    <strong className="mobile-nav__brand-title">Trans Chap</strong>
+                    {user?.active_account?.business_name || user?.account?.business_name ? (
+                      <span className="mobile-nav__brand-shop">
+                        {user.active_account?.business_name || user.account?.business_name}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="mobile-nav__collapse"
+                  aria-label={navCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                  aria-pressed={navCollapsed}
+                  title={navCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                  onClick={toggleNavCollapsed}
+                >
+                  <i
+                    className={`fa-solid ${navCollapsed ? "fa-angles-right" : "fa-angles-left"}`}
+                    aria-hidden
+                  />
+                  <span className="mobile-nav__label">
+                    {navCollapsed ? "Expand" : "Collapse"}
+                  </span>
+                </button>
+                {items.map((item) => renderNavLink(item))}
+                <button
+                  type="button"
+                  className={`mobile-nav__more-btn${moreOpen ? " is-active" : ""}`}
+                  onClick={() => setMoreOpen(!moreOpen)}
+                  aria-label="More navigation options"
+                >
+                  <span className="mobile-nav__icon">
+                    <i className="fa-solid fa-ellipsis-vertical" aria-hidden />
+                  </span>
+                  <span className="mobile-nav__label">More</span>
+                </button>
+              </nav>
+
+              {moreOpen ? (
+                <div className="trans-chap-more-backdrop" onClick={() => setMoreOpen(false)}>
+                  <div className="trans-chap-more-sheet" onClick={(e) => e.stopPropagation()}>
+                    <header className="trans-chap-more-sheet__head">
+                      <h3>Menu</h3>
+                      <button
+                        type="button"
+                        className="trans-chap-more-sheet__close"
+                        onClick={() => setMoreOpen(false)}
+                      >
+                        <i className="fa-solid fa-xmark" aria-hidden />
+                      </button>
+                    </header>
+                    <div className="trans-chap-more-sheet__grid">
+                      <Link
+                        href="/trans-chap/make-a-sale"
+                        className="trans-chap-more-sheet__item"
+                        onClick={() => setMoreOpen(false)}
+                      >
+                        <i className="fa-solid fa-receipt" aria-hidden />
+                        <span>Sales</span>
+                      </Link>
+                      <Link
+                        href="/trans-chap/suppliers"
+                        className="trans-chap-more-sheet__item"
+                        onClick={() => setMoreOpen(false)}
+                      >
+                        <i className="fa-solid fa-truck-field" aria-hidden />
+                        <span>Suppliers</span>
+                      </Link>
+                      <Link
+                        href="/trans-chap/purchases"
+                        className="trans-chap-more-sheet__item"
+                        onClick={() => setMoreOpen(false)}
+                      >
+                        <i className="fa-solid fa-cart-shopping" aria-hidden />
+                        <span>Purchases</span>
+                      </Link>
+                      <Link
+                        href="/trans-chap/reports"
+                        className="trans-chap-more-sheet__item"
+                        onClick={() => setMoreOpen(false)}
+                      >
+                        <i className="fa-solid fa-chart-pie" aria-hidden />
+                        <span>Reports</span>
+                      </Link>
+                      <Link
+                        href="/trans-chap/settings"
+                        className="trans-chap-more-sheet__item"
+                        onClick={() => setMoreOpen(false)}
+                      >
+                        <i className="fa-solid fa-gear" aria-hidden />
+                        <span>Settings</span>
+                      </Link>
+                      <button
+                        type="button"
+                        className="trans-chap-more-sheet__item trans-chap-more-sheet__item--logout"
+                        onClick={() =>
+                          void logoutToSignIn({ href: "/trans-chap/sign-in" })
+                        }
+                      >
+                        <i className="fa-solid fa-right-from-bracket" aria-hidden />
+                        <span>Log out</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </>
           ) : null}
         </div>
       </section>

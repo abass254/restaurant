@@ -211,6 +211,8 @@ export const apiRoutes = {
     `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/update`,
   customerCollect: (id: string) =>
     `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/collect`,
+  customerSendWhatsAppReminder: (id: string) =>
+    `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/send-whatsapp-reminder`,
   customerCollection: (id: string, transactionId: string) =>
     `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/collections/${encodeURIComponent(transactionId)}`,
   suppliers: `${apiUrl}/api/v1/suppliers`,

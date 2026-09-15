@@ -24,7 +24,9 @@ import {
   toastSuccess,
 } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
+import { useAuthUser } from "@/components/app/AuthProvider";
 import { fetchShopCustomers } from "@/lib/trans-chap-customers";
+import { buildDebtReminderWhatsAppUrl } from "@/lib/trans-chap-credit";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import type {
   CustomerImportResponse,
@@ -56,15 +58,6 @@ function parseCreditLimit(value: string): number | null {
   return amount;
 }
 
-function formFromCustomer(customer: ShopCustomer): CustomerForm {
-  return {
-    name: customer.name,
-    phone: customer.phone,
-    credit_limit: String(customer.credit_limit ?? 0),
-    notes: customer.notes ?? "",
-  };
-}
-
 function badgeFor(customer: ShopCustomer): { label: string; tone: "ok" | "credit" | "wait" } {
   if (customer.outstanding_balance > 0) {
     return { label: formatKsh(customer.outstanding_balance), tone: "credit" };
@@ -76,6 +69,8 @@ function badgeFor(customer: ShopCustomer): { label: string; tone: "ok" | "credit
 }
 
 export function TransChapCustomersList() {
+  const user = useAuthUser();
+  const shopName = user.active_account?.business_name || user.account?.business_name;
   const listId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<View>("list");
@@ -84,7 +79,6 @@ export function TransChapCustomersList() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<CustomerForm>(EMPTY_FORM);
   const [createForm, setCreateForm] = useState<CustomerForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -92,6 +86,34 @@ export function TransChapCustomersList() {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<CustomerImportResponse | null>(null);
+  const [sendingWaId, setSendingWaId] = useState<string | null>(null);
+
+  async function handleSendWhatsAppReminder(customer: ShopCustomer) {
+    setSendingWaId(customer.id);
+    try {
+      const res = await apiFetch<{ message: string; sent: boolean }>(
+        apiRoutes.customerSendWhatsAppReminder(customer.id),
+        { method: "POST" },
+      );
+      await toastSuccess(res.message || "WhatsApp reminder sent via OpenWA!");
+    } catch (err) {
+      const waUrl = buildDebtReminderWhatsAppUrl({
+        customerName: customer.name,
+        shopName,
+        amount: customer.outstanding_balance,
+        phone: customer.phone,
+        payBillUrl: customer.pay_bill_url,
+      });
+      if (waUrl) {
+        window.open(waUrl, "_blank");
+        await toastSuccess("Opening WhatsApp to send reminder...");
+      } else {
+        await showError("Could not send WhatsApp reminder", extractErrorMessage(err));
+      }
+    } finally {
+      setSendingWaId(null);
+    }
+  }
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -140,7 +162,6 @@ export function TransChapCustomersList() {
   function toggle(customer: ShopCustomer) {
     const open = openId === customer.id;
     setOpenId(open ? null : customer.id);
-    if (!open) setEditForm(formFromCustomer(customer));
   }
 
   function payloadFromForm(form: CustomerForm) {
@@ -183,42 +204,9 @@ export function TransChapCustomersList() {
       setView("list");
       setCreateForm(EMPTY_FORM);
       setOpenId(res.data.id);
-      setEditForm(formFromCustomer(res.data));
       await toastSuccess("Customer saved");
     } catch (err) {
       await showError("Could not save customer", extractErrorMessage(err));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleEdit(event: FormEvent, customer: ShopCustomer) {
-    event.preventDefault();
-    let payload;
-    try {
-      payload = payloadFromForm(editForm);
-    } catch (err) {
-      await showError("Check details", extractErrorMessage(err));
-      return;
-    }
-    setSaving(true);
-    try {
-      const res = await apiFetch<ShopCustomerMutationResponse>(
-        apiRoutes.customerUpdate(customer.id),
-        {
-          method: "POST",
-          body: JSON.stringify(payload),
-        },
-      );
-      setCustomers((prev) =>
-        prev
-          .map((row) => (row.id === res.data.id ? res.data : row))
-          .sort((a, b) => a.name.localeCompare(b.name)),
-      );
-      setEditForm(formFromCustomer(res.data));
-      await toastSuccess("Customer updated");
-    } catch (err) {
-      await showError("Could not update customer", extractErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -541,6 +529,16 @@ export function TransChapCustomersList() {
             const open = openId === customer.id;
             const panelId = `${listId}-${customer.id}`;
             const badge = badgeFor(customer);
+            const waUrl =
+              customer.outstanding_balance > 0
+                ? buildDebtReminderWhatsAppUrl({
+                    customerName: customer.name,
+                    shopName,
+                    amount: customer.outstanding_balance,
+                    phone: customer.phone,
+                    payBillUrl: customer.pay_bill_url,
+                  })
+                : null;
             return (
               <MotionItem key={customer.id} as="div">
                 <TransChapPanel
@@ -552,90 +550,67 @@ export function TransChapCustomersList() {
                   badge={badge}
                   onToggle={() => toggle(customer)}
                 >
-                  <form
-                    className="trans-chap-form__block"
-                    onSubmit={(event) => void handleEdit(event, customer)}
-                  >
-                    <p className="trans-chap-form__block-title">Details</p>
-                    <div className="auth-split__field">
-                      <label htmlFor={`${panelId}-name`}>Name</label>
-                      <div className="trans-chap-input">
-                        <input
-                          id={`${panelId}-name`}
-                          required
-                          className="auth-split__input"
-                          value={open ? editForm.name : customer.name}
-                          onChange={(e) =>
-                            setEditForm((f) => ({ ...f, name: e.target.value }))
-                          }
-                        />
+                  <div className="trans-chap-form__block">
+                    <dl className="trans-chap-panel__facts">
+                      <div>
+                        <dt>Credit limit</dt>
+                        <dd>{formatKsh(customer.credit_limit)}</dd>
                       </div>
-                    </div>
-                    <div className="auth-split__field">
-                      <label htmlFor={`${panelId}-phone`}>Phone</label>
-                      <div className="trans-chap-input">
-                        <input
-                          id={`${panelId}-phone`}
-                          required
-                          type="tel"
-                          className="auth-split__input"
-                          value={open ? editForm.phone : customer.phone}
-                          onChange={(e) =>
-                            setEditForm((f) => ({ ...f, phone: e.target.value }))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="auth-split__field">
-                      <label htmlFor={`${panelId}-limit`}>Credit limit</label>
-                      <div className="trans-chap-input">
-                        <input
-                          id={`${panelId}-limit`}
-                          type="text"
-                          inputMode="numeric"
-                          className="auth-split__input"
-                          value={open ? editForm.credit_limit : String(customer.credit_limit)}
-                          onChange={(e) =>
-                            setEditForm((f) => ({ ...f, credit_limit: e.target.value }))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="auth-split__field">
-                      <label htmlFor={`${panelId}-notes`}>Notes</label>
-                      <div className="trans-chap-input">
-                        <input
-                          id={`${panelId}-notes`}
-                          className="auth-split__input"
-                          value={open ? editForm.notes : customer.notes ?? ""}
-                          onChange={(e) =>
-                            setEditForm((f) => ({ ...f, notes: e.target.value }))
-                          }
-                        />
-                      </div>
-                    </div>
+                      {customer.outstanding_balance > 0 ? (
+                        <>
+                          <div>
+                            <dt>Owes</dt>
+                            <dd>{formatKsh(customer.outstanding_balance)}</dd>
+                          </div>
+                          <div>
+                            <dt>Available</dt>
+                            <dd>{formatKsh(customer.available_credit)}</dd>
+                          </div>
+                        </>
+                      ) : null}
+                      {customer.notes ? (
+                        <div style={{ gridColumn: "1 / -1" }}>
+                          <dt>Notes</dt>
+                          <dd>{customer.notes}</dd>
+                        </div>
+                      ) : null}
+                    </dl>
+
                     {customer.outstanding_balance > 0 ? (
-                      <dl className="trans-chap-panel__facts">
-                        <div>
-                          <dt>Owes</dt>
-                          <dd>{formatKsh(customer.outstanding_balance)}</dd>
-                        </div>
-                        <div>
-                          <dt>Available</dt>
-                          <dd>{formatKsh(customer.available_credit)}</dd>
-                        </div>
-                      </dl>
+                      <div className="trans-chap-credit__actions" style={{ marginBottom: "0.85rem" }}>
+                        {waUrl ? (
+                          <button
+                            type="button"
+                            className="trans-chap-btn trans-chap-btn--whatsapp"
+                            disabled={sendingWaId === customer.id}
+                            onClick={() => void handleSendWhatsAppReminder(customer)}
+                          >
+                            <i className="fa-brands fa-whatsapp" aria-hidden />
+                            <span>
+                              {sendingWaId === customer.id ? "Sending via OpenWA…" : "Send WhatsApp Reminder"}
+                            </span>
+                          </button>
+                        ) : null}
+
+                        {customer.pay_bill_url ? (
+                          <button
+                            type="button"
+                            className="trans-chap-btn trans-chap-btn--ghost"
+                            onClick={() => {
+                              void navigator.clipboard.writeText(customer.pay_bill_url!);
+                              void toastSuccess("Pay link copied!");
+                            }}
+                          >
+                            <i className="fa-solid fa-copy" aria-hidden />
+                            <span>Copy Pay Link</span>
+                          </button>
+                        ) : null}
+                      </div>
                     ) : null}
-                    <button
-                      type="submit"
-                      className="auth-split__btn"
-                      disabled={saving}
-                    >
-                      {saving && openId === customer.id ? "Saving…" : "Save changes"}
-                    </button>
+
                     {customer.outstanding_balance > 0 ? (
                       <Link href="/trans-chap/credit" className="trans-chap-form__secondary">
-                        Collect on tab
+                        Collect via STK Push
                       </Link>
                     ) : (
                       <button
@@ -647,7 +622,7 @@ export function TransChapCustomersList() {
                         {removingId === customer.id ? "Removing…" : "Remove customer"}
                       </button>
                     )}
-                  </form>
+                  </div>
                 </TransChapPanel>
               </MotionItem>
             );

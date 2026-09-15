@@ -5581,42 +5581,506 @@ td.admin-table__actions {
   max-height: 320px;
 }
 
-/* Platform WhatsApp (openWA) --------------------------------------------- */
+/* Platform WhatsApp (openWA) Modern UI ------------------------------------ */
 
-.admin-whatsapp-qr {
-  margin-top: 1.25rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--color-border, #e8e2d8);
+.admin-wa-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 1.5rem 1.75rem;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(37, 211, 102, 0.09) 0%, rgba(18, 140, 126, 0.04) 50%, rgba(255, 255, 255, 0.02) 100%);
+  border: 1px solid rgba(37, 211, 102, 0.22);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);
+  margin-bottom: 1.5rem;
 }
 
-.admin-whatsapp-qr__image {
+[data-theme="dark"] .admin-wa-hero {
+  background: linear-gradient(135deg, rgba(37, 211, 102, 0.14) 0%, rgba(18, 140, 126, 0.08) 50%, rgba(0, 0, 0, 0.2) 100%);
+  border-color: rgba(37, 211, 102, 0.3);
+}
+
+.admin-wa-hero__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+}
+
+.admin-wa-hero__title-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.admin-wa-hero__icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #25d366 0%, #128c7e 100%);
+  color: #fff;
+  font-size: 1.75rem;
+  box-shadow: 0 8px 20px rgba(37, 211, 102, 0.3);
+  flex-shrink: 0;
+}
+
+.admin-wa-hero__status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.admin-wa-hero__status-badge.is-online {
+  background: rgba(37, 211, 102, 0.15);
+  color: #128c7e;
+  border: 1px solid rgba(37, 211, 102, 0.35);
+}
+
+[data-theme="dark"] .admin-wa-hero__status-badge.is-online {
+  color: #25d366;
+}
+
+.admin-wa-hero__status-badge.is-warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.admin-wa-hero__status-badge.is-offline {
+  background: rgba(239, 68, 68, 0.15);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.admin-wa-pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  position: relative;
+  display: inline-block;
+}
+
+.admin-wa-pulse.is-online {
+  background: #25d366;
+  box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.7);
+  animation: wa-pulse-green 2s infinite;
+}
+
+.admin-wa-pulse.is-warning {
+  background: #f59e0b;
+  box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7);
+  animation: wa-pulse-amber 2s infinite;
+}
+
+.admin-wa-pulse.is-offline {
+  background: #ef4444;
+}
+
+@keyframes wa-pulse-green {
+  0% {
+    box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(37, 211, 102, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(37, 211, 102, 0);
+  }
+}
+
+@keyframes wa-pulse-amber {
+  0% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(245, 158, 11, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+  }
+}
+
+.admin-wa-hero__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+/* System Health Metric Cards Grid */
+.admin-wa-health-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-wa-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 1.15rem 1.25rem;
+  border-radius: 16px;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #e8e2d8);
+  box-shadow: var(--elevation, 0 4px 12px rgba(0,0,0,0.03));
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.admin-wa-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(37, 211, 102, 0.4);
+  box-shadow: 0 8px 24px rgba(37, 211, 102, 0.1);
+}
+
+.admin-wa-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.admin-wa-card__label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-subtle, #7a7262);
+  margin: 0;
+}
+
+.admin-wa-card__icon {
+  font-size: 1.1rem;
+  color: #128c7e;
+}
+
+[data-theme="dark"] .admin-wa-card__icon {
+  color: #25d366;
+}
+
+.admin-wa-card__value {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--color-text, #1a100c);
+  margin: 0;
+  word-break: break-all;
+}
+
+.admin-wa-card__sub {
+  font-size: 0.78rem;
+  color: var(--color-text-muted, #5e5749);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Modern QR Onboarding Pairing Section */
+.admin-wa-qr-container {
+  display: grid;
+  grid-template-columns: minmax(280px, 320px) 1fr;
+  gap: 1.75rem;
+  align-items: center;
+  padding: 1.5rem;
+  border-radius: 18px;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #e8e2d8);
+  box-shadow: var(--elevation, 0 4px 12px rgba(0,0,0,0.04));
+  margin-top: 1rem;
+}
+
+@media (max-width: 768px) {
+  .admin-wa-qr-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-wa-qr__code-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 1.25rem;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #ffffff 0%, #f7f9f7 100%);
+  border: 2px dashed rgba(37, 211, 102, 0.4);
+  text-align: center;
+}
+
+[data-theme="dark"] .admin-wa-qr__code-card {
+  background: linear-gradient(145deg, #181d1a 0%, #0d1210 100%);
+}
+
+.admin-wa-qr__image {
   display: block;
-  width: 280px;
+  width: 240px;
   max-width: 100%;
   height: auto;
-  margin: 0.75rem 0 0;
   border-radius: 12px;
   background: #fff;
   padding: 0.75rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.admin-wa-qr__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.admin-wa-qr__step {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+
+.admin-wa-qr__step-num {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #128c7e;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.admin-wa-qr__step-content h4 {
+  margin: 0 0 0.15rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-text, #1a100c);
+}
+
+.admin-wa-qr__step-content p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted, #5e5749);
+  line-height: 1.4;
+}
+
+/* Composer & WhatsApp Live Chat Preview Layout */
+.admin-wa-composer-layout {
+  display: grid;
+  grid-template-columns: 1fr minmax(300px, 380px);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 992px) {
+  .admin-wa-composer-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-wa-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.admin-wa-template-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.25rem;
+}
+
+.admin-wa-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: var(--color-surface-muted, #f7f4ef);
+  border: 1px solid var(--color-border, #e8e2d8);
+  color: var(--color-text-muted, #5e5749);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.admin-wa-chip-btn:hover {
+  background: rgba(37, 211, 102, 0.12);
+  border-color: rgba(37, 211, 102, 0.4);
+  color: #128c7e;
+}
+
+[data-theme="dark"] .admin-wa-chip-btn:hover {
+  color: #25d366;
+}
+
+/* Live WhatsApp Chat Bubble Preview Card */
+.admin-wa-preview-card {
+  border-radius: 18px;
+  overflow: hidden;
+  background: #e5ddd5;
+  border: 1px solid var(--color-border, #d4ccc0);
+  box-shadow: var(--elevation, 0 8px 24px rgba(0,0,0,0.06));
+}
+
+[data-theme="dark"] .admin-wa-preview-card {
+  background: #0b141a;
+  border-color: #222d34;
+}
+
+.admin-wa-preview-card__header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #075e54;
+  color: #fff;
+}
+
+.admin-wa-preview-card__avatar {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #25d366;
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.admin-wa-preview-card__name-box {
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-wa-preview-card__name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.2;
+}
+
+.admin-wa-preview-card__status {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.admin-wa-preview-card__body {
+  padding: 1.25rem 1rem;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background-image: radial-gradient(rgba(0, 0, 0, 0.04) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+[data-theme="dark"] .admin-wa-preview-card__body {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+}
+
+.admin-wa-chat-bubble {
+  align-self: flex-end;
+  max-width: 88%;
+  padding: 0.65rem 0.85rem 0.45rem;
+  border-radius: 12px 0 12px 12px;
+  background: #e7ffdb;
+  color: #111b21;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  position: relative;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+[data-theme="dark"] .admin-wa-chat-bubble {
+  background: #005c4b;
+  color: #e9edef;
+}
+
+.admin-wa-chat-bubble__meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+  font-size: 0.68rem;
+  color: #667781;
+}
+
+[data-theme="dark"] .admin-wa-chat-bubble__meta {
+  color: rgba(241, 245, 249, 0.6);
+}
+
+.admin-wa-chat-bubble__meta i {
+  color: #53bdeb;
+  font-size: 0.75rem;
+}
+
+/* Result Log Card */
+.admin-wa-result-card {
+  padding: 1rem 1.15rem;
+  border-radius: 14px;
+  border: 1px solid var(--color-border, #e8e2d8);
+  background: var(--color-surface, #fff);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+
+.admin-wa-result-card.is-success {
+  border-left: 4px solid #25d366;
+  background: rgba(37, 211, 102, 0.04);
+}
+
+.admin-wa-result-card.is-error {
+  border-left: 4px solid #dc2626;
+  background: rgba(220, 38, 38, 0.04);
+}
+
+/* Diagnostics Accordion / Card */
+.admin-wa-diag {
+  margin-top: 1rem;
+  padding: 1.25rem;
+  border-radius: 16px;
+  background: var(--color-surface-muted, #f7f4ef);
   border: 1px solid var(--color-border, #e8e2d8);
 }
 
-.admin-whatsapp-form {
+.admin-wa-code-snippet {
   display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-  max-width: 36rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  background: #1e1e1e;
+  color: #4ec9b0;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.82rem;
+  margin: 0.5rem 0;
 }
 
-.admin-whatsapp-form__field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+.admin-wa-copy-btn {
+  background: transparent;
+  border: none;
+  color: #9cdcfe;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.85rem;
+  border-radius: 4px;
+  transition: background 0.15s ease;
 }
 
-.admin-whatsapp-form textarea.admin-input {
-  resize: vertical;
-  min-height: 6rem;
-  font-family: inherit;
+.admin-wa-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
