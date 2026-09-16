@@ -66,9 +66,36 @@ class OpenWaAgentService:
             "Accept": "application/json",
         }
 
-    def _url(self, path: str) -> str:
-        base = (self.settings.openwa_agent_url or DEFAULT_AGENT_URL).rstrip("/")
-        return f"{base}{path}"
+    def _candidate_urls(self, path: str) -> list[str]:
+        primary_base = (self.settings.openwa_agent_url or DEFAULT_AGENT_URL).rstrip("/")
+        urls = [f"{primary_base}{path}"]
+        fallbacks = [
+            "http://10.42.0.1:7010",
+            "http://127.0.0.1:7010",
+            "http://host.docker.internal:7010",
+        ]
+        for base in fallbacks:
+            cand = f"{base}{path}"
+            if cand not in urls:
+                urls.append(cand)
+        return urls
+
+    def _request(
+        self, method: str, path: str, **kwargs
+    ) -> tuple[httpx.Response | None, Exception | None]:
+        headers = kwargs.pop("headers", self._headers())
+        last_exc: Exception | None = None
+        for url in self._candidate_urls(path):
+            try:
+                with httpx.Client(
+                    timeout=self.settings.openwa_timeout_seconds, verify=False
+                ) as client:
+                    resp = client.request(method, url, headers=headers, **kwargs)
+                    return resp, None
+            except httpx.HTTPError as exc:
+                logger.warning("OpenWA request to %s failed: %s", url, exc)
+                last_exc = exc
+        return None, last_exc
 
     def status(self) -> OpenWaStatus:
         if not self.configured:
@@ -85,10 +112,8 @@ class OpenWaAgentService:
                 session_id=None,
                 agent_error="OPENWA_AGENT_TOKEN is not set.",
             )
-        try:
-            with httpx.Client(timeout=self.settings.openwa_timeout_seconds) as client:
-                response = client.get(self._url("/status"), headers=self._headers())
-        except httpx.HTTPError as exc:
+        response, exc = self._request("GET", "/status")
+        if exc or response is None:
             logger.warning("OpenWA agent unreachable: %s", exc)
             return OpenWaStatus(
                 reachable=False,
@@ -163,14 +188,8 @@ class OpenWaAgentService:
             )
 
         payload = {"to": phone, "text": body}
-        try:
-            with httpx.Client(timeout=self.settings.openwa_timeout_seconds) as client:
-                response = client.post(
-                    self._url("/send"),
-                    headers=self._headers(),
-                    json=payload,
-                )
-        except httpx.HTTPError as exc:
+        response, exc = self._request("POST", "/send", json=payload)
+        if exc or response is None:
             logger.warning("OpenWA send request failed (to=%s): %s", phone, exc)
             return OpenWaSendResult(ok=False, error="Could not reach the WhatsApp agent.")
 
@@ -208,10 +227,8 @@ class OpenWaAgentService:
     def _post_action(self, path: str, default_message: str) -> tuple[bool, str]:
         if not self.configured:
             return False, "WhatsApp agent is not configured. Set OPENWA_AGENT_TOKEN."
-        try:
-            with httpx.Client(timeout=self.settings.openwa_timeout_seconds) as client:
-                response = client.post(self._url(path), headers=self._headers())
-        except httpx.HTTPError as exc:
+        response, exc = self._request("POST", path)
+        if exc or response is None:
             logger.warning("OpenWA %s failed: %s", path, exc)
             return False, "Could not reach the WhatsApp agent."
         data = _json_body(response)

@@ -95,21 +95,9 @@ export function TransChapCustomersList() {
         apiRoutes.customerSendWhatsAppReminder(customer.id),
         { method: "POST" },
       );
-      await toastSuccess(res.message || "WhatsApp reminder sent via OpenWA!");
+      await toastSuccess(res.message || "WhatsApp reminder sent!");
     } catch (err) {
-      const waUrl = buildDebtReminderWhatsAppUrl({
-        customerName: customer.name,
-        shopName,
-        amount: customer.outstanding_balance,
-        phone: customer.phone,
-        payBillUrl: customer.pay_bill_url,
-      });
-      if (waUrl) {
-        window.open(waUrl, "_blank");
-        await toastSuccess("Opening WhatsApp to send reminder...");
-      } else {
-        await showError("Could not send WhatsApp reminder", extractErrorMessage(err));
-      }
+      await showError("Could not send WhatsApp reminder", extractErrorMessage(err));
     } finally {
       setSendingWaId(null);
     }
