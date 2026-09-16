@@ -19,6 +19,8 @@ const express = require("express");
 const { create, ev } = require("@open-wa/wa-automate");
 
 const PORT = Number(process.env.PORT || process.env.OPENWA_AGENT_PORT || 7010);
+// 127.0.0.1 for local-only; 0.0.0.0 when the k8s backend must reach this host agent.
+const BIND_HOST = (process.env.OPENWA_BIND_HOST || process.env.BIND_HOST || "127.0.0.1").trim() || "127.0.0.1";
 const AGENT_TOKEN = (process.env.AGENT_TOKEN || process.env.OPENWA_AGENT_TOKEN || "").trim();
 const SESSION_ID = (process.env.SESSION_ID || "dukai").trim() || "dukai";
 const SESSION_DATA_PATH = path.resolve(
@@ -249,8 +251,8 @@ app.post("/restart", requireAuth, async (_req, res) => {
   }, 300);
 });
 
-app.listen(PORT, "127.0.0.1", () => {
-  console.log(`[whatsapp-agent] listening on http://127.0.0.1:${PORT}`);
+app.listen(PORT, BIND_HOST, () => {
+  console.log(`[whatsapp-agent] listening on http://${BIND_HOST}:${PORT}`);
   if (!AGENT_TOKEN) {
     console.warn("[whatsapp-agent] AGENT_TOKEN is empty — API will reject requests.");
   }

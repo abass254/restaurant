@@ -1,0 +1,21 @@
+[Unit]
+Description=DukAI openWA WhatsApp notifier agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/agents/src/dukai_merchants/whatsapp-agent
+ExecStart=/home/ubuntu/agents/src/dukai_merchants/whatsapp-agent/run.sh
+Restart=on-failure
+RestartSec=5
+# Headless Chrome / Puppeteer
+Environment=HOME=/home/ubuntu
+# Unlimited runtime; openWA keeps a browser session
+TimeoutStartSec=0
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

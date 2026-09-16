@@ -211,7 +211,7 @@ AGENT_TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 },
                 "order_number": {
                     "type": "string",
-                    "description": "Optional order reference (e.g. ORDSPH00001). Defaults to active order.",
+                    "description": "Optional order reference (e.g. ORD-000040). Defaults to active order.",
                 },
                 "inventory_item_id": {
                     "type": "string",
@@ -249,7 +249,7 @@ AGENT_TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "get_order_by_number",
         "description": (
-            "Look up an order by reference (e.g. ORDSPH00001) for this shop. "
+            "Look up an order by reference (e.g. ORD-000123) for this shop. "
             "Use when the customer quotes an order number."
         ),
         "parameters": {
@@ -257,7 +257,7 @@ AGENT_TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "properties": {
                 "order_number": {
                     "type": "string",
-                    "description": "Order reference such as ORDSPH00001.",
+                    "description": "Order reference such as ORD-000123.",
                 },
             },
             "required": ["order_number"],
