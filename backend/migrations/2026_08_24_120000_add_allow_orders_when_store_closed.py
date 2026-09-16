@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
 # Allow `python backend/migrations/<file>.py` from anywhere.
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,8 +15,9 @@ from app.database import engine
 
 
 def _has_column(conn, table: str, column: str) -> bool:
-    rows = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
-    return any(str(row[1]) == column for row in rows)
+    if not inspect(conn).has_table(table):
+        return False
+    return column in {col["name"] for col in inspect(conn).get_columns(table)}
 
 
 def migrate() -> None:
