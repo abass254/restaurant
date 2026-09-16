@@ -67,10 +67,16 @@ def main() -> None:
                 """
             )
         ).mappings()
+        is_mysql = conn.dialect.name in ("mysql", "mariadb")
+        conflict_clause = (
+            "ON DUPLICATE KEY UPDATE user_id=VALUES(user_id)"
+            if is_mysql
+            else "ON CONFLICT (user_id, account_id) DO NOTHING"
+        )
         for row in rows:
             conn.execute(
                 text(
-                    """
+                    f"""
                     INSERT INTO user_memberships (
                         id,
                         user_id,
@@ -90,7 +96,7 @@ def main() -> None:
                         :created_at,
                         :updated_at
                     )
-                    ON CONFLICT (user_id, account_id) DO NOTHING
+                    {conflict_clause}
                     """
                 ),
                 {
