@@ -33,6 +33,24 @@ const ALL_ROLE_OPTIONS: { id: InventoryRole; label: string; hint: string }[] = [
   },
 ];
 
+const HOTEL_SUPPLY_SUGGESTIONS = [
+  "Maize flour (Unga)",
+  "Wheat flour",
+  "Cooking oil",
+  "Beef / Meat",
+  "Chicken",
+  "Milk",
+  "Sugar",
+  "Rice",
+  "Potatoes",
+  "Onions",
+  "Tomatoes",
+  "Cooking gas",
+  "Charcoal",
+  "Soda",
+  "Water",
+] as const;
+
 export function TransChapUnavailablePurchaseForm() {
   const router = useRouter();
   const user = useOptionalAuthUser();
@@ -46,9 +64,15 @@ export function TransChapUnavailablePurchaseForm() {
   const [quantity, setQuantity] = useState("1");
   const [unitCost, setUnitCost] = useState("");
   const [supplier, setSupplier] = useState("");
-  const [role, setRole] = useState<InventoryRole>("both");
+  const [role, setRole] = useState<InventoryRole>(restaurant ? "raw_material" : "both");
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (restaurant) {
+      setRole("raw_material");
+    }
+  }, [restaurant]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -188,14 +212,77 @@ export function TransChapUnavailablePurchaseForm() {
         onSubmit={(event) => void handleSubmit(event)}
       >
         <p className="trans-chap-form__lead">
-          Use this when the product isn’t in your stock or the catalog yet. Scan a
-          barcode if you have one, then fill in the rest.
+          {restaurant
+            ? "Record kitchen supplies, ingredients, or drinks. Menu dishes are prepared in-house and added in Hotel Menu."
+            : "Use this when the product isn’t in your stock or the catalog yet. Scan a barcode if you have one, then fill in the rest."}
         </p>
 
         <div className="trans-chap-form__fields">
           <div className="auth-split__field">
+            <label htmlFor="unavailable-product">
+              {restaurant ? "Ingredient / Supply name" : "Product name"}
+            </label>
+            <div className="trans-chap-input">
+              <input
+                id="unavailable-product"
+                type="text"
+                required
+                autoComplete="off"
+                autoFocus
+                placeholder={restaurant ? "e.g. Cooking oil 20L, Beef 5kg" : "e.g. Cooking oil 5L"}
+                className="auth-split__input"
+                value={product}
+                onChange={(event) => setProduct(event.target.value)}
+              />
+            </div>
+            {restaurant ? (
+              <div
+                className="trans-chap-form__chips"
+                role="group"
+                aria-label="Common supplies"
+                style={{ marginTop: "0.5rem" }}
+              >
+                {HOTEL_SUPPLY_SUGGESTIONS.map((suggestion) => {
+                  const active = product.trim().toLowerCase() === suggestion.toLowerCase();
+                  return (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      className={`trans-chap-form__chip${active ? " is-active" : ""}`}
+                      aria-pressed={active}
+                      onClick={() => {
+                        setProduct(suggestion);
+                        if (suggestion === "Soda" || suggestion === "Water") {
+                          setRole("both");
+                        } else {
+                          setRole("raw_material");
+                        }
+                      }}
+                    >
+                      {suggestion}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+            {existingByName && !existingByBarcode && !existingHotel ? (
+              <p className="trans-chap-form__hint">
+                Already in inventory.{" "}
+                <Link href="/trans-chap/purchases/new?mode=select">Open Select buy</Link>
+              </p>
+            ) : null}
+            {existingHotel ? (
+              <p className="trans-chap-form__hint">
+                {restaurant
+                  ? "That matches a hotel menu dish — use Hotel menu instead."
+                  : "That product can’t be bought here."}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="auth-split__field">
             <span className="trans-chap-form__label" id="unavailable-barcode-label">
-              Barcode
+              Barcode {restaurant ? "(Optional)" : ""}
             </span>
             <div className="trans-chap-barcode-row">
               <div className="trans-chap-input">
@@ -236,36 +323,6 @@ export function TransChapUnavailablePurchaseForm() {
               <p className="trans-chap-form__hint">
                 This barcode is already in inventory.{" "}
                 <Link href="/trans-chap/purchases/new?mode=select">Open Select buy</Link>
-              </p>
-            ) : null}
-          </div>
-
-          <div className="auth-split__field">
-            <label htmlFor="unavailable-product">Product name</label>
-            <div className="trans-chap-input">
-              <input
-                id="unavailable-product"
-                type="text"
-                required
-                autoComplete="off"
-                autoFocus
-                placeholder="e.g. Cooking oil 5L"
-                className="auth-split__input"
-                value={product}
-                onChange={(event) => setProduct(event.target.value)}
-              />
-            </div>
-            {existingByName && !existingByBarcode && !existingHotel ? (
-              <p className="trans-chap-form__hint">
-                Already in inventory.{" "}
-                <Link href="/trans-chap/purchases/new?mode=select">Open Select buy</Link>
-              </p>
-            ) : null}
-            {existingHotel ? (
-              <p className="trans-chap-form__hint">
-                {restaurant
-                  ? "That matches a hotel menu dish — use Hotel menu instead."
-                  : "That product can’t be bought here."}
               </p>
             ) : null}
           </div>

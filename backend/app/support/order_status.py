@@ -100,10 +100,15 @@ TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
 
 FULFILLMENT_PICKUP: Final = "pickup"
 FULFILLMENT_DELIVERY: Final = "delivery"
+FULFILLMENT_DINE_IN: Final = "dine_in"
 
-FulfillmentType = Literal["pickup", "delivery"]
+FulfillmentType = Literal["pickup", "delivery", "dine_in"]
 
-ALL_FULFILLMENT_TYPES: Final[tuple[str, ...]] = (FULFILLMENT_PICKUP, FULFILLMENT_DELIVERY)
+ALL_FULFILLMENT_TYPES: Final[tuple[str, ...]] = (
+    FULFILLMENT_PICKUP,
+    FULFILLMENT_DELIVERY,
+    FULFILLMENT_DINE_IN,
+)
 
 # Sources --------------------------------------------------------------------
 
@@ -188,7 +193,7 @@ _FORWARD_FLOW_PICKUP: Final[tuple[str, ...]] = (
 
 def forward_flow(fulfillment_type: str) -> tuple[str, ...]:
     """The canonical forward progression for a given fulfillment type."""
-    if fulfillment_type == FULFILLMENT_PICKUP:
+    if fulfillment_type in (FULFILLMENT_PICKUP, FULFILLMENT_DINE_IN):
         return _FORWARD_FLOW_PICKUP
     return _FORWARD_FLOW_DELIVERY
 
@@ -225,13 +230,13 @@ def can_transition(current: str, target: str, fulfillment_type: str) -> bool:
 
 
 def awaiting_confirmation_status(fulfillment_type: str) -> str:
-    if fulfillment_type == FULFILLMENT_PICKUP:
+    if fulfillment_type in (FULFILLMENT_PICKUP, FULFILLMENT_DINE_IN):
         return AWAITING_PICKUP_CONFIRMATION
     return AWAITING_DELIVERY_CONFIRMATION
 
 
 def completion_status(fulfillment_type: str) -> str:
-    if fulfillment_type == FULFILLMENT_PICKUP:
+    if fulfillment_type in (FULFILLMENT_PICKUP, FULFILLMENT_DINE_IN):
         return PICKED_UP
     return DELIVERED
 

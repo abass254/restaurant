@@ -40,8 +40,16 @@ import {
 } from "@/lib/orders";
 import { paymentStatusFromOrder } from "@/lib/trans-chap-receipt";
 import { findInventoryByBarcode } from "@/lib/barcode";
-import { inventoryRole, isSaleableRole } from "@/lib/trans-chap-product";
+import {
+  inventoryCoverUrl,
+  inventoryRole,
+  isHotelMenuItem,
+  isSaleableRole,
+} from "@/lib/trans-chap-product";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
+import { useOptionalAuthUser } from "@/components/app/AuthProvider";
+import { isRestaurantStore } from "@/lib/onboarding";
+import { TransChapModifierModal } from "@/components/pos/TransChapModifierModal";
 import type {
   InventoryItem,
   InventoryResponse,
@@ -49,6 +57,7 @@ import type {
   OrderCreatePayload,
   OrderFulfillmentType,
   OrderDetailResponse,
+  OrderItemModifier,
   OrderMpesaPushResult,
   OrderMutationResponse,
   OrderPaymentMethod,
@@ -90,13 +99,17 @@ const TRANSCHAP_PAYMENT_METHODS: OrderPaymentMethod[] = [
 ];
 
 type CartLine = {
+  lineId?: string;
   inventoryItemId: string;
   product_id: string | null;
   name: string;
   sku: string | null;
   unit_price: number;
+  base_price?: number;
   quantity: number;
   image_url: string | null;
+  modifiers?: OrderItemModifier[] | null;
+  notes?: string | null;
 };
 
 type PosHeldSession = {
@@ -105,6 +118,7 @@ type PosHeldSession = {
   cart: CartLine[];
   source: OrderSource;
   fulfillment: OrderFulfillmentType;
+  tableNumber?: string;
   paymentMethod: OrderPaymentMethod | "";
   customerName: string;
   customerPhone: string;
@@ -136,10 +150,12 @@ function cartSubtotal(cart: CartLine[]): number {
 }
 
 function labelForHeldSession(input: {
+  tableNumber?: string;
   customerName: string;
   customerPhone: string;
   cart: CartLine[];
 }): string {
+  if (input.tableNumber?.trim()) return input.tableNumber.trim();
   const name = input.customerName.trim();
   if (name) return name;
   const phone = input.customerPhone.trim();
@@ -233,15 +249,25 @@ function isServiceItem(item: InventoryItem): boolean {
   return item.product?.product_type === "service";
 }
 
-/** Physical products need tracked stock; services are always available. */
+/** Physical products need tracked stock; services and fresh hotel dishes are always available. */
 function isOutOfStock(item: InventoryItem): boolean {
-  if (isServiceItem(item)) return false;
+  if (isServiceItem(item) || isHotelMenuItem(item)) {
+    if (item.stock_quantity != null) {
+      return item.stock_quantity <= 0;
+    }
+    return false;
+  }
   const stock = item.stock_quantity;
   return stock == null || stock <= 0;
 }
 
 function maxCartQty(item: InventoryItem): number | null {
-  if (isServiceItem(item)) return null;
+  if (isServiceItem(item) || isHotelMenuItem(item)) {
+    if (item.stock_quantity != null && item.stock_quantity > 0) {
+      return item.stock_quantity;
+    }
+    return null;
+  }
   const stock = item.stock_quantity;
   if (stock == null || stock <= 0) return 0;
   return stock;
@@ -250,9 +276,21 @@ function maxCartQty(item: InventoryItem): number | null {
 /** On-hand units still free to sell (stock minus what's already in the cart). */
 function availableToSell(item: InventoryItem, inCartQty: number): number | null {
   if (isServiceItem(item)) return null;
+  if (isHotelMenuItem(item) && item.stock_quantity == null) return null;
   const stock = item.stock_quantity;
   if (stock == null) return null;
   return Math.max(0, stock - Math.max(0, inCartQty));
+}
+
+function formatCategoryLabel(cat: string): string {
+  const norm = cat.trim().toLowerCase();
+  if (norm === "food_beverage" || norm === "food_&_beverage") {
+    return "Food & Drinks";
+  }
+  if (norm === "hotel_menu" || norm === "hotel") {
+    return "Dishes";
+  }
+  return cat.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export function PosWorkspace({
@@ -282,6 +320,8 @@ export function PosWorkspace({
   const inventoryLoadedOnce = useRef(false);
 
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [mobileScreen, setMobileScreen] = useState<"catalog" | "order">("catalog");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   // Visual "just-added" pulse: holds the inventoryItem id that should flash.
   // Cleared on a short timer so the animation can replay if the same item is
   // tapped again in quick succession.
@@ -292,14 +332,33 @@ export function PosWorkspace({
   const scannerResetTimer = useRef<number | null>(null);
   const scanToastTimer = useRef<number | null>(null);
 
+  const authUser = useOptionalAuthUser();
+  const isRestaurant = Boolean(
+    authUser && isRestaurantStore(authUser.active_account ?? authUser.account),
+  );
+
   const [source, setSource] = useState<OrderSource>("walkin");
-  const [fulfillment, setFulfillment] =
-    useState<OrderFulfillmentType>("pickup");
+  const [fulfillment, setFulfillment] = useState<OrderFulfillmentType>("pickup");
+  const [tableNumber, setTableNumber] = useState<string>("Table 1");
+  const [modifyingItem, setModifyingItem] = useState<{
+    item: InventoryItem;
+    cartLineId?: string;
+    initialModifiers?: OrderItemModifier[] | null;
+    initialNotes?: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (isRestaurant && fulfillment === "pickup") {
+      setFulfillment("dine_in");
+    }
+  }, [isRestaurant]);
+
   const [paymentMethod, setPaymentMethod] = useState<OrderPaymentMethod | "">(
     isTransChapSale ? "mpesa" : "",
   );
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [creditDueDate, setCreditDueDate] = useState("");
   const [customers, setCustomers] = useState<ShopCustomer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
@@ -632,29 +691,90 @@ export function PosWorkspace({
 
   const itemsById = catalogById;
 
+  const availableCategories = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of items) {
+      if (!item.is_active || !isSaleableRole(inventoryRole(item))) continue;
+      const cat = item.product?.category?.trim();
+      if (cat) set.add(cat);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
       if (!item.is_active) return false;
       if (!isSaleableRole(inventoryRole(item))) return false;
+      if (
+        selectedCategory !== "all" &&
+        (item.product?.category || "").trim().toLowerCase() !==
+          selectedCategory.toLowerCase()
+      ) {
+        return false;
+      }
       return true;
     });
-  }, [items]);
+  }, [items, selectedCategory]);
 
   const catalogPending =
     loading ||
     searching ||
     search.trim().toLowerCase() !== loadedQuery.trim().toLowerCase();
 
-  function changeQuantity(inventoryItemId: string, delta: number) {
-    const item = itemsById.get(inventoryItemId);
+  const handleConfirmModifiers = (
+    modifiers: OrderItemModifier[],
+    notes: string | null,
+    effectiveUnitPrice: number,
+  ) => {
+    if (!modifyingItem) return;
+    const { item, cartLineId } = modifyingItem;
+    const lineId = cartLineId || `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    setCart((prev) => {
+      if (cartLineId) {
+        return prev.map((c) =>
+          (c.lineId || c.inventoryItemId) === cartLineId
+            ? {
+                ...c,
+                unit_price: effectiveUnitPrice,
+                modifiers: modifiers.length > 0 ? modifiers : null,
+                notes: notes || null,
+              }
+            : c,
+        );
+      }
+      return [
+        ...prev,
+        {
+          lineId,
+          inventoryItemId: item.id,
+          product_id: item.product_id,
+          name: item.product?.name ?? `#${item.product_id}`,
+          sku: item.product?.sku ?? null,
+          base_price: item.selling_price ?? 0,
+          unit_price: effectiveUnitPrice,
+          quantity: quickAddQty || 1,
+          image_url: item.product?.image_url ?? null,
+          modifiers: modifiers.length > 0 ? modifiers : null,
+          notes: notes || null,
+        },
+      ];
+    });
+    flashPulse(item.id);
+    setModifyingItem(null);
+  };
+
+  function changeQuantity(key: string, delta: number) {
+    const target = cart.find((c) => (c.lineId || c.inventoryItemId) === key || c.inventoryItemId === key);
+    const item = target ? itemsById.get(target.inventoryItemId) : null;
     const stockCap = item ? maxCartQty(item) : null;
-    const heldQty = heldQtyByItemId.get(inventoryItemId) ?? 0;
+    const heldQty = target ? (heldQtyByItemId.get(target.inventoryItemId) ?? 0) : 0;
     const cap =
       stockCap === null ? null : Math.max(0, stockCap - heldQty);
     setCart((prev) =>
       prev
         .map((c) => {
-          if (c.inventoryItemId !== inventoryItemId) return c;
+          if ((c.lineId || c.inventoryItemId) !== key && c.inventoryItemId !== key) return c;
           let next = c.quantity + delta;
           if (cap !== null) next = Math.min(next, cap);
           return { ...c, quantity: next };
@@ -663,10 +783,11 @@ export function PosWorkspace({
     );
   }
 
-  function setQuantity(inventoryItemId: string, value: string) {
-    const item = itemsById.get(inventoryItemId);
+  function setQuantity(key: string, value: string) {
+    const target = cart.find((c) => (c.lineId || c.inventoryItemId) === key || c.inventoryItemId === key);
+    const item = target ? itemsById.get(target.inventoryItemId) : null;
     const stockCap = item ? maxCartQty(item) : null;
-    const heldQty = heldQtyByItemId.get(inventoryItemId) ?? 0;
+    const heldQty = target ? (heldQtyByItemId.get(target.inventoryItemId) ?? 0) : 0;
     const cap =
       stockCap === null ? null : Math.max(0, stockCap - heldQty);
     let next = Math.max(0, Math.floor(Number(value) || 0));
@@ -674,7 +795,7 @@ export function PosWorkspace({
     setCart((prev) =>
       prev
         .map((c) =>
-          c.inventoryItemId === inventoryItemId
+          (c.lineId || c.inventoryItemId) === key || c.inventoryItemId === key
             ? { ...c, quantity: next }
             : c,
         )
@@ -682,17 +803,19 @@ export function PosWorkspace({
     );
   }
 
-  function setUnitPrice(inventoryItemId: string, value: string) {
+  function setUnitPrice(key: string, value: string) {
     const next = Math.max(0, Number(value) || 0);
     setCart((prev) =>
       prev.map((c) =>
-        c.inventoryItemId === inventoryItemId ? { ...c, unit_price: next } : c,
+        (c.lineId || c.inventoryItemId) === key || c.inventoryItemId === key
+          ? { ...c, unit_price: next }
+          : c,
       ),
     );
   }
 
-  function removeLine(inventoryItemId: string) {
-    setCart((prev) => prev.filter((c) => c.inventoryItemId !== inventoryItemId));
+  function removeLine(key: string) {
+    setCart((prev) => prev.filter((c) => (c.lineId || c.inventoryItemId) !== key && c.inventoryItemId !== key));
   }
 
   function clearCart() {
@@ -706,20 +829,24 @@ export function PosWorkspace({
     setDiscount("");
     setNotes("");
     setPaymentMethod(isTransChapSale ? "mpesa" : "");
+    setCreditDueDate("");
     setSelectedCustomerId("");
     if (!isTransChapSale) {
       setSource("walkin");
-      setFulfillment("pickup");
+      setFulfillment(isRestaurant ? "dine_in" : "pickup");
     }
+    setTableNumber("Table 1");
+    setMobileScreen("catalog");
   }
 
   function snapshotCurrentSale(): PosHeldSession {
     return {
       id: newHeldSessionId(),
-      label: labelForHeldSession({ customerName, customerPhone, cart }),
+      label: labelForHeldSession({ tableNumber, customerName, customerPhone, cart }),
       cart: cart.map((line) => ({ ...line })),
       source,
       fulfillment,
+      tableNumber,
       paymentMethod,
       customerName,
       customerPhone,
@@ -737,7 +864,8 @@ export function PosWorkspace({
   function applyHeldSession(session: PosHeldSession) {
     setCart(session.cart.map((line) => ({ ...line })));
     setSource(isTransChapSale ? "walkin" : session.source);
-    setFulfillment(isTransChapSale ? "pickup" : session.fulfillment);
+    setFulfillment(isTransChapSale ? (isRestaurant ? session.fulfillment : "pickup") : session.fulfillment);
+    setTableNumber(session.tableNumber || "Table 1");
     setPaymentMethod(
       isTransChapSale
         ? session.paymentMethod &&
@@ -751,7 +879,6 @@ export function PosWorkspace({
     setSelectedCustomerId(session.selectedCustomerId);
     setDeliveryAddress(session.deliveryAddress);
     setDeliveryCoords(session.deliveryCoords);
-    setDeliveryNotes(session.deliveryNotes);
     setDeliveryFee(session.deliveryFee);
     setDiscount(session.discount);
     setNotes(session.notes);
@@ -789,12 +916,14 @@ export function PosWorkspace({
         snapshot,
       ]);
       applyHeldSession(session);
+      setMobileScreen("order");
       void toastSuccess(`Resumed “${session.label}” · held “${snapshot.label}”`);
       return;
     }
 
     setHeldSessions((prev) => prev.filter((row) => row.id !== sessionId));
     applyHeldSession(session);
+    setMobileScreen("order");
     void toastSuccess(`Resumed “${session.label}”`);
   }
 
@@ -831,97 +960,6 @@ export function PosWorkspace({
     }
   }
 
-  const creditNeedsCustomer = paymentMethod === "credit";
-  const showWalkInPhone =
-    !selectedCustomerId &&
-    (paymentMethod === "mpesa" ||
-      (!isTransChapSale && paymentMethod !== "credit"));
-  const showSelectedPhone =
-    Boolean(selectedCustomerId) &&
-    (paymentMethod === "mpesa" || paymentMethod === "credit" || !isTransChapSale);
-  const customerFields = (
-    <div className="pos-fields pos-fields--customer pos-fields--customer-solo">
-      <label className="pos-customer-pick">
-        <span className="pos-label">
-          Customer
-          {creditNeedsCustomer ? " (required)" : ""}
-        </span>
-        <select
-          value={selectedCustomerId}
-          onChange={(event) => applyCustomer(event.target.value)}
-          aria-label="Customer"
-          aria-required={creditNeedsCustomer}
-          className={
-            creditNeedsCustomer && !selectedCustomerId
-              ? "pos-input--required"
-              : undefined
-          }
-        >
-          <option value="">
-            {creditNeedsCustomer
-              ? customers.length > 0
-                ? "Select a customer…"
-                : "No customers saved yet"
-              : "Walk-in (optional)"}
-          </option>
-          {customers.map((customer) => (
-            <option key={customer.id} value={customer.id}>
-              {customer.name} · {customer.phone}
-            </option>
-          ))}
-        </select>
-      </label>
-      {creditNeedsCustomer && customers.length === 0 ? (
-        <p className="pos-customer-credit">
-          Add customers under Customers before selling on credit.
-        </p>
-      ) : null}
-      {showWalkInPhone ? (
-        <input
-          type="tel"
-          value={customerPhone}
-          onChange={(e) => setCustomerPhone(e.target.value)}
-          placeholder={
-            paymentMethod === "mpesa"
-              ? "M-PESA phone (required) · 2547…"
-              : "Phone (optional)"
-          }
-          aria-label={
-            paymentMethod === "mpesa" ? "M-PESA phone" : "Customer phone"
-          }
-          aria-required={paymentMethod === "mpesa"}
-          className={
-            paymentMethod === "mpesa" && !customerPhone.trim()
-              ? "pos-input--required"
-              : undefined
-          }
-        />
-      ) : null}
-      {showSelectedPhone ? (
-        <input
-          type="tel"
-          value={customerPhone}
-          onChange={(e) => setCustomerPhone(e.target.value)}
-          placeholder={
-            paymentMethod === "mpesa"
-              ? "M-PESA phone · 2547…"
-              : "Customer phone"
-          }
-          aria-label={
-            paymentMethod === "mpesa" ? "M-PESA phone" : "Customer phone"
-          }
-          readOnly={paymentMethod === "credit"}
-        />
-      ) : null}
-      {selectedCustomer && selectedCustomer.credit_limit > 0 ? (
-        <p className="pos-customer-credit">
-          Available credit {formatMoney(selectedCustomer.available_credit)} of{" "}
-          {formatMoney(selectedCustomer.credit_limit)}
-        </p>
-      ) : null}
-    </div>
-  );
-
   const itemCount = useMemo(
     () => cart.reduce((sum, c) => sum + c.quantity, 0),
     [cart],
@@ -933,6 +971,243 @@ export function PosWorkspace({
   const deliveryFeeNum = Number(deliveryFee) || 0;
   const discountNum = Number(discount) || 0;
   const total = Math.max(0, subtotal + deliveryFeeNum - discountNum);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || selectedCustomerId || customers.length === 0) return;
+    const targetId = new URLSearchParams(window.location.search).get("customer");
+    if (targetId && customers.some((c) => c.id === targetId)) {
+      applyCustomer(targetId);
+    }
+  }, [customers, selectedCustomerId]);
+
+  const creditNeedsCustomer = paymentMethod === "credit";
+  const showWalkInPhone =
+    !selectedCustomerId &&
+    (paymentMethod === "mpesa" ||
+      (!isTransChapSale && paymentMethod !== "credit"));
+
+  const customerInitials = useMemo(() => {
+    if (!selectedCustomer?.name) return "C";
+    return selectedCustomer.name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0].toUpperCase())
+      .join("");
+  }, [selectedCustomer]);
+
+  const creditUtilization = useMemo(() => {
+    if (!selectedCustomer || selectedCustomer.credit_limit <= 0) return null;
+    const limit = selectedCustomer.credit_limit;
+    const avail = Math.max(0, selectedCustomer.available_credit);
+    const pct = Math.max(0, Math.min(100, (avail / limit) * 100));
+    return {
+      limit,
+      avail,
+      pct,
+      isLow: pct <= 25,
+      isExceeded: selectedCustomer.available_credit <= 0,
+      debt: selectedCustomer.outstanding_balance || 0,
+    };
+  }, [selectedCustomer]);
+
+  const customerFields = (
+    <div className="pos-fields pos-fields--customer pos-fields--customer-solo">
+      {selectedCustomer ? (
+        <div className="pos-customer-card">
+          <div className="pos-customer-card__top">
+            <div className="pos-customer-card__profile">
+              <div className="pos-customer-card__avatar" aria-hidden>
+                {customerInitials}
+              </div>
+              <div className="pos-customer-card__info">
+                <strong className="pos-customer-card__name">
+                  {selectedCustomer.name}
+                </strong>
+                <span className="pos-customer-card__phone">
+                  <i className="fa-solid fa-phone" aria-hidden />{" "}
+                  {selectedCustomer.phone}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="pos-customer-card__change-btn"
+              onClick={() => applyCustomer("")}
+              title="Change or remove selected customer"
+            >
+              <i className="fa-solid fa-arrows-rotate" aria-hidden />
+              <span>Change</span>
+            </button>
+          </div>
+
+          {paymentMethod === "mpesa" ? (
+            <div className="pos-customer-card__mpesa-box">
+              <label
+                className="pos-customer-card__mpesa-label"
+                htmlFor="pos-customer-stk-phone"
+              >
+                <i className="fa-solid fa-mobile-screen-button" aria-hidden />
+                <span>Send M-PESA prompt to:</span>
+              </label>
+              <div className="pos-customer-card__mpesa-input-wrap">
+                <input
+                  id="pos-customer-stk-phone"
+                  type="tel"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="2547…"
+                  aria-label="M-PESA prompt phone"
+                  className={
+                    !customerPhone.trim() ? "pos-input--required" : undefined
+                  }
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {creditUtilization ? (
+            <div className="pos-customer-card__credit">
+              <div className="pos-customer-card__credit-header">
+                <span className="pos-customer-card__credit-title">
+                  <i className="fa-solid fa-wallet" aria-hidden /> Credit Tab
+                </span>
+                <span className="pos-customer-card__credit-ratio">
+                  {creditUtilization.pct.toFixed(0)}% available
+                </span>
+              </div>
+              <div className="pos-customer-card__credit-bar">
+                <div
+                  className={`pos-customer-card__credit-bar-fill${
+                    creditUtilization.isExceeded
+                      ? " is-exceeded"
+                      : creditUtilization.isLow
+                      ? " is-low"
+                      : ""
+                  }`}
+                  style={{ width: `${creditUtilization.pct}%` }}
+                />
+              </div>
+              <dl className="pos-customer-card__credit-facts">
+                <div>
+                  <dt>Available</dt>
+                  <dd className="pos-customer-card__credit-avail">
+                    {formatMoney(creditUtilization.avail)}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Limit</dt>
+                  <dd>{formatMoney(creditUtilization.limit)}</dd>
+                </div>
+                {creditUtilization.debt > 0 ? (
+                  <div>
+                    <dt>Owes</dt>
+                    <dd className="pos-customer-card__credit-debt">
+                      {formatMoney(creditUtilization.debt)}
+                    </dd>
+                  </div>
+                ) : null}
+              </dl>
+
+              {paymentMethod === "credit" ? (
+                <div
+                  className={`pos-customer-card__validation ${
+                    total > selectedCustomer.available_credit
+                      ? "is-fail"
+                      : "is-ok"
+                  }`}
+                >
+                  <i
+                    className={`fa-solid ${
+                      total > selectedCustomer.available_credit
+                        ? "fa-triangle-exclamation"
+                        : "fa-circle-check"
+                    }`}
+                    aria-hidden
+                  />
+                  <span>
+                    {total > selectedCustomer.available_credit
+                      ? `Exceeds available credit by ${formatMoney(
+                          total - selectedCustomer.available_credit,
+                        )}`
+                      : `Credit approved for this sale (${formatMoney(total)})`}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <>
+          <label className="pos-customer-pick">
+            <span className="pos-label">
+              Customer
+              {creditNeedsCustomer ? " (required)" : ""}
+            </span>
+            <select
+              value={selectedCustomerId}
+              onChange={(event) => applyCustomer(event.target.value)}
+              aria-label="Customer"
+              aria-required={creditNeedsCustomer}
+              className={
+                creditNeedsCustomer && !selectedCustomerId
+                  ? "pos-input--required"
+                  : undefined
+              }
+            >
+              <option value="">
+                {creditNeedsCustomer
+                  ? customers.length > 0
+                    ? "Select a customer…"
+                    : "No customers saved yet"
+                  : "Walk-in (optional)"}
+              </option>
+              {customers.map((customer) => (
+                <option key={customer.id} value={customer.id}>
+                  {customer.name} · {customer.phone}
+                </option>
+              ))}
+            </select>
+          </label>
+          {creditNeedsCustomer && customers.length === 0 ? (
+            <p className="pos-customer-credit">
+              Add customers under Customers before selling on credit.
+            </p>
+          ) : null}
+          {showWalkInPhone ? (
+            <div className="pos-walkin-phone">
+              <label className="pos-label" htmlFor="pos-walkin-phone-input">
+                <i className="fa-solid fa-mobile-screen-button" aria-hidden />{" "}
+                {paymentMethod === "mpesa"
+                  ? "M-PESA Phone (prompt recipient)"
+                  : "Customer Phone"}
+              </label>
+              <input
+                id="pos-walkin-phone-input"
+                type="tel"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                placeholder={
+                  paymentMethod === "mpesa"
+                    ? "2547… (required for M-PESA)"
+                    : "Phone (optional)"
+                }
+                aria-label={
+                  paymentMethod === "mpesa" ? "M-PESA phone" : "Customer phone"
+                }
+                aria-required={paymentMethod === "mpesa"}
+                className={
+                  paymentMethod === "mpesa" && !customerPhone.trim()
+                    ? "pos-input--required"
+                    : undefined
+                }
+              />
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
 
   async function completePaidPickup(orderId: string): Promise<Order> {
     const ready = await apiFetch<OrderMutationResponse>(
@@ -1005,7 +1280,7 @@ export function PosWorkspace({
 
   const canCompleteSaleNow =
     completeInPlace &&
-    (isTransChapSale || fulfillment === "pickup") &&
+    (isTransChapSale || fulfillment === "pickup" || fulfillment === "dine_in") &&
     paymentMethod !== "" &&
     IMMEDIATE_COMPLETE_PAYMENTS.has(paymentMethod);
 
@@ -1040,7 +1315,11 @@ export function PosWorkspace({
   async function placeOrder() {
     if (cart.length === 0) return;
     const orderSource = isTransChapSale ? "walkin" : source;
-    const orderFulfillment = isTransChapSale ? "pickup" : fulfillment;
+    const orderFulfillment = isTransChapSale
+      ? isRestaurant
+        ? fulfillment
+        : "pickup"
+      : fulfillment;
     if (
       isTransChapSale &&
       (paymentMethod === "" ||
@@ -1094,18 +1373,25 @@ export function PosWorkspace({
       const payload: OrderCreatePayload = {
         source: orderSource,
         fulfillment_type: orderFulfillment,
+        table_number:
+          orderFulfillment === "dine_in"
+            ? (tableNumber.trim() || "Table 1")
+            : (tableNumber.trim() || null),
         customer_name: customerName.trim() || null,
         customer_phone: customerPhone.trim() || null,
         delivery_address: orderFulfillment === "delivery" ? deliveryAddress.trim() || null : null,
         delivery_notes: orderFulfillment === "delivery" ? deliveryNotes.trim() || null : null,
         payment_method: paymentMethod || null,
+        date_to_pay: paymentMethod === "credit" ? creditDueDate.trim() || null : null,
         delivery_fee: orderFulfillment === "delivery" ? deliveryFeeNum : 0,
         discount: discountNum,
         notes: notes.trim() || null,
         items: cart.map((c) => ({
           inventory_item_id: c.inventoryItemId,
           quantity: c.quantity,
-          ...(priceEditEnabled ? { unit_price: c.unit_price } : {}),
+          unit_price: c.unit_price,
+          modifiers: c.modifiers && c.modifiers.length ? c.modifiers : null,
+          notes: c.notes?.trim() || null,
         })),
       };
       const data = await apiFetch<OrderMutationResponse>(apiRoutes.orders, {
@@ -1116,7 +1402,7 @@ export function PosWorkspace({
       let order = data.data;
       const willCompleteNow =
         completeInPlace &&
-        orderFulfillment === "pickup" &&
+        (orderFulfillment === "pickup" || orderFulfillment === "dine_in") &&
         paymentMethod !== "" &&
         IMMEDIATE_COMPLETE_PAYMENTS.has(paymentMethod);
 
@@ -1213,6 +1499,7 @@ export function PosWorkspace({
   function dismissPendingMpesa() {
     setPendingMpesa(null);
     setMpesaBusy(false);
+    setMobileScreen("catalog");
   }
 
   const pendingMpesaStatus = pendingMpesa
@@ -1284,17 +1571,46 @@ export function PosWorkspace({
           </div>
         </div>
       ) : null}
-      <div className="pos-grid">
+      <div className={`pos-grid pos-grid--mobile-${mobileScreen}`}>
+        {/* Mobile top navigation when viewing current order */}
+        {mobileScreen === "order" ? (
+          <div className="pos-mobile-order-nav">
+            <button
+              type="button"
+              className="pos-mobile-order-nav__back"
+              onClick={() => {
+                setMobileScreen("catalog");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            >
+              <i className="fa-solid fa-arrow-left" aria-hidden="true" />
+              <span>Back to products</span>
+            </button>
+            <div className="pos-mobile-order-nav__meta">
+              <span className="pos-mobile-order-nav__count">
+                {itemCount} {itemCount === 1 ? "item" : "items"}
+              </span>
+              <span className="pos-mobile-order-nav__total">
+                {formatMoney(total)}
+              </span>
+            </div>
+          </div>
+        ) : null}
+
         {/* ── Main: catalog + ticket ─────────────────────────────── */}
         <div className="pos-main">
         <div className="pos-catalog">
           <header className="pos-catalog__head">
             <h1 className="pos-title">
               <i
-                className="fa-solid fa-cash-register pos-title__icon"
+                className={
+                  isTransChapSale
+                    ? "fa-solid fa-utensils pos-title__icon"
+                    : "fa-solid fa-cash-register pos-title__icon"
+                }
                 aria-hidden="true"
               />
-              Point of sale
+              {isTransChapSale ? "Select products" : "Point of sale"}
             </h1>
             <div className="pos-catalog__tools">
               <label className="pos-quick-qty" title="Units added per product tap or scan">
@@ -1348,6 +1664,46 @@ export function PosWorkspace({
             </div>
           </header>
 
+          {availableCategories.length > 1 ? (
+            <div
+              className="pos-category-chips"
+              role="tablist"
+              aria-label="Filter products by category"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={selectedCategory === "all"}
+                className={`pos-category-chip${selectedCategory === "all" ? " is-active" : ""}`}
+                onClick={() => setSelectedCategory("all")}
+              >
+                <i className="fa-solid fa-layer-group" aria-hidden="true" />
+                <span>All ({items.filter((i) => i.is_active && isSaleableRole(inventoryRole(i))).length})</span>
+              </button>
+              {availableCategories.map((cat) => {
+                const count = items.filter(
+                  (i) =>
+                    i.is_active &&
+                    isSaleableRole(inventoryRole(i)) &&
+                    (i.product?.category || "").trim().toLowerCase() === cat.toLowerCase(),
+                ).length;
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    role="tab"
+                    aria-selected={selectedCategory.toLowerCase() === cat.toLowerCase()}
+                    className={`pos-category-chip${selectedCategory.toLowerCase() === cat.toLowerCase() ? " is-active" : ""}`}
+                    onClick={() => setSelectedCategory(cat)}
+                  >
+                    <span>{formatCategoryLabel(cat)}</span>
+                    <span className="pos-category-chip__count">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
           {error ? <p className="app-error">{error}</p> : null}
 
           <AnimatePresence mode="wait">
@@ -1388,13 +1744,16 @@ export function PosWorkspace({
               transition={{ duration: motionDuration.micro }}
             >
               {filteredItems.map((item) => {
-                const coverUrl = item.product?.image_url ?? null;
-                const inCartQty =
-                  cart.find((c) => c.inventoryItemId === item.id)?.quantity ?? 0;
+                const coverUrl =
+                  inventoryCoverUrl(item) || item.product?.image_url || null;
+                const inCartQty = cart
+                  .filter((c) => c.inventoryItemId === item.id)
+                  .reduce((sum, c) => sum + c.quantity, 0);
                 const heldQty = heldQtyByItemId.get(item.id) ?? 0;
                 const isPulsing = pulseId === item.id;
+                const isHotelDish = isHotelMenuItem(item);
                 const subtitleParts = [
-                  item.product?.category,
+                  item.product?.category ? formatCategoryLabel(item.product.category) : null,
                   item.product?.brand,
                 ].filter(Boolean) as string[];
                 const subtitle = subtitleParts.join(" · ");
@@ -1433,7 +1792,7 @@ export function PosWorkspace({
                       <button
                         type="button"
                         className="pos-card__main"
-                        onClick={() => addToCart(item)}
+                        onClick={() => (isHotelDish ? setModifyingItem({ item }) : addToCart(item))}
                         aria-label={`Add ${quickAddQty > 1 ? `${quickAddQty} of ` : ""}${item.product?.name ?? "item"} to order`}
                         disabled={!canAdd}
                       >
@@ -1447,12 +1806,26 @@ export function PosWorkspace({
                             />
                           ) : (
                             <span className="pos-card__thumb-fallback">
-                              {nameInitial(item.product?.name)}
+                              {isHotelDish ? (
+                                <i className="fa-solid fa-utensils" aria-hidden="true" />
+                              ) : (
+                                nameInitial(item.product?.name)
+                              )}
                             </span>
                           )}
+                          {inCartQty > 0 ? (
+                            <span className="pos-card__in-cart-badge">
+                              <i className="fa-solid fa-check" aria-hidden="true" /> {inCartQty}
+                            </span>
+                          ) : null}
                         </div>
 
                         <div className="pos-card__info">
+                          {isHotelDish ? (
+                            <span className="pos-card__dish-tag">
+                              <i className="fa-solid fa-bowl-food" aria-hidden="true" /> Dish
+                            </span>
+                          ) : null}
                           <span className="pos-card__name">
                             {item.product?.name ?? `Item #${item.product_id}`}
                           </span>
@@ -1485,6 +1858,10 @@ export function PosWorkspace({
                           </span>
                           {isServiceItem(item) ? (
                             <span className="pos-card__stock">Service</span>
+                          ) : isHotelDish && item.stock_quantity == null ? (
+                            <span className="pos-card__stock is-fresh">
+                              <i className="fa-solid fa-kitchen-set" aria-hidden="true" /> Made to order
+                            </span>
                           ) : outOfStock ? (
                             <span className="pos-card__stock is-out">
                               {item.stock_quantity == null
@@ -1535,7 +1912,11 @@ export function PosWorkspace({
                               type="button"
                               aria-label="Increase quantity"
                               disabled={atStockCap}
-                              onClick={() => changeQuantity(item.id, 1)}
+                              onClick={() =>
+                                isHotelDish
+                                  ? setModifyingItem({ item })
+                                  : changeQuantity(item.id, 1)
+                              }
                             >
                               <i
                                 className="fa-solid fa-plus"
@@ -1547,11 +1928,12 @@ export function PosWorkspace({
                           <button
                             type="button"
                             className="pos-card__add"
-                            onClick={() => addToCart(item)}
+                            onClick={() => (isHotelDish ? setModifyingItem({ item }) : addToCart(item))}
                             disabled={!canAdd}
                             aria-label={`Add ${quickAddQty > 1 ? `${quickAddQty} of ` : ""}${item.product?.name ?? "item"} to order`}
                           >
-                            <i className="fa-solid fa-plus" aria-hidden="true" />
+                            <i className={isHotelDish ? "fa-solid fa-sliders" : "fa-solid fa-plus"} aria-hidden="true" />
+                            <span className="pos-card__add-label">{isHotelDish ? "Options" : "Add"}</span>
                           </button>
                         )}
                       </div>
@@ -1573,8 +1955,10 @@ export function PosWorkspace({
               <ul>
                 <AnimatePresence initial={false}>
                   {cart.map((line) => {
+                    const lineKey = line.lineId || line.inventoryItemId;
                     const lineTotal = line.unit_price * line.quantity;
                     const stockItem = itemsById.get(line.inventoryItemId);
+                    const isHotelDish = stockItem ? isHotelMenuItem(stockItem) : false;
                     const stockCap = stockItem ? maxCartQty(stockItem) : null;
                     const heldQty = heldQtyByItemId.get(line.inventoryItemId) ?? 0;
                     const effectiveCap =
@@ -1585,7 +1969,7 @@ export function PosWorkspace({
                       priceEditEnabled && !isTransChapSale;
                     return (
                       <motion.li
-                        key={line.inventoryItemId}
+                        key={lineKey}
                         layout={!reduce}
                         initial={
                           reduce ? false : { opacity: 0, y: 6, scale: 0.98 }
@@ -1620,6 +2004,37 @@ export function PosWorkspace({
                         ) : null}
                         <div className="pos-line__main">
                           <strong title={line.name}>{line.name}</strong>
+                          {line.modifiers && line.modifiers.length > 0 ? (
+                            <div className="pos-cart__line-mods">
+                              {line.modifiers.map((m, mIdx) => (
+                                <span key={mIdx} className="pos-cart__mod-chip">
+                                  + {m.name} {m.price > 0 ? `(+${formatMoney(m.price)})` : ""}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                          {line.notes ? (
+                            <div className="pos-cart__mod-note">Note: {line.notes}</div>
+                          ) : null}
+                          {isHotelDish || (stockItem && isHotelMenuItem(stockItem)) ? (
+                            <button
+                              type="button"
+                              className="pos-cart__customize-btn"
+                              onClick={() => {
+                                if (stockItem) {
+                                  setModifyingItem({
+                                    item: stockItem,
+                                    cartLineId: lineKey,
+                                    initialModifiers: line.modifiers,
+                                    initialNotes: line.notes,
+                                  });
+                                }
+                              }}
+                            >
+                              <i className="fa-solid fa-sliders" aria-hidden="true" />
+                              {line.modifiers && line.modifiers.length > 0 ? "Edit add-ons" : "+ Add-ons"}
+                            </button>
+                          ) : null}
                           {!showLinePriceEdit && !isTransChapSale ? (
                             <span>{formatMoney(line.unit_price)} ea</span>
                           ) : null}
@@ -1645,7 +2060,7 @@ export function PosWorkspace({
                               value={line.unit_price}
                               onChange={(e) =>
                                 setUnitPrice(
-                                  line.inventoryItemId,
+                                  lineKey,
                                   e.target.value,
                                 )
                               }
@@ -1658,7 +2073,7 @@ export function PosWorkspace({
                             type="button"
                             aria-label="Decrease quantity"
                             onClick={() =>
-                              changeQuantity(line.inventoryItemId, -1)
+                              changeQuantity(lineKey, -1)
                             }
                           >
                             <i
@@ -1673,7 +2088,7 @@ export function PosWorkspace({
                             value={line.quantity}
                             onChange={(e) =>
                               setQuantity(
-                                line.inventoryItemId,
+                                lineKey,
                                 e.target.value,
                               )
                             }
@@ -1684,7 +2099,7 @@ export function PosWorkspace({
                             aria-label="Increase quantity"
                             disabled={atStockCap}
                             onClick={() =>
-                              changeQuantity(line.inventoryItemId, 1)
+                              changeQuantity(lineKey, 1)
                             }
                           >
                             <i
@@ -1700,7 +2115,7 @@ export function PosWorkspace({
                             className="pos-line__remove"
                             aria-label={`Remove ${line.name}`}
                             onClick={() =>
-                              removeLine(line.inventoryItemId)
+                              removeLine(lineKey)
                             }
                           >
                             <i
@@ -1715,7 +2130,26 @@ export function PosWorkspace({
                 </AnimatePresence>
               </ul>
             </div>
-          ) : null}
+          ) : (
+            <div className="pos-ticket__empty">
+              <div className="pos-ticket__empty-icon">
+                <i className="fa-solid fa-receipt" aria-hidden="true" />
+              </div>
+              <h3>No items in order</h3>
+              <p>Tap products from the catalog to add them to this order.</p>
+              <button
+                type="button"
+                className="pos-ticket__empty-btn"
+                onClick={() => {
+                  setMobileScreen("catalog");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+              >
+                <i className="fa-solid fa-arrow-left" aria-hidden="true" />
+                <span>Select products</span>
+              </button>
+            </div>
+          )}
         </section>
         </div>
 
@@ -1803,7 +2237,7 @@ export function PosWorkspace({
           ) : null}
 
           <div className="pos-cart__body">
-            {isTransChapSale ? (
+            {isTransChapSale && !isRestaurant ? (
               <div className="pos-cart__row">
                 <span className="pos-label">Channel</span>
                 <p className="pos-cart__fixed-meta">
@@ -1813,27 +2247,29 @@ export function PosWorkspace({
               </div>
             ) : (
               <>
-                <div className="pos-cart__row">
-                  <span className="pos-label">Channel</span>
-                  <div className="pos-pickers pos-pickers--two" role="radiogroup">
-                    {POS_SOURCES.map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        role="radio"
-                        aria-checked={source === s}
-                        className={`pos-picker pos-picker--wide${source === s ? " is-active" : ""}`}
-                        onClick={() => setSource(s)}
-                      >
-                        <i className={SOURCE_ICONS[s]} aria-hidden="true" />
-                        <span>{SOURCE_LABELS[s]}</span>
-                      </button>
-                    ))}
+                {!isTransChapSale ? (
+                  <div className="pos-cart__row">
+                    <span className="pos-label">Channel</span>
+                    <div className="pos-pickers pos-pickers--two" role="radiogroup">
+                      {POS_SOURCES.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          role="radio"
+                          aria-checked={source === s}
+                          className={`pos-picker pos-picker--wide${source === s ? " is-active" : ""}`}
+                          onClick={() => setSource(s)}
+                        >
+                          <i className={SOURCE_ICONS[s]} aria-hidden="true" />
+                          <span>{SOURCE_LABELS[s]}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                ) : null}
 
                 <div className="pos-cart__row">
-                  <span className="pos-label">Type</span>
+                  <span className="pos-label">{isRestaurant ? "Dining Option" : "Type"}</span>
                   <div className="pos-pickers pos-pickers--two" role="radiogroup">
                     {ALL_FULFILLMENT_TYPES.map((f) => (
                       <button
@@ -1850,6 +2286,33 @@ export function PosWorkspace({
                     ))}
                   </div>
                 </div>
+
+                {fulfillment === "dine_in" || (isRestaurant && fulfillment !== "delivery") ? (
+                  <div className="pos-cart__row">
+                    <span className="pos-label">Table / Seating</span>
+                    <div className="pos-table-selector">
+                      <div className="pos-table-chips">
+                        {["Table 1", "Table 2", "Table 3", "Table 4", "Table 5", "Table 6", "Takeaway"].map((tbl) => (
+                          <button
+                            key={tbl}
+                            type="button"
+                            className={`pos-table-chip${tableNumber === tbl ? " is-active" : ""}`}
+                            onClick={() => setTableNumber(tbl)}
+                          >
+                            {tbl}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="text"
+                        className="pos-table-input"
+                        placeholder="Table / Seat # (e.g. Table 12, Bar 1)"
+                        value={tableNumber}
+                        onChange={(e) => setTableNumber(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                ) : null}
               </>
             )}
 
@@ -1912,6 +2375,20 @@ export function PosWorkspace({
                     </button>
                   ))}
                 </div>
+              </div>
+            ) : null}
+            {paymentMethod === "credit" ? (
+              <div className="pos-field" style={{ marginTop: "0.5rem" }}>
+                <label className="pos-label" htmlFor="pos-credit-due-date">
+                  Date to pay (optional)
+                </label>
+                <input
+                  id="pos-credit-due-date"
+                  type="date"
+                  className="pos-input"
+                  value={creditDueDate}
+                  onChange={(e) => setCreditDueDate(e.target.value)}
+                />
               </div>
             ) : null}
             <div
@@ -2020,6 +2497,37 @@ export function PosWorkspace({
             </label>
           </footer>
         </aside>
+
+        {/* Mobile floating bottom bar when in catalog mode */}
+        {mobileScreen === "catalog" && cart.length > 0 ? (
+          <div className="pos-mobile-cart-bar">
+            <div className="pos-mobile-cart-bar__content">
+              <div className="pos-mobile-cart-bar__info">
+                <span className="pos-mobile-cart-bar__badge">
+                  <i className="fa-solid fa-cart-shopping" aria-hidden="true" />
+                  <span>{itemCount}</span>
+                </span>
+                <div className="pos-mobile-cart-bar__meta">
+                  <span className="pos-mobile-cart-bar__title">Current order</span>
+                  <span className="pos-mobile-cart-bar__total">
+                    {formatMoney(total)}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="pos-mobile-cart-bar__action"
+                onClick={() => {
+                  setMobileScreen("order");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+              >
+                <span>Review Order</span>
+                <i className="fa-solid fa-arrow-right" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {completeInPlace && receiptOrder ? (
@@ -2045,6 +2553,18 @@ export function PosWorkspace({
               <dt>Customer</dt>
               <dd>{receiptOrder.customer_name ?? "Walk-in customer"}</dd>
             </div>
+            {receiptOrder.table_number ? (
+              <div>
+                <dt>Table</dt>
+                <dd className="receipt-table-highlight">{receiptOrder.table_number}</dd>
+              </div>
+            ) : null}
+            {receiptOrder.server_name ? (
+              <div>
+                <dt>Server</dt>
+                <dd>{receiptOrder.server_name}</dd>
+              </div>
+            ) : null}
             <div>
               <dt>Payment</dt>
               <dd>
@@ -2066,7 +2586,21 @@ export function PosWorkspace({
             <tbody>
               {(receiptOrder.items ?? []).map((line) => (
                 <tr key={line.id}>
-                  <td>{line.product_name}</td>
+                  <td>
+                    <div className="receipt-item-title">{line.product_name}</div>
+                    {line.modifiers && line.modifiers.length > 0 ? (
+                      <div className="receipt-item-mods">
+                        {line.modifiers.map((m, mIdx) => (
+                          <div key={mIdx} className="receipt-mod-line">
+                            + {m.name} {m.price > 0 ? `(${formatMoney(m.price, receiptOrder.currency)})` : ""}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {line.notes ? (
+                      <div className="receipt-mod-note">Note: {line.notes}</div>
+                    ) : null}
+                  </td>
                   <td>{line.quantity}</td>
                   <td>{formatMoney(line.unit_price, receiptOrder.currency)}</td>
                   <td>{formatMoney(line.line_total, receiptOrder.currency)}</td>
@@ -2102,6 +2636,16 @@ export function PosWorkspace({
           </table>
         </section>
       ) : null}
+
+      <TransChapModifierModal
+        isOpen={Boolean(modifyingItem)}
+        onClose={() => setModifyingItem(null)}
+        item={modifyingItem?.item ?? null}
+        initialModifiers={modifyingItem?.initialModifiers}
+        initialNotes={modifyingItem?.initialNotes}
+        currency="KES"
+        onConfirm={handleConfirmModifiers}
+      />
     </section>
   );
 }

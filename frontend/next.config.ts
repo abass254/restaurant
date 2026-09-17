@@ -77,6 +77,21 @@ const nextConfig: NextConfig = {
         permanent: true,
       },
       {
+        source: "/customers",
+        destination: "/customer",
+        permanent: true,
+      },
+      {
+        source: "/customersd",
+        destination: "/customer",
+        permanent: false,
+      },
+      {
+        source: "/suppliers",
+        destination: "/supplier",
+        permanent: true,
+      },
+      {
         source: "/setup-checklist",
         destination: "/tools/onboarding",
         permanent: true,

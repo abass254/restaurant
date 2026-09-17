@@ -37,6 +37,18 @@ type SupplierForm = {
 };
 
 type View = "list" | "create" | "import";
+type SupplierLayoutView = "grid" | "list";
+
+const SUPPLIERS_VIEW_KEY = "trans-chap-suppliers-view";
+
+function readSuppliersView(): SupplierLayoutView {
+  if (typeof window === "undefined") return "grid";
+  try {
+    return window.localStorage.getItem(SUPPLIERS_VIEW_KEY) === "list" ? "list" : "grid";
+  } catch {
+    return "grid";
+  }
+}
 
 const EMPTY_FORM: SupplierForm = {
   name: "",
@@ -56,6 +68,21 @@ export function TransChapSuppliersList() {
   const listId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<View>("list");
+  const [layoutView, setLayoutView] = useState<SupplierLayoutView>("grid");
+
+  useEffect(() => {
+    setLayoutView(readSuppliersView());
+  }, []);
+
+  function setSuppliersLayoutView(next: SupplierLayoutView) {
+    setLayoutView(next);
+    try {
+      window.localStorage.setItem(SUPPLIERS_VIEW_KEY, next);
+    } catch {
+      // Local storage might be blocked; view still changes in-memory.
+    }
+  }
+
   const [suppliers, setSuppliers] = useState<ShopSupplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -449,18 +476,42 @@ export function TransChapSuppliersList() {
   }
 
   return (
-    <div className="trans-chap-sales">
+    <div className={`trans-chap-sales${layoutView === "list" ? " trans-chap-sales--list" : ""}`}>
       <div className="trans-chap-sales__filters">
-        <label className="trans-chap-sales__search">
-          <i className="fa-solid fa-magnifying-glass" aria-hidden />
-          <input
-            type="search"
-            value={query}
-            placeholder="Search suppliers…"
-            aria-label="Search suppliers"
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </label>
+        <div className="trans-chap-sales__search-row">
+          <label className="trans-chap-sales__search">
+            <i className="fa-solid fa-magnifying-glass" aria-hidden />
+            <input
+              type="search"
+              value={query}
+              placeholder="Search suppliers…"
+              aria-label="Search suppliers"
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
+          <div className="trans-chap-sales__view" role="group" aria-label="Supplier layout">
+            <button
+              type="button"
+              className={`trans-chap-sales__filter-btn${layoutView === "grid" ? " is-on" : ""}`}
+              aria-pressed={layoutView === "grid"}
+              aria-label="Grid view"
+              title="Grid view"
+              onClick={() => setSuppliersLayoutView("grid")}
+            >
+              <i className="fa-solid fa-table-cells" aria-hidden />
+            </button>
+            <button
+              type="button"
+              className={`trans-chap-sales__filter-btn${layoutView === "list" ? " is-on" : ""}`}
+              aria-pressed={layoutView === "list"}
+              aria-label="List view"
+              title="List view"
+              onClick={() => setSuppliersLayoutView("list")}
+            >
+              <i className="fa-solid fa-list" aria-hidden />
+            </button>
+          </div>
+        </div>
       </div>
 
       {loading ? (

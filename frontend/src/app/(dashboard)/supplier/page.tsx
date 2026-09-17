@@ -50,6 +50,22 @@ function formFromSupplier(supplier: ShopSupplier): SupplierForm {
   };
 }
 
+/** Format a date string as a relative "X ago" or short date. */
+function timeAgo(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const now = Date.now();
+  const diff = now - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return d.toLocaleDateString("en-KE", { month: "short", day: "numeric", year: "numeric" });
+}
+
 export default function SupplierPage() {
   const [suppliers, setSuppliers] = useState<ShopSupplier[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -89,6 +105,18 @@ export default function SupplierPage() {
         .includes(q),
     );
   }, [suppliers, filterText]);
+
+  // Summary stats
+  const stats = useMemo(() => {
+    const total = suppliers.length;
+    const withNotes = suppliers.filter((s) => s.notes && s.notes.trim()).length;
+    const recentlyAdded = suppliers.filter((s) => {
+      if (!s.created_at) return false;
+      const diff = Date.now() - new Date(s.created_at).getTime();
+      return diff < 30 * 24 * 60 * 60 * 1000; // 30 days
+    }).length;
+    return { total, withNotes, recentlyAdded };
+  }, [suppliers]);
 
   function closeCreate() {
     if (creating) return;
@@ -201,39 +229,78 @@ export default function SupplierPage() {
   }
 
   return (
-    <div className="app-page customers-page">
-      <header className="app-page__head customers-head">
+    <section className="app-panel inventory-panel customer-panel supplier-panel">
+      <header className="inventory-header">
         <div>
-          <h1>Suppliers</h1>
-          <p className="app-muted">Vendors and wholesalers you buy stock from.</p>
+          <h1 className="app-title">Suppliers</h1>
+          <p className="app-lead">
+            Vendors and wholesalers you buy stock from.
+          </p>
         </div>
-        <div className="customers-head__actions">
-          <label className="customers-search">
-            <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />
-            <input
-              type="search"
-              value={filterText}
-              placeholder="Search suppliers…"
-              aria-label="Search suppliers"
-              onChange={(e) => setFilterText(e.target.value)}
-            />
-          </label>
+        <div className="inventory-header__actions">
           <button
             type="button"
             className="btn btn-primary btn-sm"
             onClick={() => setShowCreate(true)}
           >
+            <i className="fa-solid fa-truck-field" aria-hidden="true" />
             Add supplier
           </button>
         </div>
       </header>
 
-      <p className="app-muted customers-count">
-        {loaded ? `${filtered.length} of ${suppliers.length}` : "Loading…"}
-      </p>
+      {/* Summary stat cards */}
+      {loaded && suppliers.length > 0 ? (
+        <div className="customer-stats-row">
+          <div className="customer-stat-card">
+            <div className="customer-stat-card__icon">
+              <i className="fa-solid fa-truck" aria-hidden="true" />
+            </div>
+            <div className="customer-stat-card__body">
+              <div className="customer-stat-card__label">Total suppliers</div>
+              <div className="customer-stat-card__value">{stats.total}</div>
+            </div>
+          </div>
+          <div className="customer-stat-card">
+            <div className="customer-stat-card__icon customer-stat-card__icon--info">
+              <i className="fa-solid fa-sticky-note" aria-hidden="true" />
+            </div>
+            <div className="customer-stat-card__body">
+              <div className="customer-stat-card__label">With notes</div>
+              <div className="customer-stat-card__value">{stats.withNotes}</div>
+            </div>
+          </div>
+          <div className="customer-stat-card">
+            <div className="customer-stat-card__icon customer-stat-card__icon--success">
+              <i className="fa-solid fa-calendar-plus" aria-hidden="true" />
+            </div>
+            <div className="customer-stat-card__body">
+              <div className="customer-stat-card__label">Added (30 days)</div>
+              <div className="customer-stat-card__value">{stats.recentlyAdded}</div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
+      {/* Search toolbar */}
+      <div className="customer-search-toolbar">
+        <div className="customer-search-input">
+          <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />
+          <input
+            type="search"
+            placeholder="Search by name, phone, or notes…"
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+          />
+        </div>
+        <span className="customer-search-count">
+          {loaded ? `${filtered.length} of ${suppliers.length}` : "Loading…"}
+        </span>
+      </div>
+
+      {/* Main content */}
       {!loaded ? (
-        <Skeleton height={220} />
+        <Skeleton className="settings-skeleton" />
       ) : loadError && suppliers.length === 0 ? (
         <ListLoadError
           title="Could not load suppliers"
@@ -244,12 +311,15 @@ export default function SupplierPage() {
           }}
         />
       ) : filtered.length === 0 ? (
-        <div className="customers-empty">
+        <div className="customer-empty-state">
+          <div className="customer-empty-state__icon">
+            <i className="fa-solid fa-boxes-stacked" aria-hidden="true" />
+          </div>
           <h2>{suppliers.length === 0 ? "No suppliers yet" : "No matches"}</h2>
-          <p className="app-muted">
+          <p>
             {suppliers.length === 0
               ? "Add the people you buy stock from so purchases stay organised."
-              : "Try a different search."}
+              : "Try a different name, phone, or notes search."}
           </p>
           {suppliers.length === 0 ? (
             <button
@@ -257,153 +327,202 @@ export default function SupplierPage() {
               className="btn btn-primary btn-sm"
               onClick={() => setShowCreate(true)}
             >
-              Add supplier
+              <i className="fa-solid fa-truck-field" aria-hidden="true" />
+              Add your first supplier
             </button>
           ) : null}
         </div>
       ) : (
-        <div className="customers-table-wrap">
-          <table className="inventory-table customers-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Phone</th>
-                <th className="customers-col-hide-sm">Notes</th>
-                <th className="customers-col-actions">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((supplier) => (
-                <tr key={supplier.id}>
-                  <td>
-                    <div className="customers-name">
-                      <span className="customers-avatar" aria-hidden="true">
-                        {supplierInitials(supplier.name)}
-                      </span>
-                      <strong>{supplier.name}</strong>
+        <div className="customer-card-list">
+          {filtered.map((supplier, index) => (
+            <div
+              key={supplier.id}
+              className="customer-card supplier-card"
+              style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
+            >
+              {/* Identity */}
+              <div className="customer-card__identity">
+                <div className="customer-card__avatar supplier-card__avatar" aria-hidden="true">
+                  {supplierInitials(supplier.name)}
+                </div>
+                <div className="customer-card__info">
+                  <div className="customer-card__name">{supplier.name}</div>
+                  <div className="customer-card__phone-row">
+                    <i className="fa-solid fa-phone" aria-hidden="true" style={{ fontSize: "0.65rem", opacity: 0.5 }} />
+                    <span>{supplier.phone}</span>
+                  </div>
+                  {supplier.notes ? (
+                    <div className="customer-card__address">
+                      <i className="fa-solid fa-note-sticky" aria-hidden="true" />{" "}
+                      {supplier.notes}
                     </div>
-                  </td>
-                  <td>{supplier.phone}</td>
-                  <td className="customers-col-hide-sm">{supplier.notes || "—"}</td>
-                  <td className="customers-col-actions">
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => openEdit(supplier)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      disabled={removingId === supplier.id}
-                      onClick={() => void removeSupplier(supplier)}
-                    >
-                      {removingId === supplier.id ? "…" : "Remove"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Timestamp info */}
+              <div className="supplier-card__meta">
+                <div className="supplier-card__meta-label">Added</div>
+                <div className="supplier-card__meta-value">{timeAgo(supplier.created_at)}</div>
+                {supplier.updated_at && supplier.updated_at !== supplier.created_at ? (
+                  <>
+                    <div className="supplier-card__meta-label">Updated</div>
+                    <div className="supplier-card__meta-value">{timeAgo(supplier.updated_at)}</div>
+                  </>
+                ) : null}
+              </div>
+
+              {/* Actions */}
+              <div className="customer-card__actions">
+                <button
+                  type="button"
+                  className="customer-card__action-btn"
+                  title="Edit supplier"
+                  onClick={() => openEdit(supplier)}
+                >
+                  <i className="fa-solid fa-pen-to-square" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="customer-card__action-btn customer-card__action-btn--danger"
+                  title="Remove supplier"
+                  disabled={removingId === supplier.id}
+                  onClick={() => void removeSupplier(supplier)}
+                >
+                  <i className="fa-solid fa-trash-can" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
+      {/* Create modal */}
       <MotionModal
         open={showCreate}
         onClose={closeCreate}
-        ariaLabel="Add supplier"
+        ariaLabelledBy="supplier-create-title"
+        closeOnBackdrop={!creating}
+        closeOnEscape={!creating}
       >
         <header className="inventory-modal__head">
-          <h2>Add supplier</h2>
+          <h2 id="supplier-create-title">Add supplier</h2>
           <button
             type="button"
             className="fb-icon-btn"
             aria-label="Close"
             onClick={closeCreate}
+            disabled={creating}
           >
             <i className="fa-solid fa-xmark" aria-hidden="true" />
           </button>
         </header>
-        <form className="inventory-modal__body" onSubmit={(e) => void handleCreate(e)}>
-          <SupplierFields form={createForm} setForm={setCreateForm} idPrefix="create" />
-          <div className="inventory-modal__actions">
-            <button type="button" className="btn btn-ghost btn-sm" onClick={closeCreate}>
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-primary btn-sm" disabled={creating}>
-              {creating ? "Saving…" : "Save supplier"}
-            </button>
-          </div>
-        </form>
+        <SupplierFormFields
+          form={createForm}
+          setForm={setCreateForm}
+          submitting={creating}
+          submitLabel={creating ? "Saving…" : "Save supplier"}
+          onSubmit={(e) => void handleCreate(e)}
+        />
       </MotionModal>
 
-      <MotionModal open={!!editing} onClose={closeEdit} ariaLabel="Edit supplier">
-        <header className="inventory-modal__head">
-          <h2>Edit supplier</h2>
-          <button
-            type="button"
-            className="fb-icon-btn"
-            aria-label="Close"
-            onClick={closeEdit}
-          >
-            <i className="fa-solid fa-xmark" aria-hidden="true" />
-          </button>
-        </header>
-        <form className="inventory-modal__body" onSubmit={(e) => void handleEdit(e)}>
-          <SupplierFields form={editForm} setForm={setEditForm} idPrefix="edit" />
-          <div className="inventory-modal__actions">
-            <button type="button" className="btn btn-ghost btn-sm" onClick={closeEdit}>
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-primary btn-sm" disabled={savingEdit}>
-              {savingEdit ? "Saving…" : "Save changes"}
-            </button>
-          </div>
-        </form>
+      {/* Edit modal */}
+      <MotionModal
+        open={!!editing}
+        onClose={closeEdit}
+        ariaLabelledBy="supplier-edit-title"
+        closeOnBackdrop={!savingEdit}
+        closeOnEscape={!savingEdit}
+      >
+        {editing ? (
+          <>
+            <header className="inventory-modal__head">
+              <h2 id="supplier-edit-title">Edit {editing.name}</h2>
+              <button
+                type="button"
+                className="fb-icon-btn"
+                aria-label="Close"
+                onClick={closeEdit}
+                disabled={savingEdit}
+              >
+                <i className="fa-solid fa-xmark" aria-hidden="true" />
+              </button>
+            </header>
+            <SupplierFormFields
+              form={editForm}
+              setForm={setEditForm}
+              submitting={savingEdit}
+              submitLabel={savingEdit ? "Saving…" : "Save changes"}
+              onSubmit={(e) => void handleEdit(e)}
+            />
+          </>
+        ) : null}
       </MotionModal>
-    </div>
+    </section>
   );
 }
 
-function SupplierFields({
+function SupplierFormFields({
   form,
   setForm,
-  idPrefix,
+  submitting,
+  submitLabel,
+  onSubmit,
 }: {
   form: SupplierForm;
   setForm: Dispatch<SetStateAction<SupplierForm>>;
-  idPrefix: string;
+  submitting: boolean;
+  submitLabel: string;
+  onSubmit: (event: FormEvent) => void;
 }) {
   return (
-    <div className="inventory-form-grid">
-      <label>
-        <span>Name</span>
-        <input
-          id={`${idPrefix}-supplier-name`}
-          required
-          value={form.name}
-          onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-        />
-      </label>
-      <label>
-        <span>Phone</span>
-        <input
-          id={`${idPrefix}-supplier-phone`}
-          required
-          type="tel"
-          value={form.phone}
-          onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-        />
-      </label>
-      <label className="inventory-form-grid__full">
-        <span>Notes</span>
-        <input
-          id={`${idPrefix}-supplier-notes`}
-          value={form.notes}
-          onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-        />
-      </label>
-    </div>
+    <form
+      className="settings-form settings-form--compact staff-modal-form"
+      onSubmit={onSubmit}
+    >
+      <div className="inventory-modal__body">
+        <label className="settings-field">
+          <span>Name</span>
+          <input
+            required
+            autoComplete="organization"
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="ABC Wholesalers"
+            disabled={submitting}
+          />
+        </label>
+        <label className="settings-field">
+          <span>Phone</span>
+          <input
+            required
+            type="tel"
+            autoComplete="tel"
+            value={form.phone}
+            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            placeholder="0712 345 678"
+            disabled={submitting}
+          />
+        </label>
+        <label className="settings-field">
+          <span>Notes</span>
+          <textarea
+            rows={3}
+            value={form.notes}
+            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+            placeholder="Delivery schedule, payment terms, etc."
+            disabled={submitting}
+          />
+          <em className="settings-muted">
+            Optional — remind yourself about delivery days, payment terms, etc.
+          </em>
+        </label>
+        <div className="settings-actions">
+          <button type="submit" className="btn btn-primary" disabled={submitting}>
+            {submitLabel}
+          </button>
+        </div>
+      </div>
+    </form>
   );
 }

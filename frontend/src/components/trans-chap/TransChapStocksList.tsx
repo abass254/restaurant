@@ -83,6 +83,15 @@ function roleTag(item: InventoryItem, restaurant: boolean): string | undefined {
   return "Sell only";
 }
 
+type HotelTab = "menu" | "supplies" | "drinks" | "all";
+
+const HOTEL_TABS: { id: HotelTab; label: string }[] = [
+  { id: "menu", label: "Menu dishes" },
+  { id: "supplies", label: "Kitchen supplies" },
+  { id: "drinks", label: "Drinks & resale" },
+  { id: "all", label: "All items" },
+];
+
 export function TransChapStocksList() {
   const user = useAuthUser();
   const canEditQty = isShopOwner(user);
@@ -99,7 +108,7 @@ export function TransChapStocksList() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
-  const [hotelOnly, setHotelOnly] = useState(false);
+  const [hotelTab, setHotelTab] = useState<HotelTab>("menu");
   const [outOnly, setOutOnly] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -145,19 +154,23 @@ export function TransChapStocksList() {
 
   useEffect(() => {
     if (!restaurant) {
-      setHotelOnly(false);
       if (roleFilter === "raw_material") setRoleFilter("all");
     }
   }, [restaurant, roleFilter]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const showHotelOnly = restaurant && hotelOnly;
     return items.filter((item) => {
       if (!item.is_active) return false;
-      if (showHotelOnly && !isHotelMenuItem(item)) return false;
+      if (restaurant) {
+        if (hotelTab === "menu" && !isHotelMenuItem(item)) return false;
+        if (hotelTab === "supplies" && inventoryRole(item) !== "raw_material") return false;
+        if (hotelTab === "drinks" && inventoryRole(item) !== "both") return false;
+      } else {
+        if (outOnly && !isOutOfStock(item)) return false;
+        if (roleFilter !== "all" && inventoryRole(item) !== roleFilter) return false;
+      }
       if (outOnly && !isOutOfStock(item)) return false;
-      if (roleFilter !== "all" && inventoryRole(item) !== roleFilter) return false;
       if (!needle) return true;
       const name = inventoryProductName(item).toLowerCase();
       const sku = (item.product?.sku || item.product?.product_code || "").toLowerCase();
@@ -170,10 +183,10 @@ export function TransChapStocksList() {
         supplier.includes(needle)
       );
     });
-  }, [hotelOnly, items, outOnly, query, restaurant, roleFilter]);
+  }, [hotelTab, items, outOnly, query, restaurant, roleFilter]);
 
   const outOfStockFiltered = useMemo(
-    () => filtered.filter(isOutOfStock),
+    () => filtered.filter((item) => (isHotelMenuItem(item) ? false : isOutOfStock(item))),
     [filtered],
   );
 
@@ -334,8 +347,12 @@ export function TransChapStocksList() {
             <input
               type="search"
               value={query}
-              placeholder="Search stock…"
-              aria-label="Search stock"
+              placeholder={
+                restaurant
+                  ? "Search dishes, ingredients, supplies…"
+                  : "Search stock…"
+              }
+              aria-label={restaurant ? "Search hotel items" : "Search stock"}
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>
@@ -362,23 +379,25 @@ export function TransChapStocksList() {
             </button>
           </div>
           {restaurant ? (
+            <Link
+              href="/trans-chap/stocks/menu"
+              className="trans-chap-sales__chip is-active"
+              style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+            >
+              <i className="fa-solid fa-plus" aria-hidden />
+              <span>Add dish</span>
+            </Link>
+          ) : null}
+          {!restaurant ? (
             <button
               type="button"
-              className={`trans-chap-sales__chip${hotelOnly ? " is-active" : ""}`}
-              aria-pressed={hotelOnly}
-              onClick={() => setHotelOnly((value) => !value)}
+              className={`trans-chap-sales__chip${outOnly ? " is-active" : ""}`}
+              aria-pressed={outOnly}
+              onClick={() => setOutOnly((value) => !value)}
             >
-              Hotel
+              Out of stock
             </button>
           ) : null}
-          <button
-            type="button"
-            className={`trans-chap-sales__chip${outOnly ? " is-active" : ""}`}
-            aria-pressed={outOnly}
-            onClick={() => setOutOnly((value) => !value)}
-          >
-            Out of stock
-          </button>
           {items.length ? (
             <button
               type="button"
@@ -391,17 +410,29 @@ export function TransChapStocksList() {
           ) : null}
         </div>
         <div className="trans-chap-sales__chips" role="group" aria-label="Stock type">
-          {roleFilters.map((chip) => (
-            <button
-              key={chip.id}
-              type="button"
-              className={`trans-chap-sales__chip${roleFilter === chip.id ? " is-active" : ""}`}
-              aria-pressed={roleFilter === chip.id}
-              onClick={() => setRoleFilter(chip.id)}
-            >
-              {chip.label}
-            </button>
-          ))}
+          {restaurant
+            ? HOTEL_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={`trans-chap-sales__chip${hotelTab === tab.id ? " is-active" : ""}`}
+                  aria-pressed={hotelTab === tab.id}
+                  onClick={() => setHotelTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))
+            : roleFilters.map((chip) => (
+                <button
+                  key={chip.id}
+                  type="button"
+                  className={`trans-chap-sales__chip${roleFilter === chip.id ? " is-active" : ""}`}
+                  aria-pressed={roleFilter === chip.id}
+                  onClick={() => setRoleFilter(chip.id)}
+                >
+                  {chip.label}
+                </button>
+              ))}
         </div>
       </div>
       <div className="trans-chap-sales__list">
@@ -411,17 +442,25 @@ export function TransChapStocksList() {
           <TransChapStatus tone="error">{error}</TransChapStatus>
         ) : items.length === 0 ? (
           <TransChapStatus
-            actionHref={buyHref}
-            actionLabel="Record a purchase"
+            actionHref={restaurant ? "/trans-chap/stocks/menu" : buyHref}
+            actionLabel={restaurant ? "Add first dish" : "Record a purchase"}
           >
-            No stock yet. Add products when you buy them.
+            {restaurant
+              ? "No dishes or hotel inventory yet. Tap Add first dish to start your menu."
+              : "No stock yet. Add products when you buy them."}
           </TransChapStatus>
         ) : filtered.length === 0 ? (
           <p className="trans-chap-sales__empty">
-            {outOnly
-              ? "No out-of-stock products match this search."
-              : hotelOnly
-                ? "No hotel menu items match this search."
+            {restaurant
+              ? hotelTab === "menu"
+                ? "No menu dishes match this search."
+                : hotelTab === "supplies"
+                  ? "No kitchen supplies match this search."
+                  : hotelTab === "drinks"
+                    ? "No drinks match this search."
+                    : "No hotel items match this search."
+              : outOnly
+                ? "No out-of-stock products match this search."
                 : roleFilter !== "all"
                   ? `No ${inventoryRoleLabel(roleFilter).toLowerCase()} items match this search.`
                   : "No products match this search."}
@@ -640,10 +679,10 @@ export function TransChapStocksList() {
                 tone="stock"
                 title={name}
                 imageUrl={inventoryCoverUrl(item)}
-                tag={roleTag(item, restaurant)}
-                qty={stockQtyLabel(item)}
+                tag={hotel ? "Dish" : roleTag(item, restaurant)}
+                qty={hotel ? undefined : stockQtyLabel(item)}
                 price={price}
-                badge={stockBadge(item)}
+                badge={hotel ? undefined : stockBadge(item)}
                 inactive={!item.is_active}
                 picking={selecting}
                 picked={picked}
@@ -812,56 +851,56 @@ export function TransChapStocksList() {
         </div>
       ) : (
       <TransChapFab
-        label="Add stock"
+        label={restaurant ? "Menu & stock" : "Add stock"}
         options={
-          canEditQty
+          restaurant
             ? [
                 {
-                  href: "/trans-chap/purchases/new",
-                  label: "Select buy",
-                  icon: "fa-list",
+                  href: "/trans-chap/stocks/menu",
+                  label: "Add dish",
+                  icon: "fa-utensils",
                 },
                 {
-                  href: "/trans-chap/purchases/new?mode=scan",
-                  label: "Scan buy",
-                  icon: "fa-barcode",
+                  href: "/trans-chap/purchases/new?mode=select",
+                  label: "Buy supplies",
+                  icon: "fa-cart-shopping",
                 },
-                {
-                  href: "/trans-chap/purchases/unavailable",
-                  label: "Buy new item",
-                  icon: "fa-cart-plus",
-                },
-                {
-                  href: "/trans-chap/stocks/opening",
-                  label: "Opening stock",
-                  icon: "fa-boxes-stacked",
-                },
-                ...(restaurant
-                  ? [
-                      {
-                        href: "/trans-chap/stocks/menu",
-                        label: "Hotel menu",
-                        icon: "fa-utensils",
-                      },
-                    ]
-                  : []),
-              ]
-            : [
                 {
                   href: "/trans-chap/purchases/unavailable",
-                  label: "Buy",
+                  label: "New supply item",
                   icon: "fa-cart-plus",
                 },
-                ...(restaurant
-                  ? [
-                      {
-                        href: "/trans-chap/stocks/menu",
-                        label: "Hotel menu",
-                        icon: "fa-utensils",
-                      },
-                    ]
-                  : []),
               ]
+            : canEditQty
+              ? [
+                  {
+                    href: "/trans-chap/purchases/new",
+                    label: "Select buy",
+                    icon: "fa-list",
+                  },
+                  {
+                    href: "/trans-chap/purchases/new?mode=scan",
+                    label: "Scan buy",
+                    icon: "fa-barcode",
+                  },
+                  {
+                    href: "/trans-chap/purchases/unavailable",
+                    label: "Buy new item",
+                    icon: "fa-cart-plus",
+                  },
+                  {
+                    href: "/trans-chap/stocks/opening",
+                    label: "Opening stock",
+                    icon: "fa-boxes-stacked",
+                  },
+                ]
+              : [
+                  {
+                    href: "/trans-chap/purchases/unavailable",
+                    label: "Buy",
+                    icon: "fa-cart-plus",
+                  },
+                ]
         }
       />
       )}

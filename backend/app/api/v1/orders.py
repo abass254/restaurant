@@ -148,6 +148,12 @@ def _money(value: float | int | Decimal | None) -> Decimal:
 # --- Pydantic payloads ------------------------------------------------------
 
 
+class OrderItemModifierPayload(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    price: float = Field(default=0.0, ge=0, le=99_999_999.99)
+    group: str | None = Field(default=None, max_length=120)
+
+
 class OrderItemPayload(BaseModel):
     """One line on the order being created.
 
@@ -164,6 +170,7 @@ class OrderItemPayload(BaseModel):
     # Pack/crate name (e.g. "Crate"). Stock deducts quantity × unit factor.
     sell_unit: str | None = Field(default=None, max_length=64)
     notes: str | None = Field(default=None, max_length=1000)
+    modifiers: list[OrderItemModifierPayload] | None = None
 
 
 class OrderCreate(BaseModel):
@@ -175,7 +182,8 @@ class OrderCreate(BaseModel):
         "tiktok",
         "facebook",
     ]
-    fulfillment_type: Literal["pickup", "delivery"]
+    fulfillment_type: Literal["pickup", "delivery", "dine_in"]
+    table_number: str | None = Field(default=None, max_length=50)
 
     customer_name: str | None = Field(default=None, max_length=255)
     customer_phone: str | None = Field(default=None, max_length=32)
@@ -194,6 +202,7 @@ class OrderCreate(BaseModel):
     # When set with payment_method=mpesa, skip STK and close the sale with this SMS code
     # (customer paid the merchant's Till/Paybill/phone directly).
     mpesa_receipt_number: str | None = Field(default=None, max_length=50)
+    date_to_pay: str | None = Field(default=None, max_length=30)
 
     items: list[OrderItemPayload] = Field(min_length=1, max_length=100)
 
@@ -208,6 +217,7 @@ class OrderUpdate(BaseModel):
     customer_name: str | None = Field(default=None, max_length=255)
     customer_phone: str | None = Field(default=None, max_length=32)
     customer_email: str | None = Field(default=None, max_length=255)
+    table_number: str | None = Field(default=None, max_length=50)
     delivery_address: str | None = Field(default=None, max_length=2000)
     delivery_notes: str | None = Field(default=None, max_length=2000)
     payment_method: Literal["mpesa", "cash", "card", "credit", "other"] | None = None
@@ -920,6 +930,14 @@ def create_order(
             sell_unit_label = str(resolved_unit["name"]) if unit_factor > 1 else None
 
         # Resolve display name + price from the snapshot or the explicit payload.
+        modifiers_data = [
+            m.model_dump() for m in (line.modifiers or [])
+        ]
+        mods_total = sum(
+            (_money(m.get("price") or 0) for m in modifiers_data),
+            Decimal("0"),
+        )
+
         if inv_item and inv_item.product:
             name = (line.product_name or inv_item.product.name).strip()
             sku = line.product_sku or inv_item.product.sku
@@ -936,7 +954,7 @@ def create_order(
             price = (
                 _money(line.unit_price)
                 if line.unit_price is not None
-                else default_price
+                else (default_price + mods_total)
             )
             if unit_factor > 1 and resolved_unit:
                 name = f"{name} ({resolved_unit['name']})"
@@ -979,12 +997,12 @@ def create_order(
             price = _money(line.unit_price)
 
         resolved_lines.append(
-            (line, inv_item, price, name, sku, sell_unit_label, unit_factor),
+            (line, inv_item, price, name, sku, sell_unit_label, unit_factor, modifiers_data),
         )
 
     # Money roll-up.
     subtotal = sum(
-        (price * line.quantity for line, _, price, _, _, _, _ in resolved_lines),
+        (price * line.quantity for line, _, price, _, _, _, _, _ in resolved_lines),
         Decimal("0"),
     )
     delivery_fee = _money(payload.delivery_fee)
@@ -999,6 +1017,7 @@ def create_order(
         order_number=next_order_number(db, account_id),
         source=payload.source,
         fulfillment_type=payload.fulfillment_type,
+        table_number=(payload.table_number or "").strip() or None,
         status=PLACED,
         customer_name=(payload.customer_name or "").strip() or None,
         customer_phone=(payload.customer_phone or "").strip() or None,
@@ -1020,7 +1039,7 @@ def create_order(
     db.add(order)
     db.flush()  # need order.id for the FKs below
 
-    for line, inv_item, price, name, sku, sell_unit_label, unit_factor in resolved_lines:
+    for line, inv_item, price, name, sku, sell_unit_label, unit_factor, modifiers_data in resolved_lines:
         item = OrderItem(
             order_id=order.id,
             inventory_item_id=inv_item.id if inv_item else None,
@@ -1032,6 +1051,7 @@ def create_order(
             line_total=(price * line.quantity).quantize(Decimal("0.01")),
             sell_unit=sell_unit_label,
             unit_factor=unit_factor,
+            modifiers=modifiers_data or None,
             notes=line.notes,
             created_at=now,
             updated_at=now,
@@ -1054,7 +1074,7 @@ def create_order(
             db,
             [
                 (inv_item.id, line.quantity * unit_factor)
-                for line, inv_item, _, _, _, _, unit_factor in resolved_lines
+                for line, inv_item, _, _, _, _, unit_factor, _ in resolved_lines
                 if inv_item
             ],
             account_id=account_id,
@@ -1077,6 +1097,12 @@ def create_order(
                 phone=payload.customer_phone or "",
             )
             customers.charge_credit(credit_customer, total)
+            if payload.date_to_pay:
+                from app.services.customer_service import _parse_date
+
+                parsed_pay = _parse_date(payload.date_to_pay)
+                if parsed_pay:
+                    credit_customer.date_to_pay = parsed_pay
             order.customer_name = credit_customer.name
             order.customer_phone = credit_customer.phone
         except CustomerServiceError as exc:

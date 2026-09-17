@@ -50,6 +50,27 @@ type Props = {
   onContinue: () => void;
 };
 
+type RestaurantDishTab = "all" | "food" | "drinks";
+
+function isDrinkItem(item: InventoryItem): boolean {
+  const name = inventoryProductName(item).toLowerCase();
+  const category = (item.product?.category || "").toLowerCase();
+  const keywords = [
+    "chai",
+    "tea",
+    "coffee",
+    "soda",
+    "water",
+    "juice",
+    "drink",
+    "beverage",
+    "coke",
+    "fanta",
+    "sprite",
+  ];
+  return keywords.some((k) => name.includes(k) || category.includes(k));
+}
+
 export function TransChapSaleCatalog({
   scan,
   active,
@@ -66,6 +87,7 @@ export function TransChapSaleCatalog({
 }: Props) {
   const user = useOptionalAuthUser();
   const restaurant = isRestaurantStore(user?.active_account ?? user?.account);
+  const [dishTab, setDishTab] = useState<RestaurantDishTab>("all");
   const [query, setQuery] = useState("");
   const listRef = useRef<HTMLDivElement | null>(null);
   const total = useMemo(
@@ -84,6 +106,10 @@ export function TransChapSaleCatalog({
     const rows = inventory.filter((item) => {
       if (!item.is_active) return false;
       if (!isSaleableRole(inventoryRole(item))) return false;
+      if (restaurant) {
+        if (dishTab === "food" && isDrinkItem(item)) return false;
+        if (dishTab === "drinks" && !isDrinkItem(item)) return false;
+      }
       if (!needle) return true;
       const name = inventoryProductName(item).toLowerCase();
       const sku = (item.product?.sku ?? "").toLowerCase();
@@ -112,7 +138,7 @@ export function TransChapSaleCatalog({
       if (bRank != null) return 1;
       return 0;
     });
-  }, [basket, inventory, query]);
+  }, [basket, dishTab, inventory, query, restaurant]);
 
   useEffect(() => {
     if (!lastScannedKey) return;
@@ -133,22 +159,80 @@ export function TransChapSaleCatalog({
           <input
             type="search"
             value={query}
-            placeholder={scan ? "Search or scan a product…" : "Search inventory…"}
-            aria-label="Search inventory"
+            placeholder={
+              restaurant
+                ? "Search menu dishes (e.g. Chapati, Chai)…"
+                : scan
+                  ? "Search or scan a product…"
+                  : "Search inventory…"
+            }
+            aria-label={restaurant ? "Search menu dishes" : "Search inventory"}
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
 
+        {restaurant ? (
+          <div
+            className="trans-chap-sales__chips"
+            role="group"
+            aria-label="Dish type"
+            style={{ marginBottom: "0.75rem" }}
+          >
+            <button
+              type="button"
+              className={`trans-chap-sales__chip${dishTab === "all" ? " is-active" : ""}`}
+              aria-pressed={dishTab === "all"}
+              onClick={() => setDishTab("all")}
+            >
+              All dishes
+            </button>
+            <button
+              type="button"
+              className={`trans-chap-sales__chip${dishTab === "food" ? " is-active" : ""}`}
+              aria-pressed={dishTab === "food"}
+              onClick={() => setDishTab("food")}
+            >
+              Food & Meals
+            </button>
+            <button
+              type="button"
+              className={`trans-chap-sales__chip${dishTab === "drinks" ? " is-active" : ""}`}
+              aria-pressed={dishTab === "drinks"}
+              onClick={() => setDishTab("drinks")}
+            >
+              Drinks & Beverages
+            </button>
+          </div>
+        ) : null}
+
         {inventoryLoading ? (
-          <p className="trans-chap-sale-scan__empty">Loading inventory…</p>
+          <p className="trans-chap-sale-scan__empty">
+            {restaurant ? "Loading hotel menu…" : "Loading inventory…"}
+          </p>
         ) : filtered.length === 0 ? (
           <TransChapStatus
-            actionHref={inventory.length === 0 ? "/trans-chap/purchases/new" : undefined}
-            actionLabel={inventory.length === 0 ? "Record a purchase" : undefined}
+            actionHref={
+              restaurant
+                ? "/trans-chap/stocks/menu"
+                : inventory.length === 0
+                  ? "/trans-chap/purchases/new"
+                  : undefined
+            }
+            actionLabel={
+              restaurant
+                ? "Add dishes to menu"
+                : inventory.length === 0
+                  ? "Record a purchase"
+                  : undefined
+            }
           >
-            {inventory.length === 0
-              ? "No active inventory yet. Buy stock first, then set selling prices in Inventory."
-              : "No items match this search."}
+            {restaurant
+              ? inventory.length === 0
+                ? "No dishes on your hotel menu yet. Add common dishes like Chapati, Ugali, and Beef stew to start taking orders."
+                : "No menu dishes match this search."
+              : inventory.length === 0
+                ? "No active inventory yet. Buy stock first, then set selling prices in Inventory."
+                : "No items match this search."}
           </TransChapStatus>
         ) : (
           <ul className={`trans-chap-catalog${scan ? "" : " trans-chap-catalog--grid"}`}>

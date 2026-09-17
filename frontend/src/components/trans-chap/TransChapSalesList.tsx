@@ -22,12 +22,25 @@ import {
   promptAndUndoWalkinSale,
   walkinUndoAction,
 } from "@/lib/trans-chap-orders";
+import { isRestaurantStore } from "@/lib/onboarding";
 import { formatKsh, receiptFromOrder, transChapPayLabel, transChapReceiptHref } from "@/lib/trans-chap-receipt";
 import type { Order, OrderMutationResponse } from "@/lib/types";
 
 type WhenFilter = "all" | "today" | "week";
 type MethodFilter = "all" | "credit" | "mpesa";
 type StatusFilter = "all" | "paid" | "waiting" | "failed" | "voided";
+type SalesView = "grid" | "list";
+
+const SALES_VIEW_KEY = "trans-chap-sales-view";
+
+function readSalesView(): SalesView {
+  if (typeof window === "undefined") return "grid";
+  try {
+    return window.localStorage.getItem(SALES_VIEW_KEY) === "list" ? "list" : "grid";
+  } catch {
+    return "grid";
+  }
+}
 
 type ChipOption<T extends string> = { id: T; label: string };
 
@@ -56,7 +69,7 @@ function saleStatus(order: Order): { label: string; tone: "ok" | "wait" | "fail"
     return { label: "Refunded", tone: "fail" };
   }
   if (order.payment_method === "credit") {
-    return { label: "On credit", tone: "credit" };
+    return { label: "Credit", tone: "credit" };
   }
   if (order.payment_method !== "mpesa") {
     return { label: "Paid", tone: "ok" };
@@ -129,6 +142,7 @@ function FilterChips<T extends string>({
 
 export function TransChapSalesList() {
   const user = useAuthUser();
+  const restaurant = isRestaurantStore(user.active_account ?? user.account);
   const listId = useId();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -140,8 +154,23 @@ export function TransChapSalesList() {
   const [method, setMethod] = useState<MethodFilter>("all");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [view, setView] = useState<SalesView>("grid");
   const [undoingId, setUndoingId] = useState<string | null>(null);
   const [stkBusyId, setStkBusyId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setView(readSalesView());
+  }, []);
+
+  function setSalesView(next: SalesView) {
+    setView(next);
+    try {
+      window.localStorage.setItem(SALES_VIEW_KEY, next);
+    } catch {
+      // Local storage might be blocked; view still changes in-memory.
+    }
+  }
+
   const shopName =
     user.active_account?.business_name ||
     user.account?.business_name ||
@@ -278,7 +307,7 @@ export function TransChapSalesList() {
     .join(" · ");
 
   return (
-    <div className="trans-chap-sales">
+    <div className={`trans-chap-sales${view === "list" ? " trans-chap-sales--list" : ""}`}>
       <div className="trans-chap-sales__filters">
         <div className="trans-chap-sales__search-row">
           <label className="trans-chap-sales__search">
@@ -286,11 +315,33 @@ export function TransChapSalesList() {
             <input
               type="search"
               value={query}
-              placeholder="Search sales…"
-              aria-label="Search sales"
+              placeholder={restaurant ? "Search orders…" : "Search sales…"}
+              aria-label={restaurant ? "Search orders" : "Search sales"}
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>
+          <div className="trans-chap-sales__view" role="group" aria-label="Sales layout">
+            <button
+              type="button"
+              className={`trans-chap-sales__filter-btn${view === "grid" ? " is-on" : ""}`}
+              aria-pressed={view === "grid"}
+              aria-label="Grid view"
+              title="Grid view"
+              onClick={() => setSalesView("grid")}
+            >
+              <i className="fa-solid fa-table-cells" aria-hidden />
+            </button>
+            <button
+              type="button"
+              className={`trans-chap-sales__filter-btn${view === "list" ? " is-on" : ""}`}
+              aria-pressed={view === "list"}
+              aria-label="List view"
+              title="List view"
+              onClick={() => setSalesView("list")}
+            >
+              <i className="fa-solid fa-list" aria-hidden />
+            </button>
+          </div>
           <button
             type="button"
             className={`trans-chap-sales__filter-btn${filtersOpen || activeFilterCount ? " is-on" : ""}`}
@@ -339,16 +390,24 @@ export function TransChapSalesList() {
           <TransChapStatus tone="error">{error}</TransChapStatus>
         ) : orders.length === 0 ? (
           <TransChapStatus
-            actionHref="/trans-chap/make-a-sale/new"
-            actionLabel="Make a sale"
+            actionHref={
+              restaurant
+                ? "/trans-chap/make-a-sale/new?mode=select"
+                : "/trans-chap/make-a-sale/new"
+            }
+            actionLabel={restaurant ? "Take an order" : "Make a sale"}
           >
-            No sales yet.
+            {restaurant ? "No hotel orders recorded yet." : "No sales yet."}
           </TransChapStatus>
         ) : filtered.length === 0 ? (
           <p className="trans-chap-sales__empty">
             {filtersOn
-              ? "No sales match these filters."
-              : "No sales yet."}
+              ? restaurant
+                ? "No orders match these filters."
+                : "No sales match these filters."
+              : restaurant
+                ? "No orders yet."
+                : "No sales yet."}
           </p>
         ) : (
           <MotionList as="div" className="trans-chap-sales__stagger">
@@ -488,11 +547,26 @@ export function TransChapSalesList() {
         ) : null}
       </div>
       <TransChapFab
-        label="New sale"
-        options={[
-          { href: "/trans-chap/make-a-sale/new", label: "Scan", icon: "fa-barcode" },
-          { href: "/trans-chap/make-a-sale/new?mode=select", label: "Select", icon: "fa-list" },
-        ]}
+        label={restaurant ? "Take order" : "New sale"}
+        options={
+          restaurant
+            ? [
+                {
+                  href: "/trans-chap/make-a-sale/new?mode=select",
+                  label: "Take order",
+                  icon: "fa-plus",
+                },
+                {
+                  href: "/trans-chap/stocks/menu",
+                  label: "Hotel menu",
+                  icon: "fa-utensils",
+                },
+              ]
+            : [
+                { href: "/trans-chap/make-a-sale/new", label: "Scan", icon: "fa-barcode" },
+                { href: "/trans-chap/make-a-sale/new?mode=select", label: "Select", icon: "fa-list" },
+              ]
+        }
       />
     </div>
   );

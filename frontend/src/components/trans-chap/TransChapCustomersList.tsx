@@ -28,6 +28,7 @@ import { useAuthUser } from "@/components/app/AuthProvider";
 import { fetchShopCustomers } from "@/lib/trans-chap-customers";
 import { buildDebtReminderWhatsAppUrl } from "@/lib/trans-chap-credit";
 import { formatKsh } from "@/lib/trans-chap-receipt";
+import { checkKenyanPhone } from "@/lib/phone-checker";
 import type {
   CustomerImportResponse,
   ShopCustomer,
@@ -37,16 +38,30 @@ import type {
 type CustomerForm = {
   name: string;
   phone: string;
+  physical_location: string;
   credit_limit: string;
   notes: string;
 };
 
 type View = "list" | "create" | "import";
+type CustomerLayoutView = "grid" | "list";
+
+const CUSTOMERS_VIEW_KEY = "trans-chap-customers-view";
+
+function readCustomersView(): CustomerLayoutView {
+  if (typeof window === "undefined") return "grid";
+  try {
+    return window.localStorage.getItem(CUSTOMERS_VIEW_KEY) === "list" ? "list" : "grid";
+  } catch {
+    return "grid";
+  }
+}
 
 const EMPTY_FORM: CustomerForm = {
   name: "",
-  phone: "",
-  credit_limit: "0",
+  phone: "+254",
+  physical_location: "",
+  credit_limit: "1000",
   notes: "",
 };
 
@@ -60,12 +75,12 @@ function parseCreditLimit(value: string): number | null {
 
 function badgeFor(customer: ShopCustomer): { label: string; tone: "ok" | "credit" | "wait" } {
   if (customer.outstanding_balance > 0) {
-    return { label: formatKsh(customer.outstanding_balance), tone: "credit" };
+    return { label: `Owes ${formatKsh(customer.outstanding_balance)}`, tone: "credit" };
   }
   if (customer.credit_limit > 0) {
     return { label: `Limit ${formatKsh(customer.credit_limit)}`, tone: "ok" };
   }
-  return { label: "No tab", tone: "wait" };
+  return { label: "Cash only", tone: "wait" };
 }
 
 export function TransChapCustomersList() {
@@ -74,6 +89,21 @@ export function TransChapCustomersList() {
   const listId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<View>("list");
+  const [layoutView, setLayoutView] = useState<CustomerLayoutView>("grid");
+
+  useEffect(() => {
+    setLayoutView(readCustomersView());
+  }, []);
+
+  function setCustomersLayoutView(next: CustomerLayoutView) {
+    setLayoutView(next);
+    try {
+      window.localStorage.setItem(CUSTOMERS_VIEW_KEY, next);
+    } catch {
+      // Local storage might be blocked; view still changes in-memory.
+    }
+  }
+
   const [customers, setCustomers] = useState<ShopCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +117,11 @@ export function TransChapCustomersList() {
   const [importError, setImportError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<CustomerImportResponse | null>(null);
   const [sendingWaId, setSendingWaId] = useState<string | null>(null);
+
+  const createPhoneCheck = useMemo(
+    () => checkKenyanPhone(createForm.phone),
+    [createForm.phone],
+  );
 
   async function handleSendWhatsAppReminder(customer: ShopCustomer) {
     setSendingWaId(customer.id);
@@ -124,7 +159,16 @@ export function TransChapCustomersList() {
     const needle = query.trim().toLowerCase();
     if (!needle) return customers;
     return customers.filter((row) =>
-      [row.name, row.phone, row.notes ?? ""].join(" ").toLowerCase().includes(needle),
+      [
+        row.name,
+        row.phone,
+        row.physical_location ?? "",
+        row.address ?? "",
+        row.notes ?? "",
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle),
     );
   }, [customers, query]);
 
@@ -161,13 +205,15 @@ export function TransChapCustomersList() {
     const phone = form.phone.trim();
     if (!name) throw new Error("Enter the customer's name.");
     if (!phone) throw new Error("Enter a phone number.");
+    const loc = form.physical_location.trim() || null;
     return {
       name,
       phone,
       credit_limit: creditLimit,
+      physical_location: loc,
+      address: loc,
       notes: form.notes.trim() || null,
       email: null,
-      address: null,
     };
   }
 
@@ -292,7 +338,7 @@ export function TransChapCustomersList() {
             </div>
           </div>
           <div className="auth-split__field">
-            <label htmlFor="trans-chap-customer-phone">Phone</label>
+            <label htmlFor="trans-chap-customer-phone">Phone number</label>
             <div className="trans-chap-input">
               <input
                 id="trans-chap-customer-phone"
@@ -301,21 +347,56 @@ export function TransChapCustomersList() {
                 autoComplete="tel"
                 inputMode="tel"
                 className="auth-split__input"
-                placeholder="2547…"
+                placeholder="+254 712 345 678"
                 value={createForm.phone}
                 onChange={(e) => setCreateForm((f) => ({ ...f, phone: e.target.value }))}
               />
             </div>
+            <div
+              className={`phone-checker-row phone-checker-row--${createPhoneCheck.status}`}
+              style={{ marginTop: 6 }}
+            >
+              <div className="phone-checker-info">
+                <i
+                  className={`fa-solid ${
+                    createPhoneCheck.status === "valid"
+                      ? "fa-circle-check"
+                      : createPhoneCheck.status === "invalid"
+                      ? "fa-circle-exclamation"
+                      : "fa-circle-info"
+                  }`}
+                  aria-hidden="true"
+                />
+                <span>{createPhoneCheck.message}</span>
+              </div>
+              {createPhoneCheck.network ? (
+                <span className="phone-carrier-tag">{createPhoneCheck.network}</span>
+              ) : null}
+            </div>
           </div>
           <div className="auth-split__field">
-            <label htmlFor="trans-chap-customer-limit">Credit limit</label>
+            <label htmlFor="trans-chap-customer-location">Physical location</label>
+            <div className="trans-chap-input">
+              <input
+                id="trans-chap-customer-location"
+                className="auth-split__input"
+                placeholder="e.g. Stall B12, Nairobi CBD"
+                value={createForm.physical_location}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, physical_location: e.target.value }))
+                }
+              />
+            </div>
+          </div>
+          <div className="auth-split__field">
+            <label htmlFor="trans-chap-customer-limit">Credit limit (default KES 1,000)</label>
             <div className="trans-chap-input">
               <input
                 id="trans-chap-customer-limit"
                 type="text"
                 inputMode="numeric"
                 className="auth-split__input"
-                placeholder="0"
+                placeholder="1000"
                 value={createForm.credit_limit}
                 onChange={(e) =>
                   setCreateForm((f) => ({ ...f, credit_limit: e.target.value }))
@@ -478,18 +559,42 @@ export function TransChapCustomersList() {
   }
 
   return (
-    <div className="trans-chap-sales">
+    <div className={`trans-chap-sales${layoutView === "list" ? " trans-chap-sales--list" : ""}`}>
       <div className="trans-chap-sales__filters">
-        <label className="trans-chap-sales__search">
-          <i className="fa-solid fa-magnifying-glass" aria-hidden />
-          <input
-            type="search"
-            value={query}
-            placeholder="Search customers…"
-            aria-label="Search customers"
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </label>
+        <div className="trans-chap-sales__search-row">
+          <label className="trans-chap-sales__search">
+            <i className="fa-solid fa-magnifying-glass" aria-hidden />
+            <input
+              type="search"
+              value={query}
+              placeholder="Search customers…"
+              aria-label="Search customers"
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
+          <div className="trans-chap-sales__view" role="group" aria-label="Customer layout">
+            <button
+              type="button"
+              className={`trans-chap-sales__filter-btn${layoutView === "grid" ? " is-on" : ""}`}
+              aria-pressed={layoutView === "grid"}
+              aria-label="Grid view"
+              title="Grid view"
+              onClick={() => setCustomersLayoutView("grid")}
+            >
+              <i className="fa-solid fa-table-cells" aria-hidden />
+            </button>
+            <button
+              type="button"
+              className={`trans-chap-sales__filter-btn${layoutView === "list" ? " is-on" : ""}`}
+              aria-pressed={layoutView === "list"}
+              aria-label="List view"
+              title="List view"
+              onClick={() => setCustomersLayoutView("list")}
+            >
+              <i className="fa-solid fa-list" aria-hidden />
+            </button>
+          </div>
+        </div>
         {!loading && owingCount > 0 ? (
           <p className="trans-chap-credit__total">
             <Link href="/trans-chap/credit">
@@ -527,89 +632,212 @@ export function TransChapCustomersList() {
                     payBillUrl: customer.pay_bill_url,
                   })
                 : null;
+            const hasCredit = customer.credit_limit > 0;
+            const owes = customer.outstanding_balance > 0;
+            const creditPct = hasCredit
+              ? Math.max(
+                  0,
+                  Math.min(
+                    100,
+                    Math.round(
+                      (customer.available_credit / customer.credit_limit) * 100,
+                    ),
+                  ),
+                )
+              : 0;
+            const cleanPhone = customer.phone.replace(/\D/g, "");
+
             return (
               <MotionItem key={customer.id} as="div">
                 <TransChapPanel
                   id={panelId}
                   open={open}
-                  tone={customer.outstanding_balance > 0 ? "credit" : "sale"}
+                  imageUrl={null}
+                  tone={owes ? "credit" : "sale"}
                   title={customer.name}
                   subtitle={customer.phone}
                   badge={badge}
                   onToggle={() => toggle(customer)}
                 >
                   <div className="trans-chap-form__block">
-                    <dl className="trans-chap-panel__facts">
-                      <div>
-                        <dt>Credit limit</dt>
-                        <dd>{formatKsh(customer.credit_limit)}</dd>
-                      </div>
-                      {customer.outstanding_balance > 0 ? (
-                        <>
-                          <div>
-                            <dt>Owes</dt>
-                            <dd>{formatKsh(customer.outstanding_balance)}</dd>
-                          </div>
-                          <div>
-                            <dt>Available</dt>
-                            <dd>{formatKsh(customer.available_credit)}</dd>
-                          </div>
-                        </>
-                      ) : null}
-                      {customer.notes ? (
-                        <div style={{ gridColumn: "1 / -1" }}>
-                          <dt>Notes</dt>
-                          <dd>{customer.notes}</dd>
-                        </div>
-                      ) : null}
-                    </dl>
-
-                    {customer.outstanding_balance > 0 ? (
-                      <div className="trans-chap-credit__actions" style={{ marginBottom: "0.85rem" }}>
-                        {waUrl ? (
-                          <button
-                            type="button"
-                            className="trans-chap-btn trans-chap-btn--whatsapp"
-                            disabled={sendingWaId === customer.id}
-                            onClick={() => void handleSendWhatsAppReminder(customer)}
+                    {hasCredit ? (
+                      <div className="trans-chap-customer-credit-card">
+                        <div className="trans-chap-customer-credit-card__head">
+                          <span className="trans-chap-customer-credit-card__title">
+                            <i className="fa-solid fa-wallet" aria-hidden /> Credit Tab Overview
+                          </span>
+                          <span
+                            className={`trans-chap-customer-credit-card__status ${
+                              owes ? "is-owes" : "is-clear"
+                            }`}
                           >
-                            <i className="fa-brands fa-whatsapp" aria-hidden />
-                            <span>
-                              {sendingWaId === customer.id ? "Sending via OpenWA…" : "Send WhatsApp Reminder"}
-                            </span>
-                          </button>
-                        ) : null}
+                            {owes
+                              ? `Tab Active · ${creditPct}% available`
+                              : "✓ Full Credit Available"}
+                          </span>
+                        </div>
 
-                        {customer.pay_bill_url ? (
+                        <div className="trans-chap-customer-credit-card__meter">
+                          <div
+                            className={`trans-chap-customer-credit-card__meter-bar${
+                              customer.available_credit <= 0
+                                ? " is-exceeded"
+                                : creditPct <= 25
+                                ? " is-low"
+                                : ""
+                            }`}
+                            style={{ width: `${creditPct}%` }}
+                          />
+                        </div>
+
+                        <div className="trans-chap-customer-credit-card__stats">
+                          <div className="trans-chap-customer-credit-card__stat">
+                            <span>Available</span>
+                            <strong className="is-avail">
+                              {formatKsh(customer.available_credit)}
+                            </strong>
+                          </div>
+                          <div className="trans-chap-customer-credit-card__stat">
+                            <span>Limit</span>
+                            <strong>{formatKsh(customer.credit_limit)}</strong>
+                          </div>
+                          <div className="trans-chap-customer-credit-card__stat">
+                            <span>Owes</span>
+                            <strong className={owes ? "is-debt" : "is-clear"}>
+                              {formatKsh(customer.outstanding_balance)}
+                            </strong>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="trans-chap-customer-cash-card">
+                        <i className="fa-solid fa-money-bill-wave" aria-hidden />
+                        <div>
+                          <strong>Walk-in Customer</strong>
+                          <p>No credit tab limit configured for this customer.</p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="trans-chap-customer-contact">
+                      <div className="trans-chap-customer-contact__item">
+                        <span className="trans-chap-customer-contact__label">Contact</span>
+                        <div className="trans-chap-customer-contact__val">
+                          <a
+                            href={`tel:${customer.phone}`}
+                            className="trans-chap-customer-contact__link"
+                            title="Call customer"
+                          >
+                            <i className="fa-solid fa-phone" aria-hidden />
+                            <span>{customer.phone}</span>
+                          </a>
+                          {cleanPhone ? (
+                            <a
+                              href={`https://wa.me/${cleanPhone}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="trans-chap-customer-contact__icon-btn"
+                              title="Chat on WhatsApp"
+                            >
+                              <i className="fa-brands fa-whatsapp" aria-hidden />
+                            </a>
+                          ) : null}
                           <button
                             type="button"
-                            className="trans-chap-btn trans-chap-btn--ghost"
+                            className="trans-chap-customer-contact__icon-btn"
+                            title="Copy phone number"
                             onClick={() => {
-                              void navigator.clipboard.writeText(customer.pay_bill_url!);
-                              void toastSuccess("Pay link copied!");
+                              void navigator.clipboard.writeText(customer.phone);
+                              void toastSuccess("Phone copied!");
                             }}
                           >
                             <i className="fa-solid fa-copy" aria-hidden />
-                            <span>Copy Pay Link</span>
                           </button>
-                        ) : null}
+                        </div>
                       </div>
-                    ) : null}
 
-                    {customer.outstanding_balance > 0 ? (
-                      <Link href="/trans-chap/credit" className="trans-chap-form__secondary">
-                        Collect via STK Push
-                      </Link>
-                    ) : (
-                      <button
-                        type="button"
-                        className="trans-chap-form__secondary"
-                        disabled={removingId === customer.id}
-                        onClick={() => void removeCustomer(customer)}
+                      {customer.physical_location || customer.address ? (
+                        <div className="trans-chap-customer-contact__item">
+                          <span className="trans-chap-customer-contact__label">Location</span>
+                          <div className="trans-chap-customer-contact__val">
+                            <i className="fa-solid fa-location-dot" aria-hidden />
+                            <span>{customer.physical_location || customer.address}</span>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {customer.date_to_pay ? (
+                        <div className="trans-chap-customer-contact__item">
+                          <span className="trans-chap-customer-contact__label">Date to pay</span>
+                          <div className="trans-chap-customer-contact__val">
+                            <i className="fa-regular fa-calendar-check" aria-hidden />
+                            <span>{customer.date_to_pay}</span>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {customer.notes ? (
+                        <div className="trans-chap-customer-contact__notes">
+                          <span className="trans-chap-customer-contact__label">Notes</span>
+                          <p>{customer.notes}</p>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="trans-chap-credit__actions" style={{ marginBottom: "0.85rem" }}>
+                      <Link
+                        href={`/trans-chap/pos?customer=${customer.id}`}
+                        className="trans-chap-btn trans-chap-btn--primary"
                       >
-                        {removingId === customer.id ? "Removing…" : "Remove customer"}
-                      </button>
-                    )}
+                        <i className="fa-solid fa-cart-shopping" aria-hidden />
+                        <span>Start POS Sale</span>
+                      </Link>
+
+                      {owes && waUrl ? (
+                        <button
+                          type="button"
+                          className="trans-chap-btn trans-chap-btn--whatsapp"
+                          disabled={sendingWaId === customer.id}
+                          onClick={() => void handleSendWhatsAppReminder(customer)}
+                        >
+                          <i className="fa-brands fa-whatsapp" aria-hidden />
+                          <span>
+                            {sendingWaId === customer.id
+                              ? "Sending via OpenWA…"
+                              : "Send WhatsApp Reminder"}
+                          </span>
+                        </button>
+                      ) : null}
+
+                      {owes && customer.pay_bill_url ? (
+                        <button
+                          type="button"
+                          className="trans-chap-btn trans-chap-btn--ghost"
+                          onClick={() => {
+                            void navigator.clipboard.writeText(customer.pay_bill_url!);
+                            void toastSuccess("Pay link copied!");
+                          }}
+                        >
+                          <i className="fa-solid fa-copy" aria-hidden />
+                          <span>Copy Pay Link</span>
+                        </button>
+                      ) : null}
+
+                      {owes ? (
+                        <Link href="/trans-chap/credit" className="trans-chap-form__secondary">
+                          Collect via STK Push
+                        </Link>
+                      ) : (
+                        <button
+                          type="button"
+                          className="trans-chap-form__secondary"
+                          disabled={removingId === customer.id}
+                          onClick={() => void removeCustomer(customer)}
+                        >
+                          {removingId === customer.id ? "Removing…" : "Remove customer"}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </TransChapPanel>
               </MotionItem>

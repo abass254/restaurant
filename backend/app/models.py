@@ -5,12 +5,13 @@ import hashlib
 import hmac
 import json
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -447,6 +448,8 @@ class ShopCustomer(Base):
     phone: Mapped[str] = mapped_column(String(32))
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    physical_location: Mapped[str | None] = mapped_column(Text, nullable=True)
+    date_to_pay: Mapped[date | None] = mapped_column(Date, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     credit_limit: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
     outstanding_balance: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
@@ -1027,6 +1030,7 @@ class Order(Base):
 
     delivery_address: Mapped[str | None] = mapped_column(Text, nullable=True)
     delivery_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    table_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
     pickup_address: Mapped[str | None] = mapped_column(Text, nullable=True)
     pickup_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     pickup_lng: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -1216,6 +1220,7 @@ class OrderItem(Base):
     sell_unit: Mapped[str | None] = mapped_column(String(64), nullable=True)
     unit_factor: Mapped[int] = mapped_column(Integer, default=1)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    modifiers: Mapped[Any | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

@@ -219,6 +219,33 @@ app.post("/send", requireAuth, async (req, res) => {
   }
 });
 
+app.post("/check-number", requireAuth, async (req, res) => {
+  if (!client) {
+    return res.status(503).json({
+      ok: false,
+      error: lastQr
+        ? "WhatsApp session waiting for QR scan."
+        : "WhatsApp agent is not connected.",
+    });
+  }
+  const chatId = toChatId(req.body?.phone || req.body?.to);
+  if (!chatId) {
+    return res.status(422).json({ ok: false, error: "A valid phone number is required." });
+  }
+  try {
+    const registered = await client.isRegisteredUser(chatId);
+    return res.json({
+      ok: true,
+      registered: Boolean(registered),
+      jid: registered ? chatId : null,
+    });
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    console.warn("[whatsapp-agent] check-number failed:", error);
+    return res.status(502).json({ ok: false, error });
+  }
+});
+
 app.post("/logout", requireAuth, async (_req, res) => {
   try {
     if (client) {

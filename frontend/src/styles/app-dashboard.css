@@ -3849,43 +3849,688 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
   display: none;
 }
 
-.fb-app .customers-name {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  min-width: 0;
+/* ── Customer page: modern card-based design ── */
+
+/* Container padding for customer & supplier panels */
+.fb-app .customer-panel,
+.fb-app .inventory-panel:has(.customer-card-list) {
+  padding: 24px;
+  gap: 20px;
 }
 
-.fb-app .customers-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
+.fb-app .customer-panel .inventory-header,
+.fb-app .inventory-panel:has(.customer-card-list) .inventory-header {
+  padding: 0;
+}
+
+.fb-app .customer-panel > .app-error,
+.fb-app .inventory-panel:has(.customer-card-list) > .app-error {
+  margin: 0;
+}
+
+.fb-app .customer-panel .customer-stats-row,
+.fb-app .inventory-panel:has(.customer-card-list) .customer-stats-row {
+  margin: 0;
+}
+
+.fb-app .customer-panel .customer-search-toolbar,
+.fb-app .inventory-panel:has(.customer-card-list) .customer-search-toolbar {
+  margin: 0;
+}
+
+/* Stats row */
+.fb-app .customer-stats-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin: 0 0 20px;
+  padding: 0;
+}
+
+.fb-app .customer-stat-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px 18px 16px;
+  border-radius: 14px;
+  background: var(--app-surface, var(--color-surface, #fff));
+  border: 1px solid var(--app-border-light, var(--color-border, #e8e2d8));
+  overflow: hidden;
+  transition: transform 0.2s var(--ease-out, ease), box-shadow 0.2s var(--ease-out, ease);
+}
+
+.fb-app .customer-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(26, 16, 12, 0.08);
+}
+
+.fb-app .customer-stat-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: linear-gradient(135deg, var(--brown-300, #c4926e) 0%, var(--brown-100, #edd9c4) 50%, var(--cream-200, #e8e2d8) 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.fb-app .customer-stat-card:hover::before {
+  opacity: 1;
+}
+
+.fb-app .customer-stat-card__icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  font-size: 0.6875rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: var(--app-primary, #6b2e14);
-  background: color-mix(in srgb, var(--app-primary, #6b2e14) 12%, transparent);
+  font-size: 1rem;
+  color: var(--app-primary, var(--color-primary, #6b2e14));
+  background: color-mix(in srgb, var(--app-primary, var(--color-primary, #6b2e14)) 10%, transparent);
 }
 
-.fb-app .customers-table .customers-col-money {
-  text-align: right;
-  white-space: nowrap;
+.fb-app .customer-stat-card__icon--success {
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.1);
+}
+
+.fb-app .customer-stat-card__icon--warning {
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.1);
+}
+
+.fb-app .customer-stat-card__icon--info {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.fb-app .customer-stat-card__body {
+  min-width: 0;
+}
+
+.fb-app .customer-stat-card__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  margin: 0 0 4px;
+}
+
+.fb-app .customer-stat-card__value {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--app-text, var(--color-text, #1a100c));
+  line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
 
-.fb-app .customers-table .customers-col-actions {
-  text-align: right;
+/* Customer card list */
+.fb-app .customer-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.fb-app .customers-table .customers-col-actions .settings-actions {
-  justify-content: flex-end;
+.fb-app .customer-card {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: var(--app-surface, var(--color-surface, #fff));
+  border: 1px solid var(--app-border-light, var(--color-border, #e8e2d8));
+  transition: transform 0.18s var(--ease-out, ease), box-shadow 0.18s var(--ease-out, ease), border-color 0.18s ease;
+  animation: customerCardIn 0.35s var(--ease-out, ease) both;
+}
+
+@keyframes customerCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fb-app .customer-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(26, 16, 12, 0.06);
+  border-color: var(--brown-200, #ddb896);
+}
+
+/* Customer card: identity block */
+.fb-app .customer-card__identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.fb-app .customer-card__avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--app-primary, var(--color-primary, #6b2e14));
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--app-primary, var(--color-primary, #6b2e14)) 12%, transparent),
+    color-mix(in srgb, var(--app-primary, var(--color-primary, #6b2e14)) 6%, transparent)
+  );
+}
+
+.fb-app .customer-card__info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fb-app .customer-card__name {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--app-text, var(--color-text, #1a100c));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fb-app .customer-card__phone-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+}
+
+.fb-app .customer-card__email {
+  font-size: 0.75rem;
+  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fb-app .customer-card__address {
+  font-size: 0.75rem;
+  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  opacity: 0.6;
+}
+
+/* Credit block */
+.fb-app .customer-card__credit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 140px;
+}
+
+.fb-app .customer-card__credit-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+}
+
+.fb-app .customer-card__credit-amounts {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fb-app .customer-card__credit-limit {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--app-text, var(--color-text, #1a100c));
+}
+
+.fb-app .customer-card__credit-available {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.fb-app .customer-card__credit-available--ok {
+  color: #16a34a;
+}
+
+.fb-app .customer-card__credit-available--warn {
+  color: #d97706;
+}
+
+.fb-app .customer-card__credit-available--off {
+  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  opacity: 0.6;
+}
+
+/* Credit progress bar */
+.fb-app .customer-card__credit-bar {
+  width: 100%;
+  max-width: 140px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--app-border-light, var(--color-border, #e8e2d8));
+  overflow: hidden;
+}
+
+.fb-app .customer-card__credit-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s var(--ease-out, ease);
+}
+
+.fb-app .customer-card__credit-fill--ok {
+  background: linear-gradient(90deg, #16a34a, #22c55e);
+}
+
+.fb-app .customer-card__credit-fill--warn {
+  background: linear-gradient(90deg, #d97706, #f59e0b);
+}
+
+.fb-app .customer-card__credit-fill--danger {
+  background: linear-gradient(90deg, #dc2626, #ef4444);
+}
+
+/* Card actions */
+.fb-app .customer-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fb-app .customer-card__action-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.fb-app .customer-card__action-btn:hover {
+  background: var(--app-surface-hover, var(--color-surface-hover, #f3efe8));
+  color: var(--app-text, var(--color-text, #1a100c));
+  transform: scale(1.08);
+}
+
+.fb-app .customer-card__action-btn--danger:hover {
+  background: rgba(185, 28, 28, 0.08);
+  color: #b91c1c;
+}
+
+.fb-app .customer-card__action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* WhatsApp verification */
+.fb-app .wa-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.fb-app .wa-badge--verified {
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.1);
+}
+
+.fb-app .wa-badge--unverified {
+  color: #9ca3af;
+  background: rgba(156, 163, 175, 0.1);
+}
+
+.fb-app .wa-badge i {
+  font-size: 0.625rem;
+}
+
+.fb-app .wa-verify-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fb-app .wa-verify-row > .settings-field {
+  flex: 1;
+}
+
+.fb-app .wa-verify-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 10px;
+  border: 1px solid #25d366;
+  background: rgba(37, 211, 102, 0.08);
+  color: #128c7e;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  align-self: flex-end;
+  margin-bottom: 1px;
+  flex-shrink: 0;
+  height: 38px;
+}
+
+.fb-app .wa-verify-btn:hover:not(:disabled) {
+  background: rgba(37, 211, 102, 0.15);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 12px rgba(37, 211, 102, 0.2);
+}
+
+.fb-app .wa-verify-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fb-app .wa-verify-btn i {
+  font-size: 0.9rem;
+}
+
+.fb-app .wa-verify-result {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 6px 0;
+  animation: waVerifyFade 0.3s ease;
+}
+
+@keyframes waVerifyFade {
+  from { opacity: 0; transform: translateX(-4px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.fb-app .wa-verify-result--verified {
+  color: #16a34a;
+}
+
+.fb-app .wa-verify-result--unverified {
+  color: #d97706;
+}
+
+.fb-app .wa-verify-result i {
+  font-size: 0.75rem;
+}
+
+.fb-app .phone-checker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.78125rem;
+  padding: 4px 8px;
+  border-radius: 8px;
+  margin-top: -4px;
+  margin-bottom: 4px;
+  transition: all 0.2s ease;
+}
+
+.fb-app .phone-checker-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 550;
+}
+
+.fb-app .phone-checker-row--valid {
+  background: rgba(22, 163, 74, 0.08);
+  color: #16a34a;
+}
+
+.fb-app .phone-checker-row--invalid {
+  background: rgba(220, 38, 38, 0.08);
+  color: #dc2626;
+}
+
+.fb-app .phone-checker-row--incomplete {
+  background: rgba(217, 119, 6, 0.08);
+  color: #b45309;
+}
+
+.fb-app .phone-checker-row--idle {
+  background: rgba(0, 0, 0, 0.03);
+  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+}
+
+.fb-app .phone-carrier-tag {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.fb-app .customer-card__due-date {
+  font-size: 0.75rem;
+  color: #b45309;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+  font-weight: 500;
+}
+
+/* Improved search bar */
+.fb-app .customer-search-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 16px;
+}
+
+.fb-app .customer-search-input {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: var(--app-surface, var(--color-surface, #fff));
+  border: 1px solid var(--app-border-light, var(--color-border, #e8e2d8));
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.fb-app .customer-search-input:focus-within {
+  border-color: var(--app-primary, var(--color-primary, #6b2e14));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-primary, var(--color-primary, #6b2e14)) 10%, transparent);
+}
+
+.fb-app .customer-search-input i {
+  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  opacity: 0.6;
+  font-size: 0.875rem;
+}
+
+.fb-app .customer-search-input input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 0.9375rem;
+  color: var(--app-text, var(--color-text, #1a100c));
+  font-family: inherit;
+}
+
+.fb-app .customer-search-input input::placeholder {
+  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  opacity: 0.5;
+}
+
+.fb-app .customer-search-count {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  white-space: nowrap;
+}
+
+/* Empty state */
+.fb-app .customer-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 48px 24px;
+  border-radius: 16px;
+  background: var(--app-surface, var(--color-surface, #fff));
+  border: 2px dashed var(--app-border-light, var(--color-border, #e8e2d8));
+  animation: customerCardIn 0.4s var(--ease-out, ease) both;
+}
+
+.fb-app .customer-empty-state__icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  font-size: 1.5rem;
+  color: var(--app-primary, var(--color-primary, #6b2e14));
+  background: color-mix(in srgb, var(--app-primary, var(--color-primary, #6b2e14)) 10%, transparent);
+  margin-bottom: 16px;
+}
+
+.fb-app .customer-empty-state h2 {
+  font-size: 1.1rem;
+  font-weight: 750;
+  color: var(--app-text, var(--color-text, #1a100c));
+  margin: 0 0 6px;
+}
+
+.fb-app .customer-empty-state p {
+  font-size: 0.875rem;
+  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  margin: 0 0 18px;
+  max-width: 320px;
 }
 
 @media (max-width: 720px) {
-  .fb-app .customers-col-hide-sm {
+  .fb-app .customer-panel,
+  .fb-app .inventory-panel:has(.customer-card-list) {
+    padding: 16px 14px 24px;
+    gap: 14px;
+  }
+
+  .fb-app .customer-stats-row {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .fb-app .customer-stat-card {
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .fb-app .customer-stat-card__icon {
+    width: 36px;
+    height: 36px;
+    font-size: 0.875rem;
+    border-radius: 10px;
+  }
+
+  .fb-app .customer-stat-card__value {
+    font-size: 1.1rem;
+  }
+
+  .fb-app .customer-card {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .fb-app .customer-card__credit {
+    align-items: flex-start;
+    flex-direction: row;
+    justify-content: space-between;
+    min-width: 0;
+  }
+
+  .fb-app .customer-card__credit-bar {
+    display: none;
+  }
+
+  .fb-app .customer-card__actions {
+    justify-content: flex-end;
+    padding-top: 4px;
+    border-top: 1px solid var(--app-border-light, var(--color-border, #e8e2d8));
+  }
+
+  .fb-app .customer-card__email {
+    display: none;
+  }
+}
+
+/* ── Supplier card overrides ── */
+
+.fb-app .supplier-card__avatar {
+  color: #0d7377;
+  background: linear-gradient(135deg,
+    rgba(13, 115, 119, 0.12),
+    rgba(13, 115, 119, 0.06)
+  );
+}
+
+.fb-app .supplier-card__meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  align-items: baseline;
+  min-width: 120px;
+}
+
+.fb-app .supplier-card__meta-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+}
+
+.fb-app .supplier-card__meta-value {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--app-text, var(--color-text, #1a100c));
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .fb-app .supplier-card__meta {
     display: none;
   }
 }

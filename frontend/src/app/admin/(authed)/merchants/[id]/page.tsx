@@ -49,6 +49,15 @@ function formatDate(value: string | null): string {
   return formatted || value;
 }
 
+function getUserInitials(name?: string | null): string {
+  if (!name) return "U";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+  return parts[0].slice(0, 2).toUpperCase();
+}
+
 function userRoleLabel(user: AdminUser): string {
   if (user.user_role === "system_admin") return "Owner";
   if (user.user_role === "staff") return "Staff";
@@ -85,6 +94,10 @@ export default function AdminMerchantDetailPage() {
   const [merchant, setMerchant] = useState<AdminMerchantDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState(false);
+  const [userFilter, setUserFilter] = useState("");
+  const [showPasswordInEditor, setShowPasswordInEditor] = useState(false);
+  const [showPasswordInInvite, setShowPasswordInInvite] = useState(false);
   const [passwordEditUserId, setPasswordEditUserId] = useState<string | null>(
     null,
   );
@@ -214,6 +227,35 @@ export default function AdminMerchantDetailPage() {
     profileName,
     profileStoreType,
   ]);
+
+  const copyMerchantId = () => {
+    if (!merchant?.id) return;
+    void navigator.clipboard.writeText(merchant.id);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2000);
+  };
+
+  const ownerCount = useMemo(() => {
+    return (merchant?.users ?? []).filter((u) => u.user_role === "system_admin")
+      .length;
+  }, [merchant?.users]);
+
+  const staffCount = useMemo(() => {
+    return (merchant?.users ?? []).filter((u) => u.user_role !== "system_admin")
+      .length;
+  }, [merchant?.users]);
+
+  const filteredUsers = useMemo(() => {
+    if (!merchant?.users) return [];
+    const query = userFilter.trim().toLowerCase();
+    if (!query) return merchant.users;
+    return merchant.users.filter(
+      (u) =>
+        u.name?.toLowerCase().includes(query) ||
+        u.email?.toLowerCase().includes(query) ||
+        u.username?.toLowerCase().includes(query),
+    );
+  }, [merchant?.users, userFilter]);
 
   function chooseStoreType(next: StoreType) {
     setProfileStoreType(next);
@@ -483,11 +525,70 @@ export default function AdminMerchantDetailPage() {
 
   return (
     <section className="admin-page">
-      <nav className="admin-breadcrumbs" aria-label="Breadcrumb">
-        <Link href="/admin/merchants">
-          <i className="fas fa-arrow-left" aria-hidden="true" /> Merchants
-        </Link>
-      </nav>
+      <div className="admin-breadcrumbs-wrap">
+        <nav className="admin-breadcrumbs" aria-label="Breadcrumb">
+          <Link href="/admin/merchants">
+            <i className="fas fa-arrow-left" aria-hidden="true" />
+            <span>Merchants</span>
+          </Link>
+          {merchant ? (
+            <>
+              <span className="admin-breadcrumbs__sep">/</span>
+              <span
+                className="admin-breadcrumbs__current"
+                title={merchant.business_name}
+              >
+                {merchant.business_name}
+              </span>
+            </>
+          ) : null}
+        </nav>
+
+        {merchant ? (
+          <div className="admin-breadcrumbs__actions">
+            <button
+              type="button"
+              className={`admin-merchant-header__copy-id${
+                copiedId ? " is-copied" : ""
+              }`}
+              onClick={copyMerchantId}
+              title="Copy merchant ID"
+            >
+              <i
+                className={`fas ${copiedId ? "fa-check" : "fa-copy"}`}
+                aria-hidden="true"
+              />
+              <span>{copiedId ? "Copied ID!" : merchant.id.slice(0, 8)}</span>
+            </button>
+            <a
+              href={`/m/${merchant.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="admin-breadcrumbs a"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.4rem",
+                padding: "0.32rem 0.75rem",
+                borderRadius: "8px",
+                fontSize: "0.82rem",
+                fontWeight: 600,
+                textDecoration: "none",
+                background: "var(--color-surface, #fff)",
+                border: "1px solid var(--color-border, #e8e2d8)",
+                color: "var(--color-primary, #6b2e14)",
+              }}
+              title="Open public merchant storefront in a new tab"
+            >
+              <i
+                className="fas fa-arrow-up-right-from-square"
+                aria-hidden="true"
+              />
+              <span>Storefront</span>
+            </a>
+          </div>
+        ) : null}
+      </div>
 
       {loading ? (
         <MerchantDetailSkeleton />
@@ -502,68 +603,107 @@ export default function AdminMerchantDetailPage() {
       ) : (
         <MotionFade>
           <header className="admin-merchant-header">
-            <span
-              className="admin-merchant-header__avatar"
-              aria-hidden="true"
-            >
-              {merchant.logo_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={resolveAssetUrl(merchant.logo_url) || ""}
-                  alt=""
-                  className="admin-merchant-header__logo"
-                />
-              ) : (
-                <i className="fas fa-store" />
-              )}
-            </span>
-            <div className="admin-merchant-header__body">
-              <div className="admin-merchant-header__title-row">
-                <h1>{merchant.business_name}</h1>
-                <span className="admin-pill admin-pill--neutral">
+            <div className="admin-merchant-header__avatar-wrap">
+              <span
+                className="admin-merchant-header__avatar"
+                aria-hidden="true"
+              >
+                {merchant.logo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={resolveAssetUrl(merchant.logo_url) || ""}
+                    alt=""
+                    className="admin-merchant-header__logo"
+                  />
+                ) : (
                   <i
                     className={`fas ${
                       parseStoreType(merchant.store_type) === "restaurant"
                         ? "fa-utensils"
                         : "fa-store"
                     }`}
+                  />
+                )}
+              </span>
+            </div>
+            <div className="admin-merchant-header__body">
+              <div className="admin-merchant-header__title-row">
+                <div className="admin-merchant-header__title-group">
+                  <h1>{merchant.business_name}</h1>
+                  <span className="admin-pill admin-pill--neutral">
+                    <i
+                      className={`fas ${
+                        parseStoreType(merchant.store_type) === "restaurant"
+                          ? "fa-utensils"
+                          : "fa-store"
+                      }`}
+                      aria-hidden="true"
+                    />
+                    {storeTypeLabel(merchant.store_type)}
+                  </span>
+                  <span className="admin-pill admin-pill--success">
+                    <i className="fas fa-circle-check" aria-hidden="true" />
+                    Active
+                  </span>
+                </div>
+              </div>
+
+              <div className="admin-merchant-header__sub">
+                <span>
+                  <i className="fas fa-tag" aria-hidden="true" />{" "}
+                  {merchant.business_category || "Category not set"}
+                </span>
+                {merchant.business_location ? (
+                  <>
+                    <span>•</span>
+                    <span>
+                      <i className="fas fa-location-dot" aria-hidden="true" />{" "}
+                      {merchant.business_location}
+                    </span>
+                  </>
+                ) : null}
+              </div>
+
+              <div className="admin-merchant-header__meta">
+                <button
+                  type="button"
+                  className={`admin-merchant-header__copy-id${
+                    copiedId ? " is-copied" : ""
+                  }`}
+                  onClick={copyMerchantId}
+                  title="Click to copy full ID"
+                >
+                  <i
+                    className={`fas ${copiedId ? "fa-check" : "fa-hashtag"}`}
                     aria-hidden="true"
                   />
-                  {storeTypeLabel(merchant.store_type)}
-                </span>
-              </div>
-              <p>
-                {merchant.business_category || "Category not set"}
-                {merchant.business_location
-                  ? ` · ${merchant.business_location}`
-                  : ""}
-              </p>
-              <div className="admin-merchant-header__meta">
-                <span>
-                  <i className="fas fa-hashtag" aria-hidden="true" />{" "}
-                  <code>{merchant.id}</code>
-                </span>
-                <span>
-                  <i className="fas fa-calendar-plus" aria-hidden="true" />{" "}
+                  <code>{copiedId ? "Copied to clipboard!" : merchant.id}</code>
+                </button>
+                <span className="admin-merchant-header__badge-pill">
+                  <i className="fas fa-calendar-plus" aria-hidden="true" />
                   Joined {formatDate(merchant.created_at)}
                 </span>
-                <span>
-                  <i className="fas fa-users" aria-hidden="true" />{" "}
-                  {merchant.users.length} user
-                  {merchant.users.length === 1 ? "" : "s"}
+                <span className="admin-merchant-header__badge-pill">
+                  <i className="fas fa-users" aria-hidden="true" />
+                  {merchant.users.length}{" "}
+                  {merchant.users.length === 1 ? "member" : "members"}
                 </span>
                 {merchant.instagram_connected ? (
-                  <span className="admin-pill admin-pill--success">
+                  <span className="admin-channel-badge admin-channel-badge--instagram">
                     <i className="fab fa-instagram" aria-hidden="true" />
                     {merchant.instagram_username
                       ? `@${merchant.instagram_username}`
-                      : "Instagram connected"}
+                      : "Instagram"}
                   </span>
-                ) : (
-                  <span className="admin-pill admin-pill--muted">
-                    Instagram not connected
+                ) : null}
+                {(merchant.connected_channels ?? []).some(
+                  (c) => c.platform === "whatsapp",
+                ) ? (
+                  <span className="admin-channel-badge admin-channel-badge--whatsapp">
+                    <i className="fab fa-whatsapp" aria-hidden="true" />
+                    WhatsApp
                   </span>
-                )}
+                ) : null}
               </div>
             </div>
           </header>
@@ -572,58 +712,168 @@ export default function AdminMerchantDetailPage() {
             <header className="admin-section__head">
               <h2 className="admin-section__title">Merchant overview</h2>
               <span className="admin-chip">
-                <i className="fas fa-id-card" aria-hidden="true" />
-                Profile
+                <i className="fas fa-chart-pie" aria-hidden="true" />
+                Snapshot
               </span>
             </header>
 
             <dl className="admin-merchant-facts">
               <div className="admin-merchant-facts__item">
-                <dt>Store type</dt>
-                <dd>{storeTypeLabel(merchant.store_type)}</dd>
-              </div>
-              <div className="admin-merchant-facts__item">
-                <dt>What they sell</dt>
-                <dd>{merchant.business_category || "—"}</dd>
-              </div>
-              <div className="admin-merchant-facts__item">
-                <dt>Location</dt>
-                <dd>{merchant.business_location || "—"}</dd>
-              </div>
-              <div className="admin-merchant-facts__item">
-                <dt>Coordinates</dt>
+                <div className="admin-merchant-facts__top">
+                  <dt>Store type</dt>
+                  <span
+                    className="admin-merchant-facts__icon"
+                    aria-hidden="true"
+                  >
+                    <i
+                      className={`fas ${
+                        parseStoreType(merchant.store_type) === "restaurant"
+                          ? "fa-utensils"
+                          : "fa-store"
+                      }`}
+                    />
+                  </span>
+                </div>
                 <dd>
-                  {merchant.latitude != null && merchant.longitude != null
-                    ? `${merchant.latitude.toFixed(5)}, ${merchant.longitude.toFixed(5)}`
-                    : "Not set"}
+                  {storeTypeLabel(merchant.store_type)}
+                  <span className="admin-merchant-facts__sub">
+                    {parseStoreType(merchant.store_type) === "restaurant"
+                      ? "Food & Beverage service"
+                      : "Retail commerce catalog"}
+                  </span>
                 </dd>
               </div>
+
               <div className="admin-merchant-facts__item">
-                <dt>Team</dt>
+                <div className="admin-merchant-facts__top">
+                  <dt>What they sell</dt>
+                  <span
+                    className="admin-merchant-facts__icon"
+                    aria-hidden="true"
+                  >
+                    <i className="fas fa-tags" />
+                  </span>
+                </div>
                 <dd>
-                  {merchant.users.length} registered user
-                  {merchant.users.length === 1 ? "" : "s"}
+                  {merchant.business_category || "—"}
+                  <span className="admin-merchant-facts__sub">
+                    Primary business category
+                  </span>
                 </dd>
               </div>
+
               <div className="admin-merchant-facts__item">
-                <dt>Last updated</dt>
-                <dd>{formatDate(merchant.updated_at)}</dd>
+                <div className="admin-merchant-facts__top">
+                  <dt>Location</dt>
+                  <span
+                    className="admin-merchant-facts__icon"
+                    aria-hidden="true"
+                  >
+                    <i className="fas fa-location-dot" />
+                  </span>
+                </div>
+                <dd>
+                  {merchant.business_location || "Not specified"}
+                  <span className="admin-merchant-facts__sub">
+                    Physical operating area
+                  </span>
+                </dd>
+              </div>
+
+              <div className="admin-merchant-facts__item">
+                <div className="admin-merchant-facts__top">
+                  <dt>Coordinates</dt>
+                  <span
+                    className="admin-merchant-facts__icon"
+                    aria-hidden="true"
+                  >
+                    <i className="fas fa-compass" />
+                  </span>
+                </div>
+                <dd>
+                  {merchant.latitude != null && merchant.longitude != null ? (
+                    <>
+                      <span>
+                        {merchant.latitude.toFixed(5)},{" "}
+                        {merchant.longitude.toFixed(5)}
+                      </span>
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${merchant.latitude},${merchant.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="admin-merchant-facts__link"
+                      >
+                        <i className="fas fa-map" aria-hidden="true" />
+                        <span>View on Google Maps</span>
+                      </a>
+                    </>
+                  ) : (
+                    <>
+                      <span>Not set</span>
+                      <span className="admin-merchant-facts__sub">
+                        No GPS coordinates mapped
+                      </span>
+                    </>
+                  )}
+                </dd>
+              </div>
+
+              <div className="admin-merchant-facts__item">
+                <div className="admin-merchant-facts__top">
+                  <dt>Team size</dt>
+                  <span
+                    className="admin-merchant-facts__icon"
+                    aria-hidden="true"
+                  >
+                    <i className="fas fa-users" />
+                  </span>
+                </div>
+                <dd>
+                  {merchant.users.length} registered{" "}
+                  {merchant.users.length === 1 ? "user" : "users"}
+                  <span className="admin-merchant-facts__sub">
+                    {ownerCount} {ownerCount === 1 ? "owner" : "owners"},{" "}
+                    {staffCount} {staffCount === 1 ? "staff" : "staff"}
+                  </span>
+                </dd>
+              </div>
+
+              <div className="admin-merchant-facts__item">
+                <div className="admin-merchant-facts__top">
+                  <dt>Last updated</dt>
+                  <span
+                    className="admin-merchant-facts__icon"
+                    aria-hidden="true"
+                  >
+                    <i className="fas fa-clock-rotate-left" />
+                  </span>
+                </div>
+                <dd>
+                  {formatDate(merchant.updated_at)}
+                  <span className="admin-merchant-facts__sub">
+                    Nairobi local time
+                  </span>
+                </dd>
               </div>
             </dl>
           </section>
 
           <section className="admin-section">
             <header className="admin-section__head">
-              <h2 className="admin-section__title">Merchant type</h2>
+              <div>
+                <h2 className="admin-section__title">Store configuration</h2>
+                <p
+                  className="admin-section__lead"
+                  style={{ margin: "0.25rem 0 0" }}
+                >
+                  Set store operational model, product category, and business details.
+                </p>
+              </div>
               <span className="admin-chip">
-                <i className="fas fa-tags" aria-hidden="true" />
-                What they sell
+                <i className="fas fa-sliders" aria-hidden="true" />
+                Settings
               </span>
             </header>
-            <p className="admin-section__lead">
-              Choose how this shop operates, then pick the category that best
-              matches what they sell.
-            </p>
 
             <form
               className="admin-merchant-type"
@@ -659,6 +909,14 @@ export default function AdminMerchantDetailPage() {
                           <strong>{option.label}</strong>
                           <span>{option.description}</span>
                         </span>
+                        {selected ? (
+                          <span
+                            className="admin-merchant-type__card-check"
+                            aria-hidden="true"
+                          >
+                            <i className="fas fa-check" />
+                          </span>
+                        ) : null}
                       </button>
                     );
                   })}
@@ -689,7 +947,14 @@ export default function AdminMerchantDetailPage() {
                           setProfileSuccess(null);
                         }}
                       >
-                        {option}
+                        {selected ? (
+                          <i
+                            className="fas fa-check"
+                            aria-hidden="true"
+                            style={{ fontSize: "0.75rem" }}
+                          />
+                        ) : null}
+                        <span>{option}</span>
                       </button>
                     );
                   })}
@@ -697,40 +962,85 @@ export default function AdminMerchantDetailPage() {
               </div>
 
               <div className="admin-merchant-type__fields">
-                <label className="admin-field-label" htmlFor="merchant-name">
-                  Business name
-                </label>
-                <input
-                  id="merchant-name"
-                  className="admin-inline-editor__input"
-                  value={profileName}
-                  onChange={(e) => {
-                    setProfileName(e.target.value);
-                    setProfileError(null);
-                    setProfileSuccess(null);
-                  }}
-                  required
-                  maxLength={255}
-                />
-                <label
-                  className="admin-field-label"
-                  htmlFor="merchant-location"
-                >
-                  Location
-                </label>
-                <input
-                  id="merchant-location"
-                  className="admin-inline-editor__input"
-                  value={profileLocation}
-                  onChange={(e) => {
-                    setProfileLocation(e.target.value);
-                    setProfileError(null);
-                    setProfileSuccess(null);
-                  }}
-                  maxLength={255}
-                  placeholder="City, area, or address"
-                />
+                <div className="admin-merchant-type__input-group">
+                  <label className="admin-field-label" htmlFor="merchant-name">
+                    Business name <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <div className="admin-merchant-type__input-wrap">
+                    <i className="fas fa-store" aria-hidden="true" />
+                    <input
+                      id="merchant-name"
+                      value={profileName}
+                      onChange={(e) => {
+                        setProfileName(e.target.value);
+                        setProfileError(null);
+                        setProfileSuccess(null);
+                      }}
+                      required
+                      maxLength={255}
+                      placeholder="e.g. Acme Coffee & Retail"
+                    />
+                  </div>
+                </div>
+
+                <div className="admin-merchant-type__input-group">
+                  <label
+                    className="admin-field-label"
+                    htmlFor="merchant-location"
+                  >
+                    Operating location
+                  </label>
+                  <div className="admin-merchant-type__input-wrap">
+                    <i className="fas fa-location-dot" aria-hidden="true" />
+                    <input
+                      id="merchant-location"
+                      value={profileLocation}
+                      onChange={(e) => {
+                        setProfileLocation(e.target.value);
+                        setProfileError(null);
+                        setProfileSuccess(null);
+                      }}
+                      maxLength={255}
+                      placeholder="City, neighborhood, or street address"
+                    />
+                  </div>
+                </div>
               </div>
+
+              {profileDirty ? (
+                <div className="admin-unsaved-bar">
+                  <div className="admin-unsaved-bar__left">
+                    <span
+                      className="admin-unsaved-bar__dot"
+                      aria-hidden="true"
+                    />
+                    <span>
+                      You have unsaved changes to this merchant&apos;s
+                      configuration.
+                    </span>
+                  </div>
+                  <button
+                    type="submit"
+                    className="admin-btn admin-btn--primary"
+                    disabled={profileSaving}
+                  >
+                    {profileSaving ? (
+                      <>
+                        <i
+                          className="fas fa-spinner fa-spin"
+                          aria-hidden="true"
+                        />
+                        Saving…
+                      </>
+                    ) : (
+                      <>
+                        <i className="fas fa-floppy-disk" aria-hidden="true" />
+                        Save changes
+                      </>
+                    )}
+                  </button>
+                </div>
+              ) : null}
 
               {profileError ? (
                 <p className="admin-error" role="alert">
@@ -744,21 +1054,33 @@ export default function AdminMerchantDetailPage() {
                 </p>
               ) : null}
 
-              <div className="admin-merchant-type__actions">
-                <button
-                  type="submit"
-                  className="admin-btn admin-btn--primary"
-                  disabled={profileSaving || !profileDirty}
-                >
-                  {profileSaving ? "Saving…" : "Save merchant type"}
-                </button>
-              </div>
+              {!profileDirty && (
+                <div className="admin-merchant-type__actions">
+                  <button
+                    type="submit"
+                    className="admin-btn admin-btn--ghost"
+                    disabled={true}
+                    style={{ opacity: 0.6 }}
+                  >
+                    <i className="fas fa-check" aria-hidden="true" />
+                    Configuration saved
+                  </button>
+                </div>
+              )}
             </form>
           </section>
 
           <section className="admin-section">
             <header className="admin-section__head">
-              <h2 className="admin-section__title">Social channels</h2>
+              <div>
+                <h2 className="admin-section__title">Social channels</h2>
+                <p
+                  className="admin-section__lead"
+                  style={{ margin: "0.25rem 0 0" }}
+                >
+                  Connected messaging and social commerce channels for this shop.
+                </p>
+              </div>
               <span className="admin-chip">
                 <i className="fas fa-plug" aria-hidden="true" />
                 {merchant.connected_channels?.length ?? 0} connected
@@ -771,22 +1093,56 @@ export default function AdminMerchantDetailPage() {
                 <h3>No channels connected</h3>
                 <p>
                   This merchant has not linked Instagram, WhatsApp, or any other
-                  supported platform yet.
+                  supported platform yet. They can connect channels from their merchant settings.
                 </p>
               </div>
             ) : (
               <div className="admin-channel-list">
                 {(merchant.connected_channels ?? []).map((channel) => (
-                  <div key={channel.platform} className="admin-channel-row">
+                  <div
+                    key={channel.platform}
+                    className="admin-channel-row admin-channel-row--modern"
+                  >
                     <div className="admin-channel-row__main">
                       <span
                         className="admin-channel-row__icon"
                         aria-hidden="true"
+                        style={{
+                          background:
+                            channel.platform === "whatsapp"
+                              ? "#ecfdf5"
+                              : channel.platform === "instagram"
+                              ? "#fdf2f8"
+                              : "var(--color-bg-muted, #faf8f5)",
+                          color:
+                            channel.platform === "whatsapp"
+                              ? "#059669"
+                              : channel.platform === "instagram"
+                              ? "#db2777"
+                              : "inherit",
+                        }}
                       >
                         <i className={channel.icon} />
                       </span>
                       <div className="admin-channel-row__body">
-                        <strong>{channel.label}</strong>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                          }}
+                        >
+                          <strong>{channel.label}</strong>
+                          <span
+                            className={`admin-channel-badge admin-channel-badge--${
+                              channel.platform === "whatsapp"
+                                ? "whatsapp"
+                                : "instagram"
+                            }`}
+                          >
+                            Connected
+                          </span>
+                        </div>
                         <span>
                           {channel.username
                             ? `@${channel.username}`
@@ -803,6 +1159,7 @@ export default function AdminMerchantDetailPage() {
                         className="admin-btn admin-btn--ghost admin-btn--danger"
                         onClick={() => void detachChannel(channel)}
                         disabled={detachingPlatform === channel.platform}
+                        title={`Detach ${channel.label}`}
                       >
                         {detachingPlatform === channel.platform ? (
                           <>
@@ -846,14 +1203,37 @@ export default function AdminMerchantDetailPage() {
 
           <section className="admin-section">
             <header className="admin-section__head">
-              <h2 className="admin-section__title">
-                Users registered for this merchant
-              </h2>
-              <div className="admin-section__head-actions">
+              <div>
+                <h2 className="admin-section__title">
+                  Team & permissions
+                </h2>
+                <p
+                  className="admin-section__lead"
+                  style={{ margin: "0.25rem 0 0" }}
+                >
+                  Manage accounts with access to this store and configure their section permissions.
+                </p>
+              </div>
+              <div
+                className="admin-section__head-actions"
+                style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}
+              >
                 <span className="admin-chip">
                   <i className="fas fa-users" aria-hidden="true" />
-                  {merchant.users.length}
+                  {merchant.users.length}{" "}
+                  {merchant.users.length === 1 ? "user" : "users"}
                 </span>
+                {merchant.users.length > 2 && (
+                  <div className="admin-table__search-bar">
+                    <i className="fas fa-magnifying-glass" aria-hidden="true" />
+                    <input
+                      type="search"
+                      placeholder="Search users…"
+                      value={userFilter}
+                      onChange={(e) => setUserFilter(e.target.value)}
+                    />
+                  </div>
+                )}
                 <button
                   type="button"
                   className="admin-btn admin-btn--primary"
@@ -864,16 +1244,21 @@ export default function AdminMerchantDetailPage() {
                   }}
                 >
                   <i
-                    className={`fas ${showInviteForm ? "fa-xmark" : "fa-user-plus"}`}
+                    className={`fas ${
+                      showInviteForm ? "fa-xmark" : "fa-user-plus"
+                    }`}
                     aria-hidden="true"
                   />
-                  {showInviteForm ? "Cancel" : "Invite team member"}
+                  {showInviteForm ? "Cancel invite" : "Invite team member"}
                 </button>
               </div>
             </header>
 
             {inviteSuccess ? (
-              <p className="admin-pill admin-pill--success" style={{ marginBottom: "0.85rem" }}>
+              <p
+                className="admin-pill admin-pill--success"
+                style={{ marginBottom: "0.85rem" }}
+              >
                 <i className="fas fa-check" aria-hidden="true" />
                 {inviteSuccess}
               </p>
@@ -882,13 +1267,45 @@ export default function AdminMerchantDetailPage() {
             {showInviteForm ? (
               <form
                 className="admin-inline-editor admin-inline-editor--stacked"
-                style={{ marginBottom: "1rem" }}
+                style={{
+                  marginBottom: "1.25rem",
+                  border: "1.5px solid var(--color-border, #e8e2d8)",
+                  borderRadius: "16px",
+                  padding: "1.5rem",
+                  background: "var(--color-surface, #fff)",
+                  boxShadow: "0 4px 16px rgba(26, 16, 12, 0.04)",
+                }}
                 onSubmit={(e) => void inviteTeamMember(e)}
               >
-                <p className="admin-muted">
-                  Create a staff account for this merchant. They sign in at the
-                  merchant login page with their email. Choose which dashboard
-                  sections they can access.
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: "0.5rem",
+                  }}
+                >
+                  <strong style={{ fontSize: "1.05rem" }}>
+                    <i
+                      className="fas fa-user-plus"
+                      style={{
+                        marginRight: "0.5rem",
+                        color: "var(--color-primary, #6b2e14)",
+                      }}
+                    />
+                    Invite team member
+                  </strong>
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--ghost"
+                    onClick={() => setShowInviteForm(false)}
+                  >
+                    <i className="fas fa-xmark" aria-hidden="true" />
+                  </button>
+                </div>
+                <p className="admin-muted" style={{ margin: "0 0 1rem" }}>
+                  Create or link a staff account for this merchant. They sign in
+                  at the merchant login portal using their email.
                 </p>
                 {inviteError ? (
                   <p className="admin-error" role="alert">
@@ -911,94 +1328,199 @@ export default function AdminMerchantDetailPage() {
                 />
                 {inviteLookupReady(inviteLookup) ? (
                   <>
-                <div className="admin-inline-editor__row">
-                  <label className="admin-field-label" htmlFor="invite-name">
-                    Full name
-                  </label>
-                  <input
-                    id="invite-name"
-                    className="admin-inline-editor__input"
-                    value={inviteName}
-                    onChange={(e) => setInviteName(e.target.value)}
-                    required
-                    maxLength={255}
-                  />
-                </div>
-                <div className="admin-inline-editor__row">
-                  <label className="admin-field-label" htmlFor="invite-phone">
-                    Phone <span className="admin-muted">(optional)</span>
-                  </label>
-                  <input
-                    id="invite-phone"
-                    type="tel"
-                    className="admin-inline-editor__input"
-                    value={invitePhone}
-                    onChange={(e) => setInvitePhone(e.target.value)}
-                    maxLength={20}
-                  />
-                </div>
-                {!inviteLookupIsExisting(inviteLookup) ? (
-                <div className="admin-inline-editor__row">
-                  <label className="admin-field-label" htmlFor="invite-password">
-                    Temporary password
-                  </label>
-                  <input
-                    id="invite-password"
-                    type="password"
-                    className="admin-inline-editor__input"
-                    value={invitePassword}
-                    onChange={(e) => setInvitePassword(e.target.value)}
-                    required
-                    minLength={8}
-                    maxLength={72}
-                    autoComplete="new-password"
-                  />
-                </div>
-                ) : null}
-                <fieldset className="admin-invite-sections">
-                  <legend>Dashboard access</legend>
-                  <div className="admin-invite-sections__grid">
-                    {(sectionOptions.length > 0
-                      ? sectionOptions
-                      : MERCHANT_SECTIONS.map((key) => ({
-                          key,
-                          label: MERCHANT_SECTION_LABELS[key],
-                        }))
-                    ).map((section) => (
-                      <label key={section.key} className="admin-invite-sections__option">
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "repeat(auto-fit, minmax(240px, 1fr))",
+                        gap: "1rem",
+                        margin: "1rem 0",
+                      }}
+                    >
+                      <div
+                        className="admin-inline-editor__row"
+                        style={{ margin: 0 }}
+                      >
+                        <label
+                          className="admin-field-label"
+                          htmlFor="invite-name"
+                        >
+                          Full name
+                        </label>
                         <input
-                          type="checkbox"
-                          checked={inviteSections.includes(section.key)}
-                          onChange={(e) =>
-                            setInviteSections((prev) =>
-                              toggleSection(prev, section.key, e.target.checked),
-                            )
-                          }
+                          id="invite-name"
+                          className="admin-inline-editor__input"
+                          value={inviteName}
+                          onChange={(e) => setInviteName(e.target.value)}
+                          required
+                          maxLength={255}
                         />
-                        <span>{section.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
-                <label className="admin-inline-editor__checkbox">
-                  <input
-                    type="checkbox"
-                    checked={inviteSendEmail}
-                    onChange={(e) => setInviteSendEmail(e.target.checked)}
-                  />
-                  {inviteLookupIsExisting(inviteLookup)
-                    ? "Email access notification (no password change)"
-                    : "Email password setup link after creating"}
-                </label>
-                <div className="admin-inline-editor__row">
-                  <button
-                    type="submit"
-                    className="admin-btn admin-btn--primary"
-                    disabled={inviteSaving}
-                  >
-                    {inviteSaving ? "Inviting…" : "Invite team member"}
-                  </button>
-                </div>
+                      </div>
+                      <div
+                        className="admin-inline-editor__row"
+                        style={{ margin: 0 }}
+                      >
+                        <label
+                          className="admin-field-label"
+                          htmlFor="invite-phone"
+                        >
+                          Phone <span className="admin-muted">(optional)</span>
+                        </label>
+                        <input
+                          id="invite-phone"
+                          type="tel"
+                          className="admin-inline-editor__input"
+                          value={invitePhone}
+                          onChange={(e) => setInvitePhone(e.target.value)}
+                          maxLength={20}
+                        />
+                      </div>
+                    </div>
+
+                    {!inviteLookupIsExisting(inviteLookup) ? (
+                      <div
+                        className="admin-inline-editor__row"
+                        style={{ marginBottom: "1rem" }}
+                      >
+                        <label
+                          className="admin-field-label"
+                          htmlFor="invite-password"
+                        >
+                          Temporary password
+                        </label>
+                        <div
+                          style={{
+                            position: "relative",
+                            display: "flex",
+                            alignItems: "center",
+                          }}
+                        >
+                          <input
+                            id="invite-password"
+                            type={showPasswordInInvite ? "text" : "password"}
+                            className="admin-inline-editor__input"
+                            value={invitePassword}
+                            onChange={(e) => setInvitePassword(e.target.value)}
+                            required
+                            minLength={8}
+                            maxLength={72}
+                            autoComplete="new-password"
+                            style={{ paddingRight: "2.75rem" }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPasswordInInvite((v) => !v)}
+                            style={{
+                              position: "absolute",
+                              right: "0.75rem",
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              color: "var(--color-text-subtle, #7a7262)",
+                              fontSize: "0.9rem",
+                            }}
+                            title={
+                              showPasswordInInvite
+                                ? "Hide password"
+                                : "Show password"
+                            }
+                          >
+                            <i
+                              className={`fas ${
+                                showPasswordInInvite ? "fa-eye-slash" : "fa-eye"
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <fieldset
+                      className="admin-invite-sections"
+                      style={{ border: "none", padding: 0, margin: "1rem 0" }}
+                    >
+                      <legend
+                        style={{
+                          fontWeight: 700,
+                          fontSize: "0.85rem",
+                          marginBottom: "0.5rem",
+                        }}
+                      >
+                        Dashboard section access
+                      </legend>
+                      <div className="admin-invite-sections__grid">
+                        {(sectionOptions.length > 0
+                          ? sectionOptions
+                          : MERCHANT_SECTIONS.map((key) => ({
+                              key,
+                              label: MERCHANT_SECTION_LABELS[key],
+                            }))
+                        ).map((section) => (
+                          <label
+                            key={section.key}
+                            className="admin-invite-sections__option"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={inviteSections.includes(section.key)}
+                              onChange={(e) =>
+                                setInviteSections((prev) =>
+                                  toggleSection(
+                                    prev,
+                                    section.key,
+                                    e.target.checked,
+                                  ),
+                                )
+                              }
+                            />
+                            <span>{section.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+
+                    <label
+                      className="admin-inline-editor__checkbox"
+                      style={{ margin: "0.75rem 0 1.25rem" }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={inviteSendEmail}
+                        onChange={(e) => setInviteSendEmail(e.target.checked)}
+                      />
+                      {inviteLookupIsExisting(inviteLookup)
+                        ? "Email access notification (no password change)"
+                        : "Email password setup link after creating"}
+                    </label>
+
+                    <div
+                      className="admin-inline-editor__row"
+                      style={{ margin: 0 }}
+                    >
+                      <button
+                        type="submit"
+                        className="admin-btn admin-btn--primary"
+                        disabled={inviteSaving}
+                      >
+                        {inviteSaving ? (
+                          <>
+                            <i
+                              className="fas fa-spinner fa-spin"
+                              aria-hidden="true"
+                            />
+                            Inviting…
+                          </>
+                        ) : (
+                          <>
+                            <i
+                              className="fas fa-paper-plane"
+                              aria-hidden="true"
+                            />
+                            Send invitation
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </>
                 ) : null}
               </form>
@@ -1009,8 +1531,9 @@ export default function AdminMerchantDetailPage() {
                 <i className="fas fa-user-slash" aria-hidden="true" />
                 <h3>No users yet</h3>
                 <p>
-                  This merchant has no users yet. Use &quot;Invite team member&quot;
-                  to add staff, or they appear here after business registration.
+                  This merchant has no users yet. Use &quot;Invite team
+                  member&quot; to add staff, or they appear here after business
+                  registration.
                 </p>
               </div>
             ) : (
@@ -1033,160 +1556,316 @@ export default function AdminMerchantDetailPage() {
                     initial="hidden"
                     animate="visible"
                   >
-                    {merchant.users.map((u) => (
-                      <motion.tr key={u.id} variants={staggerItem}>
-                        <td>
-                          <div className="admin-table__primary">
-                            <span
-                              className="admin-table__avatar admin-table__avatar--user"
-                              aria-hidden="true"
-                            >
-                              <i className="fas fa-user" />
-                            </span>
-                            <div>
-                              <strong>{u.name}</strong>
-                              <code className="admin-table__id">
-                                {u.username
-                                  ? `@${u.username}`
-                                  : u.id.slice(0, 8)}
-                              </code>
-                            </div>
-                          </div>
-                        </td>
-                        <td>{u.email ?? "—"}</td>
-                        <td>
-                          <span
-                            className={`admin-pill ${
-                              u.user_role === "system_admin"
-                                ? "admin-pill--success"
-                                : "admin-pill--neutral"
-                            }`}
-                          >
-                            {userRoleLabel(u)}
+                    {filteredUsers.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={8}
+                          style={{ textAlign: "center", padding: "2rem" }}
+                        >
+                          <span className="admin-muted">
+                            No users matched &quot;{userFilter}&quot;
                           </span>
                         </td>
-                        <td className="admin-muted" style={{ maxWidth: 180 }}>
-                          {u.user_role === "staff"
-                            ? sectionsSummary(u.allowed_sections)
-                            : "Full dashboard"}
-                        </td>
-                        <td>
-                          {u.is_activated ? (
-                            <span className="admin-pill admin-pill--success">
-                              <i
-                                className="fas fa-check"
+                      </tr>
+                    ) : (
+                      filteredUsers.map((u) => (
+                        <motion.tr key={u.id} variants={staggerItem}>
+                          <td>
+                            <div className="admin-table__primary">
+                              <span
+                                className={`admin-table__user-avatar${
+                                  u.user_role === "system_admin"
+                                    ? " admin-table__user-avatar--owner"
+                                    : ""
+                                }`}
                                 aria-hidden="true"
-                              />{" "}
-                              Yes
+                              >
+                                {getUserInitials(u.name)}
+                              </span>
+                              <div>
+                                <strong
+                                  style={{
+                                    color: "var(--color-text, #1a100c)",
+                                  }}
+                                >
+                                  {u.name}
+                                </strong>
+                                <code className="admin-table__id">
+                                  {u.username
+                                    ? `@${u.username}`
+                                    : u.id.slice(0, 8)}
+                                </code>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <span
+                              style={{
+                                color: "var(--color-text, #1a100c)",
+                                fontWeight: 500,
+                              }}
+                            >
+                              {u.email ?? "—"}
                             </span>
-                          ) : (
-                            <span className="admin-pill admin-pill--warning">
-                              <i
-                                className="fas fa-hourglass-half"
-                                aria-hidden="true"
-                              />{" "}
-                              Pending
-                            </span>
-                          )}
-                        </td>
-                        <td>
-                          {u.onboarded_at ? (
-                            <span className="admin-pill admin-pill--success">
-                              <i
-                                className="fas fa-check"
-                                aria-hidden="true"
-                              />{" "}
-                              Yes
-                            </span>
-                          ) : (
-                            <span className="admin-pill admin-pill--muted">
-                              No
-                            </span>
-                          )}
-                        </td>
-                        <td>
-                          {u.require_change_password ? (
-                            <span className="admin-pill admin-pill--warning">
-                              Must change
-                            </span>
-                          ) : (
-                            <span className="admin-pill admin-pill--neutral">
-                              No prompt
-                            </span>
-                          )}
-                        </td>
-                        <td className="admin-table__actions">
-                          <button
-                            type="button"
-                            className="admin-btn admin-btn--ghost"
-                            onClick={() => openPasswordEditor(u.id)}
-                            disabled={passwordSavingUserId === u.id}
-                          >
-                            <i className="fas fa-key" aria-hidden="true" />
-                            Set password
-                          </button>
-                          <button
-                            type="button"
-                            className="admin-btn admin-btn--ghost"
-                            onClick={() => sendResetLink(u.id)}
-                            disabled={
-                              linkSendingUserId === u.id || !u.email
-                            }
-                            title={
-                              u.email
-                                ? "Email the user a temporary password and reset link"
-                                : "This user has no email address on file"
-                            }
-                          >
-                            {linkSendingUserId === u.id ? (
-                              <>
+                          </td>
+                          <td>
+                            <span
+                              className={`admin-pill ${
+                                u.user_role === "system_admin"
+                                  ? "admin-pill--success"
+                                  : "admin-pill--neutral"
+                              }`}
+                            >
+                              {u.user_role === "system_admin" ? (
                                 <i
-                                  className="fas fa-spinner fa-spin"
+                                  className="fas fa-crown"
+                                  aria-hidden="true"
+                                  style={{ fontSize: "0.75rem" }}
+                                />
+                              ) : null}
+                              {userRoleLabel(u)}
+                            </span>
+                          </td>
+                          <td style={{ maxWidth: 220 }}>
+                            {u.user_role === "system_admin" ? (
+                              <span className="admin-section-tag admin-section-tag--full">
+                                <i
+                                  className="fas fa-shield-halved"
                                   aria-hidden="true"
                                 />
-                                Sending…
-                              </>
+                                Full access
+                              </span>
+                            ) : u.allowed_sections?.length ? (
+                              <div className="admin-section-tag-group">
+                                {u.allowed_sections.map((sec) => (
+                                  <span key={sec} className="admin-section-tag">
+                                    {MERCHANT_SECTION_LABELS[
+                                      sec as keyof typeof MERCHANT_SECTION_LABELS
+                                    ] ?? sec}
+                                  </span>
+                                ))}
+                              </div>
                             ) : (
-                              <>
-                                <i
-                                  className="fas fa-paper-plane"
-                                  aria-hidden="true"
-                                />
-                                Email reset link
-                              </>
+                              <span className="admin-muted">—</span>
                             )}
-                          </button>
-                        </td>
-                      </motion.tr>
-                    ))}
+                          </td>
+                          <td>
+                            {u.is_activated ? (
+                              <span className="admin-pill admin-pill--success">
+                                <i
+                                  className="fas fa-check"
+                                  aria-hidden="true"
+                                />{" "}
+                                Active
+                              </span>
+                            ) : (
+                              <span className="admin-pill admin-pill--warning">
+                                <i
+                                  className="fas fa-hourglass-half"
+                                  aria-hidden="true"
+                                />{" "}
+                                Pending
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {u.onboarded_at ? (
+                              <span className="admin-pill admin-pill--success">
+                                <i
+                                  className="fas fa-check"
+                                  aria-hidden="true"
+                                />{" "}
+                                Yes
+                              </span>
+                            ) : (
+                              <span className="admin-pill admin-pill--muted">
+                                No
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {u.require_change_password ? (
+                              <span className="admin-pill admin-pill--warning">
+                                <i
+                                  className="fas fa-key"
+                                  aria-hidden="true"
+                                  style={{ fontSize: "0.75rem" }}
+                                />
+                                Must change
+                              </span>
+                            ) : (
+                              <span className="admin-pill admin-pill--neutral">
+                                No prompt
+                              </span>
+                            )}
+                          </td>
+                          <td className="admin-table__actions">
+                            <button
+                              type="button"
+                              className="admin-btn admin-btn--ghost"
+                              onClick={() => openPasswordEditor(u.id)}
+                              disabled={passwordSavingUserId === u.id}
+                              title="Set a new temporary password"
+                            >
+                              <i className="fas fa-key" aria-hidden="true" />
+                              Set password
+                            </button>
+                            <button
+                              type="button"
+                              className="admin-btn admin-btn--ghost"
+                              onClick={() => sendResetLink(u.id)}
+                              disabled={
+                                linkSendingUserId === u.id || !u.email
+                              }
+                              title={
+                                u.email
+                                  ? "Email the user a temporary password and reset link"
+                                  : "This user has no email address on file"
+                              }
+                            >
+                              {linkSendingUserId === u.id ? (
+                                <>
+                                  <i
+                                    className="fas fa-spinner fa-spin"
+                                    aria-hidden="true"
+                                  />
+                                  Sending…
+                                </>
+                              ) : (
+                                <>
+                                  <i
+                                    className="fas fa-paper-plane"
+                                    aria-hidden="true"
+                                  />
+                                  Email link
+                                </>
+                              )}
+                            </button>
+                          </td>
+                        </motion.tr>
+                      ))
+                    )}
                     {passwordEditUserId && (
                       <motion.tr variants={staggerItem}>
                         <td colSpan={8}>
-                          <div className="admin-inline-editor">
+                          <div
+                            className="admin-inline-editor"
+                            style={{
+                              padding: "1.25rem 1.5rem",
+                              borderRadius: "14px",
+                              border:
+                                "1.5px solid var(--color-border-strong, #d4ccc0)",
+                              background: "var(--color-surface, #fff)",
+                              boxShadow: "0 4px 16px rgba(26, 16, 12, 0.06)",
+                            }}
+                          >
                             <div className="admin-inline-editor__header">
-                              <strong>Set a temporary password</strong>
+                              <strong
+                                style={{
+                                  fontSize: "1rem",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "0.5rem",
+                                }}
+                              >
+                                <i
+                                  className="fas fa-key"
+                                  style={{
+                                    color: "var(--color-primary, #6b2e14)",
+                                  }}
+                                />
+                                Set temporary password for{" "}
+                                {merchant.users.find(
+                                  (u) => u.id === passwordEditUserId,
+                                )?.name ?? "user"}
+                              </strong>
                               <button
                                 type="button"
                                 className="admin-btn admin-btn--ghost"
                                 onClick={closePasswordEditor}
                               >
+                                <i
+                                  className="fas fa-xmark"
+                                  aria-hidden="true"
+                                />{" "}
                                 Close
                               </button>
                             </div>
-                            <p className="admin-muted">
-                              The user can sign in using this password. You can
-                              force them to change it on next login.
+                            <p
+                              className="admin-muted"
+                              style={{ margin: "0.35rem 0 1rem" }}
+                            >
+                              The user can sign in immediately using this
+                              password. You can require them to create their own
+                              new password on their next login.
                             </p>
-                            <div className="admin-inline-editor__row">
-                              <input
-                                type="password"
-                                className="admin-inline-editor__input"
-                                value={newPassword}
-                                onChange={(e) => setNewPassword(e.target.value)}
-                                placeholder="New temporary password"
-                                autoComplete="new-password"
-                              />
-                              <label className="admin-inline-editor__checkbox">
+                            <div
+                              className="admin-inline-editor__row"
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                alignItems: "center",
+                                gap: "1rem",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  position: "relative",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  flex: "1 1 240px",
+                                  maxWidth: "340px",
+                                }}
+                              >
+                                <input
+                                  type={
+                                    showPasswordInEditor ? "text" : "password"
+                                  }
+                                  className="admin-inline-editor__input"
+                                  value={newPassword}
+                                  onChange={(e) =>
+                                    setNewPassword(e.target.value)
+                                  }
+                                  placeholder="New temporary password (min 8 chars)"
+                                  autoComplete="new-password"
+                                  style={{
+                                    paddingRight: "2.75rem",
+                                    width: "100%",
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setShowPasswordInEditor((v) => !v)
+                                  }
+                                  style={{
+                                    position: "absolute",
+                                    right: "0.75rem",
+                                    background: "none",
+                                    border: "none",
+                                    cursor: "pointer",
+                                    color: "var(--color-text-subtle, #7a7262)",
+                                    fontSize: "0.9rem",
+                                  }}
+                                  title={
+                                    showPasswordInEditor
+                                      ? "Hide password"
+                                      : "Show password"
+                                  }
+                                >
+                                  <i
+                                    className={`fas ${
+                                      showPasswordInEditor
+                                        ? "fa-eye-slash"
+                                        : "fa-eye"
+                                    }`}
+                                  />
+                                </button>
+                              </div>
+                              <label
+                                className="admin-inline-editor__checkbox"
+                                style={{ margin: 0 }}
+                              >
                                 <input
                                   type="checkbox"
                                   checked={mustChangeOnNextLogin}
@@ -1194,7 +1873,7 @@ export default function AdminMerchantDetailPage() {
                                     setMustChangeOnNextLogin(e.target.checked)
                                   }
                                 />
-                                Require password change on next login
+                                Require change on next login
                               </label>
                               <button
                                 type="button"
@@ -1202,15 +1881,37 @@ export default function AdminMerchantDetailPage() {
                                 onClick={() =>
                                   resetUserPassword(passwordEditUserId)
                                 }
-                                disabled={passwordSavingUserId === passwordEditUserId}
+                                disabled={
+                                  passwordSavingUserId === passwordEditUserId
+                                }
                               >
-                                {passwordSavingUserId === passwordEditUserId
-                                  ? "Saving..."
-                                  : "Save password"}
+                                {passwordSavingUserId ===
+                                passwordEditUserId ? (
+                                  <>
+                                    <i
+                                      className="fas fa-spinner fa-spin"
+                                      aria-hidden="true"
+                                    />
+                                    Saving…
+                                  </>
+                                ) : (
+                                  <>
+                                    <i
+                                      className="fas fa-check"
+                                      aria-hidden="true"
+                                    />
+                                    Save password
+                                  </>
+                                )}
                               </button>
                             </div>
                             {passwordActionError ? (
-                              <p className="admin-error">{passwordActionError}</p>
+                              <p
+                                className="admin-error"
+                                style={{ marginTop: "0.75rem" }}
+                              >
+                                {passwordActionError}
+                              </p>
                             ) : null}
                           </div>
                         </td>
@@ -1240,22 +1941,42 @@ function MerchantDetailSkeleton() {
   return (
     <div aria-busy="true">
       <div className="admin-merchant-header">
-        <Skeleton variant="rect" width={56} height={56} />
+        <Skeleton variant="rect" width={72} height={72} />
         <div className="admin-merchant-header__body" style={{ flex: 1 }}>
-          <Skeleton variant="text" width="45%" height={26} />
-          <Skeleton variant="text" width="35%" height={14} />
-          <div className="admin-merchant-header__meta">
-            <Skeleton variant="text" width={180} height={12} />
-            <Skeleton variant="text" width={140} height={12} />
-            <Skeleton variant="text" width={120} height={20} />
+          <Skeleton variant="text" width="45%" height={28} />
+          <Skeleton variant="text" width="35%" height={16} />
+          <div
+            className="admin-merchant-header__meta"
+            style={{ marginTop: "0.75rem" }}
+          >
+            <Skeleton variant="text" width={180} height={24} />
+            <Skeleton variant="text" width={140} height={24} />
+            <Skeleton variant="text" width={120} height={24} />
           </div>
         </div>
       </div>
 
       <section className="admin-section" style={{ marginTop: "1.75rem" }}>
         <header className="admin-section__head">
-          <Skeleton variant="text" width={240} height={20} />
-          <Skeleton variant="text" width={56} height={20} />
+          <Skeleton variant="text" width={240} height={22} />
+          <Skeleton variant="text" width={56} height={22} />
+        </header>
+
+        <div className="admin-merchant-facts">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="admin-merchant-facts__item">
+              <Skeleton variant="text" width="40%" height={14} />
+              <Skeleton variant="text" width="70%" height={22} />
+              <Skeleton variant="text" width="50%" height={12} />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="admin-section" style={{ marginTop: "1.75rem" }}>
+        <header className="admin-section__head">
+          <Skeleton variant="text" width={240} height={22} />
+          <Skeleton variant="text" width={56} height={22} />
         </header>
 
         <div className="admin-table-wrap">
@@ -1277,7 +1998,7 @@ function MerchantDetailSkeleton() {
                 <tr key={i}>
                   <td>
                     <div className="admin-table__primary">
-                      <Skeleton variant="rect" width={34} height={34} />
+                      <Skeleton variant="rect" width={36} height={36} />
                       <div style={{ flex: 1 }}>
                         <Skeleton variant="text" width="70%" height={14} />
                         <Skeleton variant="text" width="40%" height={10} />
@@ -1291,13 +2012,19 @@ function MerchantDetailSkeleton() {
                     <Skeleton variant="text" width={50} height={20} />
                   </td>
                   <td>
-                    <Skeleton variant="text" width={50} height={20} />
+                    <Skeleton variant="text" width={80} height={20} />
                   </td>
                   <td>
-                    <Skeleton variant="text" width={110} height={12} />
+                    <Skeleton variant="text" width={60} height={20} />
+                  </td>
+                  <td>
+                    <Skeleton variant="text" width={60} height={20} />
                   </td>
                   <td>
                     <Skeleton variant="text" width={90} height={20} />
+                  </td>
+                  <td>
+                    <Skeleton variant="text" width={110} height={28} />
                   </td>
                 </tr>
               ))}

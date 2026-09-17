@@ -17,93 +17,114 @@ import { logoutToSignIn } from "@/lib/logout";
 import { migrateLegacyTransChapPurchases } from "@/lib/trans-chap-purchases";
 import { detectTransChapMachine, syncTransChapMachine } from "@/lib/trans-chap-machine";
 
+import { isRestaurantStore } from "@/lib/onboarding";
+
 const NAV_COLLAPSED_KEY = "trans-chap-nav-collapsed";
 
-const NAV: Array<{
+type NavDef = {
   href: string;
   label: string;
   title: string;
   icon: string;
   exact?: boolean;
   section?: MerchantSection;
-  /** If set, user needs any one of these sections (overrides single `section`). */
   anySections?: MerchantSection[];
   requiresInstagram?: boolean;
   ownerOnly?: boolean;
-}> = [
-  { href: "/trans-chap", label: "Home", title: "Home", icon: "fa-house", exact: true },
-  {
-    href: "/trans-chap/stocks",
-    label: "Inventory",
-    title: "Inventory",
-    icon: "fa-boxes-stacked",
-    section: "inventory",
-  },
-  {
-    href: "/trans-chap/make-a-sale",
-    label: "Sales",
-    title: "Sales",
-    icon: "fa-receipt",
-    section: "pos",
-  },
-  {
-    href: "/trans-chap/pos",
-    label: "POS",
-    title: "POS",
-    icon: "fa-cash-register",
-    section: "pos",
-  },
-  {
-    href: "/trans-chap/customers",
-    label: "Customers",
-    title: "Customers",
-    icon: "fa-address-book",
-    section: "customer",
-  },
-  {
-    href: "/trans-chap/suppliers",
-    label: "Suppliers",
-    title: "Suppliers",
-    icon: "fa-truck-field",
-    anySections: ["supplier", "inventory"],
-  },
-  {
-    href: "/trans-chap/purchases",
-    label: "Purchases",
-    title: "Purchases",
-    icon: "fa-cart-shopping",
-    section: "inventory",
-  },
-  {
-    href: "/trans-chap/settings",
-    label: "Settings",
-    title: "Settings",
-    icon: "fa-gear",
-    section: "settings",
-  },
-];
+};
 
-function headerMeta(pathname: string, mode: string | null): { title: string; backHref: string | null } {
+function getNavItems(restaurant: boolean): NavDef[] {
+  return [
+    { href: "/trans-chap", label: "Home", title: "Home", icon: "fa-house", exact: true },
+    {
+      href: "/trans-chap/stocks",
+      label: restaurant ? "Hotel Menu" : "Inventory",
+      title: restaurant ? "Hotel Menu" : "Inventory",
+      icon: restaurant ? "fa-utensils" : "fa-boxes-stacked",
+      section: "inventory",
+    },
+    {
+      href: "/trans-chap/make-a-sale",
+      label: restaurant ? "Orders" : "Sales",
+      title: restaurant ? "Orders" : "Sales",
+      icon: restaurant ? "fa-bell-concierge" : "fa-receipt",
+      section: "pos",
+    },
+    {
+      href: "/trans-chap/pos",
+      label: "POS",
+      title: "POS",
+      icon: "fa-cash-register",
+      section: "pos",
+    },
+    {
+      href: "/trans-chap/customers",
+      label: "Customers",
+      title: "Customers",
+      icon: "fa-address-book",
+      section: "customer",
+    },
+    {
+      href: "/trans-chap/suppliers",
+      label: "Suppliers",
+      title: "Suppliers",
+      icon: "fa-truck-field",
+      anySections: ["supplier", "inventory"],
+    },
+    {
+      href: "/trans-chap/purchases",
+      label: restaurant ? "Supplies" : "Purchases",
+      title: restaurant ? "Supplies" : "Purchases",
+      icon: restaurant ? "fa-basket-shopping" : "fa-cart-shopping",
+      section: "inventory",
+    },
+    {
+      href: "/trans-chap/settings",
+      label: "Settings",
+      title: "Settings",
+      icon: "fa-gear",
+      section: "settings",
+    },
+  ];
+}
+
+function headerMeta(
+  pathname: string,
+  mode: string | null,
+  restaurant = false,
+): { title: string; backHref: string | null } {
   if (pathname.startsWith("/trans-chap/make-a-sale/receipt")) {
     return { title: "Receipt", backHref: "/trans-chap/make-a-sale" };
   }
   if (pathname.startsWith("/trans-chap/make-a-sale/new")) {
     return {
-      title: mode === "select" || mode === "single" ? "Select" : "Scan",
+      title:
+        restaurant
+          ? mode === "scan"
+            ? "Scan order"
+            : "Take order"
+          : mode === "select" || mode === "single"
+            ? "Select"
+            : "Scan",
       backHref: "/trans-chap/make-a-sale",
     };
   }
   if (pathname.startsWith("/trans-chap/purchases/unavailable")) {
-    return { title: "Buy", backHref: "/trans-chap/purchases" };
+    return {
+      title: restaurant ? "Buy supply" : "Buy",
+      backHref: "/trans-chap/purchases",
+    };
   }
   if (pathname.startsWith("/trans-chap/purchases/new")) {
     return {
       title:
-        mode === "scan"
-          ? "Scan buy"
-          : mode === "select" || mode === "single"
-            ? "Select buy"
-            : "New purchase",
+        restaurant
+          ? "Buy supplies"
+          : mode === "scan"
+            ? "Scan buy"
+            : mode === "select" || mode === "single"
+              ? "Select buy"
+              : "New purchase",
       backHref: "/trans-chap/purchases",
     };
   }
@@ -114,10 +135,34 @@ function headerMeta(pathname: string, mode: string | null): { title: string; bac
     return { title: "Opening stock", backHref: "/trans-chap/stocks" };
   }
   if (pathname.startsWith("/trans-chap/stocks/edit")) {
-    return { title: "Edit product", backHref: "/trans-chap/stocks" };
+    return {
+      title: restaurant ? "Edit item" : "Edit product",
+      backHref: "/trans-chap/stocks",
+    };
   }
   if (pathname.startsWith("/trans-chap/stocks/stock-up")) {
-    return { title: "Purchases", backHref: "/trans-chap/stocks" };
+    return {
+      title: restaurant ? "Restock supplies" : "Purchases",
+      backHref: "/trans-chap/stocks",
+    };
+  }
+  if (pathname.startsWith("/trans-chap/stocks")) {
+    return {
+      title: restaurant ? "Hotel menu" : "Inventory",
+      backHref: "/trans-chap",
+    };
+  }
+  if (pathname.startsWith("/trans-chap/make-a-sale")) {
+    return {
+      title: restaurant ? "Orders" : "Sales",
+      backHref: "/trans-chap",
+    };
+  }
+  if (pathname.startsWith("/trans-chap/purchases")) {
+    return {
+      title: restaurant ? "Supplies" : "Purchases",
+      backHref: "/trans-chap",
+    };
   }
   if (pathname.startsWith("/trans-chap/credit")) {
     return { title: "On tab", backHref: "/trans-chap/customers" };
@@ -152,7 +197,8 @@ function headerMeta(pathname: string, mode: string | null): { title: string; bac
   if (pathname === "/trans-chap" || pathname === "/trans-chap/") {
     return { title: "Home", backHref: null };
   }
-  const tab = NAV.find((item) =>
+  const navItems = getNavItems(restaurant);
+  const tab = navItems.find((item) =>
     item.exact
       ? pathname === item.href
       : pathname === item.href || pathname.startsWith(`${item.href}/`),
@@ -168,7 +214,12 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const user = useOptionalAuthUser();
-  const { title, backHref } = headerMeta(pathname, searchParams.get("mode"));
+  const restaurant = isRestaurantStore(user?.active_account ?? user?.account);
+  const { title, backHref } = headerMeta(
+    pathname,
+    searchParams.get("mode"),
+    restaurant,
+  );
   const isSignIn = pathname.startsWith("/trans-chap/sign-in");
   const isNewPost = pathname.startsWith("/trans-chap/feeds/new");
   const isPos =
@@ -201,7 +252,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
 
   const items = useMemo(
     () =>
-      NAV.filter((item) => {
+      getNavItems(restaurant).filter((item) => {
         if (item.ownerOnly && (user == null || !isShopOwner(user))) {
           return false;
         }
@@ -221,7 +272,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
         if (item.requiresInstagram && !instagramConnected) return false;
         return true;
       }),
-    [instagramConnected, user],
+    [instagramConnected, restaurant, user],
   );
 
   useEffect(() => {
@@ -259,7 +310,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
     }
   }, [isSignIn, pathname, router, user]);
 
-  function renderNavLink(item: (typeof NAV)[number]): ReactNode {
+  function renderNavLink(item: NavDef): ReactNode {
     const isActive = item.exact
       ? pathname === item.href
       : pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -402,8 +453,11 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                         className="trans-chap-more-sheet__item"
                         onClick={() => setMoreOpen(false)}
                       >
-                        <i className="fa-solid fa-receipt" aria-hidden />
-                        <span>Sales</span>
+                        <i
+                          className={`fa-solid ${restaurant ? "fa-bell-concierge" : "fa-receipt"}`}
+                          aria-hidden
+                        />
+                        <span>{restaurant ? "Orders" : "Sales"}</span>
                       </Link>
                       <Link
                         href="/trans-chap/suppliers"
@@ -418,8 +472,11 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                         className="trans-chap-more-sheet__item"
                         onClick={() => setMoreOpen(false)}
                       >
-                        <i className="fa-solid fa-cart-shopping" aria-hidden />
-                        <span>Purchases</span>
+                        <i
+                          className={`fa-solid ${restaurant ? "fa-basket-shopping" : "fa-cart-shopping"}`}
+                          aria-hidden
+                        />
+                        <span>{restaurant ? "Supplies" : "Purchases"}</span>
                       </Link>
                       <Link
                         href="/trans-chap/reports"
@@ -439,7 +496,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                       </Link>
                       <button
                         type="button"
-                        className="trans-chap-more-sheet__item trans-chap-more-sheet__item--logout"
+                        className="trans-chap-more-sheet__item"
                         onClick={() =>
                           void logoutToSignIn({ href: "/trans-chap/sign-in" })
                         }

@@ -7,6 +7,7 @@ import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { MotionItem, MotionList } from "@/components/app/MotionList";
+import { isRestaurantStore } from "@/lib/onboarding";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
 import { purchaseDraftSummary } from "@/lib/trans-chap-purchase-draft";
 import { formatKsh } from "@/lib/trans-chap-receipt";
@@ -25,6 +26,7 @@ function purchaseRoleTag(row: TransChapPurchase): string | undefined {
 
 export function TransChapPurchasesList() {
   const user = useAuthUser();
+  const restaurant = isRestaurantStore(user.active_account ?? user.account);
   const accountId = user.active_account?.id || user.account?.id;
   const buyHref = "/trans-chap/purchases/unavailable";
   const listId = useId();
@@ -94,8 +96,12 @@ export function TransChapPurchasesList() {
           <input
             type="search"
             value={query}
-            placeholder="Search purchases…"
-            aria-label="Search purchases"
+            placeholder={
+              restaurant
+                ? "Search kitchen supplies & purchases…"
+                : "Search purchases…"
+            }
+            aria-label={restaurant ? "Search kitchen supplies" : "Search purchases"}
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
@@ -107,13 +113,23 @@ export function TransChapPurchasesList() {
           <TransChapStatus tone="error">{error}</TransChapStatus>
         ) : purchases.length === 0 ? (
           <TransChapStatus
-            actionHref="/trans-chap/purchases/new"
-            actionLabel="Record a purchase"
+            actionHref={
+              restaurant
+                ? "/trans-chap/purchases/new?mode=select"
+                : "/trans-chap/purchases/new"
+            }
+            actionLabel={restaurant ? "Buy supplies" : "Record a purchase"}
           >
-            No purchases yet.
+            {restaurant
+              ? "No kitchen supplies or purchases yet. Record ingredients and supplies when you buy them."
+              : "No purchases yet."}
           </TransChapStatus>
         ) : filtered.length === 0 ? (
-          <p className="trans-chap-sales__empty">No purchases match this search.</p>
+          <p className="trans-chap-sales__empty">
+            {restaurant
+              ? "No kitchen supplies match this search."
+              : "No purchases match this search."}
+          </p>
         ) : (
           <MotionList as="div" className="trans-chap-sales__stagger">
           {filtered.map((row) => {
@@ -176,20 +192,35 @@ export function TransChapPurchasesList() {
         ) : null}
       </div>
       <TransChapFab
-        label="New purchase"
-        options={[
-          { href: "/trans-chap/purchases/new", label: "Select", icon: "fa-list" },
-          {
-            href: "/trans-chap/purchases/new?mode=scan",
-            label: "Scan",
-            icon: "fa-barcode",
-          },
-          {
-            href: buyHref,
-            label: "New product",
-            icon: "fa-cart-plus",
-          },
-        ]}
+        label={restaurant ? "Buy supplies" : "New purchase"}
+        options={
+          restaurant
+            ? [
+                {
+                  href: "/trans-chap/purchases/new?mode=select",
+                  label: "Select supplies",
+                  icon: "fa-list",
+                },
+                {
+                  href: buyHref,
+                  label: "New ingredient / supply",
+                  icon: "fa-cart-plus",
+                },
+              ]
+            : [
+                { href: "/trans-chap/purchases/new", label: "Select", icon: "fa-list" },
+                {
+                  href: "/trans-chap/purchases/new?mode=scan",
+                  label: "Scan",
+                  icon: "fa-barcode",
+                },
+                {
+                  href: buyHref,
+                  label: "New product",
+                  icon: "fa-cart-plus",
+                },
+              ]
+        }
       />
     </div>
   );

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
-
 from typing import NoReturn
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
@@ -48,8 +48,14 @@ class CustomerCreateRequest(BaseModel):
     phone: str = Field(min_length=7, max_length=32)
     email: EmailStr | None = None
     address: str | None = Field(default=None, max_length=500)
+    physical_location: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=2000)
-    credit_limit: float = Field(default=0, ge=0, le=99_999_999.99)
+    credit_limit: float = Field(default=1000.0, ge=0, le=99_999_999.99)
+    date_to_pay: date | str | None = None
+
+
+class WhatsAppVerifyRequest(BaseModel):
+    phone: str = Field(min_length=7, max_length=32)
 
 
 class CustomerUpdateRequest(BaseModel):
@@ -57,8 +63,10 @@ class CustomerUpdateRequest(BaseModel):
     phone: str | None = Field(default=None, min_length=7, max_length=32)
     email: EmailStr | None = None
     address: str | None = Field(default=None, max_length=500)
+    physical_location: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=2000)
     credit_limit: float | None = Field(default=None, ge=0, le=99_999_999.99)
+    date_to_pay: date | str | None = None
 
 
 class CreditCollectRequest(BaseModel):
@@ -71,6 +79,8 @@ class CustomerOut(BaseModel):
     phone: str
     email: str | None = None
     address: str | None = None
+    physical_location: str | None = None
+    date_to_pay: str | None = None
     notes: str | None = None
     credit_limit: float
     outstanding_balance: float
@@ -98,12 +108,16 @@ def _customer_out(customer: ShopCustomer) -> CustomerOut:
             pay_url = CreditPayService.pay_bill_url(customer.id)
         except Exception:
             pay_url = None
+    loc = customer.physical_location or customer.address
+    due_str = customer.date_to_pay.isoformat() if customer.date_to_pay else None
     return CustomerOut(
         id=customer.id,
         name=customer.name,
         phone=customer.phone,
         email=customer.email,
-        address=customer.address,
+        address=customer.address or loc,
+        physical_location=loc,
+        date_to_pay=due_str,
         notes=customer.notes,
         credit_limit=_money_out(limit),
         outstanding_balance=_money_out(outstanding),
@@ -149,6 +163,42 @@ def list_customers(
     return payload
 
 
+@router.post("/verify-whatsapp")
+def verify_whatsapp_number(
+    payload: WhatsAppVerifyRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Check if a customer phone number is registered on WhatsApp."""
+    validate_csrf(request, session)
+    user = require_user(db, session)
+    assert_merchant_section_any_access(user, *TILL_CUSTOMER_SECTIONS)
+
+    agent = OpenWaAgentService()
+    if not agent.configured:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="WhatsApp agent is not configured. Set OPENWA_AGENT_TOKEN.",
+        )
+
+    result = agent.check_number(payload.phone)
+    if not result.ok:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail=result.error or "Could not verify WhatsApp number.",
+        )
+
+    return {
+        "verified": result.registered,
+        "message": (
+            f"{payload.phone} is on WhatsApp."
+            if result.registered
+            else f"{payload.phone} is not registered on WhatsApp."
+        ),
+    }
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_customer(
     payload: CustomerCreateRequest,
@@ -161,12 +211,15 @@ def create_customer(
     assert_merchant_section_any_access(user, *TILL_CUSTOMER_SECTIONS)
     account_id = require_merchant_account_id(user)
     try:
+        loc = payload.physical_location or payload.address
         customer = CustomerService(db).create_customer(
             account_id,
             name=payload.name,
             phone=payload.phone,
             email=str(payload.email) if payload.email else None,
-            address=payload.address,
+            address=payload.address or loc,
+            physical_location=loc,
+            date_to_pay=payload.date_to_pay,
             notes=payload.notes,
             credit_limit=payload.credit_limit,
         )
@@ -260,6 +313,11 @@ def update_customer(
     assert_merchant_section_access(user, "customer")
     account_id = require_merchant_account_id(user)
     data = payload.model_dump(exclude_unset=True)
+    loc = (
+        data.get("physical_location")
+        if "physical_location" in data
+        else (data.get("address") if "address" in data else None)
+    )
     try:
         customer = CustomerService(db).update_customer(
             account_id,
@@ -271,11 +329,18 @@ def update_customer(
                 if "email" in data and data["email"] is not None
                 else None
             ),
-            address=data.get("address") if "address" in data else None,
+            address=data.get("address") if "address" in data else loc,
+            physical_location=loc,
+            date_to_pay=data.get("date_to_pay") if "date_to_pay" in data else None,
             notes=data.get("notes") if "notes" in data else None,
             credit_limit=data.get("credit_limit") if "credit_limit" in data else None,
             clear_email="email" in data and not data.get("email"),
             clear_address="address" in data and not str(data.get("address") or "").strip(),
+            clear_physical_location=(
+                "physical_location" in data
+                and not str(data.get("physical_location") or "").strip()
+            ),
+            clear_date_to_pay="date_to_pay" in data and not data.get("date_to_pay"),
             clear_notes="notes" in data and not str(data.get("notes") or "").strip(),
         )
     except CustomerServiceError as exc:

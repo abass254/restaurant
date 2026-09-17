@@ -1315,7 +1315,7 @@ export type OrderSource =
   | "facebook"
   | "rider_request";
 
-export type OrderFulfillmentType = "pickup" | "delivery";
+export type OrderFulfillmentType = "pickup" | "delivery" | "dine_in";
 
 export type OrderPaymentMethod = "mpesa" | "cash" | "card" | "credit" | "other";
 
@@ -1333,6 +1333,12 @@ export type OrderStatus =
   | "cancelled"
   | "refunded";
 
+export type OrderItemModifier = {
+  name: string;
+  price: number;
+  group?: string | null;
+};
+
 export type OrderItem = {
   id: string;
   inventory_item_id: string | null;
@@ -1342,6 +1348,7 @@ export type OrderItem = {
   quantity: number;
   unit_price: number;
   line_total: number;
+  modifiers?: OrderItemModifier[] | null;
   notes: string | null;
   /** Current on-hand stock for the linked inventory item, when known. */
   stock_quantity?: number | null;
@@ -1501,6 +1508,8 @@ export type Order = {
   prep_minutes?: number | null;
   created_at: string | null;
   updated_at: string | null;
+  table_number?: string | null;
+  server_name?: string | null;
   items?: OrderItem[];
   status_history?: OrderStatusEvent[];
   items_count?: number | null;
@@ -1555,6 +1564,7 @@ export type OrderMetaOptionsResponse = {
 export type OrderCreatePayload = {
   source: OrderSource;
   fulfillment_type: OrderFulfillmentType;
+  table_number?: string | null;
   customer_name?: string | null;
   customer_phone?: string | null;
   customer_email?: string | null;
@@ -1567,6 +1577,8 @@ export type OrderCreatePayload = {
   notes?: string | null;
   /** When set with payment_method=mpesa, closes the sale with this SMS code (no STK). */
   mpesa_receipt_number?: string | null;
+  /** When buying on credit, the agreed date when payment is due. */
+  date_to_pay?: string | null;
   items: {
     inventory_item_id?: string | null;
     product_name?: string | null;
@@ -1574,6 +1586,7 @@ export type OrderCreatePayload = {
     quantity: number;
     unit_price?: number | null;
     sell_unit?: string | null;
+    modifiers?: OrderItemModifier[] | null;
     notes?: string | null;
   }[];
 };
@@ -1680,6 +1693,8 @@ export type ShopCustomer = {
   phone: string;
   email: string | null;
   address: string | null;
+  physical_location?: string | null;
+  date_to_pay?: string | null;
   notes: string | null;
   credit_limit: number;
   outstanding_balance: number;

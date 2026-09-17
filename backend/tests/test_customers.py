@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.models import ShopCustomer
 from app.services.customer_service import (
     CustomerService,
     CustomerServiceError,
@@ -189,3 +190,64 @@ def test_upsert_import_updates_existing_by_phone() -> None:
     assert existing.outstanding_balance == Decimal("2200.00")
     assert existing.notes == "from excel"
     db.commit.assert_called_once()
+
+
+def test_create_customer_defaults_to_1000_limit_and_saves_location_and_pay_date() -> None:
+    from datetime import date
+
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+    captured = {}
+
+    def capture_add(obj) -> None:
+        captured["customer"] = obj
+        obj.id = "cust-1"
+
+    db.add.side_effect = capture_add
+    service = CustomerService(db)
+    customer = service.create_customer(
+        "acct-1",
+        name="James Mwangi",
+        phone="+254712345678",
+        physical_location="Shop 4, Tom Mboya St",
+        date_to_pay="2026-10-15",
+    )
+
+    assert customer is captured["customer"]
+    assert customer.credit_limit == Decimal("1000.00")
+    assert customer.physical_location == "Shop 4, Tom Mboya St"
+    assert customer.address == "Shop 4, Tom Mboya St"
+    assert customer.date_to_pay == date(2026, 10, 15)
+
+
+def test_create_customer_rejects_invalid_date_to_pay() -> None:
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+    service = CustomerService(db)
+    with pytest.raises(CustomerServiceError, match="YYYY-MM-DD"):
+        service.create_customer(
+            "acct-1",
+            name="James Mwangi",
+            phone="+254712345678",
+            date_to_pay="invalid-date",
+        )
+
+
+def test_update_customer_date_to_pay() -> None:
+    db = MagicMock()
+    existing = ShopCustomer(
+        id="cust-1",
+        account_id="acct-1",
+        name="James Mwangi",
+        phone="+254712345678",
+        date_to_pay=None,
+    )
+    db.query.return_value.filter.return_value.first.return_value = existing
+    service = CustomerService(db)
+    updated = service.update_customer(
+        "acct-1",
+        "cust-1",
+        date_to_pay="2026-11-20",
+    )
+    assert updated.date_to_pay == date(2026, 11, 20)
+

@@ -71,11 +71,13 @@ export const SOURCE_ICONS: Record<OrderSource, string> = {
 
 export const FULFILLMENT_LABELS: Record<OrderFulfillmentType, string> = {
   pickup: "Pickup",
+  dine_in: "Dine in",
   delivery: "Delivery",
 };
 
 export const FULFILLMENT_ICONS: Record<OrderFulfillmentType, string> = {
   pickup: "fa-solid fa-bag-shopping",
+  dine_in: "fa-solid fa-utensils",
   delivery: "fa-solid fa-truck",
 };
 
@@ -169,6 +171,7 @@ export function orderNeedsLiveUpdates(order: Order | null): boolean {
 
 export const ALL_FULFILLMENT_TYPES: OrderFulfillmentType[] = [
   "pickup",
+  "dine_in",
   "delivery",
 ];
 

@@ -364,6 +364,7 @@ class OrderItemOut(BaseModel):
     sell_unit: str | None = None
     unit_factor: int = 1
     notes: str | None
+    modifiers: list[dict[str, Any]] | None = None
     # Current on-hand stock for the linked inventory item (if any).
     stock_quantity: int | None = None
 
@@ -388,6 +389,7 @@ class OrderItemOut(BaseModel):
             sell_unit=getattr(item, "sell_unit", None),
             unit_factor=factor,
             notes=item.notes,
+            modifiers=getattr(item, "modifiers", None),
             stock_quantity=stock,
         )
 
@@ -512,6 +514,8 @@ class OrderOut(BaseModel):
     rider_dispatched_at: datetime | None = None
     rider_trip_phase: str | None = None
     rider_search_expires_at: datetime | None = None
+    table_number: str | None = None
+    server_name: str | None = None
 
     @classmethod
     def from_model(
@@ -532,6 +536,12 @@ class OrderOut(BaseModel):
             source=order.source,
             fulfillment_type=order.fulfillment_type,
             status=order.status,
+            table_number=getattr(order, "table_number", None),
+            server_name=(
+                order.placed_by.name
+                if getattr(order, "placed_by", None) is not None
+                else None
+            ),
             customer_name=order.customer_name,
             customer_phone=order.customer_phone,
             customer_email=order.customer_email,

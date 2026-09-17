@@ -408,6 +408,15 @@ export function TransChapReceiptView() {
           {customer}
         </p>
 
+        {receipt.tableNumber ? (
+          <div className="trans-chap-slip__table-badge">
+            <i className="fa-solid fa-chair" aria-hidden="true" />
+            <strong>{receipt.tableNumber}</strong>
+            {receipt.serverName ? <span> · Server: {receipt.serverName}</span> : null}
+            {receipt.fulfillmentType ? <span> · {receipt.fulfillmentType === "dine_in" ? "Dine in" : receipt.fulfillmentType}</span> : null}
+          </div>
+        ) : null}
+
         {note ? <p className="trans-chap-slip__note">{note}</p> : null}
 
         {receipt.mpesaReceiptNumber ? (
@@ -434,6 +443,16 @@ export function TransChapReceiptView() {
                 <span className="trans-chap-slip__dots" />
                 <em>{formatKesDigits(line.lineTotal)}</em>
               </div>
+              {line.modifiers && line.modifiers.length > 0 ? (
+                <ul className="trans-chap-slip__modifiers">
+                  {line.modifiers.map((m, mIdx) => (
+                    <li key={mIdx}>
+                      <span>+ {m.name}</span>
+                      {m.price > 0 ? <em>+{formatKesDigits(m.price)}</em> : <em>Free</em>}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
               {line.quantity > 1 ? (
                 <small>
                   {line.quantity} × {formatKesDigits(line.unitPrice)}

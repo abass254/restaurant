@@ -46,6 +46,13 @@ class OpenWaStatus:
     agent_error: str | None = None
 
 
+@dataclass(frozen=True)
+class CheckNumberResult:
+    ok: bool
+    registered: bool
+    error: str | None = None
+
+
 class OpenWaAgentService:
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or get_settings()
@@ -217,6 +224,33 @@ class OpenWaAgentService:
 
         logger.info("OpenWA message sent to %s id=%s", phone, message_id)
         return OpenWaSendResult(ok=True, message_id=message_id)
+
+    def check_number(self, phone: str) -> "CheckNumberResult":
+        """Check if a phone number is registered on WhatsApp."""
+        normalized = normalize_phone(phone)
+        if not normalized:
+            return CheckNumberResult(ok=False, registered=False, error="A valid phone number is required.")
+        if not self.configured:
+            return CheckNumberResult(ok=False, registered=False, error="WhatsApp agent is not configured.")
+
+        try:
+            with httpx.Client(timeout=self.settings.openwa_timeout_seconds) as client:
+                response = client.post(
+                    self._url("/check-number"),
+                    headers=self._headers(),
+                    json={"phone": normalized},
+                )
+        except httpx.HTTPError as exc:
+            logger.warning("OpenWA check-number failed (phone=%s): %s", normalized, exc)
+            return CheckNumberResult(ok=False, registered=False, error="Could not reach the WhatsApp agent.")
+
+        data = _json_body(response)
+        if not response.is_success:
+            error = _error_from_response(response)
+            return CheckNumberResult(ok=False, registered=False, error=error)
+
+        registered = bool(data.get("registered")) if data else False
+        return CheckNumberResult(ok=True, registered=registered)
 
     def logout(self) -> tuple[bool, str]:
         return self._post_action("/logout", "Logged out.")

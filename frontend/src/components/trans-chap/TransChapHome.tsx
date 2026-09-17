@@ -5,6 +5,8 @@ import { useAuthUser } from "@/components/app/AuthProvider";
 import { TransChapHomePies } from "@/components/trans-chap/TransChapHomePies";
 import { userCanAccessSection } from "@/lib/merchant-permissions";
 
+import { isRestaurantStore } from "@/lib/onboarding";
+
 function firstName(name: string): string {
   const part = name.trim().split(/\s+/)[0];
   return part || "there";
@@ -21,6 +23,7 @@ function todayLabel(): string {
 
 export function TransChapHome() {
   const user = useAuthUser();
+  const restaurant = isRestaurantStore(user.active_account ?? user.account);
   const name = firstName(user.name);
   const shop =
     user.active_account?.business_name?.trim() ||
@@ -49,24 +52,58 @@ export function TransChapHome() {
         </div>
 
         <div className="trans-chap-dash__quick-actions">
-          {canPos ? (
-            <Link href="/trans-chap/pos" className="trans-chap-btn trans-chap-btn--primary">
-              <i className="fa-solid fa-cash-register" aria-hidden />
-              <span>Open POS</span>
-            </Link>
-          ) : null}
-          {canPos ? (
-            <Link href="/trans-chap/make-a-sale/new" className="trans-chap-btn trans-chap-btn--secondary">
-              <i className="fa-solid fa-plus" aria-hidden />
-              <span>Make Sale</span>
-            </Link>
-          ) : null}
-          {canInventory ? (
-            <Link href="/trans-chap/purchases/new" className="trans-chap-btn trans-chap-btn--ghost">
-              <i className="fa-solid fa-cart-flatbed" aria-hidden />
-              <span>Restock</span>
-            </Link>
-          ) : null}
+          {restaurant ? (
+            <>
+              {canPos ? (
+                <Link
+                  href="/trans-chap/make-a-sale/new?mode=select"
+                  className="trans-chap-btn trans-chap-btn--primary"
+                >
+                  <i className="fa-solid fa-plus" aria-hidden />
+                  <span>Take Order</span>
+                </Link>
+              ) : null}
+              {canInventory ? (
+                <Link
+                  href="/trans-chap/stocks"
+                  className="trans-chap-btn trans-chap-btn--secondary"
+                >
+                  <i className="fa-solid fa-utensils" aria-hidden />
+                  <span>Hotel Menu</span>
+                </Link>
+              ) : null}
+              {canInventory ? (
+                <Link
+                  href="/trans-chap/purchases/new?mode=select"
+                  className="trans-chap-btn trans-chap-btn--ghost"
+                >
+                  <i className="fa-solid fa-basket-shopping" aria-hidden />
+                  <span>Buy Supplies</span>
+                </Link>
+              ) : null}
+            </>
+          ) : (
+            <>
+              {canPos ? (
+                <Link href="/trans-chap/pos" className="trans-chap-btn trans-chap-btn--primary">
+                  <i className="fa-solid fa-cash-register" aria-hidden />
+                  <span>Open POS</span>
+                </Link>
+              ) : null}
+              {canPos ? (
+                <Link href="/trans-chap/make-a-sale/new" className="trans-chap-btn trans-chap-btn--secondary">
+                  <i className="fa-solid fa-plus" aria-hidden />
+                  <span>Make Sale</span>
+                </Link>
+              ) : null}
+              {canInventory ? (
+                <Link href="/trans-chap/purchases/new" className="trans-chap-btn trans-chap-btn--ghost">
+                  <i className="fa-solid fa-cart-flatbed" aria-hidden />
+                  <span>Restock</span>
+                </Link>
+              ) : null}
+            </>
+          )}
         </div>
       </section>
 

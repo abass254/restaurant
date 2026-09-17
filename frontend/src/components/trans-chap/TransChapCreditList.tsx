@@ -251,6 +251,12 @@ export function TransChapCreditList() {
                       <dt>Phone</dt>
                       <dd>{customer.phone}</dd>
                     </div>
+                    {customer.date_to_pay ? (
+                      <div>
+                        <dt>Pay by</dt>
+                        <dd>{customer.date_to_pay}</dd>
+                      </div>
+                    ) : null}
                   </dl>
 
                   <div className="trans-chap-credit__actions">
