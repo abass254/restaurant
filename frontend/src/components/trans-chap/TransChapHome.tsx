@@ -89,13 +89,7 @@ export function TransChapHome() {
                   <i className="fa-solid fa-cash-register" aria-hidden />
                   <span>Open POS</span>
                 </Link>
-              ) : null}
-              {canPos ? (
-                <Link href="/trans-chap/make-a-sale/new" className="trans-chap-btn trans-chap-btn--secondary">
-                  <i className="fa-solid fa-plus" aria-hidden />
-                  <span>Make Sale</span>
-                </Link>
-              ) : null}
+              ) : null},
               {canInventory ? (
                 <Link href="/trans-chap/purchases/new" className="trans-chap-btn trans-chap-btn--ghost">
                   <i className="fa-solid fa-cart-flatbed" aria-hidden />

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Literal
 
@@ -20,24 +19,6 @@ ImportUpsertStatus = Literal["created", "updated"]
 
 class CustomerServiceError(ValueError):
     """Business rule violation for shop customer operations."""
-
-
-def _parse_date(value: object | None) -> date | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    if isinstance(value, str):
-        trimmed = value.strip()
-        if not trimmed:
-            return None
-        try:
-            return date.fromisoformat(trimmed)
-        except ValueError as exc:
-            raise CustomerServiceError("Date to pay must be in YYYY-MM-DD format.") from exc
-    raise CustomerServiceError("Invalid date format for date to pay.")
 
 
 def _money(value: object | None, *, field: str = "Credit limit") -> Decimal:
@@ -82,8 +63,6 @@ class CustomerService:
                     ShopCustomer.name.ilike(like),
                     ShopCustomer.phone.ilike(like),
                     ShopCustomer.email.ilike(like),
-                    ShopCustomer.physical_location.ilike(like),
-                    ShopCustomer.address.ilike(like),
                 )
             )
         if owing:
@@ -132,10 +111,8 @@ class CustomerService:
         phone: str,
         email: str | None = None,
         address: str | None = None,
-        physical_location: str | None = None,
-        date_to_pay: date | str | None = None,
         notes: str | None = None,
-        credit_limit: object | None = 1000,
+        credit_limit: object | None = 0,
         outstanding_balance: object | None = 0,
         commit: bool = True,
     ) -> ShopCustomer:
@@ -149,21 +126,12 @@ class CustomerService:
         if self._find_duplicate_phone(account_id, clean_phone):
             raise CustomerServiceError("A customer with this phone number already exists.")
 
-        limit = _money(1000 if credit_limit is None else credit_limit)
+        limit = _money(credit_limit)
         opening = _money(outstanding_balance, field="Opening balance")
         if limit > 0 and opening > limit:
             raise CustomerServiceError(
                 "Opening balance cannot be higher than the credit limit."
             )
-
-        clean_location = (physical_location or "").strip() or None
-        clean_address = (address or "").strip() or None
-        if clean_location and not clean_address:
-            clean_address = clean_location
-        elif clean_address and not clean_location:
-            clean_location = clean_address
-
-        parsed_pay_date = _parse_date(date_to_pay)
 
         now = utc_now()
         customer = ShopCustomer(
@@ -171,9 +139,7 @@ class CustomerService:
             name=clean_name,
             phone=clean_phone,
             email=clean_email,
-            address=clean_address,
-            physical_location=clean_location,
-            date_to_pay=parsed_pay_date,
+            address=(address or "").strip() or None,
             notes=(notes or "").strip() or None,
             credit_limit=limit,
             outstanding_balance=opening,
@@ -194,10 +160,8 @@ class CustomerService:
         phone: str,
         email: str | None = None,
         address: str | None = None,
-        physical_location: str | None = None,
-        date_to_pay: date | str | None = None,
         notes: str | None = None,
-        credit_limit: object | None = 1000,
+        credit_limit: object | None = 0,
         outstanding_balance: object | None = 0,
         commit: bool = True,
     ) -> tuple[ShopCustomer, ImportUpsertStatus]:
@@ -213,8 +177,6 @@ class CustomerService:
                 phone=clean_phone,
                 email=email,
                 address=address,
-                physical_location=physical_location,
-                date_to_pay=date_to_pay,
                 notes=notes,
                 credit_limit=credit_limit,
                 outstanding_balance=outstanding_balance,
@@ -225,7 +187,7 @@ class CustomerService:
         clean_name = (name or "").strip()
         if not clean_name:
             raise CustomerServiceError("Customer name is required.")
-        limit = _money(1000 if credit_limit is None else credit_limit)
+        limit = _money(credit_limit)
         opening = _money(outstanding_balance, field="Opening balance")
         if limit > 0 and opening > limit:
             raise CustomerServiceError(
@@ -238,12 +200,6 @@ class CustomerService:
             existing.email = email.strip().lower() or None
         if address is not None:
             existing.address = address.strip() or None
-        if physical_location is not None:
-            existing.physical_location = physical_location.strip() or None
-            if not existing.address:
-                existing.address = existing.physical_location
-        if date_to_pay is not None:
-            existing.date_to_pay = _parse_date(date_to_pay)
         if notes is not None:
             existing.notes = notes.strip() or None
         existing.credit_limit = limit
@@ -263,14 +219,10 @@ class CustomerService:
         phone: str | None = None,
         email: str | None = None,
         address: str | None = None,
-        physical_location: str | None = None,
-        date_to_pay: date | str | None = None,
         notes: str | None = None,
         credit_limit: object | None = None,
         clear_email: bool = False,
         clear_address: bool = False,
-        clear_physical_location: bool = False,
-        clear_date_to_pay: bool = False,
         clear_notes: bool = False,
     ) -> ShopCustomer:
         customer = self.get_customer(account_id, customer_id)
@@ -294,16 +246,6 @@ class CustomerService:
             customer.address = None
         elif address is not None:
             customer.address = address.strip() or None
-        if clear_physical_location:
-            customer.physical_location = None
-        elif physical_location is not None:
-            customer.physical_location = physical_location.strip() or None
-            if not customer.address and customer.physical_location:
-                customer.address = customer.physical_location
-        if clear_date_to_pay:
-            customer.date_to_pay = None
-        elif date_to_pay is not None:
-            customer.date_to_pay = _parse_date(date_to_pay)
         if clear_notes:
             customer.notes = None
         elif notes is not None:

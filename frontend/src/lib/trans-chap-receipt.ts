@@ -14,7 +14,6 @@ export type TransChapReceiptLine = {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
-  modifiers?: { name: string; price: number; group?: string | null }[] | null;
 };
 
 export type TransChapReceipt = {
@@ -33,9 +32,6 @@ export type TransChapReceipt = {
   customerName: string | null;
   customerPhone: string | null;
   customerEmail: string | null;
-  tableNumber?: string | null;
-  serverName?: string | null;
-  fulfillmentType?: string | null;
   mpesaReceiptNumber: string | null;
   mpesaMessage: string | null;
   creditOutstanding: number | null;
@@ -94,13 +90,6 @@ export function loadTransChapReceipt(): TransChapReceipt | null {
                 quantity: Number(line.quantity),
                 unitPrice: Number(line.unitPrice),
                 lineTotal: Number(line.lineTotal),
-                modifiers: Array.isArray(line.modifiers)
-                  ? line.modifiers.map((m) => ({
-                      name: String(m.name || ""),
-                      price: Number(m.price || 0),
-                      group: m.group ? String(m.group) : null,
-                    }))
-                  : null,
               },
             ];
           })
@@ -126,9 +115,6 @@ export function loadTransChapReceipt(): TransChapReceipt | null {
       customerName: parsed.customerName ?? null,
       customerPhone: parsed.customerPhone ?? null,
       customerEmail: parsed.customerEmail ?? null,
-      tableNumber: parsed.tableNumber ?? null,
-      serverName: parsed.serverName ?? null,
-      fulfillmentType: parsed.fulfillmentType ?? null,
       mpesaReceiptNumber: parsed.mpesaReceiptNumber ?? null,
       mpesaMessage: parsed.mpesaMessage ?? null,
       creditOutstanding:
@@ -207,7 +193,6 @@ export function receiptFromOrder(
     quantity: line.quantity || 1,
     unitPrice: line.unit_price,
     lineTotal: line.line_total,
-    modifiers: line.modifiers || null,
   }));
   const productName = items[0]?.name || "Sale";
   return {
@@ -232,9 +217,6 @@ export function receiptFromOrder(
     customerName: order.customer_name,
     customerPhone: order.customer_phone,
     customerEmail: order.customer_email,
-    tableNumber: order.table_number ?? null,
-    serverName: order.server_name ?? null,
-    fulfillmentType: order.fulfillment_type ?? null,
     mpesaReceiptNumber: mpesaReceiptNumberFromOrder(order),
     mpesaMessage: push?.message ?? null,
     creditOutstanding:

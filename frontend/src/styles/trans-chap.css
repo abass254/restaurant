@@ -11139,3 +11139,505 @@ html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/settings
     transform: translateY(-1px);
     box-shadow: 0 6px 16px rgba(37, 211, 102, 0.38);
 }
+
+/* ==========================================================================
+   TRANS CHAP: POS MENU DISH ADDER (MOBILE & DESKTOP)
+   ========================================================================== */
+
+/* Search bar and custom dish header tools */
+.trans-chap-pos-host.fb-app .pos-menu-tools-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.trans-chap-pos-host.fb-app .pos-menu-custom-btn {
+    height: 44px;
+    min-height: 44px;
+    padding: 0 1rem;
+    border-radius: 14px;
+    background: var(--app-primary);
+    color: #ffffff;
+    border: none;
+    font-size: 0.86rem;
+    font-weight: 750;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--app-primary) 30%, transparent);
+    transition: all 0.15s ease;
+}
+
+.trans-chap-pos-host.fb-app .pos-menu-custom-btn:hover {
+    background: var(--app-primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--app-primary) 40%, transparent);
+}
+
+.trans-chap-pos-host.fb-app .pos-menu-custom-btn:active {
+    transform: scale(0.97);
+}
+
+/* Prompt card to add search query as custom dish */
+.trans-chap-pos-host.fb-app .pos-menu-search-prompt {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--app-primary) 8%, var(--app-surface));
+    border: 1.5px dashed color-mix(in srgb, var(--app-primary) 50%, var(--app-border));
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.trans-chap-pos-host.fb-app .pos-menu-search-prompt:hover {
+    background: color-mix(in srgb, var(--app-primary) 12%, var(--app-surface));
+    border-color: var(--app-primary);
+}
+
+.trans-chap-pos-host.fb-app .pos-menu-search-prompt__meta {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+}
+
+.trans-chap-pos-host.fb-app .pos-menu-search-prompt__icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: var(--app-primary);
+    color: #ffffff;
+    display: grid;
+    place-items: center;
+    font-size: 0.95rem;
+    flex-shrink: 0;
+}
+
+.trans-chap-pos-host.fb-app .pos-menu-search-prompt__name {
+    display: block;
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: var(--app-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.trans-chap-pos-host.fb-app .pos-menu-search-prompt__hint {
+    font-size: 0.75rem;
+    color: var(--app-text-muted);
+}
+
+.trans-chap-pos-host.fb-app .pos-menu-search-prompt__action {
+    font-size: 0.8rem;
+    font-weight: 750;
+    color: var(--app-primary);
+    padding: 0.35rem 0.7rem;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--app-primary) 12%, transparent);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Card for adding custom dish in the grid */
+.trans-chap-pos-host.fb-app .pos-card--custom {
+    border: 1.5px dashed color-mix(in srgb, var(--app-primary) 60%, var(--app-border));
+    background: color-mix(in srgb, var(--app-primary) 3%, var(--app-surface));
+}
+
+.trans-chap-pos-host.fb-app .pos-card--custom:hover {
+    border-color: var(--app-primary);
+    background: color-mix(in srgb, var(--app-primary) 7%, var(--app-surface));
+}
+
+/* Session stats chip */
+.trans-chap-pos-host.fb-app .pos-menu-stats-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.65rem;
+    border-radius: 9999px;
+    background: color-mix(in srgb, #10b981 14%, var(--app-surface));
+    border: 1px solid color-mix(in srgb, #10b981 30%, transparent);
+    color: #059669;
+    font-size: 0.75rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+/* ==========================================================================
+   POS MENU MODAL & MOBILE BOTTOM SHEET
+   ========================================================================== */
+
+.pos-menu-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    display: flex;
+    align-items: flex-end; /* Bottom sheet on mobile devices */
+    justify-content: center;
+    padding: 0;
+    animation: posBackdropFadeIn 0.2s ease-out;
+}
+
+@media (min-width: 640px) {
+    .pos-menu-modal-backdrop {
+        align-items: center; /* Centered modal on tablet/desktop */
+        padding: 16px;
+    }
+}
+
+.pos-menu-modal {
+    background: var(--app-surface, #ffffff);
+    color: var(--app-text, #0f172a);
+    width: 100%;
+    max-width: 500px;
+    border-radius: 24px 24px 0 0; /* Bottom sheet curved corners */
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.25);
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+    max-height: 90dvh;
+    overflow: hidden;
+    animation: posBottomSheetUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (min-width: 640px) {
+    .pos-menu-modal {
+        border-radius: 20px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.3);
+        animation: posModalPopIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+}
+
+@keyframes posBottomSheetUp {
+    from {
+        opacity: 0;
+        transform: translateY(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.pos-menu-modal__drag-handle {
+    width: 38px;
+    height: 4px;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--app-text) 20%, transparent);
+    margin: 10px auto 2px;
+    flex-shrink: 0;
+}
+
+@media (min-width: 640px) {
+    .pos-menu-modal__drag-handle {
+        display: none;
+    }
+}
+
+.pos-menu-modal__header {
+    padding: 12px 20px 14px;
+    border-bottom: 1px solid var(--app-border);
+    background: color-mix(in srgb, var(--app-text) 2%, var(--app-surface));
+}
+
+.pos-menu-modal__title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.pos-menu-modal__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: color-mix(in srgb, var(--app-primary) 12%, transparent);
+    color: var(--app-primary);
+    padding: 0.2rem 0.65rem;
+    border-radius: 9999px;
+}
+
+.pos-menu-modal__close-btn {
+    background: transparent;
+    border: none;
+    font-size: 1.15rem;
+    color: var(--app-text-muted);
+    cursor: pointer;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    transition: all 0.15s ease;
+}
+
+.pos-menu-modal__close-btn:hover {
+    background: color-mix(in srgb, var(--app-text) 8%, transparent);
+    color: var(--app-text);
+}
+
+.pos-menu-modal__title {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--app-text);
+    margin: 0 0 2px 0;
+    line-height: 1.25;
+}
+
+.pos-menu-modal__subtitle {
+    font-size: 0.78rem;
+    color: var(--app-text-secondary);
+    margin: 0;
+    line-height: 1.35;
+}
+
+.pos-menu-modal__body {
+    padding: 16px 20px 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.pos-menu-modal__field {
+    display: flex;
+    flex-direction: column;
+}
+
+.pos-menu-modal__field > label {
+    font-size: 0.8rem;
+    font-weight: 750;
+    color: var(--app-text);
+    margin-bottom: 5px;
+}
+
+.pos-menu-modal__label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 5px;
+}
+
+.pos-menu-modal__label-row > label {
+    font-size: 0.8rem;
+    font-weight: 750;
+    color: var(--app-text);
+}
+
+.pos-menu-modal__label-hint {
+    font-size: 0.72rem;
+    color: var(--app-text-secondary);
+}
+
+.pos-menu-modal__input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background: var(--app-bg);
+    border: 1.5px solid var(--app-border);
+    border-radius: 13px;
+    min-height: 46px;
+    transition: all 0.15s ease;
+}
+
+.pos-menu-modal__input-wrap:focus-within {
+    border-color: var(--app-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-primary) 18%, transparent);
+}
+
+.pos-menu-modal__input-icon {
+    padding-left: 0.85rem;
+    color: var(--app-text-secondary);
+    font-size: 0.9rem;
+}
+
+.pos-menu-modal__text-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 0.65rem 0.85rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--app-text);
+    outline: none;
+    min-width: 0;
+}
+
+.pos-menu-modal__clear-btn {
+    border: none;
+    background: transparent;
+    padding: 0.5rem 0.75rem;
+    color: var(--app-text-secondary);
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.pos-menu-modal__price-wrap {
+    display: flex;
+    align-items: center;
+    background: var(--app-bg);
+    border: 1.5px solid var(--app-border);
+    border-radius: 13px;
+    min-height: 52px;
+    overflow: hidden;
+    transition: all 0.15s ease;
+}
+
+.pos-menu-modal__price-wrap:focus-within {
+    border-color: var(--app-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-primary) 18%, transparent);
+}
+
+.pos-menu-modal__price-prefix {
+    height: 52px;
+    padding: 0 1rem;
+    display: grid;
+    place-items: center;
+    font-size: 0.9rem;
+    font-weight: 850;
+    color: var(--app-primary);
+    border-right: 1.5px solid var(--app-border);
+    background: color-mix(in srgb, var(--app-primary) 8%, transparent);
+    flex-shrink: 0;
+}
+
+.pos-menu-modal__price-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 0.65rem 0.95rem;
+    font-size: 1.4rem;
+    font-weight: 850;
+    color: var(--app-text);
+    outline: none;
+    min-width: 0;
+    letter-spacing: -0.01em;
+}
+
+/* Quick Price Shortcuts */
+.pos-menu-modal__shortcuts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.5rem;
+}
+
+.pos-menu-modal__price-pill {
+    padding: 0.32rem 0.65rem;
+    border-radius: 9px;
+    border: 1px solid var(--app-border);
+    background: var(--app-bg);
+    font-size: 0.8rem;
+    font-weight: 750;
+    color: var(--app-text);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    min-height: 32px;
+}
+
+.pos-menu-modal__price-pill:hover {
+    border-color: var(--app-primary);
+    color: var(--app-primary);
+}
+
+.pos-menu-modal__price-pill.is-active {
+    background: var(--app-primary);
+    border-color: var(--app-primary);
+    color: #ffffff;
+    box-shadow: 0 2px 6px color-mix(in srgb, var(--app-primary) 30%, transparent);
+}
+
+/* Category Selector inside modal */
+.pos-menu-modal__cat-selector {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.45rem;
+}
+
+.pos-menu-modal__cat-btn {
+    padding: 0.5rem 0.65rem;
+    border-radius: 10px;
+    border: 1px solid var(--app-border);
+    background: var(--app-bg);
+    font-size: 0.78rem;
+    font-weight: 750;
+    color: var(--app-text);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pos-menu-modal__cat-btn:hover {
+    border-color: color-mix(in srgb, var(--app-primary) 50%, var(--app-border));
+}
+
+.pos-menu-modal__cat-btn.is-active {
+    background: color-mix(in srgb, var(--app-primary) 12%, var(--app-surface));
+    border-color: var(--app-primary);
+    color: var(--app-primary);
+    font-weight: 800;
+}
+
+/* Footer with Submit Button */
+.pos-menu-modal__footer {
+    padding: 14px 20px max(18px, calc(14px + env(safe-area-inset-bottom)));
+    border-top: 1px solid var(--app-border);
+    background: color-mix(in srgb, var(--app-text) 2%, var(--app-surface));
+    margin-top: 6px;
+}
+
+.pos-menu-modal__submit-btn {
+    width: 100%;
+    min-height: 50px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, var(--app-primary), #ea580c);
+    color: #ffffff;
+    border: none;
+    font-size: 0.98rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    cursor: pointer;
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--app-primary) 35%, transparent);
+    transition: all 0.2s ease;
+}
+
+.pos-menu-modal__submit-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px color-mix(in srgb, var(--app-primary) 45%, transparent);
+}
+
+.pos-menu-modal__submit-btn:active:not(:disabled) {
+    transform: scale(0.98);
+}
+
+.pos-menu-modal__submit-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}

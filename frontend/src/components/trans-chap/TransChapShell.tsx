@@ -224,7 +224,8 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
   const isNewPost = pathname.startsWith("/trans-chap/feeds/new");
   const isPos =
     pathname.startsWith("/trans-chap/pos") ||
-    pathname.startsWith("/trans-chap/purchases/new");
+    pathname.startsWith("/trans-chap/purchases/new") ||
+    pathname.startsWith("/trans-chap/stocks/menu");
   const showNav = !isSignIn && !isNewPost;
   const showHeader = !isSignIn && !isNewPost;
   const instagramConnected = Boolean(user?.instagram_account);

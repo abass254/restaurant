@@ -26,7 +26,6 @@ import {
   ensureShopCustomer,
   fetchShopCustomers,
 } from "@/lib/trans-chap-customers";
-import { isRestaurantStore } from "@/lib/onboarding";
 import { formatKsh, receiptFromOrder, saveTransChapReceipt, toWhatsAppMsisdn, transChapReceiptHref } from "@/lib/trans-chap-receipt";
 import type {
   InventoryItem,
@@ -89,10 +88,8 @@ function mergeBasketLine(
 export function TransChapTransactForm() {
   const router = useRouter();
   const user = useAuthUser();
-  const restaurant = isRestaurantStore(user.active_account ?? user.account);
   const [stage, setStage] = useState<Stage>("catalog");
   const [payMode, setPayMode] = useState<PayMode>("mpesa");
-  const [creditDueDate, setCreditDueDate] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
   const [customers, setCustomers] = useState<ShopCustomer[]>([]);
@@ -106,19 +103,15 @@ export function TransChapTransactForm() {
   const [lastScannedKey, setLastScannedKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [mpesaReady, setMpesaReady] = useState<boolean | null>(null);
-  const [selectMode, setSelectMode] = useState(restaurant);
+  const [selectMode, setSelectMode] = useState(false);
   const inventoryRef = useRef<InventoryItem[]>([]);
 
   const shopName =
     user.active_account?.business_name ||
     user.account?.business_name ||
-    "Trans Chap Store";
+    "DukAI";
   const saleTotal = useMemo(
     () => basket.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0),
-    [basket],
-  );
-  const selectedCount = useMemo(
-    () => basket.reduce((sum, line) => sum + line.quantity, 0),
     [basket],
   );
   const customerMatches = useMemo(() => {
@@ -211,13 +204,12 @@ export function TransChapTransactForm() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const mode = params.get("mode");
-    setSelectMode(restaurant ? mode !== "scan" : mode === "select" || mode === "single");
+    setSelectMode(params.get("mode") === "select" || params.get("mode") === "single");
     const pay = params.get("pay");
     if (pay === "mpesa" || pay === "credit" || pay === "cash") {
       setPayMode(pay === "cash" ? "credit" : pay);
     }
-  }, [restaurant]);
+  }, []);
 
   useEffect(() => {
     void apiFetch<MerchantMpesaConfigResponse>(apiRoutes.mpesaBusinessConfig)
@@ -371,7 +363,6 @@ export function TransChapTransactForm() {
         payment_method: payMode,
         customer_name: customerName.trim() || null,
         customer_phone: customerPhone,
-        date_to_pay: payMode === "credit" ? creditDueDate.trim() || null : null,
         items: payloadItems,
         ...(mpesaReceiptCode ? { mpesa_receipt_number: mpesaReceiptCode } : {}),
       };
@@ -562,21 +553,6 @@ export function TransChapTransactForm() {
                 </button>
               </div>
             </div>
-
-            {payMode === "credit" ? (
-              <div className="auth-split__field">
-                <label htmlFor="transact-credit-due-date">Date to pay (optional)</label>
-                <div className="trans-chap-input">
-                  <input
-                    id="transact-credit-due-date"
-                    type="date"
-                    className="auth-split__input"
-                    value={creditDueDate}
-                    onChange={(e) => setCreditDueDate(e.target.value)}
-                  />
-                </div>
-              </div>
-            ) : null}
 
             {payMode === "mpesa" && mpesaReady === false ? (
               <p className="trans-chap-mpesa-gate">

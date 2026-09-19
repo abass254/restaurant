@@ -6,6 +6,8 @@ import { useAuthUser } from "@/components/app/AuthProvider";
 import { TransChapMenuForm } from "@/components/trans-chap/TransChapMenuForm";
 import { isRestaurantStore } from "@/lib/onboarding";
 
+import { PlatformRuntimeProvider } from "@/lib/platform-runtime";
+
 export default function TransChapMenuPage() {
   const router = useRouter();
   const user = useAuthUser();
@@ -19,5 +21,11 @@ export default function TransChapMenuPage() {
 
   if (!restaurant) return null;
 
-  return <TransChapMenuForm />;
+  return (
+    <PlatformRuntimeProvider>
+      <div className="trans-chap-pos-host fb-app">
+        <TransChapMenuForm />
+      </div>
+    </PlatformRuntimeProvider>
+  );
 }
