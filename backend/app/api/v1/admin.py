@@ -16,7 +16,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.api.v1.admin_auth import require_super_admin
 from app.config import get_settings
@@ -28,10 +28,12 @@ from app.dependencies import ServiceContainer, get_request_session, get_services
 from app.models import (
     Account,
     AiAgentConfiguration,
+    Catalogue,
     GoogleMapsConfiguration,
     InstagramAccount,
     InventoryItem,
     MapboxConfiguration,
+    MealAddon,
     MerchantMpesaProfile,
     MpesaTransaction,
     Order,
@@ -42,7 +44,13 @@ from app.models import (
     UserMembership,
     is_valid_business_category,
 )
-from app.schemas import OrderOut, ProductOut, attach_order_mpesa_settlement
+from app.schemas import (
+    MealAddonLinkPayload,
+    MealAddonOut,
+    OrderOut,
+    ProductOut,
+    attach_order_mpesa_settlement,
+)
 from app.services import mpesa_service
 from app.core.session import validate_csrf
 from app.support.order_delivery_details import order_needs_delivery_details
@@ -2350,10 +2358,21 @@ class AdminSetPrimaryImageResponse(BaseModel):
 @router.get("/catalog/products", response_model=AdminCatalogProductsResponse)
 def list_catalog_products(
     q: str | None = None,
+    product_type: str | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(require_super_admin),
 ):
-    query = db.query(Product).order_by(Product.name.asc())
+    query = (
+        db.query(Product)
+        .options(selectinload(Product.available_addons).selectinload(MealAddon.addon))
+        .order_by(Product.name.asc())
+    )
+    if product_type:
+        pt = product_type.strip().lower()
+        if pt == "retail":
+            query = query.filter(Product.product_type.in_(["retail", "product"]))
+        elif pt in ("meal", "addon", "service"):
+            query = query.filter(Product.product_type == pt)
     if q:
         term = f"%{q.strip()}%"
         from sqlalchemy import or_
@@ -2366,26 +2385,32 @@ def list_catalog_products(
                 Product.sku.ilike(term),
             ),
         )
-    rows = query.limit(200).all()
+    rows = query.limit(500).all()
 
     product_ids = [row.id for row in rows]
     counts: dict[str, int] = {}
+    total_quantities: dict[str, int] = {}
     if product_ids:
         rows_counts = (
             db.query(
                 InventoryItem.product_id,
                 func.count(func.distinct(InventoryItem.account_id)),
+                func.coalesce(func.sum(InventoryItem.stock_quantity), 0),
             )
             .filter(InventoryItem.product_id.in_(product_ids))
             .group_by(InventoryItem.product_id)
             .all()
         )
-        counts = {pid: cnt for pid, cnt in rows_counts}
+        counts = {pid: cnt for pid, cnt, _ in rows_counts}
+        total_quantities = {pid: int(qty) for pid, _, qty in rows_counts}
 
     items: list[ProductOut] = []
     for row in rows:
         out = ProductOut.model_validate(row)
         out.shops_carrying_count = counts.get(row.id, 0)
+        out.total_quantity = total_quantities.get(row.id, 0)
+        if row.available_addons:
+            out.addons = [MealAddonOut.model_validate(a) for a in row.available_addons]
         items.append(out)
 
     return AdminCatalogProductsResponse(
@@ -2394,13 +2419,79 @@ def list_catalog_products(
     )
 
 
+class AdminUpdateCatalogProductIn(BaseModel):
+    is_active: bool | None = None
+    product_type: str | None = None
+
+
+@router.patch(
+    "/catalog/products/{product_id}",
+    response_model=AdminSetPrimaryImageResponse,
+)
+def update_catalog_product_admin(
+    product_id: str,
+    payload: AdminUpdateCatalogProductIn,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_super_admin),
+):
+    product = db.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Product not found.")
+
+    if payload.is_active is not None:
+        product.is_active = payload.is_active
+    if payload.product_type is not None:
+        pt = payload.product_type.strip().lower()
+        if pt in ("retail", "meal", "addon", "service", "product"):
+            product.product_type = pt
+    product.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(product)
+
+    return AdminSetPrimaryImageResponse(
+        message=f"Product updated successfully.",
+        data=ProductOut.model_validate(product),
+    )
+
+
+class AdminBulkUpdateCatalogProductsIn(BaseModel):
+    product_ids: list[str] = Field(min_length=1)
+    is_active: bool
+
+
+@router.post("/catalog/products/bulk-status")
+def bulk_update_catalog_status_admin(
+    payload: AdminBulkUpdateCatalogProductsIn,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_super_admin),
+):
+    products = db.query(Product).filter(Product.id.in_(payload.product_ids)).all()
+    now = datetime.utcnow()
+    for product in products:
+        product.is_active = payload.is_active
+        product.updated_at = now
+    db.commit()
+
+    action = "enabled" if payload.is_active else "disabled"
+    return {
+        "message": f"Successfully {action} {len(products)} product(s).",
+        "count": len(products),
+        "is_active": payload.is_active,
+    }
+
+
 @router.get("/catalog/products/{product_id}", response_model=AdminCatalogProductDetailResponse)
 def catalog_product_detail(
     product_id: str,
     db: Session = Depends(get_db),
     _: User = Depends(require_super_admin),
 ):
-    product = db.get(Product, product_id)
+    product = (
+        db.query(Product)
+        .options(selectinload(Product.available_addons).selectinload(MealAddon.addon))
+        .filter(Product.id == product_id)
+        .first()
+    )
     if product is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Product not found.")
 
@@ -2431,6 +2522,8 @@ def catalog_product_detail(
     )
     out = ProductOut.model_validate(product)
     out.shops_carrying_count = shops_count
+    if product.available_addons:
+        out.addons = [MealAddonOut.model_validate(a) for a in product.available_addons]
 
     return AdminCatalogProductDetailResponse(
         data=AdminCatalogProductDetail(
@@ -2439,6 +2532,109 @@ def catalog_product_detail(
             shops_carrying_count=shops_count,
         ),
     )
+
+
+@router.get(
+    "/catalog/products/{product_id}/addons",
+    response_model=list[MealAddonOut],
+)
+def get_catalog_product_addons(
+    product_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_super_admin),
+):
+    product = db.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Product not found.")
+
+    addons = (
+        db.query(MealAddon)
+        .options(selectinload(MealAddon.addon))
+        .filter(MealAddon.meal_id == product_id)
+        .order_by(MealAddon.sort_order.asc(), MealAddon.created_at.asc())
+        .all()
+    )
+    return [MealAddonOut.model_validate(a) for a in addons]
+
+
+@router.post(
+    "/catalog/products/{product_id}/addons",
+    response_model=MealAddonOut,
+)
+def link_catalog_meal_addon(
+    product_id: str,
+    payload: MealAddonLinkPayload,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_super_admin),
+):
+    meal = db.get(Product, product_id)
+    if meal is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Meal product not found.")
+
+    addon = db.get(Product, payload.addon_id)
+    if addon is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Addon product not found.")
+
+    link = (
+        db.query(MealAddon)
+        .options(selectinload(MealAddon.addon))
+        .filter(
+            MealAddon.meal_id == product_id,
+            MealAddon.addon_id == payload.addon_id,
+        )
+        .first()
+    )
+    now = datetime.utcnow()
+    if link is None:
+        link = MealAddon(
+            meal_id=product_id,
+            addon_id=payload.addon_id,
+            additional_price=payload.additional_price,
+            is_default=payload.is_default,
+            is_required=payload.is_required,
+            max_quantity=payload.max_quantity,
+            sort_order=payload.sort_order,
+            created_at=now,
+        )
+        db.add(link)
+    else:
+        link.additional_price = payload.additional_price
+        link.is_default = payload.is_default
+        link.is_required = payload.is_required
+        link.max_quantity = payload.max_quantity
+        link.sort_order = payload.sort_order
+
+    db.commit()
+    db.refresh(link)
+    return MealAddonOut.model_validate(link)
+
+
+@router.delete(
+    "/catalog/products/{product_id}/addons/{addon_id}",
+)
+def unlink_catalog_meal_addon(
+    product_id: str,
+    addon_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_super_admin),
+):
+    link = (
+        db.query(MealAddon)
+        .filter(
+            MealAddon.meal_id == product_id,
+            MealAddon.addon_id == addon_id,
+        )
+        .first()
+    )
+    if link is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail="Addon is not linked to this meal.",
+        )
+
+    db.delete(link)
+    db.commit()
+    return {"message": "Addon unlinked from meal successfully."}
 
 
 @router.post(
@@ -2512,6 +2708,7 @@ class AdminGenerateCatalogImageIn(BaseModel):
     prompt: str | None = Field(default=None, max_length=2000)
     quality: Literal["low", "medium", "high"] | None = None
     provider: Literal["openai", "gemini", "cloudflare", "pollinations"] | None = None
+    force: bool = False
 
 
 @router.post(
@@ -2524,7 +2721,7 @@ async def generate_catalog_primary_image(
     db: Session = Depends(get_db),
     admin: User = Depends(require_super_admin),
 ):
-    """Generate an AI image and lock it as the platform primary (missing only)."""
+    """Generate an AI image and lock it as the platform primary."""
     product = db.get(Product, product_id)
     if product is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Product not found.")
@@ -2533,7 +2730,7 @@ async def generate_catalog_primary_image(
             status.HTTP_400_BAD_REQUEST,
             detail="AI images are only available for products, not services.",
         )
-    if product.image_url:
+    if product.image_url and not payload.force:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             detail="This catalog product already has a primary image.",

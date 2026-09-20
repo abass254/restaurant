@@ -224,6 +224,32 @@ class ConversationStarterOut(BaseModel):
     is_active: bool
 
 
+class MealAddonOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    meal_id: str
+    addon_id: str
+    additional_price: float | None = None
+    is_default: bool = False
+    is_required: bool = False
+    max_quantity: int = 1
+    sort_order: int = 0
+    addon_name: str | None = None
+    addon_code: str | None = None
+    addon_price: float | None = None
+    created_at: datetime | None = None
+
+
+class MealAddonLinkPayload(BaseModel):
+    addon_id: str
+    additional_price: float | None = None
+    is_default: bool = False
+    is_required: bool = False
+    max_quantity: int = 1
+    sort_order: int = 0
+
+
 class ProductOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -243,8 +269,14 @@ class ProductOut(BaseModel):
     created_by_account_id: str | None
     created_by_user_id: str | None
     shops_carrying_count: int | None = None
+    total_quantity: int | None = None
+    addons: list[MealAddonOut] | None = None
+    is_active: bool = True
     created_at: datetime | None
     updated_at: datetime | None
+
+
+CatalogueOut = ProductOut
 
 
 class InventoryItemOut(BaseModel):

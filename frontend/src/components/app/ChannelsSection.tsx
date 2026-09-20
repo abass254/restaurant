@@ -439,16 +439,16 @@ function ChannelCard({
                 {channel.supports_oauth && channel.connect_url ? (
                   <a
                     href={resolveSameOriginUrl(channel.connect_url)}
-                    className="btn btn-primary btn-sm"
+                    className="btn btn-sm channel-btn channel-btn--reconnect"
                   >
                     <i className="fa-solid fa-rotate" aria-hidden="true" />
-                    Reconnect via OAuth
+                    Reconnect
                   </a>
                 ) : (
                   canManage && (
                     <button
                       type="button"
-                      className="btn btn-ghost btn-sm"
+                      className="btn btn-ghost btn-sm channel-btn channel-btn--edit"
                       onClick={onOpenForm}
                     >
                       <i className="fa-solid fa-pen" aria-hidden="true" />
@@ -459,7 +459,7 @@ function ChannelCard({
                 {canManage ? (
                   <button
                     type="button"
-                    className="btn btn-ghost btn-sm btn-danger"
+                    className="btn btn-ghost btn-sm channel-btn channel-btn--remove"
                     onClick={onDisconnect}
                   >
                     <i className="fa-solid fa-trash" aria-hidden="true" />
@@ -472,18 +472,18 @@ function ChannelCard({
                 {channel.supports_oauth && channel.connect_url ? (
                   <a
                     href={resolveSameOriginUrl(channel.connect_url)}
-                    className="btn btn-primary btn-sm"
+                    className="btn btn-sm channel-btn channel-btn--oauth"
                   >
                     <i className="fa-brands fa-meta" aria-hidden="true" />
-                    Connect with Meta
+                    Connect via Meta
                   </a>
                 ) : null}
                 {canManage ? (
                   <button
                     type="button"
-                    className={`btn ${
-                      channel.supports_oauth ? "btn-ghost" : "btn-primary"
-                    } btn-sm`}
+                    className={`btn btn-sm channel-btn ${
+                      channel.supports_oauth ? "channel-btn--ghost" : "channel-btn--connect"
+                    }`}
                     onClick={onOpenForm}
                   >
                     <i className="fa-solid fa-link" aria-hidden="true" />

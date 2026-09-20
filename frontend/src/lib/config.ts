@@ -213,6 +213,9 @@ export const apiRoutes = {
     `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/collect`,
   customerCollection: (id: string, transactionId: string) =>
     `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/collections/${encodeURIComponent(transactionId)}`,
+  customerSendWhatsAppReminder: (id: string) =>
+    `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/send-whatsapp-reminder`,
+  customerVerifyWhatsApp: `${apiUrl}/api/v1/customers/verify-whatsapp`,
   suppliers: `${apiUrl}/api/v1/suppliers`,
   suppliersImport: `${apiUrl}/api/v1/suppliers/import`,
   supplier: (id: string) => `${apiUrl}/api/v1/suppliers/${encodeURIComponent(id)}`,
@@ -319,6 +322,11 @@ export const apiRoutes = {
     `${apiUrl}/api/v1/admin/catalog/products/${id}/primary-image/auto`,
   adminCatalogGenerateImage: (id: string) =>
     `${apiUrl}/api/v1/admin/catalog/products/${id}/generate-image`,
+  adminCatalogBulkStatus: `${apiUrl}/api/v1/admin/catalog/products/bulk-status`,
+  adminCatalogMealAddons: (mealId: string) =>
+    `${apiUrl}/api/v1/admin/catalog/products/${encodeURIComponent(mealId)}/addons`,
+  adminCatalogMealAddonItem: (mealId: string, addonId: string) =>
+    `${apiUrl}/api/v1/admin/catalog/products/${encodeURIComponent(mealId)}/addons/${encodeURIComponent(addonId)}`,
   adminBotSandbox: (merchantId: string) =>
     `${apiUrl}/api/v1/admin/bot-sandbox?merchant_id=${encodeURIComponent(merchantId)}`,
   adminBotSandboxMessage: (merchantId: string) =>

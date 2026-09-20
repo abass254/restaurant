@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import "@/styles/bundles/admin.css";
+import "@/styles/admin.css";
+import "@/styles/messages-chat.css";
 import { AuthProvider } from "@/components/app/AuthProvider";
 import { BackendUnavailablePanel } from "@/components/app/BackendUnavailablePanel";
 import { BackendUnavailableError, backendUrl } from "@/lib/backend";

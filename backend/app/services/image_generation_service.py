@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
 import secrets
 from typing import Any
 from urllib.parse import quote
@@ -47,17 +48,169 @@ class ImageGenerationQuotaError(ImageGenerationError):
     """Upstream provider rejected the call due to rate limits or billing quota."""
 
 
-# Style suffix appended to every prompt so output looks like a real catalog
-# photo regardless of provider. Models that ignore long prompts (Pollinations
-# at low budgets) still benefit from a few of these keywords.
+# Style suffix appended to prompts for clean commercial e-commerce presentation.
+# Notice: we do NOT include "no text", because products with descriptive specs
+# (e.g. 250ml, 500g) need legible numbers and brand typography on their labels.
 _STYLE_SUFFIX = (
-    "Professional studio product photograph on a clean white background. "
-    "Soft, even lighting; sharp focus; centered composition; no text, "
-    "no watermark, no logos other than the brand naturally on the product; "
-    "e-commerce / catalog style; photorealistic."
+    "Professional commercial studio product photography on a clean seamless light background. "
+    "Sharp focus, centered composition, soft even studio lighting; "
+    "authentic retail packaging with clear, legible front label typography and numbers; "
+    "no watermarks, no unrelated background text, no promotional banners, no artificial badges; "
+    "e-commerce catalog style; photorealistic."
 )
 
 _KNOWN_PROVIDERS = ("openai", "gemini", "cloudflare", "pollinations")
+
+_MEASUREMENT_RE = re.compile(
+    r'\b(\d+(?:\.\d+)?\s*(?:ml|milliliters?|millilitres?|ltrs?|litres?|liters?|l\b|fl\s*oz|g\b|grams?|kg|kilograms?|kgs|oz|lbs?|pounds?))\b',
+    re.IGNORECASE,
+)
+_PACK_RE = re.compile(
+    r'\b(?:pack\s*of\s*\d+|\d+\s*(?:pack|packs|pkt|pkts|pcs|pieces?))\b',
+    re.IGNORECASE,
+)
+_NUMBER_RE = re.compile(r'(\d+(?:\.\d+)?)')
+
+_GARMENT_KEYWORDS = [
+    "shirt", "t-shirt", "tshirt", "tee", "hoodie", "jacket", "coat", "sweater", "sweatshirt",
+    "pants", "trousers", "jeans", "shorts", "dress", "skirt", "blouse", "suit", "socks",
+    "underwear", "bra", "shoes", "sneakers", "boots", "sandals", "slippers", "hat", "cap",
+    "beanie", "scarf", "gloves", "belt"
+]
+_BEVERAGE_KEYWORDS = [
+    "coca", "cocacola", "coke", "pepsi", "fanta", "sprite", "mirinda", "krest", "stoney",
+    "soda", "soft drink", "soft drinks", "juice", "mineral water", "drinking water", "water",
+    "energy drink", "red bull", "monster", "lucozade", "yoghurt", "yogurt", "yought",
+    "milk", "mala", "beer", "lager", "wine", "whisky", "whiskey", "vodka", "gin", "rum",
+    "cider", "liqueur", "tea", "coffee", "latte", "espresso", "cappuccino", "smoothie",
+    "milkshake", "shake", "syrup", "squash", "beverage", "drink", "drinks"
+]
+_DISH_KEYWORDS = [
+    "mandi", "pilau", "biryani", "tikka", "kebab", "mishkaki", "mshkaki", "shawarma",
+    "sambusa", "samosa", "bhajia", "viazi", "mahamri", "chapati", "burger", "pizza",
+    "nundu", "tingishaki", "curry", "roast chicken", "fried chicken", "chips masala",
+    "french fries"
+]
+_BUTCHERY_KEYWORDS = [
+    "steak", "chops", "ribs", "beef", "mutton", "lamb", "goat", "pork", "fillet",
+    "mince", "drumstick"
+]
+_PACKAGED_FOOD_KEYWORDS = [
+    "flour", "rice", "sauce", "ketchup", "oil", "cooking oil", "sugar", "salt", "spice",
+    "masala", "curry powder", "baking soda", "baking powder", "pasta", "spaghetti", "noodle",
+    "noodles", "biscuit", "biscuits", "cookie", "cookies", "crisps", "chips", "chocolate",
+    "candy", "jam", "cereal", "cornflakes", "oats", "margarine", "butter", "cheese",
+    "mayonnaise", "seasoning", "royco", "cubes", "tomato paste", "beans", "lentils",
+    "peas", "snack"
+]
+_HOUSEHOLD_KEYWORDS = [
+    "bleach", "detergent", "soap", "powder", "omo", "jik", "harpic", "sta-soft", "downy",
+    "sunlight", "aerial", "scouring pad", "toilet cleaner", "dishwashing", "shampoo",
+    "conditioner", "lotion", "cream", "toothpaste", "body wash", "deodorant", "tissue",
+    "serviette", "wipe", "diaper", "pampers", "sanitary pad", "air freshener", "soywax",
+    "candle", "cleaner"
+]
+_ELECTRONICS_KEYWORDS = [
+    "phone", "smartphone", "charger", "cable", "earphone", "earbuds", "headphone",
+    "speaker", "power bank", "adapter", "battery"
+]
+_CONTAINER_KEYWORDS = [
+    "jar", "bottle", "can", "tin", "tub", "packet", "pouch", "container", "jug", "carton", "box"
+]
+
+_FOOD_BEV_HOUSEHOLD_CONTAINER = (
+    _BEVERAGE_KEYWORDS + _DISH_KEYWORDS + _BUTCHERY_KEYWORDS +
+    _PACKAGED_FOOD_KEYWORDS + _HOUSEHOLD_KEYWORDS + _CONTAINER_KEYWORDS
+)
+
+
+def _matches_any(keywords: list[str], text: str) -> bool:
+    pattern = r'\b(?:' + '|'.join(re.escape(k) for k in keywords) + r')\b'
+    return bool(re.search(pattern, text, re.IGNORECASE))
+
+
+def extract_product_measurements(product: Product) -> list[str]:
+    """Extract volume, weight, pack, or size specifications from product fields."""
+    found: list[str] = []
+    seen: set[str] = set()
+
+    def add(item: str):
+        cleaned = item.strip()
+        if cleaned and cleaned.lower() not in seen:
+            seen.add(cleaned.lower())
+            found.append(cleaned)
+
+    # 1. From name
+    if product.name:
+        for m in _MEASUREMENT_RE.findall(product.name):
+            add(m)
+        for m in _PACK_RE.findall(product.name):
+            add(m)
+
+    # 2. From unit
+    if product.unit:
+        u = product.unit.strip()
+        if u.lower() not in ("pc", "pcs", "unit", "each", "item", "pc(s)"):
+            for m in _MEASUREMENT_RE.findall(u):
+                add(m)
+
+    # 3. From attributes JSON
+    if isinstance(product.attributes, dict):
+        for key in ("size", "volume", "weight", "net_weight", "capacity", "quantity"):
+            val = str(product.attributes.get(key) or "").strip()
+            if val:
+                for m in _MEASUREMENT_RE.findall(val):
+                    add(m)
+                for m in _PACK_RE.findall(val):
+                    add(m)
+
+    return found
+
+
+def classify_product_item_type(product: Product) -> str:
+    """Classify the physical form of the item to guarantee product context over brand merch.
+    
+    Protects against products miscategorized in the database (e.g. food/drinks marked as fashion).
+    Only treats as garment if the product name itself denotes clothing.
+    """
+    name_lower = (product.name or "").lower()
+    cat_lower = (product.category or "").lower()
+
+    # 1. Genuine garments/wearables (must be in product name)
+    if _matches_any(_GARMENT_KEYWORDS, name_lower):
+        return "garment"
+
+    # 2. Beverage / drinks
+    if _matches_any(_BEVERAGE_KEYWORDS, name_lower) or ("beverage" in cat_lower or "drink" in cat_lower):
+        return "beverage"
+
+    # 3. Prepared culinary / restaurant dishes
+    if _matches_any(_DISH_KEYWORDS, name_lower):
+        return "prepared_dish"
+
+    # 4. Fresh butchery / meats
+    if _matches_any(_BUTCHERY_KEYWORDS, name_lower):
+        return "butchery"
+
+    # 5. Packaged groceries / food / pantry
+    if _matches_any(_PACKAGED_FOOD_KEYWORDS, name_lower) or ("food" in cat_lower or "snack" in cat_lower or "grocery" in cat_lower):
+        return "packaged_food"
+
+    # 6. Household cleaning & personal care
+    if _matches_any(_HOUSEHOLD_KEYWORDS, name_lower) or ("cleaning" in cat_lower or "beauty" in cat_lower or "care" in cat_lower):
+        return "household_personal"
+
+    # 7. Electronics & tech gadgets
+    if _matches_any(_ELECTRONICS_KEYWORDS, name_lower) or ("electronic" in cat_lower or "phone" in cat_lower):
+        return "electronics"
+
+    # 8. If category specifically says fashion AND name has no food/beverage/household indicators
+    if ("fashion" in cat_lower or "cloth" in cat_lower or "apparel" in cat_lower) and not _matches_any(
+        _FOOD_BEV_HOUSEHOLD_CONTAINER, name_lower
+    ):
+        return "garment"
+
+    return "general_retail"
 
 
 def _fresh_seed() -> int:
@@ -84,39 +237,92 @@ def _trim(value: str | None, limit: int = 240) -> str | None:
 
 
 def build_prompt_for_product(product: Product, override: str | None = None) -> str:
-    """Compose the text prompt for a single product.
+    """Compose an item-focused, descriptive prompt for a single product.
 
-    If `override` is provided we still append the style suffix so the result
-    looks like a real catalog photo rather than whatever the user typed.
+    Ensures the image context is the actual physical product item (and its retail packaging)
+    rather than generic brand merchandise (e.g. t-shirt or promotional merch).
+    Also includes descriptive measurement labeling (e.g. 250ml must legibly show '250').
     """
     if override and override.strip():
         return f"{override.strip()}\n\n{_STYLE_SUFFIX}"
 
-    parts: list[str] = []
     subject = product.name.strip() if product.name else "product"
-    if product.brand:
-        parts.append(f"A photo of \"{subject}\" by {product.brand.strip()}.")
+    brand_str = (
+        f" by {product.brand.strip()}"
+        if (product.brand and product.brand.strip().lower() not in subject.lower())
+        else ""
+    )
+
+    item_type = classify_product_item_type(product)
+    measurements = extract_product_measurements(product)
+
+    parts: list[str] = []
+
+    if item_type == "beverage":
+        parts.append(f'Commercial retail packaging photograph of "{subject}"{brand_str} beverage product.')
+        parts.append(
+            "Authentic retail bottle or can, standing upright, crisp packaging with subtle cold condensation droplets, clean front label."
+        )
+        parts.append(
+            "Focus strictly on the packaged beverage container item. Do NOT generate clothing, t-shirts, mugs, posters, or branded merchandise."
+        )
+    elif item_type == "packaged_food":
+        parts.append(f'Commercial retail grocery packaging photograph of "{subject}"{brand_str}.')
+        parts.append(
+            "Authentic consumer retail packaging (sealed pouch, box, packet, tub, jar, or bottle) shown standing upright with crisp front-facing branding."
+        )
+        parts.append(
+            "Focus strictly on the packaged grocery food item itself, NOT brand merchandise or apparel."
+        )
+    elif item_type == "prepared_dish":
+        parts.append(f'Appetizing culinary food photograph of "{subject}".')
+        parts.append(
+            "Freshly cooked and attractively garnished dish beautifully presented on a clean modern ceramic plate or bowl, ready to eat."
+        )
+        parts.append("Focus strictly on the edible prepared food dish, NOT clothing or merchandise.")
+    elif item_type == "butchery":
+        parts.append(f'Professional food photography of fresh cut "{subject}".')
+        parts.append(
+            "High quality butchery meat cut cleanly presented on a food prep surface or clean butcher tray, fresh and natural appearance."
+        )
+        parts.append("Focus strictly on the butchery food cut, NOT clothing or merchandise.")
+    elif item_type == "household_personal":
+        parts.append(f'Commercial retail packaging photograph of "{subject}"{brand_str}.')
+        parts.append(
+            "Clean consumer retail bottle, dispenser, tub, or box shown standing upright with crisp front label."
+        )
+        parts.append("Focus strictly on the packaged household product, NOT clothing or apparel.")
+    elif item_type == "electronics":
+        parts.append(f'Commercial tech product photograph of "{subject}"{brand_str}.')
+        parts.append("Device shown upright from the front or three-quarters on a clean studio display.")
+    elif item_type == "garment":
+        parts.append(f'Fashion catalog photograph of "{subject}"{brand_str}.')
+        parts.append("Clean apparel garment laid flat or on a neutral invisible mannequin, full item visible.")
     else:
-        parts.append(f"A photo of \"{subject}\".")
+        parts.append(f'Commercial retail product photograph of "{subject}"{brand_str}.')
+        parts.append("Authentic consumer product in its original retail item packaging.")
+        parts.append(
+            "Focus strictly on the actual physical product item, NOT brand merchandise, NOT promotional t-shirts, caps, or posters."
+        )
 
-    if product.category:
-        nice_cat = product.category.replace("_", " ").replace("-", " ").strip()
-        if nice_cat:
-            parts.append(f"Category: {nice_cat}.")
+    # Descriptive measurements: e.g. 250ml must show 250 on the label
+    if measurements:
+        primary = measurements[0]
+        num_match = _NUMBER_RE.search(primary)
+        if num_match:
+            parts.append(
+                f'The product packaging must be descriptive: the front container label must legibly show the measurement "{primary}", with "{num_match.group(1)}" clearly and visibly printed on the front packaging label.'
+            )
+        else:
+            parts.append(
+                f'The product packaging must be descriptive: the front container label must legibly show "{primary}" printed on the package.'
+            )
+        if len(measurements) > 1:
+            parts.append(f'Packaging details: {", ".join(measurements[1:])}.')
 
-    description = _trim(product.description, 600)
+    description = _trim(product.description, 400)
     if description:
         parts.append(description)
-
-    cat = (product.category or "").lower()
-    if "drink" in cat or "beverage" in cat:
-        parts.append("Bottle/can shown upright, label clearly visible.")
-    elif "food" in cat or "snack" in cat:
-        parts.append("Packaging or freshly prepared serving, appetising.")
-    elif "fashion" in cat or "cloth" in cat or "apparel" in cat:
-        parts.append("Garment laid flat or on a neutral mannequin, full item visible.")
-    elif "phone" in cat or "electronic" in cat:
-        parts.append("Device shown from the front, screen off, slight three-quarter angle.")
 
     parts.append(_STYLE_SUFFIX)
     return " ".join(parts)

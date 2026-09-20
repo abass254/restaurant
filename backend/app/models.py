@@ -844,21 +844,21 @@ class MpesaStatusCheck(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
-class Product(Base):
-    """Shared catalog product (or service) visible to every shop.
+class Catalogue(Base):
+    """Shared catalog product, meal, addon or service visible to every shop.
 
     Holds everything that's universal about an item: name, brand, category,
     photo, manufacturer SKU, and a JSON `attributes` blob for category-specific
     structured info (size/color/dosage/duration/etc.).
     """
 
-    __tablename__ = "products"
+    __tablename__ = "catalogue"
     __table_args__ = (
-        Index("products_slug_index", "slug"),
-        Index("products_product_type_index", "product_type"),
-        Index("products_name_index", "name"),
-        Index("products_product_code_unique", "product_code", unique=True),
-        Index("products_sku_index", "sku"),
+        Index("catalogue_slug_index", "slug"),
+        Index("catalogue_product_type_index", "product_type"),
+        Index("catalogue_name_index", "name"),
+        Index("catalogue_product_code_unique", "product_code", unique=True),
+        Index("catalogue_sku_index", "sku"),
     )
 
     id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
@@ -866,7 +866,7 @@ class Product(Base):
     sku: Mapped[str | None] = mapped_column(String(120), nullable=True)
     name: Mapped[str] = mapped_column(String(255))
     slug: Mapped[str] = mapped_column(String(255))
-    product_type: Mapped[str] = mapped_column(String(20), default="product")
+    product_type: Mapped[str] = mapped_column(String(20), default="retail")
     category: Mapped[str | None] = mapped_column(String(255), nullable=True)
     brand: Mapped[str | None] = mapped_column(String(255), nullable=True)
     unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -885,13 +885,78 @@ class Product(Base):
         ForeignKey("users.id"),
         nullable=True,
     )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     inventory_items: Mapped[list[InventoryItem]] = relationship(back_populates="product")
+    available_addons: Mapped[list[MealAddon]] = relationship(
+        "MealAddon",
+        foreign_keys="[MealAddon.meal_id]",
+        back_populates="meal",
+        cascade="all, delete-orphan",
+    )
+    parent_meals: Mapped[list[MealAddon]] = relationship(
+        "MealAddon",
+        foreign_keys="[MealAddon.addon_id]",
+        back_populates="addon",
+        cascade="all, delete-orphan",
+    )
 
     def is_service(self) -> bool:
         return self.product_type == "service"
+
+    def is_meal(self) -> bool:
+        return self.product_type == "meal"
+
+    def is_addon(self) -> bool:
+        return self.product_type == "addon"
+
+    def is_retail(self) -> bool:
+        return self.product_type in ("retail", "product")
+
+
+# Backward-compatible alias for existing codebase imports
+Product = Catalogue
+
+
+class MealAddon(Base):
+    """Link table connecting a meal to its available add-ons / modifiers."""
+
+    __tablename__ = "meal_addons"
+    __table_args__ = (
+        UniqueConstraint("meal_id", "addon_id", name="uq_meal_addons_meal_addon"),
+        Index("meal_addons_meal_id_idx", "meal_id"),
+        Index("meal_addons_addon_id_idx", "addon_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    meal_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("catalogue.id", ondelete="CASCADE"),
+    )
+    addon_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("catalogue.id", ondelete="CASCADE"),
+    )
+    additional_price: Mapped[Any | None] = mapped_column(Numeric(10, 2), nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    max_quantity: Mapped[int | None] = mapped_column(Integer, default=1)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    meal: Mapped[Catalogue] = relationship(foreign_keys=[meal_id], back_populates="available_addons")
+    addon: Mapped[Catalogue] = relationship(foreign_keys=[addon_id], back_populates="parent_meals")
+
+    @property
+    def addon_name(self) -> str | None:
+        return self.addon.name if self.addon else None
+
+    @property
+    def addon_code(self) -> str | None:
+        return self.addon.product_code if self.addon else None
+
 
 
 class InventoryItem(Base):
@@ -910,7 +975,7 @@ class InventoryItem(Base):
 
     id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
     account_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("accounts.id"))
-    product_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("products.id"))
+    product_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("catalogue.id"))
     buying_price: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
     selling_price: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
     stock_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -1208,7 +1273,7 @@ class OrderItem(Base):
     )
     product_id: Mapped[str | None] = mapped_column(
         String(PK_LEN),
-        ForeignKey("products.id"),
+        ForeignKey("catalogue.id"),
         nullable=True,
     )
     product_name: Mapped[str] = mapped_column(String(255))

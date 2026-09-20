@@ -575,8 +575,8 @@ export default function AdminMerchantDetailPage() {
                 fontWeight: 600,
                 textDecoration: "none",
                 background: "var(--color-surface, #fff)",
-                border: "1px solid var(--color-border, #e8e2d8)",
-                color: "var(--color-primary, #6b2e14)",
+                border: "1px solid var(--color-border, #e2e8f0)",
+                color: "var(--color-primary, #0d9488)",
               }}
               title="Open public merchant storefront in a new tab"
             >
@@ -1290,7 +1290,7 @@ export default function AdminMerchantDetailPage() {
                       className="fas fa-user-plus"
                       style={{
                         marginRight: "0.5rem",
-                        color: "var(--color-primary, #6b2e14)",
+                        color: "var(--color-primary, #0d9488)",
                       }}
                     />
                     Invite team member
@@ -1771,7 +1771,7 @@ export default function AdminMerchantDetailPage() {
                                 <i
                                   className="fas fa-key"
                                   style={{
-                                    color: "var(--color-primary, #6b2e14)",
+                                    color: "var(--color-primary, #0d9488)",
                                   }}
                                 />
                                 Set temporary password for{" "}

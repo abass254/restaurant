@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
+import { confirmAction, extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes, resolveAssetUrl } from "@/lib/config";
 import type {
   AdminCatalogProductDetailResponse,
@@ -28,9 +28,10 @@ export default function AdminCatalogProductPage() {
     try {
       const res = await apiFetch<AdminCatalogProductDetailResponse>(
         apiRoutes.adminCatalogProduct(productId),
+        { method: "GET" },
       );
       setProduct(res.data.product);
-      setStoreMedia(res.data.store_media);
+      setStoreMedia(res.data.store_media ?? []);
     } catch (err) {
       await showError("Could not load product", extractErrorMessage(err));
     } finally {
@@ -43,6 +44,7 @@ export default function AdminCatalogProductPage() {
   }, [load]);
 
   async function setPrimary(url: string) {
+    if (!product) return;
     setSavingUrl(url);
     try {
       const res = await apiFetch<{ data: CatalogProduct; message: string }>(
@@ -62,11 +64,12 @@ export default function AdminCatalogProductPage() {
   }
 
   async function resetAuto() {
+    if (!product) return;
     setSavingUrl("__auto__");
     try {
       const res = await apiFetch<{ data: CatalogProduct; message: string }>(
         apiRoutes.adminCatalogPrimaryImageAuto(productId),
-        { method: "POST" },
+        { method: "POST", body: JSON.stringify({}) },
       );
       setProduct(res.data);
       await toastSuccess(res.message);
@@ -78,12 +81,20 @@ export default function AdminCatalogProductPage() {
   }
 
   async function generateAiImage() {
-    if (!product || product.image_url || product.product_type === "service") return;
+    if (!product || product.product_type === "service") return;
+    if (product.image_url) {
+      const confirmed = await confirmAction(
+        "Regenerate AI image?",
+        "This will generate a new item-focused product photo and replace the current platform primary image.",
+        "Regenerate",
+      );
+      if (!confirmed) return;
+    }
     setGenerating(true);
     try {
       const res = await apiFetch<{ data: CatalogProduct; message: string }>(
         apiRoutes.adminCatalogGenerateImage(productId),
-        { method: "POST", body: JSON.stringify({}) },
+        { method: "POST", body: JSON.stringify({ force: true }) },
       );
       setProduct(res.data);
       await toastSuccess(res.message);
@@ -109,8 +120,7 @@ export default function AdminCatalogProductPage() {
     );
   }
 
-  const canGenerateAi =
-    product.product_type === "product" && !product.image_url;
+  const canGenerateAi = product.product_type === "product";
 
   return (
     <section className="admin-section">
@@ -135,7 +145,12 @@ export default function AdminCatalogProductPage() {
               disabled={generating}
               onClick={() => void generateAiImage()}
             >
-              {generating ? "Generating…" : "Generate AI image"}
+              <i className={`fa-solid ${generating ? "fa-spin fa-circle-notch" : "fa-wand-magic-sparkles"}`} style={{ marginRight: "0.4rem" }} />
+              {generating
+                ? "Generating…"
+                : product.image_url
+                  ? "Regenerate AI image"
+                  : "Generate AI image"}
             </button>
           ) : null}
           <button
