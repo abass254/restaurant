@@ -100,7 +100,6 @@ class MerchantLoginOtpService:
         )
         self.db.add(row)
         self.db.commit()
-        self.db.refresh(row)
         return code, row
 
     def _find_user(
@@ -108,16 +107,21 @@ class MerchantLoginOtpService:
         *,
         email: str | None = None,
         phone: str | None = None,
+        load_auth_context: bool = False,
     ) -> User | None:
         clean_email = (email or "").strip().lower()
         clean_phone = normalize_phone(phone or "")
 
-        if clean_email:
-            return (
-                self.db.query(User)
-                .filter(func.lower(User.email) == clean_email)
-                .first()
+        query = self.db.query(User)
+        if load_auth_context:
+            query = query.options(
+                selectinload(User.account),
+                selectinload(User.instagram_account),
+                selectinload(User.memberships).selectinload(UserMembership.account),
             )
+
+        if clean_email:
+            return query.filter(func.lower(User.email) == clean_email).first()
 
         if not clean_phone:
             return None
@@ -125,11 +129,7 @@ class MerchantLoginOtpService:
         candidates = phone_lookup_candidates(clean_phone)
         if not candidates:
             return None
-        return (
-            self.db.query(User)
-            .filter(User.phone.in_(candidates))
-            .first()
-        )
+        return query.filter(User.phone.in_(candidates)).first()
 
     def request_login_code(
         self,
@@ -306,6 +306,7 @@ class MerchantLoginOtpService:
         user = self._find_user(
             email=raw.lower() if is_email else None,
             phone=None if is_email else raw,
+            load_auth_context=True,
         )
         if not user:
             raise MerchantOtpError("Invalid login details or code.")
@@ -346,14 +347,4 @@ class MerchantLoginOtpService:
         match.consumed_at = now
         user.updated_at = now
         self.db.commit()
-
-        return (
-            self.db.query(User)
-            .options(
-                selectinload(User.account),
-                selectinload(User.instagram_account),
-                selectinload(User.memberships).selectinload(UserMembership.account),
-            )
-            .filter(User.id == user.id)
-            .first()
-        ) or user
+        return user

@@ -78,9 +78,19 @@ export function canPurchaseInventoryItem(item: InventoryItem): boolean {
 }
 
 export function canPurchaseCatalogProduct(product: CatalogProduct): boolean {
-  if (product.product_type !== "product") return false;
+  if (product.is_active === false) return false;
+  if (product.product_type === "service" || product.product_type === "addon") return false;
   if (isMenuCatalogCategory(product.category)) return false;
   return true;
+}
+
+export function canPurchaseCatalogProductForStore(
+  product: CatalogProduct,
+  retailOnly: boolean,
+): boolean {
+  if (!canPurchaseCatalogProduct(product)) return false;
+  if (!retailOnly) return true;
+  return product.product_type === "retail" || product.product_type === "product";
 }
 
 /** Create a shop inventory row for an existing global catalog product. */
@@ -112,6 +122,7 @@ export async function addInventoryFromCatalogProduct(
 
 export async function fetchPurchasableCatalogProducts(
   query?: string,
+  options?: { retailOnly?: boolean },
 ): Promise<CatalogProduct[]> {
   const items: CatalogProduct[] = [];
   let page = 1;
@@ -119,7 +130,6 @@ export async function fetchPurchasableCatalogProducts(
   const q = query?.trim();
   do {
     const params = new URLSearchParams({
-      type: "product",
       per_page: "100",
       page: String(page),
     });
@@ -127,7 +137,11 @@ export async function fetchPurchasableCatalogProducts(
     const res = await apiFetch<CatalogProductsResponse>(
       `${apiRoutes.products}?${params.toString()}`,
     );
-    items.push(...res.data.filter(canPurchaseCatalogProduct));
+    items.push(
+      ...res.data.filter((product) =>
+        canPurchaseCatalogProductForStore(product, options?.retailOnly === true),
+      ),
+    );
     lastPage = res.meta?.last_page ?? 1;
     page += 1;
   } while (page <= lastPage && page <= 10);

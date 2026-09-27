@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
-from app.services.merchant_login_otp import MerchantLoginOtpService, MerchantOtpError
+from app.database import Base
+from app.models import User, UserLoginCode
+from app.services.merchant_login_otp import (
+    MerchantLoginOtpService,
+    MerchantOtpError,
+    hash_login_code,
+)
 from app.support.otp_delivery import MAIL_SEND_FAILED, PHONE_OTP_UNAVAILABLE
 
 
@@ -102,6 +111,64 @@ def test_phone_otp_sms_failure_raises_when_not_debug(_echo, _send, _phone_ok, _s
     service._issue_code = MagicMock(return_value=("654321", MagicMock()))  # type: ignore[method-assign]
     with pytest.raises(MerchantOtpError, match=SMS_SEND_FAILED):
         service.request_login_code(identifier="0700000001")
+
+
+def test_issue_code_does_not_query_after_commit() -> None:
+    db = MagicMock()
+    user = _user()
+
+    def commit_then_reject_refresh() -> None:
+        db.refresh.side_effect = AssertionError("refresh after commit")
+
+    db.commit.side_effect = commit_then_reject_refresh
+    code, row = MerchantLoginOtpService(db)._issue_code(
+        user,
+        channel="email",
+        purpose="login",
+    )
+
+    assert len(code) == 6
+    assert row.user_id == user.id
+    db.refresh.assert_not_called()
+
+
+def test_verify_code_does_not_query_after_commit() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    db = sessionmaker(bind=engine)()
+    now = datetime.now(timezone.utc)
+    user = User(
+        id="user-1",
+        email="shop@example.com",
+        name="Amina",
+        is_activated=True,
+    )
+    db.add(user)
+    db.add(
+        UserLoginCode(
+            user_id=user.id,
+            code_hash=hash_login_code("123456"),
+            channel="email",
+            purpose="login",
+            expires_at=now + timedelta(minutes=10),
+        )
+    )
+    db.commit()
+
+    original_commit = db.commit
+
+    def commit_then_reject_queries() -> None:
+        original_commit()
+        db.execute = MagicMock(side_effect=AssertionError("query after commit"))  # type: ignore[method-assign]
+
+    with patch.object(db, "commit", side_effect=commit_then_reject_queries):
+        result = MerchantLoginOtpService(db).verify_login_code(
+            identifier="shop@example.com",
+            code="123456",
+        )
+
+    assert result is user
+    db.close()
 
 
 def test_find_user_by_phone_does_not_scan_all_rows() -> None:

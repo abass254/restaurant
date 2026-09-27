@@ -581,7 +581,24 @@ export type SettingsResponse = {
   supported_platforms?: string[];
   connected_platforms?: string[];
   any_channel_connected?: boolean;
+  opening_amount: string | null;
+  opening_amount_set_at: string | null;
+  can_set_opening_amount: boolean;
+  opening_stock: string | null;
+  opening_stock_set_at: string | null;
+  can_set_opening_stock: boolean;
+  opening_investment: string | null;
+  opening_investment_set_at: string | null;
+  can_set_opening_investment: boolean;
+  suggested_opening_stock: string;
+  allow_item_quantity_adjustment?: boolean;
+  adjust_selling_price_on_purchase?: boolean;
   inventory_integration?: InventoryIntegrationConfig | null;
+};
+
+export type SettingsOperationsResponse = {
+  allow_item_quantity_adjustment: boolean;
+  adjust_selling_price_on_purchase: boolean;
 };
 
 export type ChannelPlatform =

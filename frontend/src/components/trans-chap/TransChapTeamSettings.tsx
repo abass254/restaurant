@@ -77,11 +77,6 @@ function isOwner(member: StaffUser): boolean {
   return member.user_role === "system_admin";
 }
 
-function roleLabel(member: StaffUser): string {
-  if (isOwner(member)) return "Owner";
-  if (!member.is_activated) return "Inactive";
-  return "Staff";
-}
 
 function sectionLabel(key: string): string {
   return (
@@ -442,9 +437,7 @@ export function TransChapTeamSettings({ onClose }: { onClose: () => void }) {
 
   const title =
     view === "create"
-      ? createMode === "create"
-        ? "Create user"
-        : "Invite user"
+      ? "Add team member"
       : view === "edit"
         ? "Edit staff"
         : view === "password"
@@ -452,7 +445,9 @@ export function TransChapTeamSettings({ onClose }: { onClose: () => void }) {
           : view === "credentials"
             ? "New user"
             : "Team";
-  const staffCount = members.filter((m) => !isOwner(m)).length;
+  const owners = members.filter(isOwner);
+  const staffMembers = members.filter((member) => !isOwner(member));
+  const staffCount = staffMembers.length;
   const lookupReady = inviteLookupReady(inviteLookup);
   const existingUser = createMode === "invite" && inviteLookupIsExisting(inviteLookup);
   const showCreateForm = createMode === "create" || lookupReady;
@@ -469,87 +464,101 @@ export function TransChapTeamSettings({ onClose }: { onClose: () => void }) {
       {view === "list" ? (
         <section className="ios-settings-detail">
           <p className="ios-settings__footer ios-settings__footer--top">
-            Invite a person who already has DukAI, or create a new login and
-            password to hand to them. Only the shop owner can manage the team.
+            Add staff, choose what they can access, and send an invitation or
+            create their login. Only the shop owner can manage the team.
           </p>
 
           <div className="ios-settings__group">
+            <button
+              type="button"
+              className="ios-settings__team-add"
+              onClick={() => openCreate("invite")}
+            >
+              <span className="ios-settings__team-add-icon" aria-hidden>
+                <i className="fa-solid fa-user-plus" />
+              </span>
+              <span>
+                <strong>Add team member</strong>
+                <small>Invite them or create a login</small>
+              </span>
+              <i className="fa-solid fa-chevron-right" aria-hidden />
+            </button>
+          </div>
+
+          {owners.length > 0 ? (
+            <div className="ios-settings__group">
+              <h3 className="ios-settings__caption">Owner</h3>
+              <div className="ios-settings__card">
+                {owners.map((member) => (
+                  <div
+                    key={member.id}
+                    className="ios-settings__row ios-settings__row--static"
+                  >
+                    <span
+                      className="ios-settings__avatar ios-settings__avatar--sm"
+                      aria-hidden
+                    >
+                      {initials(member.name)}
+                    </span>
+                    <span className="ios-settings__label-stack">
+                      <strong>{member.name}</strong>
+                      <span>{member.email ?? "Shop owner"}</span>
+                    </span>
+                    <span className="ios-settings__value">Owner</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="ios-settings__group">
             <h3 className="ios-settings__caption">
-              {loaded ? `${staffCount} staff` : "Members"}
+              {loaded ? `Staff · ${staffCount}` : "Staff"}
             </h3>
             <div className="ios-settings__card">
               {!loaded ? (
                 <div className="ios-settings__row ios-settings__row--static">
                   <span className="ios-settings__label">Loading…</span>
                 </div>
-              ) : members.length === 0 ? (
+              ) : staffMembers.length === 0 ? (
                 <div className="ios-settings__row ios-settings__row--static">
-                  <span className="ios-settings__label">No team members yet</span>
+                  <span className="ios-settings__label-stack">
+                    <strong>No staff yet</strong>
+                    <span>Add your first team member above.</span>
+                  </span>
                 </div>
               ) : (
-                members.map((member) =>
-                  isOwner(member) ? (
-                    <div
-                      key={member.id}
-                      className="ios-settings__row ios-settings__row--static"
+                staffMembers.map((member) => (
+                  <button
+                    key={member.id}
+                    type="button"
+                    className="ios-settings__row"
+                    onClick={() => openEdit(member)}
+                  >
+                    <span
+                      className="ios-settings__avatar ios-settings__avatar--sm"
+                      aria-hidden
                     >
-                      <span className="ios-settings__avatar ios-settings__avatar--sm" aria-hidden>
-                        {initials(member.name)}
+                      {initials(member.name)}
+                    </span>
+                    <span className="ios-settings__label-stack">
+                      <strong>{member.name}</strong>
+                      <span>
+                        {member.is_activated ? "Staff" : "Inactive"} ·{" "}
+                        {member.allowed_sections.length} permissions
                       </span>
-                      <span className="ios-settings__label-stack">
-                        <strong>{member.name}</strong>
-                        <span>{member.email ?? "Owner"}</span>
-                      </span>
-                      <span className="ios-settings__value">{roleLabel(member)}</span>
-                    </div>
-                  ) : (
-                    <button
-                      key={member.id}
-                      type="button"
-                      className="ios-settings__row"
-                      onClick={() => openEdit(member)}
-                    >
-                      <span className="ios-settings__avatar ios-settings__avatar--sm" aria-hidden>
-                        {initials(member.name)}
-                      </span>
-                      <span className="ios-settings__label-stack">
-                        <strong>{member.name}</strong>
-                        <span>{sectionsSummary(member.allowed_sections)}</span>
-                      </span>
-                      <span className="ios-settings__value">{roleLabel(member)}</span>
-                      <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
-                    </button>
-                  ),
-                )
+                      <span>{sectionsSummary(member.allowed_sections)}</span>
+                    </span>
+                    <i
+                      className="fa-solid fa-chevron-right ios-settings__chevron"
+                      aria-hidden
+                    />
+                  </button>
+                ))
               )}
-              <button
-                type="button"
-                className="ios-settings__row"
-                onClick={() => openCreate("invite")}
-              >
-                <span className="ios-settings__icon ios-settings__icon--invite" aria-hidden>
-                  <i className="fa-solid fa-envelope" />
-                </span>
-                <span className="ios-settings__label ios-settings__label--action">
-                  Invite user
-                </span>
-              </button>
-              <button
-                type="button"
-                className="ios-settings__row"
-                onClick={() => openCreate("create")}
-              >
-                <span className="ios-settings__icon ios-settings__icon--team" aria-hidden>
-                  <i className="fa-solid fa-user-plus" />
-                </span>
-                <span className="ios-settings__label ios-settings__label--action">
-                  Create user
-                </span>
-              </button>
             </div>
             <p className="ios-settings__footer">
-              Staff only get Trans Chap access — Home, Inventory, Sales, and the
-              other areas you tick below.
+              Staff only see the areas you give them access to.
             </p>
           </div>
         </section>
@@ -571,7 +580,10 @@ export function TransChapTeamSettings({ onClose }: { onClose: () => void }) {
                 }}
                 disabled={creating}
               >
-                <span className="ios-settings__label">Invite user</span>
+                <span className="ios-settings__label-stack">
+                  <strong>Send an invitation</strong>
+                  <span>For someone who already has a DukAI account</span>
+                </span>
                 {createMode === "invite" ? (
                   <i className="fa-solid fa-check ios-settings__check" aria-hidden />
                 ) : null}
@@ -587,7 +599,10 @@ export function TransChapTeamSettings({ onClose }: { onClose: () => void }) {
                 }}
                 disabled={creating}
               >
-                <span className="ios-settings__label">Create user</span>
+                <span className="ios-settings__label-stack">
+                  <strong>Create their login</strong>
+                  <span>Make a new account and temporary password</span>
+                </span>
                 {createMode === "create" ? (
                   <i className="fa-solid fa-check ios-settings__check" aria-hidden />
                 ) : null}
@@ -595,8 +610,8 @@ export function TransChapTeamSettings({ onClose }: { onClose: () => void }) {
             </div>
             <p className="ios-settings__footer">
               {createMode === "create"
-                ? "Create a new login, auto-generate a password, then copy it once and give it to them."
-                : "Look up an email first. Existing DukAI users keep their current password."}
+                ? "We’ll generate a temporary password that you can copy and give to them."
+                : "Look up their email first. Existing DukAI users keep their current password."}
             </p>
           </div>
 

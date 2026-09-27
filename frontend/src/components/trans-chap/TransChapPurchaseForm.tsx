@@ -55,6 +55,7 @@ import {
   hasPackUnits,
   normalizeUnitName,
   resolveSellUnit,
+  packUnits,
   sellUnitCost,
   type SellUnit,
 } from "@/lib/sell-units";
@@ -63,12 +64,12 @@ import {
   loadPurchaseDraft,
   savePurchaseDraft,
 } from "@/lib/trans-chap-purchase-draft";
-import { isAdjustSellingPriceEnabled } from "@/lib/trans-chap-purchase-prefs";
 import type {
   CatalogProduct,
   InventoryItem,
   InventoryResponse,
   InventoryRole,
+  SettingsResponse,
 } from "@/lib/types";
 
 type BasketLine = {
@@ -87,7 +88,25 @@ type BasketLine = {
   productCode?: string | null;
   sellUnit: string | null;
   unitFactor: number;
+  autoPackFactor?: number;
+  availablePacks?: { name: string; factor: number }[];
 };
+
+/**
+ * Try to detect pack size from product names like "Unga (pack of 24)" or "Water (12pcs)".
+ */
+function detectPackSize(name: string): number | null {
+  const normalized = name.toLowerCase();
+  // Matches "pack of 24", "bundle of 12", "box of 6", etc.
+  const packMatch = normalized.match(/(?:pack|bundle|box|carton|case|crate)\s+(?:of\s+)?(\d+)/);
+  if (packMatch) return parseInt(packMatch[1], 10);
+
+  // Matches "24pcs", "12 pcs", "24 packets", etc.
+  const pcsMatch = normalized.match(/(\d+)\s*(?:pcs|packets|pieces|pkts)/);
+  if (pcsMatch) return parseInt(pcsMatch[1], 10);
+
+  return null;
+}
 
 const ALL_ROLE_OPTIONS: { id: InventoryRole; label: string }[] = [
   { id: "both", label: "Buy & sell" },
@@ -139,7 +158,14 @@ function lineFromItem(
         ? item.selling_price
         : 0;
   const role = inventoryRole(item);
-  const sellUnit = resolved.factor > 1 ? resolved.name : null;
+  
+  // If the item doesn't have explicitly configured packs, try to auto-detect from name
+  const explicitPacks = packUnits(item);
+  const autoPackFactor = explicitPacks.length === 0 ? detectPackSize(name) : undefined;
+  
+  const sellUnit = resolved.factor > 1 ? resolved.name : (autoPackFactor ? "Pack" : null);
+  const unitFactor = resolved.factor > 1 ? resolved.factor : (autoPackFactor ?? 1);
+
   return {
     key: basketKey(name, item.id, null, sellUnit),
     productName: name,
@@ -153,12 +179,15 @@ function lineFromItem(
     role: role === "for_sale" ? "both" : role,
     imageUrl: inventoryCoverUrl(item),
     sellUnit,
-    unitFactor: resolved.factor,
+    unitFactor,
+    autoPackFactor: autoPackFactor ?? undefined,
+    availablePacks: explicitPacks.map(p => ({ name: p.name, factor: p.factor })),
   };
 }
 
 function lineFromCatalog(product: CatalogProduct, role: InventoryRole): BasketLine {
   const name = product.name.trim() || "Product";
+  const autoPackFactor = detectPackSize(name);
   return {
     key: basketKey(name, null, product.id),
     productName: name,
@@ -171,8 +200,10 @@ function lineFromCatalog(product: CatalogProduct, role: InventoryRole): BasketLi
     sellingPriceInput: "",
     role,
     imageUrl: product.image_url ?? null,
-    sellUnit: null,
-    unitFactor: 1,
+    sellUnit: autoPackFactor ? "Pack" : null,
+    unitFactor: autoPackFactor ?? 1,
+    autoPackFactor: autoPackFactor ?? undefined,
+    availablePacks: [],
   };
 }
 
@@ -185,6 +216,7 @@ function lineFromNewProduct(
   },
 ): BasketLine {
   const productName = name.trim();
+  const autoPackFactor = detectPackSize(productName);
   return {
     key: basketKey(productName, null, null),
     productName,
@@ -199,8 +231,10 @@ function lineFromNewProduct(
     imageUrl: null,
     sku: extras?.sku?.trim() || null,
     productCode: extras?.productCode?.trim() || null,
-    sellUnit: null,
-    unitFactor: 1,
+    sellUnit: autoPackFactor ? "Pack" : null,
+    unitFactor: autoPackFactor ?? 1,
+    autoPackFactor: autoPackFactor ?? undefined,
+    availablePacks: [],
   };
 }
 
@@ -241,6 +275,9 @@ export function TransChapPurchaseForm() {
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [basket, setBasket] = useState<BasketLine[]>([]);
+  const [mobileScreen, setMobileScreen] = useState<"catalog" | "supplier">(
+    "catalog",
+  );
   const [selectedUnitByItemId, setSelectedUnitByItemId] = useState<
     Record<string, string>
   >({});
@@ -369,18 +406,21 @@ export function TransChapPurchaseForm() {
     } catch {
       /* ignore */
     }
-    setAdjustSellingPrice(isAdjustSellingPriceEnabled());
   }, []);
 
   useEffect(() => {
-    function refreshPref() {
-      setAdjustSellingPrice(isAdjustSellingPriceEnabled());
-    }
-    window.addEventListener("focus", refreshPref);
-    window.addEventListener("storage", refreshPref);
+    let cancelled = false;
+    void apiFetch<SettingsResponse>(apiRoutes.settings)
+      .then((data) => {
+        if (!cancelled) {
+          setAdjustSellingPrice(data.adjust_selling_price_on_purchase ?? true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAdjustSellingPrice(true);
+      });
     return () => {
-      window.removeEventListener("focus", refreshPref);
-      window.removeEventListener("storage", refreshPref);
+      cancelled = true;
     };
   }, []);
 
@@ -448,7 +488,7 @@ export function TransChapPurchaseForm() {
 
   useEffect(() => {
     let alive = true;
-    fetchPurchasableCatalogProducts()
+    fetchPurchasableCatalogProducts(undefined, { retailOnly: !restaurant })
       .then((rows) => {
         if (!alive) return;
         setCatalog(rows);
@@ -463,7 +503,7 @@ export function TransChapPurchaseForm() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [restaurant]);
 
   function patchPurchaseMeta(patch: Partial<PurchaseMeta>) {
     setPurchaseMeta((prev) => {
@@ -544,8 +584,16 @@ export function TransChapPurchaseForm() {
 
   const addNewProduct = useCallback(
     (name: string, draft?: BuyProductDraft) => {
-      const trimmed = (draft?.name ?? name).trim();
+      let trimmed = (draft?.name ?? name).trim();
       if (!trimmed) return;
+      
+      if (draft?.isBundle && draft.bundleQuantity) {
+        const bq = Math.floor(Number(draft.bundleQuantity));
+        if (bq > 1 && !detectPackSize(trimmed)) {
+          trimmed = `${trimmed} (pack of ${bq})`;
+        }
+      }
+
       const existing =
         findInventoryByName(inventoryRef.current, trimmed) ??
         inventoryRef.current.find(
@@ -717,6 +765,23 @@ export function TransChapPurchaseForm() {
       }
     }
 
+    const lossItems = basket.filter(
+      (line) =>
+        adjustSellingPrice &&
+        line.sellingPriceInput.trim() &&
+        line.sellingPrice > 0 &&
+        line.unitCost > 0 &&
+        (line.sellingPrice * (line.unitFactor || 1)) < line.unitCost
+    );
+    if (lossItems.length > 0) {
+      const proceed = await confirmAction(
+        "Low selling price",
+        `You have set a selling price that results in a loss for ${lossItems.length} item(s) (e.g. ${lossItems[0].productName}). Are you sure you want to continue?`,
+        "Yes, save anyway"
+      );
+      if (!proceed) return;
+    }
+
     if (!purchaseMeta.supplier.trim()) {
       await showError("Supplier", "Select or enter a supplier.");
       return;
@@ -816,15 +881,27 @@ export function TransChapPurchaseForm() {
               ? [note, `${line.quantity} ${line.sellUnit}`].filter(Boolean).join(" · ")
               : note,
         });
-        // If this was a pack buy, also store pack buying price on attributes.
+        // If this was a pack buy, store pack buying price on attributes.
         if (line.unitFactor > 1 && line.sellUnit) {
-          const packs = allSellUnits(item)
-            .filter((unit) => unit.factor > 1)
-            .map((unit) =>
-              normalizeUnitName(unit.name) === normalizeUnitName(line.sellUnit)
-                ? { ...unit, buying_price: cost }
-                : unit,
-            );
+          const packs = allSellUnits(item).filter((unit) => unit.factor > 1);
+          const existingIndex = packs.findIndex(
+            (u) => normalizeUnitName(u.name) === normalizeUnitName(line.sellUnit)
+          );
+
+          if (existingIndex >= 0) {
+            packs[existingIndex] = {
+              ...packs[existingIndex],
+              factor: line.unitFactor,
+              buying_price: cost,
+            };
+          } else {
+            packs.push({
+              name: line.sellUnit,
+              factor: line.unitFactor,
+              buying_price: cost,
+            });
+          }
+
           const attrs = {
             ...(item.attributes || {}),
             sell_units: packs.map((unit) => ({
@@ -840,10 +917,12 @@ export function TransChapPurchaseForm() {
           };
           item = await updateInventoryItem(item.id, { attributes: attrs });
         }
+        
         if (
           sellingPrice != null &&
           item.selling_price !== sellingPrice
         ) {
+          // Always update base selling price (Single), since the input represents the Single selling price
           item = await updateInventoryItem(item.id, {
             selling_price: sellingPrice,
           });
@@ -875,7 +954,34 @@ export function TransChapPurchaseForm() {
   return (
     <>
       <section className="app-panel pos-panel pos-panel--purchase">
-        <div className="pos-grid">
+        <div
+          className={`pos-grid pos-grid--mobile-${
+            mobileScreen === "supplier" ? "order" : "catalog"
+          }`}
+        >
+          {mobileScreen === "supplier" ? (
+            <div className="pos-mobile-order-nav">
+              <button
+                type="button"
+                className="pos-mobile-order-nav__back"
+                onClick={() => {
+                  setMobileScreen("catalog");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+              >
+                <i className="fa-solid fa-arrow-left" aria-hidden="true" />
+                <span>Back to products</span>
+              </button>
+              <div className="pos-mobile-order-nav__meta">
+                <span className="pos-mobile-order-nav__count">
+                  {itemCount} {itemCount === 1 ? "item" : "items"}
+                </span>
+                <span className="pos-mobile-order-nav__total">
+                  {formatMoney(purchaseTotal)}
+                </span>
+              </div>
+            </div>
+          ) : null}
           <div className="pos-main">
           <div className="pos-catalog">
             <header className="pos-catalog__head">
@@ -1417,7 +1523,15 @@ export function TransChapPurchaseForm() {
                               />
                             </label>
                             {adjustSellingPrice ? (
-                              <label className="pos-line__price-edit">
+                              <label
+                                className={`pos-line__price-edit${
+                                  line.sellingPrice > 0 &&
+                                  line.unitCost > 0 &&
+                                  (line.sellingPrice * (line.unitFactor || 1)) < line.unitCost
+                                    ? " has-error"
+                                    : ""
+                                }`}
+                              >
                                 <span className="pos-line__price-label">
                                   Sell
                                 </span>
@@ -1435,39 +1549,76 @@ export function TransChapPurchaseForm() {
                                   }
                                   aria-label={`Selling price for ${line.productName}`}
                                 />
+                                {line.sellingPrice > 0 &&
+                                line.unitCost > 0 &&
+                                (line.sellingPrice * (line.unitFactor || 1)) < line.unitCost ? (
+                                  <i
+                                    className="fa-solid fa-triangle-exclamation pos-line__price-alert"
+                                    title="Selling price results in a loss based on bulk quantity"
+                                  />
+                                ) : null}
                               </label>
                             ) : null}
                           </div>
-                          <div className="pos-line__qty">
-                            <button
-                              type="button"
-                              aria-label="Decrease quantity"
-                              onClick={() => changeQuantity(line.key, -1)}
-                            >
-                              <i
-                                className="fa-solid fa-minus"
-                                aria-hidden="true"
+                          <div className="pos-line__qty-group">
+                            <div className="pos-line__auto-pack" style={{ display: "flex", alignItems: "center" }}>
+                              <button
+                                type="button"
+                                className={`pos-line__unit-chip${line.unitFactor === 1 ? " is-active" : ""}`}
+                                onClick={() => updateLine(line.key, { unitFactor: 1, sellUnit: null })}
+                              >
+                                Single
+                              </button>
+                              <button
+                                type="button"
+                                className={`pos-line__unit-chip${line.unitFactor > 1 ? " is-active" : ""}`}
+                                onClick={() => updateLine(line.key, { unitFactor: line.unitFactor > 1 ? line.unitFactor : (line.autoPackFactor || 12), sellUnit: "Bulk" })}
+                              >
+                                Bulk
+                              </button>
+                              {line.unitFactor > 1 && (
+                                <input
+                                  type="number"
+                                  min={2}
+                                  className="pos-line__pack-input"
+                                  value={line.unitFactor}
+                                  onChange={(e) => updateLine(line.key, { unitFactor: Number(e.target.value) || 1 })}
+                                  placeholder="Qty"
+                                  title="Units per bulk"
+                                />
+                              )}
+                            </div>
+                            <div className="pos-line__qty">
+                              <button
+                                type="button"
+                                aria-label="Decrease quantity"
+                                onClick={() => changeQuantity(line.key, -1)}
+                              >
+                                <i
+                                  className="fa-solid fa-minus"
+                                  aria-hidden="true"
+                                />
+                              </button>
+                              <input
+                                type="number"
+                                min={0}
+                                value={line.quantity}
+                                onChange={(e) =>
+                                  setQty(line.key, Number(e.target.value) || 0)
+                                }
+                                aria-label={`Quantity of ${line.productName}`}
                               />
-                            </button>
-                            <input
-                              type="number"
-                              min={0}
-                              value={line.quantity}
-                              onChange={(e) =>
-                                setQty(line.key, Number(e.target.value) || 0)
-                              }
-                              aria-label={`Quantity of ${line.productName}`}
-                            />
-                            <button
-                              type="button"
-                              aria-label="Increase quantity"
-                              onClick={() => changeQuantity(line.key, 1)}
-                            >
-                              <i
-                                className="fa-solid fa-plus"
-                                aria-hidden="true"
-                              />
-                            </button>
+                              <button
+                                type="button"
+                                aria-label="Increase quantity"
+                                onClick={() => changeQuantity(line.key, 1)}
+                              >
+                                <i
+                                  className="fa-solid fa-plus"
+                                  aria-hidden="true"
+                                />
+                              </button>
+                            </div>
                           </div>
                           <div className="pos-line__total">
                             <strong>
@@ -1668,6 +1819,38 @@ export function TransChapPurchaseForm() {
               </button>
             </footer>
           </aside>
+
+          {mobileScreen === "catalog" && basket.length > 0 ? (
+            <div className="pos-mobile-cart-bar">
+              <div className="pos-mobile-cart-bar__content">
+                <div className="pos-mobile-cart-bar__info">
+                  <span className="pos-mobile-cart-bar__badge">
+                    <i className="fa-solid fa-cart-flatbed" aria-hidden="true" />
+                    <span>{itemCount}</span>
+                  </span>
+                  <div className="pos-mobile-cart-bar__meta">
+                    <span className="pos-mobile-cart-bar__title">
+                      Current purchase
+                    </span>
+                    <span className="pos-mobile-cart-bar__total">
+                      {formatMoney(purchaseTotal)}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="pos-mobile-cart-bar__action"
+                  onClick={() => {
+                    setMobileScreen("supplier");
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                >
+                  <span>Review Purchase</span>
+                  <i className="fa-solid fa-arrow-right" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
 

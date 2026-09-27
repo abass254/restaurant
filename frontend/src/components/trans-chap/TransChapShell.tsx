@@ -389,7 +389,15 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
           {showNav ? (
             <>
               <nav
-                className={`mobile-nav mobile-nav--${Math.min(Math.max(items.length, 3), 7)}`}
+                className={`mobile-nav mobile-nav--${Math.min(
+                  Math.max(items.length + 1, 3),
+                  7,
+                )}`}
+                style={
+                  {
+                    "--mobile-nav-columns": Math.min(items.length + 1, 5),
+                  } as React.CSSProperties
+                }
                 aria-label="Trans Chap navigation"
               >
                 <div className="mobile-nav__brand">
@@ -450,15 +458,12 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                     </header>
                     <div className="trans-chap-more-sheet__grid">
                       <Link
-                        href="/trans-chap/make-a-sale"
+                        href="/trans-chap/pos"
                         className="trans-chap-more-sheet__item"
                         onClick={() => setMoreOpen(false)}
                       >
-                        <i
-                          className={`fa-solid ${restaurant ? "fa-bell-concierge" : "fa-receipt"}`}
-                          aria-hidden
-                        />
-                        <span>{restaurant ? "Orders" : "Sales"}</span>
+                        <i className="fa-solid fa-cash-register" aria-hidden />
+                        <span>POS</span>
                       </Link>
                       <Link
                         href="/trans-chap/suppliers"
@@ -469,15 +474,12 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                         <span>Suppliers</span>
                       </Link>
                       <Link
-                        href="/trans-chap/purchases"
+                        href="/trans-chap/customers"
                         className="trans-chap-more-sheet__item"
                         onClick={() => setMoreOpen(false)}
                       >
-                        <i
-                          className={`fa-solid ${restaurant ? "fa-basket-shopping" : "fa-cart-shopping"}`}
-                          aria-hidden
-                        />
-                        <span>{restaurant ? "Supplies" : "Purchases"}</span>
+                        <i className="fa-solid fa-address-book" aria-hidden />
+                        <span>Customers</span>
                       </Link>
                       <Link
                         href="/trans-chap/reports"

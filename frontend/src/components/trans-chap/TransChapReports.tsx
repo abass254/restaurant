@@ -19,12 +19,13 @@ import type {
   Order,
 } from "@/lib/types";
 
-type WhenFilter = "today" | "week" | "all";
+type WhenFilter = "today" | "week" | "all" | "net";
 
 const WHEN_CHIPS: { id: WhenFilter; label: string }[] = [
   { id: "today", label: "Today" },
   { id: "week", label: "7 days" },
   { id: "all", label: "All" },
+  { id: "net", label: "NET" },
 ];
 
 function dateKeyFromIso(iso: string | null | undefined): string | null {
@@ -64,25 +65,35 @@ export function TransChapReports() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [when, setWhen] = useState<WhenFilter>("today");
+  const [openingAmount, setOpeningAmount] = useState<number | null>(null);
+  const [openingStock, setOpeningStock] = useState<number | null>(null);
+  const [openingInvestment, setOpeningInvestment] = useState<number | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const [sales, inventory, bought] = await Promise.all([
+      const [sales, inventory, bought, settingsData] = await Promise.all([
         fetchWalkinOrders(),
         apiFetch<InventoryResponse>(apiRoutes.inventory),
         fetchTransChapPurchases({
           accountId: user.active_account?.id || user.account?.id,
         }),
+        apiFetch<any>(apiRoutes.settings).catch(() => null),
       ]);
       setOrders(sales.orders);
       setItems(inventory.data);
       setPurchases(bought.purchases);
+      setOpeningAmount(settingsData?.opening_amount ? Number(settingsData.opening_amount) : null);
+      setOpeningStock(settingsData?.opening_stock ? Number(settingsData.opening_stock) : null);
+      setOpeningInvestment(settingsData?.opening_investment ? Number(settingsData.opening_investment) : null);
       setError(sales.error || bought.error ? internalErrorMessage() : null);
     } catch {
       setOrders([]);
       setItems([]);
       setPurchases([]);
+      setOpeningAmount(null);
+      setOpeningStock(null);
+      setOpeningInvestment(null);
       setError(internalErrorMessage());
     } finally {
       setLoading(false);
@@ -96,13 +107,17 @@ export function TransChapReports() {
   const todayKey = nairobiDateKey(new Date());
 
   const report = useMemo(() => {
+    // For NET tab, we use ALL history to calculate cash flow accurately
+    const isNet = when === "net";
+    const filterWhen = isNet ? "all" : when;
+
     const paid = orders.filter((order) => {
       if (!isCountedWalkinSale(order)) return false;
       const key = dateKeyFromIso(order.paid_at || order.placed_at || order.created_at);
-      return inPeriod(key, when, todayKey);
+      return inPeriod(key, filterWhen, todayKey);
     });
     const bought = purchases.filter((row) =>
-      inPeriod(dateKeyFromIso(row.paidAt), when, todayKey),
+      inPeriod(dateKeyFromIso(row.paidAt), filterWhen, todayKey),
     );
 
     const salesTotal = paid.reduce((sum, order) => sum + order.total, 0);
@@ -131,6 +146,9 @@ export function TransChapReports() {
       0,
     );
 
+    const itemByInvId = new Map(items.map((i) => [i.id, i]));
+    let cogsTotal = 0;
+
     const productTotals = new Map<string, { qty: number; amount: number }>();
     for (const order of paid) {
       for (const line of order.items ?? []) {
@@ -139,6 +157,20 @@ export function TransChapReports() {
         current.qty += line.quantity || 0;
         current.amount += line.line_total || 0;
         productTotals.set(name, current);
+
+        let buyingPrice = 0;
+        if (line.inventory_item_id) {
+          const inv = itemByInvId.get(line.inventory_item_id);
+          if (inv && inv.buying_price != null) {
+            buyingPrice = inv.buying_price;
+          }
+        } else {
+          const inv = items.find((i) => inventoryProductName(i) === name);
+          if (inv && inv.buying_price != null) {
+            buyingPrice = inv.buying_price;
+          }
+        }
+        cogsTotal += (line.quantity || 0) * buyingPrice;
       }
     }
     const topProducts = [...productTotals.entries()]
@@ -152,6 +184,32 @@ export function TransChapReports() {
         (item.stock_quantity <= 0 || item.is_low_stock),
     );
 
+    const stockValue = items.reduce(
+      (sum, item) => sum + Math.max(0, item.stock_quantity || 0) * (item.buying_price || 0),
+      0
+    );
+    
+    // For NET tab, we calculate total cash flow and net equity
+    const cashOnHand = (openingAmount || 0) + salesTotal - purchaseTotal; 
+    const currentEquity = cashOnHand + stockValue;
+    
+    const initialEquity = openingInvestment != null 
+      ? openingInvestment 
+      : ((openingAmount || 0) + (openingStock || 0));
+      
+    // As requested: OI - (OA + OS + TP - TS + TD - TC)
+    // We treat openingInvestment as OI. If null, we default to 0 to avoid breaking the math.
+    const OI = openingInvestment || 0;
+    const OA = openingAmount || 0;
+    const OS = openingStock || 0;
+    const TP = purchaseTotal;
+    const TS = salesTotal;
+    const TC = creditTotal; // Amount customers have not paid
+    const TD = 0; // Amount not paid to suppliers (to be implemented if tracked)
+
+    const netProfit = OI - (OA + OS + TP - TS + TD - TC);
+    const trueValue = (OA + OS + TP - TS) + TC - TD;
+
     return {
       salesTotal,
       cashTotal,
@@ -161,7 +219,14 @@ export function TransChapReports() {
       forSalePurchaseTotal,
       rawPurchaseTotal,
       bothPurchaseTotal,
-      profit: salesTotal - purchaseTotal,
+      cogsTotal,
+      stockValue,
+      cashOnHand,
+      currentEquity,
+      trueValue,
+      initialEquity,
+      netProfit,
+      profit: salesTotal - cogsTotal,
       saleCount: paid.length,
       purchaseCount: bought.length,
       units,
@@ -214,20 +279,61 @@ export function TransChapReports() {
             <TransChapStatus tone="error">{error}</TransChapStatus>
           ) : (
             <div className="trans-chap-reports__body">
-              <section
-                className={`trans-chap-reports__profit${report.profit < 0 ? " is-loss" : ""}`}
-                aria-label={report.profit < 0 ? "Loss" : "Profit"}
-              >
-                <div className="trans-chap-reports__profit-copy">
-                  <span>{report.profit < 0 ? "Loss" : "Profit"}</span>
-                  <Money amount={report.profit} />
-                  <p>Sales minus restock spend in this period</p>
-                </div>
-                <i
-                  className={`fa-solid ${report.profit < 0 ? "fa-arrow-trend-down" : "fa-arrow-trend-up"}`}
-                  aria-hidden
-                />
-              </section>
+              {when === "net" ? (
+                <>
+                  <section
+                    className={`trans-chap-reports__profit${report.netProfit < 0 ? " is-loss" : ""}`}
+                    aria-label={report.netProfit < 0 ? "Loss" : "Profit"}
+                  >
+                    <div className="trans-chap-reports__profit-copy">
+                      <span>{report.netProfit < 0 ? "Net Loss" : "Net Profit"}</span>
+                      <Money amount={report.netProfit} />
+                      <p>Overall Return on Investment</p>
+                    </div>
+                    <i
+                      className={`fa-solid ${report.netProfit < 0 ? "fa-arrow-trend-down" : "fa-arrow-trend-up"}`}
+                      aria-hidden
+                    />
+                  </section>
+                  <section className="trans-chap-reports__kpis" aria-label="Totals">
+                    <article className="trans-chap-reports__kpi trans-chap-reports__kpi--opening">
+                      <span>Total Invested</span>
+                      <Money amount={report.initialEquity} />
+                      <small>Initial Equity Baseline</small>
+                    </article>
+                    <article className="trans-chap-reports__kpi trans-chap-reports__kpi--opening">
+                      <span>True Value</span>
+                      <Money amount={report.trueValue} />
+                      <small>Est. Total Merchant Value</small>
+                    </article>
+                    <article className="trans-chap-reports__kpi trans-chap-reports__kpi--stock">
+                      <span>Stock Value</span>
+                      <Money amount={report.stockValue} />
+                      <small>Value of physical inventory</small>
+                    </article>
+                    <article className="trans-chap-reports__kpi trans-chap-reports__kpi--sale">
+                      <span>Cash Generated</span>
+                      <Money amount={report.cashOnHand} />
+                      <small>Total Sales minus Total Purchases</small>
+                    </article>
+                  </section>
+                </>
+              ) : (
+                <>
+                  <section
+                    className={`trans-chap-reports__profit${report.profit < 0 ? " is-loss" : ""}`}
+                    aria-label={report.profit < 0 ? "Loss" : "Profit"}
+                  >
+                    <div className="trans-chap-reports__profit-copy">
+                      <span>{report.profit < 0 ? "Loss" : "Profit"}</span>
+                      <Money amount={report.profit} />
+                      <p>Sales minus cost of goods sold in this period</p>
+                    </div>
+                    <i
+                      className={`fa-solid ${report.profit < 0 ? "fa-arrow-trend-down" : "fa-arrow-trend-up"}`}
+                      aria-hidden
+                    />
+                  </section>
 
               <section className="trans-chap-reports__kpis" aria-label="Totals">
                 <article className="trans-chap-reports__kpi trans-chap-reports__kpi--sale">
@@ -243,7 +349,22 @@ export function TransChapReports() {
                   <Money amount={report.purchaseTotal} />
                   <small>{purchaseBreakdown}</small>
                 </article>
+                <article className="trans-chap-reports__kpi trans-chap-reports__kpi--stock">
+                  <span>Current Stock</span>
+                  <Money amount={report.stockValue} />
+                  <small>Total inventory value</small>
+                </article>
+                {openingAmount !== null ? (
+                  <article className="trans-chap-reports__kpi trans-chap-reports__kpi--opening">
+                    <span>Opening Stock</span>
+                    <Money amount={openingAmount} />
+                    <small>Set from settings</small>
+                  </article>
+                ) : null}
               </section>
+
+                </>
+              )}
 
               <section className="trans-chap-reports__split" aria-label="How customers paid">
                 <article className="trans-chap-reports__pay trans-chap-reports__pay--mpesa">

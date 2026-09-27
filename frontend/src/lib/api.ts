@@ -74,15 +74,15 @@ function parseApiErrorMessage(payload: unknown, status: number, fallback?: strin
 
 function serverErrorFallback(status: number, payload: unknown): string {
   if (status === 504) {
-    return "The request timed out. For videos, wait a minute and try again.";
+    return "The request timed out. Please try again shortly.";
   }
   if (status === 502 || status === 503) {
-    return "The server or Instagram API is temporarily unavailable. Try again shortly.";
+    return "The service is temporarily unavailable. Please try again shortly.";
   }
   if (typeof payload === "string" && payload.includes("Internal Server Error")) {
-    return "The server hit an unexpected error while processing your upload. Try again with a JPEG photo under 5 MB.";
+    return "The server encountered an unexpected error. Please try again shortly.";
   }
-  return "The server took too long or returned an unexpected error. Try again with a JPEG photo under 5 MB.";
+  return "The server took too long or returned an unexpected error. Please try again shortly.";
 }
 
 export async function ensureCsrfCookie(): Promise<void> {

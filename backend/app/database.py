@@ -11,11 +11,17 @@ settings = get_settings()
 
 _engine_kwargs: dict = {
     "pool_pre_ping": True,
-    "pool_recycle": 3600,
+    "pool_recycle": 280,
 }
 if not settings.database_url.startswith("sqlite"):
-    _engine_kwargs["pool_size"] = 10
-    _engine_kwargs["max_overflow"] = 20
+    _engine_kwargs["pool_size"] = max(1, settings.db_pool_size)
+    _engine_kwargs["max_overflow"] = max(0, settings.db_max_overflow)
+    _engine_kwargs["pool_timeout"] = max(1, settings.db_pool_timeout_seconds)
+    _engine_kwargs["connect_args"] = {
+        "connect_timeout": max(1, settings.db_connect_timeout_seconds),
+        "read_timeout": max(1, settings.db_read_timeout_seconds),
+        "write_timeout": max(1, settings.db_write_timeout_seconds),
+    }
 if settings.database_url.startswith("sqlite"):
     _engine_kwargs["connect_args"] = {
         "check_same_thread": False,
@@ -35,7 +41,12 @@ def _configure_sqlite_connection(dbapi_connection, _connection_record) -> None:
     cursor.execute("PRAGMA busy_timeout=30000")
     cursor.close()
 
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+SessionLocal = sessionmaker(
+    bind=engine,
+    autocommit=False,
+    autoflush=False,
+    expire_on_commit=False,
+)
 
 
 class Base(DeclarativeBase):
@@ -46,5 +57,8 @@ def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()

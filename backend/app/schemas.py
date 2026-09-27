@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from pydantic import BaseModel, ConfigDict
@@ -61,6 +62,10 @@ class InstagramAccountOut(BaseModel):
 def build_user_out(db: Session, user) -> "UserOut":
     from app.services.platform_instagram import get_merchant_instagram_account
     from app.support.merchant_permissions import active_account_id
+
+    user_state = inspect(user)
+    if "instagram_account" not in user_state.unloaded:
+        return UserOut.from_model(user, instagram_account=user.instagram_account)
 
     ig = None
     try:

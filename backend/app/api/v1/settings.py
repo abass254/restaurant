@@ -1,19 +1,19 @@
 from __future__ import annotations
 
+from datetime import datetime
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
 from app.core.session import require_user, validate_csrf
 from app.core.uploads import delete_upload, save_logo_upload
-from app.support.merchant_permissions import (
-    assert_merchant_section_access,
-    assert_merchant_section_any_access,
-)
 from app.dependencies import ServiceContainer, get_request_session, get_services
 from app.models import (
     STORE_TYPES,
     Account,
+    InventoryItem,
     is_valid_business_category,
 )
 from app.schemas import AccountOut, InstagramAccountOut, UserOut, build_user_out
@@ -36,6 +36,12 @@ from app.services.platform_instagram import (
     require_merchant_instagram_account,
     user_can_manage_channels,
 )
+from app.support.merchant_permissions import (
+    active_account_id,
+    assert_merchant_section_access,
+    assert_merchant_section_any_access,
+    is_membership_owner,
+)
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -47,6 +53,21 @@ class ConnectInstagramRequest(BaseModel):
 
 class AutoRepliesSettingRequest(BaseModel):
     enabled: bool
+
+
+class OpeningAmountUpdate(BaseModel):
+    opening_amount: Decimal = Field(ge=0, le=99_999_999.99, decimal_places=2)
+
+class OpeningStockUpdate(BaseModel):
+    opening_stock: Decimal = Field(ge=0, le=99_999_999.99, decimal_places=2)
+
+class OpeningInvestmentUpdate(BaseModel):
+    opening_investment: Decimal = Field(ge=0, le=99_999_999.99, decimal_places=2)
+
+
+class OperationsSettingsUpdate(BaseModel):
+    allow_item_quantity_adjustment: bool | None = None
+    adjust_selling_price_on_purchase: bool | None = None
 
 
 class BusinessLocationUpdate(BaseModel):
@@ -160,8 +181,11 @@ def show_settings(
     user = require_user(services.db, session)
     assert_merchant_section_access(user, "settings")
     settings = get_settings()
-    from app.support.merchant_permissions import active_account_id
     merchant_id = active_account_id(user)
+    account = services.db.get(Account, merchant_id) if merchant_id else None
+    can_manage_opening_amount = bool(
+        account and (user.is_super_admin() or is_membership_owner(user, str(merchant_id)))
+    )
     platform_ig = (
         get_merchant_instagram_account(services.db, str(merchant_id))
         if merchant_id
@@ -181,6 +205,34 @@ def show_settings(
         "supported_platforms": list(SUPPORTED_PLATFORMS),
         "connected_platforms": connected_platforms,
         "any_channel_connected": bool(connected_platforms),
+        "opening_amount": (
+            str(account.opening_amount) if account and account.opening_amount is not None else None
+        ),
+        "opening_amount_set_at": account.opening_amount_set_at if account else None,
+        "opening_stock": (
+            str(account.opening_stock) if account and account.opening_stock is not None else None
+        ),
+        "opening_stock_set_at": account.opening_stock_set_at if account else None,
+        "opening_investment": (
+            str(account.opening_investment) if account and account.opening_investment is not None else None
+        ),
+        "opening_investment_set_at": account.opening_investment_set_at if account else None,
+        "suggested_opening_stock": str(
+            sum(
+                (item.stock_quantity or 0) * (item.buying_price or 0)
+                for item in services.db.query(InventoryItem).filter_by(account_id=account.id).all()
+            )
+            if account else 0
+        ),
+        "allow_item_quantity_adjustment": (
+            account.allow_item_quantity_adjustment if account else True
+        ),
+        "adjust_selling_price_on_purchase": (
+            account.adjust_selling_price_on_purchase if account else True
+        ),
+        "can_set_opening_amount": bool(account is not None and can_manage_opening_amount),
+        "can_set_opening_stock": bool(account is not None and can_manage_opening_amount),
+        "can_set_opening_investment": bool(account is not None and can_manage_opening_amount),
         "sales_autopilot_script": _sales_script_payload(platform_ig) if platform_ig else None,
         "inventory_integration": (
             inventory_integration_public_payload(inventory_integration_from_account(platform_ig))
@@ -188,6 +240,148 @@ def show_settings(
             else None
         ),
     }
+
+
+@router.patch("/operations")
+def update_operations_settings(
+    payload: OperationsSettingsUpdate,
+    request: Request,
+    services: ServiceContainer = Depends(get_services),
+    session: dict = Depends(get_request_session),
+):
+    validate_csrf(request, session)
+    user = require_user(services.db, session)
+    assert_merchant_section_access(user, "settings")
+    account_id = active_account_id(user)
+    if not (user.is_super_admin() or is_membership_owner(user, account_id)):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Only the shop owner can update operational settings.",
+        )
+
+    account = services.db.get(Account, account_id)
+    if account is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Business account not found.")
+
+    changes = payload.model_dump(exclude_unset=True, exclude_none=True)
+    for field, value in changes.items():
+        setattr(account, field, value)
+
+    services.db.commit()
+    services.db.refresh(account)
+    return {
+        "allow_item_quantity_adjustment": account.allow_item_quantity_adjustment,
+        "adjust_selling_price_on_purchase": account.adjust_selling_price_on_purchase,
+    }
+
+
+@router.put("/opening-amount")
+def set_opening_amount(
+    payload: OpeningAmountUpdate,
+    request: Request,
+    services: ServiceContainer = Depends(get_services),
+    session: dict = Depends(get_request_session),
+):
+    """Record the shop's starting till cash once; it is not sales income."""
+    validate_csrf(request, session)
+    user = require_user(services.db, session)
+    assert_merchant_section_access(user, "settings")
+    account_id = require_merchant_account_id(user)
+
+    if not (user.is_super_admin() or is_membership_owner(user, account_id)):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Only the shop owner can set the opening amount.",
+        )
+
+    account = services.db.get(Account, account_id)
+    if account is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Business account not found.")
+
+
+    account.opening_amount = payload.opening_amount
+    account.opening_amount_set_at = datetime.utcnow()
+    services.db.commit()
+    services.db.refresh(account)
+    return {
+        "message": "Opening amount saved.",
+        "opening_amount": str(account.opening_amount),
+        "opening_amount_set_at": account.opening_amount_set_at,
+        "can_set_opening_amount": True,
+    }
+
+
+@router.put("/opening-stock")
+def set_opening_stock(
+    payload: OpeningStockUpdate,
+    request: Request,
+    services: ServiceContainer = Depends(get_services),
+    session: dict = Depends(get_request_session),
+):
+    """
+    Sets the one-time opening stock value.
+    """
+    validate_csrf(request, session)
+    user = require_user(services.db, session)
+    assert_merchant_section_access(user, "settings")
+    account_id = require_merchant_account_id(user)
+
+    if not (user.is_super_admin() or is_membership_owner(user, account_id)):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Only the shop owner can set the opening stock.",
+        )
+
+    account = services.db.get(Account, account_id)
+    if account is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Business account not found.")
+
+
+    account.opening_stock = payload.opening_stock
+    account.opening_stock_set_at = datetime.utcnow()
+    services.db.commit()
+    services.db.refresh(account)
+    return {
+        "message": "Opening stock saved.",
+        "opening_stock": str(account.opening_stock),
+        "opening_stock_set_at": account.opening_stock_set_at,
+        "can_set_opening_stock": True,
+    }
+
+@router.put("/opening-investment")
+def set_opening_investment(
+    payload: OpeningInvestmentUpdate,
+    request: Request,
+    services: ServiceContainer = Depends(get_services),
+    session: dict = Depends(get_request_session),
+):
+    validate_csrf(request, session)
+    user = require_user(services.db, session)
+    account_id = active_account_id(user)
+    if not account_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="No active business account.")
+
+    if not (user.is_super_admin() or is_membership_owner(user, account_id)):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Only the shop owner can set the opening investment.",
+        )
+
+    account = services.db.get(Account, account_id)
+    if account is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Business account not found.")
+
+    account.opening_investment = payload.opening_investment
+    account.opening_investment_set_at = datetime.utcnow()
+    services.db.commit()
+    services.db.refresh(account)
+    return {
+        "message": "Opening investment saved.",
+        "opening_investment": str(account.opening_investment),
+        "opening_investment_set_at": account.opening_investment_set_at,
+        "can_set_opening_investment": True,
+    }
+
 
 
 @router.post("/instagram")

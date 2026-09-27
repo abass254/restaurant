@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     db_database: str = ""
     db_username: str = "dukai"
     db_password: str = ""
+    db_pool_size: int = 4
+    db_max_overflow: int = 1
+    db_pool_timeout_seconds: int = 15
+    db_connect_timeout_seconds: int = 10
+    db_read_timeout_seconds: int = 15
+    db_write_timeout_seconds: int = 15
     # Optional full SQLAlchemy URL (e.g. mysql://user:pass@host:3306/db).
     # When set, overrides the DB_* fields above.
     db_url: str = Field(default="", validation_alias="DATABASE_URL")

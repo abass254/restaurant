@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { confirmAction, showError, showInternalError, toastSuccess, internalErrorMessage } from "@/lib/alerts";
@@ -24,7 +30,12 @@ import { MotionItem, MotionList } from "@/components/app/MotionList";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { isRestaurantStore } from "@/lib/onboarding";
 import { isShopOwner } from "@/lib/merchant-permissions";
-import type { InventoryItem, InventoryResponse, InventoryRole } from "@/lib/types";
+import type {
+  InventoryItem,
+  InventoryResponse,
+  InventoryRole,
+  SettingsResponse,
+} from "@/lib/types";
 
 type RoleFilter = "all" | InventoryRole;
 type StocksView = "grid" | "list";
@@ -75,13 +86,6 @@ function stockQtyLabel(item: InventoryItem): string | undefined {
   return `Qty ${item.stock_quantity}`;
 }
 
-function roleTag(item: InventoryItem, restaurant: boolean): string | undefined {
-  if (isHotelMenuItem(item)) return restaurant ? "Hotel" : undefined;
-  const role = inventoryRole(item);
-  if (role === "raw_material") return restaurant ? "Raw" : undefined;
-  if (role === "both") return "Buy & sell";
-  return "Sell only";
-}
 
 type HotelTab = "menu" | "supplies" | "drinks" | "all";
 
@@ -95,6 +99,8 @@ const HOTEL_TABS: { id: HotelTab; label: string }[] = [
 export function TransChapStocksList() {
   const user = useAuthUser();
   const canEditQty = isShopOwner(user);
+  const [allowQuantityAdjustment, setAllowQuantityAdjustment] = useState(true);
+  const canAdjustQty = canEditQty && allowQuantityAdjustment;
   const restaurant = isRestaurantStore(user.active_account ?? user.account);
   const roleFilters = restaurant
     ? [...BASE_ROLE_FILTERS, RAW_ROLE_FILTER]
@@ -121,6 +127,22 @@ export function TransChapStocksList() {
 
   useEffect(() => {
     setView(readStocksView());
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void apiFetch<SettingsResponse>(apiRoutes.settings)
+      .then((data) => {
+        if (!cancelled) {
+          setAllowQuantityAdjustment(data.allow_item_quantity_adjustment ?? true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAllowQuantityAdjustment(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function setStocksView(next: StocksView) {
@@ -218,7 +240,7 @@ export function TransChapStocksList() {
   }
 
   async function saveQty(item: InventoryItem) {
-    if (!canEditQty || isHotelMenuItem(item) || qtySavingId === item.id || selecting) return;
+    if (!canAdjustQty || isHotelMenuItem(item) || qtySavingId === item.id || selecting) return;
     const raw = qtyDraftValue(item).trim();
     if (raw === "") {
       setQtyDrafts((prev) => {
@@ -556,7 +578,7 @@ export function TransChapStocksList() {
                       <td className="trans-chap-stock-table__qty">
                         {hotel ? (
                           <span className="trans-chap-stock-table__muted">—</span>
-                        ) : canEditQty ? (
+                        ) : canAdjustQty ? (
                           <label className="trans-chap-panel__qty-edit">
                             <span className="sr-only">Qty</span>
                             <input
@@ -679,8 +701,7 @@ export function TransChapStocksList() {
                 tone="stock"
                 title={name}
                 imageUrl={inventoryCoverUrl(item)}
-                tag={hotel ? "Dish" : roleTag(item, restaurant)}
-                qty={hotel ? undefined : stockQtyLabel(item)}
+                qty={hotel || canAdjustQty ? undefined : stockQtyLabel(item)}
                 price={price}
                 badge={hotel ? undefined : stockBadge(item)}
                 inactive={!item.is_active}
@@ -692,7 +713,7 @@ export function TransChapStocksList() {
                     : setOpenId(open ? null : item.id)
                 }
                 midAction={
-                  selecting || hotel || !canEditQty ? null : (
+                  selecting || hotel || !canAdjustQty ? null : (
                     <label className="trans-chap-panel__qty-edit">
                       <span>Qty</span>
                       <input
@@ -740,17 +761,20 @@ export function TransChapStocksList() {
                       {picked ? <i className="fa-solid fa-check" aria-hidden /> : null}
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      role="switch"
-                      className={`theme-switch trans-chap-panel__switch${item.is_active ? " is-on" : ""}`}
-                      aria-checked={item.is_active}
-                      aria-label={item.is_active ? `Disable ${name}` : `Enable ${name}`}
-                      disabled={savingId === item.id}
-                      onClick={() => void toggleActive(item)}
-                    >
-                      <span className="theme-switch__thumb" aria-hidden />
-                    </button>
+                    <div className="trans-chap-panel__availability">
+                      <span>{item.is_active ? "Active" : "Off"}</span>
+                      <button
+                        type="button"
+                        role="switch"
+                        className={`theme-switch trans-chap-panel__switch${item.is_active ? " is-on" : ""}`}
+                        aria-checked={item.is_active}
+                        aria-label={item.is_active ? `Disable ${name}` : `Enable ${name}`}
+                        disabled={savingId === item.id}
+                        onClick={() => void toggleActive(item)}
+                      >
+                        <span className="theme-switch__thumb" aria-hidden />
+                      </button>
+                    </div>
                   )
                 }
                 action={

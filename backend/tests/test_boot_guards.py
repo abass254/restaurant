@@ -32,6 +32,16 @@ def test_settings_production_forces_debug_off() -> None:
     assert settings.is_production is True
 
 
+def test_database_pool_defaults_are_safe_for_shared_mysql() -> None:
+    settings = Settings()
+    assert settings.db_pool_size == 4
+    assert settings.db_max_overflow == 1
+    assert settings.db_pool_timeout_seconds == 15
+    assert settings.db_connect_timeout_seconds == 10
+    assert settings.db_read_timeout_seconds == 15
+    assert settings.db_write_timeout_seconds == 15
+
+
 def test_boot_guard_skips_local() -> None:
     settings = MagicMock()
     settings.app_env = "local"

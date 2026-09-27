@@ -6,6 +6,7 @@ import hmac
 import json
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
@@ -53,6 +54,14 @@ class Account(Base):
     # Commerce mode: general retail vs restaurant / F&B.
     store_type: Mapped[str] = mapped_column(String(32), default="retail")
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    opening_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    opening_amount_set_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    opening_stock: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    opening_stock_set_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    opening_investment: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    opening_investment_set_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    allow_item_quantity_adjustment: Mapped[bool] = mapped_column(Boolean, default=True)
+    adjust_selling_price_on_purchase: Mapped[bool] = mapped_column(Boolean, default=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Merchant Station: online order acceptance + kitchen prep timing

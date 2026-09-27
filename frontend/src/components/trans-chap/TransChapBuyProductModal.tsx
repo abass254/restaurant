@@ -13,6 +13,8 @@ export type BuyProductDraft = {
   role: InventoryRole;
   alertQuantity: string;
   weight: string;
+  isBundle?: boolean;
+  bundleQuantity?: string;
 };
 
 const ALL_ROLE_OPTIONS: { id: InventoryRole; label: string; hint: string }[] = [
@@ -26,6 +28,8 @@ const EMPTY: BuyProductDraft = {
   role: "both",
   alertQuantity: "",
   weight: "",
+  isBundle: false,
+  bundleQuantity: "",
 };
 
 type Props = {
@@ -74,6 +78,8 @@ export function TransChapBuyProductModal({
       sku: draft.sku.trim(),
       alertQuantity: draft.alertQuantity.trim(),
       weight: draft.weight.trim(),
+      isBundle: draft.isBundle,
+      bundleQuantity: draft.bundleQuantity?.trim(),
     });
   }
 
@@ -161,6 +167,39 @@ export function TransChapBuyProductModal({
               />
             </div>
           </div>
+
+          <div className="auth-split__field trans-chap-purchase-modal__span">
+            <label className="trans-chap-form__checkbox-label">
+              <input
+                type="checkbox"
+                checked={draft.isBundle}
+                onChange={(e) => patch({ isBundle: e.target.checked })}
+              />
+              Bought as a bundle / pack?
+            </label>
+            <p className="trans-chap-form__hint" style={{ marginTop: 4 }}>
+              Check this if you are buying a pack (e.g., crate of 30) instead of a single piece.
+            </p>
+          </div>
+
+          {draft.isBundle ? (
+            <div className="auth-split__field">
+              <label htmlFor={`${baseId}-bundle`}>Units per bundle</label>
+              <div className="trans-chap-input">
+                <input
+                  id={`${baseId}-bundle`}
+                  type="text"
+                  inputMode="numeric"
+                  className="auth-split__input"
+                  placeholder="e.g. 24"
+                  value={draft.bundleQuantity || ""}
+                  onChange={(event) =>
+                    patch({ bundleQuantity: event.target.value })
+                  }
+                />
+              </div>
+            </div>
+          ) : null}
 
           {roleOptions.length > 1 ? (
             <div className="auth-split__field trans-chap-purchase-modal__span">

@@ -487,13 +487,7 @@ export function TransChapSalesList() {
           <p className="trans-chap-sales__empty">Showing the most recent 2,000 sales.</p>
         ) : null}
       </div>
-      <TransChapFab
-        label="New sale"
-        options={[
-          { href: "/trans-chap/make-a-sale/new", label: "Scan", icon: "fa-barcode" },
-          { href: "/trans-chap/make-a-sale/new?mode=select", label: "Select", icon: "fa-list" },
-        ]}
-      />
+      <TransChapFab label="New sale" href="/trans-chap/pos" />
     </div>
   );
 }

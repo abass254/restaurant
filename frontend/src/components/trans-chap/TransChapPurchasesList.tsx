@@ -28,7 +28,7 @@ export function TransChapPurchasesList() {
   const user = useAuthUser();
   const restaurant = isRestaurantStore(user.active_account ?? user.account);
   const accountId = user.active_account?.id || user.account?.id;
-  const buyHref = "/trans-chap/purchases/unavailable";
+
   const listId = useId();
   const [purchases, setPurchases] = useState<TransChapPurchase[]>([]);
   const [query, setQuery] = useState("");
@@ -193,34 +193,7 @@ export function TransChapPurchasesList() {
       </div>
       <TransChapFab
         label={restaurant ? "Buy supplies" : "New purchase"}
-        options={
-          restaurant
-            ? [
-                {
-                  href: "/trans-chap/purchases/new?mode=select",
-                  label: "Select supplies",
-                  icon: "fa-list",
-                },
-                {
-                  href: buyHref,
-                  label: "New ingredient / supply",
-                  icon: "fa-cart-plus",
-                },
-              ]
-            : [
-                { href: "/trans-chap/purchases/new", label: "Select", icon: "fa-list" },
-                {
-                  href: "/trans-chap/purchases/new?mode=scan",
-                  label: "Scan",
-                  icon: "fa-barcode",
-                },
-                {
-                  href: buyHref,
-                  label: "New product",
-                  icon: "fa-cart-plus",
-                },
-              ]
-        }
+        href="/trans-chap/purchases/new"
       />
     </div>
   );

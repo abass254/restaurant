@@ -3184,3 +3184,82 @@ html[data-theme="dark"] .pos-table-input {
   line-height: 1.35;
 }
 
+
+.fb-app .pos-line__qty-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.fb-app .pos-line__auto-pack {
+  display: flex;
+  background: var(--app-surface-hover);
+  padding: 1px;
+  border-radius: 6px;
+}
+
+.fb-app .pos-line__unit-chip {
+  padding: 2px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--app-text-secondary);
+  font-size: 0.625rem;
+  font-weight: 600;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.fb-app .pos-line__unit-chip:hover {
+  color: var(--app-text);
+}
+
+.fb-app .pos-line__unit-chip.is-active {
+  background: var(--app-surface);
+  color: var(--app-text);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+html[data-theme="dark"] .fb-app .pos-line__unit-chip.is-active {
+  background: var(--brown-700);
+  color: var(--cream-50);
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) .fb-app .pos-line__unit-chip.is-active {
+    background: var(--brown-700);
+    color: var(--cream-50);
+  }
+}
+
+.fb-app .pos-line__pack-input {
+  width: 40px;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid var(--app-border-light);
+  border-radius: 4px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  margin-left: 4px;
+}
+.fb-app .pos-line__pack-input:focus {
+  outline: 1px solid var(--app-primary);
+  border-color: var(--app-primary);
+}
+
+.fb-app .pos-line__price-alert {
+  color: var(--app-error);
+  font-size: 0.8125rem;
+  margin-left: 4px;
+}
+.fb-app .pos-line__price-edit.has-error input {
+  border-color: var(--app-error);
+  color: var(--app-error);
+}
+.fb-app .pos-line__price-edit.has-error input:focus {
+  outline-color: color-mix(in srgb, var(--app-error) 35%, transparent);
+}
