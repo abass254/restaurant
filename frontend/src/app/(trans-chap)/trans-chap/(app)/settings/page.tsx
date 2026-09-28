@@ -75,6 +75,7 @@ export default function TransChapSettingsPage() {
   const [autoRepliesSaving, setAutoRepliesSaving] = useState(false);
   const [adjustSellingPrice, setAdjustSellingPrice] = useState(true);
   const [allowQuantityAdjustment, setAllowQuantityAdjustment] = useState(true);
+  const [forceMpesaPrompt, setForceMpesaPrompt] = useState(true);
   const [operationsSaving, setOperationsSaving] = useState(false);
   const [settingsQuery, setSettingsQuery] = useState("");
 
@@ -149,6 +150,7 @@ export default function TransChapSettingsPage() {
         }
         setAllowQuantityAdjustment(data.allow_item_quantity_adjustment ?? true);
         setAdjustSellingPrice(data.adjust_selling_price_on_purchase ?? true);
+        setForceMpesaPrompt(data.force_mpesa_prompt ?? true);
         const ig = data.user.instagram_account;
         setHasInstagram(Boolean(ig));
         if (typeof ig?.auto_replies_enabled === "boolean") {
@@ -248,6 +250,22 @@ export default function TransChapSettingsPage() {
     } finally {
       setAutoRepliesSaving(false);
     }
+  }
+  async function handleForceMpesaToggle(enabled: boolean) {
+    if (!enabled) {
+      const confirmed = await confirmAction(
+        "Turn off M-PESA prompts?",
+        "When making a sale with M-PESA, cashiers will enter the code manually instead of pushing a prompt to the customer's phone.",
+        "Turn off",
+      );
+      if (!confirmed) return;
+    }
+    await updateOperations(
+      { force_mpesa_prompt: enabled },
+      enabled ? "M-PESA prompts enabled" : "M-PESA prompts disabled",
+    );
+    // Optimistically update
+    setForceMpesaPrompt(enabled);
   }
 
   async function saveOpeningAmount() {
@@ -656,14 +674,39 @@ export default function TransChapSettingsPage() {
             <span className="ios-settings__icon ios-settings__icon--mpesa" aria-hidden>
               <i className="fa-solid fa-mobile-screen" />
             </span>
-            <span className="ios-settings__label">M-PESA</span>
+            <span className="ios-settings__label">M-PESA Till Settings</span>
             <span className="ios-settings__value">
               {mpesaReady == null ? "" : mpesaReady ? "Set" : "Not Set"}
             </span>
             <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
           </button>
+          <div className="ios-settings__row ios-settings__row--static">
+            <span className="ios-settings__icon ios-settings__icon--mpesa" aria-hidden>
+              <i className="fa-solid fa-bell" />
+            </span>
+            <span className="ios-settings__label">Force STK Prompts</span>
+            <span className="ios-settings__value">
+              {owner ? (
+                <button
+                  type="button"
+                  role="switch"
+                  className={`theme-switch${forceMpesaPrompt ? " is-on" : ""}`}
+                  aria-checked={forceMpesaPrompt}
+                  aria-label="Force M-PESA STK Prompts"
+                  disabled={operationsSaving}
+                  onClick={() => void handleForceMpesaToggle(!forceMpesaPrompt)}
+                >
+                  <span className="theme-switch__thumb" aria-hidden />
+                </button>
+              ) : (
+                <span className="ios-settings__value">Owner only</span>
+              )}
+            </span>
+          </div>
         </div>
-        <p className="ios-settings__footer">Set starting cash and where M-PESA payments go.</p>
+        <p className="ios-settings__footer">
+          Configure till numbers and choose whether to send push prompts to customer phones.
+        </p>
       </section>
       ) : null}
 

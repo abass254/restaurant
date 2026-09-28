@@ -62,6 +62,7 @@ class Account(Base):
     opening_investment_set_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     allow_item_quantity_adjustment: Mapped[bool] = mapped_column(Boolean, default=True)
     adjust_selling_price_on_purchase: Mapped[bool] = mapped_column(Boolean, default=True)
+    force_mpesa_prompt: Mapped[bool] = mapped_column(Boolean, default=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Merchant Station: online order acceptance + kitchen prep timing

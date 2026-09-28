@@ -593,12 +593,14 @@ export type SettingsResponse = {
   suggested_opening_stock: string;
   allow_item_quantity_adjustment?: boolean;
   adjust_selling_price_on_purchase?: boolean;
+  force_mpesa_prompt?: boolean;
   inventory_integration?: InventoryIntegrationConfig | null;
 };
 
 export type SettingsOperationsResponse = {
   allow_item_quantity_adjustment: boolean;
   adjust_selling_price_on_purchase: boolean;
+  force_mpesa_prompt: boolean;
 };
 
 export type ChannelPlatform =

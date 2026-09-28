@@ -64,6 +64,7 @@ import type {
   OrderSource,
   ShopCustomer,
   ShopCustomersListResponse,
+  SettingsOperationsResponse,
 } from "@/lib/types";
 
 const MPESA_POLL_MS = 4_000;
@@ -358,6 +359,8 @@ export function PosWorkspace({
   );
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [forceMpesaPrompt, setForceMpesaPrompt] = useState(true);
+  const [mpesaReceiptCode, setMpesaReceiptCode] = useState("");
   const [creditDueDate, setCreditDueDate] = useState("");
   const [customers, setCustomers] = useState<ShopCustomer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
@@ -439,6 +442,14 @@ export function PosWorkspace({
       .then((res) => setCustomers(res.data))
       .catch(() => {
         /* POS still works with typed name and phone. */
+      });
+
+    void apiFetch<SettingsOperationsResponse>(apiRoutes.settings)
+      .then((data) => {
+        setForceMpesaPrompt(data.force_mpesa_prompt ?? true);
+      })
+      .catch(() => {
+        setForceMpesaPrompt(true);
       });
   }, []);
 
@@ -829,6 +840,7 @@ export function PosWorkspace({
     setDiscount("");
     setNotes("");
     setPaymentMethod(isTransChapSale ? "mpesa" : "");
+    setMpesaReceiptCode("");
     setCreditDueDate("");
     setSelectedCustomerId("");
     if (!isTransChapSale) {
@@ -1043,26 +1055,50 @@ export function PosWorkspace({
 
           {paymentMethod === "mpesa" ? (
             <div className="pos-customer-card__mpesa-box">
-              <label
-                className="pos-customer-card__mpesa-label"
-                htmlFor="pos-customer-stk-phone"
-              >
-                <i className="fa-solid fa-mobile-screen-button" aria-hidden />
-                <span>Send M-PESA prompt to:</span>
-              </label>
-              <div className="pos-customer-card__mpesa-input-wrap">
-                <input
-                  id="pos-customer-stk-phone"
-                  type="tel"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="2547…"
-                  aria-label="M-PESA prompt phone"
-                  className={
-                    !customerPhone.trim() ? "pos-input--required" : undefined
-                  }
-                />
-              </div>
+              {forceMpesaPrompt ? (
+                <>
+                  <label
+                    className="pos-customer-card__mpesa-label"
+                    htmlFor="pos-customer-stk-phone"
+                  >
+                    <i className="fa-solid fa-mobile-screen-button" aria-hidden />
+                    <span>Send M-PESA prompt to:</span>
+                  </label>
+                  <div className="pos-customer-card__mpesa-input-wrap">
+                    <input
+                      id="pos-customer-stk-phone"
+                      type="tel"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      placeholder="2547…"
+                      aria-label="M-PESA prompt phone"
+                      className={
+                        !customerPhone.trim() ? "pos-input--required" : undefined
+                      }
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <label
+                    className="pos-customer-card__mpesa-label"
+                    htmlFor="pos-customer-mpesa-code"
+                  >
+                    <i className="fa-solid fa-receipt" aria-hidden />
+                    <span>M-PESA code (optional):</span>
+                  </label>
+                  <div className="pos-customer-card__mpesa-input-wrap">
+                    <input
+                      id="pos-customer-mpesa-code"
+                      type="text"
+                      value={mpesaReceiptCode}
+                      onChange={(e) => setMpesaReceiptCode(e.target.value.toUpperCase())}
+                      placeholder="e.g. QJK7ABC123"
+                      aria-label="M-PESA transaction code"
+                    />
+                  </div>
+                </>
+              )}
             </div>
           ) : null}
 
@@ -1179,7 +1215,9 @@ export function PosWorkspace({
               <label className="pos-label" htmlFor="pos-walkin-phone-input">
                 <i className="fa-solid fa-mobile-screen-button" aria-hidden />{" "}
                 {paymentMethod === "mpesa"
-                  ? "M-PESA Phone (prompt recipient)"
+                  ? forceMpesaPrompt
+                    ? "M-PESA Phone (prompt recipient)"
+                    : "Customer Phone (optional)"
                   : "Customer Phone"}
               </label>
               <input
@@ -1189,19 +1227,36 @@ export function PosWorkspace({
                 onChange={(e) => setCustomerPhone(e.target.value)}
                 placeholder={
                   paymentMethod === "mpesa"
-                    ? "2547… (required for M-PESA)"
+                    ? forceMpesaPrompt
+                      ? "2547… (required for M-PESA)"
+                      : "Phone (optional)"
                     : "Phone (optional)"
                 }
                 aria-label={
                   paymentMethod === "mpesa" ? "M-PESA phone" : "Customer phone"
                 }
-                aria-required={paymentMethod === "mpesa"}
+                aria-required={paymentMethod === "mpesa" && forceMpesaPrompt}
                 className={
-                  paymentMethod === "mpesa" && !customerPhone.trim()
+                  paymentMethod === "mpesa" && forceMpesaPrompt && !customerPhone.trim()
                     ? "pos-input--required"
                     : undefined
                 }
               />
+              {paymentMethod === "mpesa" && !forceMpesaPrompt ? (
+                <div style={{ marginTop: "0.5rem" }}>
+                  <label className="pos-label" htmlFor="pos-walkin-mpesa-code">
+                    <i className="fa-solid fa-receipt" aria-hidden /> M-PESA Code (Optional)
+                  </label>
+                  <input
+                    id="pos-walkin-mpesa-code"
+                    type="text"
+                    value={mpesaReceiptCode}
+                    onChange={(e) => setMpesaReceiptCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. QJK7ABC123 (optional)"
+                    aria-label="M-PESA transaction code"
+                  />
+                </div>
+              ) : null}
             </div>
           ) : null}
         </>
@@ -1282,7 +1337,8 @@ export function PosWorkspace({
     completeInPlace &&
     (isTransChapSale || fulfillment === "pickup" || fulfillment === "dine_in") &&
     paymentMethod !== "" &&
-    IMMEDIATE_COMPLETE_PAYMENTS.has(paymentMethod);
+    (IMMEDIATE_COMPLETE_PAYMENTS.has(paymentMethod) ||
+      (paymentMethod === "mpesa" && !forceMpesaPrompt));
 
   const paymentOptions = isTransChapSale
     ? TRANSCHAP_PAYMENT_METHODS
@@ -1298,14 +1354,18 @@ export function PosWorkspace({
   const placeLabel = (() => {
     if (submitting) {
       if (isTransChapSale) {
-        if (paymentMethod === "mpesa") return "Sending M-Pesa…";
+        if (paymentMethod === "mpesa") {
+          return forceMpesaPrompt ? "Sending M-Pesa…" : "Completing M-Pesa sale…";
+        }
         if (paymentMethod === "credit") return "Saving on credit…";
         return "Completing cash sale…";
       }
       return canCompleteSaleNow ? "Completing…" : "Placing order…";
     }
     if (isTransChapSale) {
-      if (paymentMethod === "mpesa") return "Send M-Pesa prompt";
+      if (paymentMethod === "mpesa") {
+        return forceMpesaPrompt ? "Send M-Pesa prompt" : "Complete M-Pesa sale";
+      }
       if (paymentMethod === "credit") return "Save on credit";
       return "Complete cash sale";
     }
@@ -1345,7 +1405,7 @@ export function PosWorkspace({
       );
       return;
     }
-    if (paymentMethod === "mpesa" && !customerPhone.trim()) {
+    if (paymentMethod === "mpesa" && forceMpesaPrompt && !customerPhone.trim()) {
       await showError(
         "Customer phone required",
         "Enter the customer's M-PESA phone number so we can send them the payment prompt.",
@@ -1393,6 +1453,9 @@ export function PosWorkspace({
           modifiers: c.modifiers && c.modifiers.length ? c.modifiers : null,
           notes: c.notes?.trim() || null,
         })),
+        ...(paymentMethod === "mpesa" && mpesaReceiptCode.trim()
+          ? { mpesa_receipt_number: mpesaReceiptCode.trim() }
+          : {}),
       };
       const data = await apiFetch<OrderMutationResponse>(apiRoutes.orders, {
         method: "POST",
@@ -1404,7 +1467,8 @@ export function PosWorkspace({
         completeInPlace &&
         (orderFulfillment === "pickup" || orderFulfillment === "dine_in") &&
         paymentMethod !== "" &&
-        IMMEDIATE_COMPLETE_PAYMENTS.has(paymentMethod);
+        (IMMEDIATE_COMPLETE_PAYMENTS.has(paymentMethod) ||
+          (paymentMethod === "mpesa" && !forceMpesaPrompt));
 
       if (willCompleteNow) {
         try {
@@ -1422,7 +1486,7 @@ export function PosWorkspace({
       // is always saved, even if the push failed. Trans Chap POS keeps a
       // waiting panel so they can send the prompt again without leaving.
       const push = data.mpesa_push ?? null;
-      if (isTransChapSale && paymentMethod === "mpesa") {
+      if (isTransChapSale && paymentMethod === "mpesa" && forceMpesaPrompt) {
         suppressMerchantOrderNotification(order.id);
         clearCart();
         void reload({ silent: true, q: search });
@@ -1435,7 +1499,9 @@ export function PosWorkspace({
         }
         return;
       }
-      if (push && push.status === "sent") {
+      if (paymentMethod === "mpesa" && !forceMpesaPrompt) {
+        await toastSuccess(`Order ${order.order_number} completed`);
+      } else if (push && push.status === "sent") {
         await showSuccess(
           `Order ${order.order_number} · STK push sent`,
           push.message,

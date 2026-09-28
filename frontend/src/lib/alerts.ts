@@ -369,13 +369,14 @@ export async function promptRejectReason(
 export async function promptMpesaReceipt(
   title = "Confirm M-PESA payment",
   text = "Enter the M-PESA transaction code from the customer's SMS.",
+  optional = false,
 ) {
   const result = await fireDialog({
     icon: "question",
     title,
     text,
     input: "text",
-    inputLabel: "M-PESA transaction code",
+    inputLabel: "M-PESA transaction code" + (optional ? " (Optional)" : ""),
     inputPlaceholder: "e.g. QGH7X2ABCD",
     inputAttributes: {
       autocapitalize: "characters",
@@ -386,18 +387,18 @@ export async function promptMpesaReceipt(
     confirmButtonText: "Confirm payment",
     preConfirm: (value) => {
       const code = String(value ?? "").trim();
-      if (!code) {
+      if (!optional && !code) {
         dukaiSwal.showValidationMessage("Enter the M-PESA transaction code.");
         return false;
       }
-      return code;
+      return code || null;
     },
   });
 
-  if (!result.isConfirmed || !result.value) {
+  if (!result.isConfirmed) {
     return null;
   }
-  return String(result.value).trim();
+  return result.value ? String(result.value).trim() : null;
 }
 
 export async function promptWhatsAppPhone(

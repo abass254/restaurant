@@ -34,6 +34,7 @@ import type {
   OrderCreatePayload,
   OrderMutationResponse,
   ShopCustomer,
+  SettingsResponse,
 } from "@/lib/types";
 
 type PayMode = "credit" | "mpesa";
@@ -103,6 +104,7 @@ export function TransChapTransactForm() {
   const [lastScannedKey, setLastScannedKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [mpesaReady, setMpesaReady] = useState<boolean | null>(null);
+  const [forceMpesaPrompt, setForceMpesaPrompt] = useState(true);
   const [selectMode, setSelectMode] = useState(false);
   const inventoryRef = useRef<InventoryItem[]>([]);
 
@@ -224,6 +226,14 @@ export function TransChapTransactForm() {
         setMpesaReady(false);
         setPayMode((current) => (current === "mpesa" ? "credit" : current));
       });
+
+    void apiFetch<SettingsResponse>(apiRoutes.settings)
+      .then((data) => {
+        setForceMpesaPrompt(data.force_mpesa_prompt ?? true);
+      })
+      .catch(() => {
+        setForceMpesaPrompt(true);
+      });
   }, []);
 
   useEffect(() => {
@@ -292,14 +302,24 @@ export function TransChapTransactForm() {
         );
         return;
       }
-      mpesaAction = await promptMpesaCheckoutAction();
-      if (!mpesaAction) return;
+      if (forceMpesaPrompt) {
+        mpesaAction = await promptMpesaCheckoutAction();
+        if (!mpesaAction) return;
+      } else {
+        mpesaAction = "enter_code";
+      }
+
       if (mpesaAction === "enter_code") {
         mpesaReceiptCode = await promptMpesaReceipt(
           "Enter M-PESA code",
           "Type the transaction code from the customer’s SMS. Use this when they already paid you directly.",
+          !forceMpesaPrompt
         );
-        if (!mpesaReceiptCode) return;
+        if (!forceMpesaPrompt && mpesaReceiptCode === null) {
+           return; // cancelled dialog
+        } else if (forceMpesaPrompt && !mpesaReceiptCode) {
+           return;
+        }
       }
     }
 

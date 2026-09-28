@@ -802,6 +802,13 @@ def create_order(
             },
         )
 
+    account = db.get(Account, account_id)
+    force_mpesa_prompt = (
+        account.force_mpesa_prompt
+        if account and account.force_mpesa_prompt is not None
+        else True
+    )
+
     # STK push needs a phone; typing an SMS code for a direct payment does not.
     direct_mpesa_receipt = (
         (payload.mpesa_receipt_number or "").strip()
@@ -810,6 +817,7 @@ def create_order(
     )
     if (
         payload.payment_method == PAYMENT_MPESA
+        and force_mpesa_prompt
         and not direct_mpesa_receipt
         and not (payload.customer_phone and payload.customer_phone.strip())
     ):
@@ -824,8 +832,10 @@ def create_order(
             },
         )
 
-    if payload.payment_method == PAYMENT_MPESA and not mpesa_service.get_merchant_profile(
-        db, account_id
+    if (
+        payload.payment_method == PAYMENT_MPESA
+        and force_mpesa_prompt
+        and not mpesa_service.get_merchant_profile(db, account_id)
     ):
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -1128,6 +1138,22 @@ def create_order(
                 f"M-PESA code {matched_txn.mpesa_receipt_number} recorded. Sale closed."
             ),
         }
+    elif payload.payment_method == PAYMENT_MPESA and not force_mpesa_prompt:
+        prev_status = order.status
+        now_paid = datetime.utcnow()
+        order.status = PAYMENT_RECEIVED
+        order.paid_at = now_paid
+        order.updated_at = now_paid
+        db.add(
+            OrderStatusHistory(
+                order_id=order.id,
+                from_status=prev_status,
+                to_status=PAYMENT_RECEIVED,
+                changed_by_user_id=user.id,
+                note="M-PESA payment recorded without STK prompt.",
+                created_at=now_paid,
+            ),
+        )
 
     db.commit()
     db.refresh(order)
@@ -1189,7 +1215,7 @@ def create_order(
 
     # STK push after commit so the receipt can link to a real order id.
     # Failures are non-fatal — cashier can retry or enter a code later.
-    if payload.payment_method == PAYMENT_MPESA and not direct_mpesa_receipt:
+    if payload.payment_method == PAYMENT_MPESA and force_mpesa_prompt and not direct_mpesa_receipt:
         push_result = _trigger_mpesa_for_order(
             db,
             order,

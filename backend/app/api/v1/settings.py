@@ -68,6 +68,7 @@ class OpeningInvestmentUpdate(BaseModel):
 class OperationsSettingsUpdate(BaseModel):
     allow_item_quantity_adjustment: bool | None = None
     adjust_selling_price_on_purchase: bool | None = None
+    force_mpesa_prompt: bool | None = None
 
 
 class BusinessLocationUpdate(BaseModel):
@@ -230,6 +231,9 @@ def show_settings(
         "adjust_selling_price_on_purchase": (
             account.adjust_selling_price_on_purchase if account else True
         ),
+        "force_mpesa_prompt": (
+            account.force_mpesa_prompt if account else True
+        ),
         "can_set_opening_amount": bool(account is not None and can_manage_opening_amount),
         "can_set_opening_stock": bool(account is not None and can_manage_opening_amount),
         "can_set_opening_investment": bool(account is not None and can_manage_opening_amount),
@@ -272,6 +276,7 @@ def update_operations_settings(
     return {
         "allow_item_quantity_adjustment": account.allow_item_quantity_adjustment,
         "adjust_selling_price_on_purchase": account.adjust_selling_price_on_purchase,
+        "force_mpesa_prompt": account.force_mpesa_prompt,
     }
 
 
