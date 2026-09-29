@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any, Literal
 
 from fastapi import (
@@ -102,8 +103,18 @@ class InventoryCreate(BaseModel):
     product_id: str = Field(min_length=1, max_length=64)
     selling_price: float | None = Field(default=None, ge=0, le=99_999_999.99)
     buying_price: float | None = Field(default=None, ge=0, le=99_999_999.99)
-    stock_quantity: int | None = Field(default=None, ge=0)
-    low_stock_threshold: int | None = Field(default=None, ge=0)
+    stock_quantity: Decimal | None = Field(
+        default=None,
+        ge=0,
+        le=99_999_999.999,
+        decimal_places=3,
+    )
+    low_stock_threshold: Decimal | None = Field(
+        default=None,
+        ge=0,
+        le=99_999_999.999,
+        decimal_places=3,
+    )
     inventory_role: Literal["for_sale", "raw_material", "both"] | None = None
     is_active: bool | None = None
     supplier: str | None = Field(default=None, max_length=255)
@@ -115,8 +126,18 @@ class InventoryCreate(BaseModel):
 class InventoryUpdate(BaseModel):
     selling_price: float | None = Field(default=None, ge=0, le=99_999_999.99)
     buying_price: float | None = Field(default=None, ge=0, le=99_999_999.99)
-    stock_quantity: int | None = Field(default=None, ge=0)
-    low_stock_threshold: int | None = Field(default=None, ge=0)
+    stock_quantity: Decimal | None = Field(
+        default=None,
+        ge=0,
+        le=99_999_999.999,
+        decimal_places=3,
+    )
+    low_stock_threshold: Decimal | None = Field(
+        default=None,
+        ge=0,
+        le=99_999_999.999,
+        decimal_places=3,
+    )
     inventory_role: Literal["for_sale", "raw_material", "both"] | None = None
     is_active: bool | None = None
     supplier: str | None = Field(default=None, max_length=255)
@@ -127,7 +148,7 @@ class InventoryUpdate(BaseModel):
 
 class StockMovementLineIn(BaseModel):
     inventory_item_id: str = Field(min_length=1, max_length=64)
-    quantity: int = Field(ge=1, le=1_000_000)
+    quantity: Decimal = Field(gt=0, le=1_000_000, decimal_places=3)
     unit_cost: float | None = Field(default=None, ge=0, le=99_999_999.99)
 
 

@@ -293,8 +293,8 @@ class InventoryItemOut(BaseModel):
     buying_price: float | None
     selling_price: float | None
     margin: float | None
-    stock_quantity: int | None
-    low_stock_threshold: int | None
+    stock_quantity: float | None
+    low_stock_threshold: float | None
     inventory_role: str = "both"
     is_active: bool
     is_low_stock: bool
@@ -324,8 +324,14 @@ class InventoryItemOut(BaseModel):
             buying_price=float(item.buying_price) if item.buying_price is not None else None,
             selling_price=float(item.selling_price) if item.selling_price is not None else None,
             margin=item.margin(),
-            stock_quantity=item.stock_quantity,
-            low_stock_threshold=item.low_stock_threshold,
+            stock_quantity=(
+                float(item.stock_quantity) if item.stock_quantity is not None else None
+            ),
+            low_stock_threshold=(
+                float(item.low_stock_threshold)
+                if item.low_stock_threshold is not None
+                else None
+            ),
             inventory_role=role,
             is_active=bool(item.is_active),
             is_low_stock=item.is_low_stock(),
@@ -347,9 +353,9 @@ class StockMovementOut(BaseModel):
     account_id: str
     inventory_item_id: str
     direction: str
-    quantity: int
-    quantity_before: int | None
-    quantity_after: int | None
+    quantity: float
+    quantity_before: float | None
+    quantity_after: float | None
     reason: str
     note: str | None
     unit_cost: float | None = None
@@ -372,9 +378,17 @@ class StockMovementOut(BaseModel):
             account_id=movement.account_id,
             inventory_item_id=movement.inventory_item_id,
             direction=movement.direction,
-            quantity=movement.quantity,
-            quantity_before=movement.quantity_before,
-            quantity_after=movement.quantity_after,
+            quantity=float(movement.quantity),
+            quantity_before=(
+                float(movement.quantity_before)
+                if movement.quantity_before is not None
+                else None
+            ),
+            quantity_after=(
+                float(movement.quantity_after)
+                if movement.quantity_after is not None
+                else None
+            ),
             reason=movement.reason,
             note=movement.note,
             unit_cost=unit_cost_out,
@@ -399,11 +413,11 @@ class OrderItemOut(BaseModel):
     unit_price: float
     line_total: float
     sell_unit: str | None = None
-    unit_factor: int = 1
+    unit_factor: float = 1
     notes: str | None
     modifiers: list[dict[str, Any]] | None = None
     # Current on-hand stock for the linked inventory item (if any).
-    stock_quantity: int | None = None
+    stock_quantity: float | None = None
 
     @classmethod
     def from_model(cls, item) -> "OrderItemOut":
@@ -411,9 +425,7 @@ class OrderItemOut(BaseModel):
         inv = getattr(item, "inventory_item", None)
         if inv is not None:
             stock = getattr(inv, "stock_quantity", None)
-        factor = int(getattr(item, "unit_factor", None) or 1)
-        if factor < 1:
-            factor = 1
+        factor = float(getattr(item, "unit_factor", None) or 1)
         return cls(
             id=item.id,
             inventory_item_id=item.inventory_item_id,
@@ -427,7 +439,7 @@ class OrderItemOut(BaseModel):
             unit_factor=factor,
             notes=item.notes,
             modifiers=getattr(item, "modifiers", None),
-            stock_quantity=stock,
+            stock_quantity=float(stock) if stock is not None else None,
         )
 
 

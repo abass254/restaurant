@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
 
+from app.schemas import OrderItemOut
 from app.support.barcode import (
     code_matches_candidate,
     normalize_scan_value,
@@ -16,6 +18,9 @@ from app.services.inventory_stock_service import (
     UntrackedStockError,
     adjust_stock,
     apply_unit_costs,
+    deduct_stock,
+    lines_from_order,
+    restore_stock,
 )
 
 
@@ -179,6 +184,66 @@ def test_adjust_stock_out_rejects_oversell() -> None:
             account_id="acc-1",
             reason="adjustment",
         )
+
+
+def test_fractional_stock_deduction_and_restore() -> None:
+    product = SimpleNamespace(name="Flour", product_type="product")
+    product.is_service = lambda: False  # type: ignore[attr-defined]
+    item = SimpleNamespace(
+        id="item-1",
+        account_id="acc-1",
+        stock_quantity=Decimal("2.000"),
+        is_active=True,
+        product=product,
+        updated_at=None,
+    )
+    db = _FakeDB(item)
+    assert deduct_stock(
+        db,  # type: ignore[arg-type]
+        [("item-1", Decimal("0.750"))],
+        account_id="acc-1",
+    )
+    assert item.stock_quantity == Decimal("1.250")
+    restore_stock(
+        db,  # type: ignore[arg-type]
+        [("item-1", Decimal("0.750"))],
+        account_id="acc-1",
+    )
+    assert item.stock_quantity == Decimal("2.000")
+
+
+def test_order_stock_uses_fractional_sell_unit_factor() -> None:
+    order = SimpleNamespace(
+        items=[
+            SimpleNamespace(
+                inventory_item_id="item-1",
+                quantity=3,
+                unit_factor=Decimal("0.2500"),
+            ),
+        ],
+    )
+    assert lines_from_order(order) == [("item-1", Decimal("0.7500"))]
+
+
+def test_order_output_preserves_fractional_unit_factor_and_stock() -> None:
+    item = SimpleNamespace(
+        id="order-item-1",
+        inventory_item_id="item-1",
+        product_id="product-1",
+        product_name="Flour",
+        product_sku=None,
+        quantity=1,
+        unit_price=25,
+        line_total=25,
+        sell_unit="1/4 KG",
+        unit_factor=Decimal("0.2500"),
+        notes=None,
+        modifiers=None,
+        inventory_item=SimpleNamespace(stock_quantity=Decimal("1.250")),
+    )
+    result = OrderItemOut.from_model(item)
+    assert result.unit_factor == 0.25
+    assert result.stock_quantity == 1.25
 
 
 def test_adjust_stock_rejects_untracked() -> None:

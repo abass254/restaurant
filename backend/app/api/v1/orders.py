@@ -161,9 +161,14 @@ class OrderItemPayload(BaseModel):
     product_sku: str | None = Field(default=None, max_length=120)
     quantity: int = Field(ge=1, le=10_000)
     unit_price: float | None = Field(default=None, ge=0, le=99_999_999.99)
-    # Pack/crate name (e.g. "Crate"). Stock deducts quantity × unit factor.
+    # Sell unit name. Stock deducts quantity × unit factor in the base unit.
     sell_unit: str | None = Field(default=None, max_length=64)
-    unit_factor: int | None = Field(default=None, ge=2, le=1_000_000)
+    unit_factor: Decimal | None = Field(
+        default=None,
+        gt=0,
+        le=1_000_000,
+        decimal_places=4,
+    )
     notes: str | None = Field(default=None, max_length=1000)
 
 
@@ -892,12 +897,20 @@ def create_order(
     # order or fail before writing anything.
     # Tuple: payload, inv, price, display_name, sku, sell_unit_label, unit_factor
     resolved_lines: list[
-        tuple[OrderItemPayload, InventoryItem | None, Decimal, str, str | None, str | None, int]
+        tuple[
+            OrderItemPayload,
+            InventoryItem | None,
+            Decimal,
+            str,
+            str | None,
+            str | None,
+            Decimal,
+        ]
     ] = []
     for idx, line in enumerate(payload.items):
         inv_item: InventoryItem | None = None
         sell_unit_label: str | None = None
-        unit_factor = 1
+        unit_factor = Decimal("1")
         resolved_unit: dict[str, Any] | None = None
         if line.inventory_item_id:
             inv_item = (
@@ -935,6 +948,54 @@ def create_order(
                 resolved_unit = resolve_sell_unit(inv_item, line.sell_unit)
             except ValueError as exc:
                 if line.unit_factor is not None and line.sell_unit:
+                    if line.unit_factor < 1:
+                        product_unit = (
+                            (inv_item.product.unit or "").strip().lower()
+                            if inv_item.product
+                            else ""
+                        )
+                        allowed_fraction = {
+                            "1/4 kg": Decimal("0.25"),
+                            "1/2 kg": Decimal("0.5"),
+                            "3/4 kg": Decimal("0.75"),
+                            "1/4 l": Decimal("0.25"),
+                            "1/2 l": Decimal("0.5"),
+                            "3/4 l": Decimal("0.75"),
+                        }
+                        normalized_label = line.sell_unit.strip().lower()
+                        is_weight_volume = product_unit in {
+                            "kg",
+                            "kgs",
+                            "kg(s)",
+                            "kilogram",
+                            "kilograms",
+                            "kilogram(s)",
+                            "l",
+                            "ls",
+                            "l(s)",
+                            "liter",
+                            "liters",
+                            "litre",
+                            "litres",
+                            "liter(s)",
+                            "litre(s)",
+                        }
+                        expected_factor = allowed_fraction.get(normalized_label)
+                        if (
+                            not is_weight_volume
+                            or expected_factor is None
+                            or line.unit_factor != expected_factor
+                        ):
+                            raise HTTPException(
+                                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail={
+                                    "errors": {
+                                        f"items.{idx}.sell_unit": [
+                                            "Fractional sell units are supported only for kilogram and litre products.",
+                                        ],
+                                    },
+                                },
+                            ) from exc
                     resolved_unit = {
                         "name": line.sell_unit.strip(),
                         "factor": line.unit_factor,
@@ -959,8 +1020,16 @@ def create_order(
                         },
                     },
                 )
-            unit_factor = line.unit_factor or int(resolved_unit["factor"])
-            sell_unit_label = str(resolved_unit["name"]) if unit_factor > 1 else None
+            unit_factor = (
+                line.unit_factor
+                if line.unit_factor is not None
+                else Decimal(str(resolved_unit["factor"]))
+            )
+            sell_unit_label = (
+                str(resolved_unit["name"])
+                if unit_factor != 1
+                else None
+            )
 
         # Resolve display name + price from the snapshot or the explicit payload.
         if inv_item and inv_item.product:
@@ -981,7 +1050,7 @@ def create_order(
                 if line.unit_price is not None
                 else default_price
             )
-            if unit_factor > 1 and resolved_unit:
+            if unit_factor != 1 and resolved_unit:
                 name = f"{name} ({resolved_unit['name']})"
         else:
             if (line.sell_unit and str(line.sell_unit).strip()) or line.unit_factor is not None:

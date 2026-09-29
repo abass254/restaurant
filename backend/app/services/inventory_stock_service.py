@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from typing import Literal
 
 from sqlalchemy.orm import Session, joinedload
@@ -13,7 +14,7 @@ from app.models import InventoryItem, Order, StockMovement
 class InsufficientStockError(ValueError):
     """Raised when a line requests more than the tracked stock on hand."""
 
-    def __init__(self, product_name: str, requested: int, available: int):
+    def __init__(self, product_name: str, requested: Decimal, available: Decimal):
         self.product_name = product_name
         self.requested = requested
         self.available = available
@@ -36,19 +37,19 @@ StockDirection = Literal["in", "out"]
 StockReason = Literal["receive", "adjustment", "damage", "other"]
 
 
-def _aggregate_lines(lines: list[tuple[str, int]]) -> dict[str, int]:
-    totals: dict[str, int] = {}
+def _aggregate_lines(lines: list[tuple[str, int | float | Decimal]]) -> dict[str, Decimal]:
+    totals: dict[str, Decimal] = {}
     for item_id, qty in lines:
         normalized_id = str(item_id or "").strip()
         if not normalized_id:
             continue
         try:
-            quantity = int(qty)
-        except (TypeError, ValueError):
+            quantity = Decimal(str(qty)).quantize(Decimal("0.001"))
+        except (InvalidOperation, TypeError, ValueError):
             continue
         if quantity <= 0:
             continue
-        totals[normalized_id] = totals.get(normalized_id, 0) + quantity
+        totals[normalized_id] = totals.get(normalized_id, Decimal("0")) + quantity
     return totals
 
 
@@ -74,7 +75,7 @@ def _product_name(item: InventoryItem) -> str:
 
 def deduct_stock(
     db: Session,
-    lines: list[tuple[str, int]],
+    lines: list[tuple[str, int | float | Decimal]],
     *,
     account_id: str | None = None,
 ) -> bool:
@@ -107,7 +108,7 @@ def deduct_stock(
 
 def restore_stock(
     db: Session,
-    lines: list[tuple[str, int]],
+    lines: list[tuple[str, int | float | Decimal]],
     *,
     account_id: str | None = None,
 ) -> None:
@@ -127,7 +128,7 @@ def restore_stock(
 
 def adjust_stock(
     db: Session,
-    lines: list[tuple[str, int]],
+    lines: list[tuple[str, int | float | Decimal]],
     *,
     direction: StockDirection,
     account_id: str,
@@ -168,7 +169,7 @@ def adjust_stock(
                 "stock is unlimited / not tracked — set a quantity first",
             )
 
-        before = int(item.stock_quantity)
+        before = Decimal(str(item.stock_quantity)).quantize(Decimal("0.001"))
         if record_only:
             after = before
         elif direction == "out":
@@ -230,15 +231,18 @@ def apply_unit_costs(
         item.updated_at = movement.created_at or getattr(item, "updated_at", None)
 
 
-def lines_from_order(order: Order) -> list[tuple[str, int]]:
-    lines: list[tuple[str, int]] = []
+def lines_from_order(order: Order) -> list[tuple[str, Decimal]]:
+    lines: list[tuple[str, Decimal]] = []
     for item in order.items or []:
         if not item.inventory_item_id:
             continue
-        factor = int(getattr(item, "unit_factor", None) or 1)
-        if factor < 1:
-            factor = 1
-        lines.append((str(item.inventory_item_id), int(item.quantity) * factor))
+        factor = Decimal(str(getattr(item, "unit_factor", None) or 1))
+        lines.append(
+            (
+                str(item.inventory_item_id),
+                Decimal(str(item.quantity)) * factor,
+            ),
+        )
     return lines
 
 

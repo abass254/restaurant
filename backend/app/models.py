@@ -989,8 +989,8 @@ class InventoryItem(Base):
     product_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("catalogue.id"))
     buying_price: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
     selling_price: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
-    stock_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    low_stock_threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stock_quantity: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    low_stock_threshold: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     # for_sale = sell only | raw_material = buy only | both = buy & sell
     inventory_role: Mapped[str] = mapped_column(String(20), default="both")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -1048,9 +1048,9 @@ class StockMovement(Base):
         ForeignKey("inventory_items.id"),
     )
     direction: Mapped[str] = mapped_column(String(8))  # in | out
-    quantity: Mapped[int] = mapped_column(Integer)
-    quantity_before: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    quantity_after: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3))
+    quantity_before: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    quantity_after: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     reason: Mapped[str] = mapped_column(String(32))
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     unit_cost: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
@@ -1292,9 +1292,9 @@ class OrderItem(Base):
     quantity: Mapped[int] = mapped_column(Integer)
     unit_price: Mapped[Any] = mapped_column(Numeric(12, 2))
     line_total: Mapped[Any] = mapped_column(Numeric(12, 2))
-    # Pack/crate sold: quantity is in this unit; stock uses quantity * unit_factor.
+    # Stock deduction is quantity * unit_factor in the inventory base unit.
     sell_unit: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    unit_factor: Mapped[int] = mapped_column(Integer, default=1)
+    unit_factor: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=1)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     modifiers: Mapped[Any | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

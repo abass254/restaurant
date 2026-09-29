@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from typing import Any, Literal
 
@@ -275,8 +276,8 @@ class ParsedRow:
     product_type: str = "product"
     selling_price: float | None = None
     buying_price: float | None = None
-    stock_quantity: int | None = None
-    low_stock_threshold: int | None = None
+    stock_quantity: Decimal | None = None
+    low_stock_threshold: Decimal | None = None
     supplier: str | None = None
     location: str | None = None
     image_url: str | None = None
@@ -356,12 +357,13 @@ def _cell_float(value: Any) -> float | None:
         return None
 
 
-def _cell_int(value: Any) -> int | None:
-    parsed = _cell_float(value)
-    if parsed is None:
+def _cell_quantity(value: Any) -> Decimal | None:
+    if value is None or value == "" or isinstance(value, bool):
         return None
-    # POS exports often send "12.00" / fractional kg — store nearest whole unit.
-    return int(round(parsed))
+    try:
+        return Decimal(str(value)).quantize(Decimal("0.001"))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
 
 
 def _cell_bool01(value: Any) -> bool | None:
@@ -698,7 +700,7 @@ def _parse_workbook(content: bytes) -> tuple[dict[str, str], list[ParsedRow], li
         )
 
         manage_stock = _cell_bool01(col("manage_stock"))
-        stock_qty = _cell_int(col("stock_quantity"))
+        stock_qty = _cell_quantity(col("stock_quantity"))
         if product_type == "service" or manage_stock is False:
             stock_qty = None
 
@@ -762,7 +764,7 @@ def _parse_workbook(content: bytes) -> tuple[dict[str, str], list[ParsedRow], li
                 selling_price=_cell_float(col("selling_price")),
                 buying_price=buying_price,
                 stock_quantity=stock_qty,
-                low_stock_threshold=_cell_int(col("low_stock_threshold")),
+                low_stock_threshold=_cell_quantity(col("low_stock_threshold")),
                 supplier=_cell_str(col("supplier")),
                 location=location,
                 image_url=_cell_str(col("image_url")),

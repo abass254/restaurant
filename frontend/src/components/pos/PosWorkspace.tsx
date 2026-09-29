@@ -40,6 +40,7 @@ import {
 } from "@/lib/orders";
 import { paymentStatusFromOrder } from "@/lib/trans-chap-receipt";
 import { findInventoryByBarcode } from "@/lib/barcode";
+import { packUnits } from "@/lib/sell-units";
 import {
   inventoryCoverUrl,
   inventoryRole,
@@ -131,6 +132,40 @@ function detectPackSize(name: string): number | null {
   if (pcsMatch) return parseInt(pcsMatch[1], 10);
 
   return null;
+}
+
+function fractionalSellUnits(item: InventoryItem | null | undefined) {
+  const unit = item?.product?.unit?.trim().toLowerCase();
+  const normalized = unit?.replace(/\.$/, "");
+  const kilogramUnits = [
+    "kg",
+    "kgs",
+    "kg(s)",
+    "kilogram",
+    "kilograms",
+    "kilogram(s)",
+  ];
+  const litreUnits = [
+    "l",
+    "ls",
+    "l(s)",
+    "liter",
+    "liters",
+    "litre",
+    "litres",
+    "liter(s)",
+    "litre(s)",
+  ];
+  if (!normalized || (!kilogramUnits.includes(normalized) && !litreUnits.includes(normalized))) {
+    return [];
+  }
+  const baseUnit = litreUnits.includes(normalized) ? "L" : "KG";
+  return [
+    { name: `1/4 ${baseUnit}`, factor: 0.25 },
+    { name: `1/2 ${baseUnit}`, factor: 0.5 },
+    { name: `3/4 ${baseUnit}`, factor: 0.75 },
+    { name: baseUnit, factor: 1 },
+  ];
 }
 
 type PosHeldSession = {
@@ -295,7 +330,7 @@ function maxCartQty(item: InventoryItem): number | null {
 }
 
 function stockUnitsForCartLine(line: CartLine): number {
-  return line.quantity * Math.max(1, line.unitFactor ?? 1);
+  return line.quantity * Math.max(0.0001, line.unitFactor ?? 1);
 }
 
 /** On-hand units still free to sell (stock minus what's already in the cart). */
@@ -345,6 +380,7 @@ export function PosWorkspace({
   const inventoryLoadedOnce = useRef(false);
 
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [bulkFactorDrafts, setBulkFactorDrafts] = useState<Record<string, string>>({});
   const [mobileScreen, setMobileScreen] = useState<"catalog" | "order">("catalog");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   // Visual "just-added" pulse: holds the inventoryItem id that should flash.
@@ -624,7 +660,7 @@ export function PosWorkspace({
     setCart((prev) => {
       const existing = prev.find((c) => c.inventoryItemId === item.id);
       const nextQty = (existing?.quantity ?? 0) + addAmount;
-      const unitFactor = Math.max(1, existing?.unitFactor ?? 1);
+      const unitFactor = Math.max(0.0001, existing?.unitFactor ?? 1);
       const maxLineQty =
         availableStock === null ? null : Math.floor(availableStock / unitFactor);
       if (maxLineQty !== null && nextQty > maxLineQty) {
@@ -636,7 +672,10 @@ export function PosWorkspace({
           c.inventoryItemId === item.id ? { ...c, quantity: nextQty } : c,
         );
       }
-      const autoPackFactor = detectPackSize(item.product?.name ?? "") ?? undefined;
+      const autoPackFactor =
+        packUnits(item)[0]?.factor ??
+        detectPackSize(item.product?.name ?? "") ??
+        2;
       return [
         ...prev,
         {
@@ -834,7 +873,9 @@ export function PosWorkspace({
     const maxLineQty =
       availableStock === null || !target
         ? null
-        : Math.floor(availableStock / Math.max(1, target.unitFactor ?? 1));
+        : Math.floor(
+            availableStock / Math.max(0.0001, target.unitFactor ?? 1),
+          );
     setCart((prev) =>
       prev
         .map((c) => {
@@ -857,7 +898,9 @@ export function PosWorkspace({
     const maxLineQty =
       availableStock === null || !target
         ? null
-        : Math.floor(availableStock / Math.max(1, target.unitFactor ?? 1));
+        : Math.floor(
+            availableStock / Math.max(0.0001, target.unitFactor ?? 1),
+          );
     let next = Math.max(0, Math.floor(Number(value) || 0));
     if (maxLineQty !== null) next = Math.min(next, maxLineQty);
     setCart((prev) =>
@@ -883,23 +926,57 @@ export function PosWorkspace({
   }
 
   function updateLineUnit(key: string, sellUnit: string | null, unitFactor: number) {
+    const target = cart.find(
+      (line) =>
+        (line.lineId || line.inventoryItemId) === key ||
+        line.inventoryItemId === key,
+    );
+    if (!target) return;
+    const item = itemsById.get(target.inventoryItemId);
+    const stockCap = item ? maxCartQty(item) : null;
+    const heldQty = heldQtyByItemId.get(target.inventoryItemId) ?? 0;
+    const maxLineQty =
+      stockCap === null
+        ? null
+        : Math.floor(
+            Math.max(0, stockCap - heldQty) / Math.max(0.0001, unitFactor),
+          );
+    if (maxLineQty === 0) {
+      void showError(
+        "Not enough stock",
+        `There isn't enough stock for one ${sellUnit || "unit"} of "${target.name}".`,
+      );
+      return;
+    }
     setCart((prev) =>
-      prev.map((c) => {
-        if ((c.lineId || c.inventoryItemId) !== key && c.inventoryItemId !== key) return c;
-        const basePrice = c.base_price ?? c.unit_price / (c.unitFactor || 1);
+      prev.map((line) => {
+        if (
+          (line.lineId || line.inventoryItemId) !== key &&
+          line.inventoryItemId !== key
+        ) {
+          return line;
+        }
+        const basePrice =
+          line.base_price ?? line.unit_price / (line.unitFactor || 1);
         return {
-          ...c,
+          ...line,
           sellUnit,
           unitFactor,
-          bulkFactor: sellUnit === "Bulk" ? unitFactor : c.bulkFactor,
+          bulkFactor: sellUnit === "Bulk" ? unitFactor : line.bulkFactor,
+          quantity:
+            maxLineQty === null
+              ? line.quantity
+              : Math.min(line.quantity, maxLineQty),
           unit_price: basePrice * unitFactor,
         };
-      })
+      }),
     );
   }
 
   function updateLineBulkFactor(key: string, value: string) {
-    const factor = Math.min(1_000_000, Math.max(2, Math.floor(Number(value) || 2)));
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    const factor = Math.min(1_000_000, Math.max(2, Math.floor(parsed)));
     const target = cart.find(
       (line) =>
         (line.lineId || line.inventoryItemId) === key ||
@@ -927,6 +1004,7 @@ export function PosWorkspace({
         }
         return {
           ...line,
+          autoPackFactor: line.autoPackFactor ?? factor,
           base_price: line.base_price ?? line.unit_price / (line.unitFactor || 1),
           unitFactor: factor,
           bulkFactor: factor,
@@ -940,6 +1018,23 @@ export function PosWorkspace({
         };
       }),
     );
+  }
+
+  function handleBulkFactorInput(key: string, value: string) {
+    const draft = value.replace(/\D/g, "");
+    setBulkFactorDrafts((prev) => ({ ...prev, [key]: draft }));
+    if (draft && Number(draft) >= 2 && Number(draft) <= 1_000_000) {
+      updateLineBulkFactor(key, draft);
+    }
+  }
+
+  function finishBulkFactorInput(key: string) {
+    setBulkFactorDrafts((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   }
 
   function updateLineBulkPrice(key: string, value: string) {
@@ -956,6 +1051,12 @@ export function PosWorkspace({
 
   function removeLine(key: string) {
     setCart((prev) => prev.filter((c) => (c.lineId || c.inventoryItemId) !== key && c.inventoryItemId !== key));
+    setBulkFactorDrafts((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   }
 
   function clearCart() {
@@ -963,6 +1064,7 @@ export function PosWorkspace({
     setCustomerName("");
     setCustomerPhone("");
     setMpesaReceiptCode("");
+    setBulkFactorDrafts({});
     setDeliveryAddress("");
     setDeliveryCoords(null);
     setDeliveryNotes("");
@@ -1619,7 +1721,7 @@ export function PosWorkspace({
           unit_price: c.unit_price,
           sell_unit: c.sellUnit,
           unit_factor:
-            c.sellUnit === "Bulk" ? c.unitFactor : undefined,
+            c.sellUnit ? c.unitFactor : undefined,
           modifiers: c.modifiers && c.modifiers.length ? c.modifiers : null,
           notes: c.notes?.trim() || null,
         })),
@@ -1996,7 +2098,7 @@ export function PosWorkspace({
                       0,
                     );
                     const cartUnitFactor = Math.max(
-                      1,
+                      0.0001,
                       itemCartLines[0]?.unitFactor ?? 1,
                     );
                     const heldQty = heldQtyByItemId.get(item.id) ?? 0;
@@ -2217,6 +2319,7 @@ export function PosWorkspace({
                       const lineKey = line.lineId || line.inventoryItemId;
                       const lineTotal = line.unit_price * line.quantity;
                       const stockItem = itemsById.get(line.inventoryItemId);
+                      const fractionalUnits = fractionalSellUnits(stockItem);
                       const isHotelDish = stockItem ? isHotelMenuItem(stockItem) : false;
                       const stockCap = stockItem ? maxCartQty(stockItem) : null;
                       const heldQty = heldQtyByItemId.get(line.inventoryItemId) ?? 0;
@@ -2226,7 +2329,8 @@ export function PosWorkspace({
                         effectiveCap === null
                           ? null
                           : Math.floor(
-                              effectiveCap / Math.max(1, line.unitFactor ?? 1),
+                              effectiveCap /
+                                Math.max(0.0001, line.unitFactor ?? 1),
                             );
                       const atStockCap =
                         effectiveLineCap !== null &&
@@ -2275,15 +2379,14 @@ export function PosWorkspace({
                               line.bulkFactor &&
                               line.bulkFactor > 1 ? (
                                 <input
-                                  type="number"
-                                  min={2}
-                                  max={1_000_000}
-                                  step={1}
+                                  type="text"
+                                  inputMode="numeric"
                                   className="pos-line__bulk-factor"
-                                  value={line.bulkFactor}
+                                  value={bulkFactorDrafts[lineKey] ?? String(line.bulkFactor)}
                                   onChange={(event) =>
-                                    updateLineBulkFactor(lineKey, event.target.value)
+                                    handleBulkFactorInput(lineKey, event.target.value)
                                   }
+                                  onBlur={() => finishBulkFactorInput(lineKey)}
                                   aria-label={`Units per bulk for ${line.name}`}
                                   title="Units per bulk"
                                 />
@@ -2354,26 +2457,61 @@ export function PosWorkspace({
                             </label>
                           ) : null}
                           <div className="pos-line__qty-wrap">
-                            {line.autoPackFactor ? (
+                            {fractionalUnits.length > 0 ? (
+                              <div className="pos-line__unit-toggle">
+                                {fractionalUnits.map((unit) => (
+                                  <button
+                                    key={unit.name}
+                                    type="button"
+                                    className={
+                                      line.sellUnit === unit.name ||
+                                      (unit.factor === 1 &&
+                                        !line.sellUnit &&
+                                        line.unitFactor === 1)
+                                        ? "is-active"
+                                        : ""
+                                    }
+                                    onClick={() =>
+                                      updateLineUnit(
+                                        lineKey,
+                                        unit.name,
+                                        unit.factor,
+                                      )
+                                    }
+                                    title={`${unit.name} · ${formatMoney(
+                                      (line.base_price ?? line.unit_price) *
+                                        unit.factor,
+                                    )}`}
+                                  >
+                                    {unit.factor === 1
+                                      ? "Full"
+                                      : unit.name.split(" ")[0]}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : isTransChapSale || line.autoPackFactor !== undefined ? (
                               <div className="pos-line__unit-toggle">
                                 <button
                                   type="button"
                                   className={!line.sellUnit || line.unitFactor === 1 ? "is-active" : ""}
-                                  onClick={() => updateLineUnit(lineKey, null, 1)}
+                                  onClick={() => {
+                                    finishBulkFactorInput(lineKey);
+                                    updateLineUnit(lineKey, null, 1);
+                                  }}
                                 >
                                   Single
                                 </button>
                                 <button
                                   type="button"
-                                  className={line.sellUnit === "Bulk" || line.unitFactor === line.autoPackFactor ? "is-active" : ""}
+                                  className={line.sellUnit === "Bulk" ? "is-active" : ""}
                                   onClick={() =>
                                     updateLineUnit(
                                       lineKey,
                                       "Bulk",
-                                      line.bulkFactor ?? line.autoPackFactor!,
+                                      line.bulkFactor ?? line.autoPackFactor ?? 2,
                                     )
                                   }
-                                  title={`Units per bulk: ${line.bulkFactor ?? line.autoPackFactor}`}
+                                  title={`Units per bulk: ${line.bulkFactor ?? line.autoPackFactor ?? 2}`}
                                 >
                                   Bulk
                                 </button>
