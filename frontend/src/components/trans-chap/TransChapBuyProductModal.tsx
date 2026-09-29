@@ -87,11 +87,14 @@ export function TransChapBuyProductModal({
     <MotionModal
       open={open}
       onClose={onClose}
-      ariaLabel="Add a new product"
+      ariaLabelledBy={`${baseId}-title`}
       panelClassName="trans-chap-purchase-modal"
     >
       <header className="inventory-modal__head">
-        <h2>Add a new product</h2>
+        <div className="trans-chap-purchase-modal__heading">
+          <h2 id={`${baseId}-title`}>Add a new product</h2>
+          <p>Add the product details you need for this purchase.</p>
+        </div>
         <button
           type="button"
           className="fb-icon-btn"
@@ -168,22 +171,23 @@ export function TransChapBuyProductModal({
             </div>
           </div>
 
-          <div className="auth-split__field trans-chap-purchase-modal__span">
-            <label className="trans-chap-form__checkbox-label">
+          <div className="trans-chap-purchase-modal__bundle trans-chap-purchase-modal__span">
+            <label className="trans-chap-purchase-modal__bundle-toggle">
               <input
                 type="checkbox"
+                className="trans-chap-purchase-modal__bundle-check"
                 checked={draft.isBundle}
                 onChange={(e) => patch({ isBundle: e.target.checked })}
               />
-              Bought as a bundle / pack?
+              <span>
+                <strong>Bought as a bundle or pack</strong>
+                <small>For example, buying a crate of 30 instead of one piece.</small>
+              </span>
             </label>
-            <p className="trans-chap-form__hint" style={{ marginTop: 4 }}>
-              Check this if you are buying a pack (e.g., crate of 30) instead of a single piece.
-            </p>
           </div>
 
           {draft.isBundle ? (
-            <div className="auth-split__field">
+            <div className="auth-split__field trans-chap-purchase-modal__span">
               <label htmlFor={`${baseId}-bundle`}>Units per bundle</label>
               <div className="trans-chap-input">
                 <input
@@ -241,6 +245,7 @@ export function TransChapBuyProductModal({
             Close
           </button>
           <button type="submit" className="auth-split__btn">
+            <i className="fa-solid fa-plus" aria-hidden="true" />
             Add to purchase
           </button>
         </div>

@@ -2537,19 +2537,39 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
 }
 
 .trans-chap-purchase-modal {
-    max-width: 640px;
+    max-width: 600px;
+}
+
+.trans-chap-purchase-modal .inventory-modal__head {
+    align-items: flex-start;
+    padding: 1.2rem 1.35rem;
+}
+
+.trans-chap-purchase-modal__heading h2 {
+    color: var(--app-text);
+    font-size: 1.08rem;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+}
+
+.trans-chap-purchase-modal__heading p {
+    margin: 0.25rem 0 0;
+    color: var(--app-text-secondary);
+    font-size: 0.78rem;
+    line-height: 1.4;
 }
 
 .trans-chap-purchase-modal__body {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 1rem;
+    padding: 1.15rem 1.35rem 1.3rem;
 }
 
 .trans-chap-purchase-modal__grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 0.55rem;
+    gap: 0.85rem 0.9rem;
 }
 
 .trans-chap-purchase-modal__span {
@@ -2558,18 +2578,41 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
 
 .trans-chap-purchase-modal__actions {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
-    margin-top: 0.15rem;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+    gap: 0.75rem;
+    margin-top: 0.1rem;
 }
 
 .trans-chap-purchase-modal__actions .auth-split__btn,
 .trans-chap-purchase-modal__actions .trans-chap-form__secondary {
-    min-height: 42px;
+    min-height: 46px;
+    margin: 0;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    box-shadow: none;
+}
+
+.trans-chap-purchase-modal__actions .auth-split__btn {
+    padding: 0.65rem 1rem;
+    background: var(--trans-chap-purchase);
+    color: #fff;
+}
+
+.trans-chap-purchase-modal__actions .trans-chap-form__secondary {
+    border: 1px solid var(--app-border);
+    background: var(--app-surface);
+    color: var(--app-text);
+}
+
+.trans-chap-purchase-modal .fb-icon-btn {
+    flex: 0 0 38px;
+    width: 38px;
+    height: 38px;
 }
 
 .trans-chap-purchase-modal .auth-split__field {
-    gap: 0.28rem;
+    gap: 0.4rem;
     margin: 0;
 }
 
@@ -2582,10 +2625,16 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
 }
 
 .trans-chap-purchase-modal .trans-chap-input {
-    min-height: 40px;
-    height: 40px;
-    padding: 0 0.75rem;
-    border-radius: 10px;
+    min-height: 46px;
+    height: 46px;
+    padding: 0 0.85rem;
+    border-radius: 12px;
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.trans-chap-purchase-modal .trans-chap-input:focus-within {
+    border-color: color-mix(in srgb, var(--trans-chap-purchase) 58%, var(--app-border));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--trans-chap-purchase) 15%, transparent);
 }
 
 .trans-chap-purchase-modal .trans-chap-input .auth-split__input,
@@ -2594,8 +2643,55 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
     min-height: 0;
     height: 100%;
     padding: 0 !important;
-    font-size: 0.9rem;
+    font-size: 0.92rem;
     border-radius: 0;
+}
+
+.trans-chap-purchase-modal__bundle {
+    padding: 0.85rem 0.95rem;
+    border: 1px solid var(--app-border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--trans-chap-purchase) 5%, var(--app-surface));
+}
+
+.trans-chap-purchase-modal__bundle-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+    margin: 0 !important;
+    color: var(--app-text) !important;
+    cursor: pointer;
+}
+
+.trans-chap-purchase-modal .trans-chap-purchase-modal__bundle-check {
+    appearance: auto;
+    flex: 0 0 18px;
+    width: 18px !important;
+    height: 18px !important;
+    min-height: 18px !important;
+    margin: 0.1rem 0 0 !important;
+    padding: 0 !important;
+    accent-color: var(--trans-chap-purchase);
+    background: transparent !important;
+    border: initial !important;
+    box-shadow: none !important;
+}
+
+.trans-chap-purchase-modal__bundle-toggle span {
+    display: grid;
+    gap: 0.2rem;
+}
+
+.trans-chap-purchase-modal__bundle-toggle strong {
+    font-size: 0.84rem;
+    font-weight: 700;
+}
+
+.trans-chap-purchase-modal__bundle-toggle small {
+    color: var(--app-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 450;
+    line-height: 1.4;
 }
 
 .trans-chap-purchase-modal .trans-chap-form__hint {
@@ -2607,6 +2703,21 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
     min-height: 28px;
     padding: 0.15rem 0.6rem;
     font-size: 0.72rem;
+}
+
+@media (max-width: 560px) {
+    .trans-chap-purchase-modal__body {
+        padding: 1rem;
+    }
+
+    .trans-chap-purchase-modal .inventory-modal__head {
+        padding: 1rem;
+    }
+
+    .trans-chap-purchase-modal__actions {
+        grid-template-columns: 1fr 1.2fr;
+        gap: 0.55rem;
+    }
 }
 
 .trans-chap-form--purchase-new > .trans-chap-purchase-new {
