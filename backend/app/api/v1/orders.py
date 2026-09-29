@@ -818,6 +818,21 @@ def create_order(
     )
     if (
         payload.payment_method == PAYMENT_MPESA
+        and not force_mpesa_prompt
+        and not direct_mpesa_receipt
+    ):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "errors": {
+                    "mpesa_receipt_number": [
+                        "Enter the M-PESA transaction code from the customer's SMS.",
+                    ],
+                },
+            },
+        )
+    if (
+        payload.payment_method == PAYMENT_MPESA
         and force_mpesa_prompt
         and not direct_mpesa_receipt
         and not (payload.customer_phone and payload.customer_phone.strip())
@@ -1217,7 +1232,11 @@ def create_order(
 
     # STK push after commit so the receipt can link to a real order id.
     # Failures are non-fatal — cashier can retry or enter a code later.
-    if payload.payment_method == PAYMENT_MPESA and not direct_mpesa_receipt:
+    if (
+        payload.payment_method == PAYMENT_MPESA
+        and force_mpesa_prompt
+        and not direct_mpesa_receipt
+    ):
         push_result = _trigger_mpesa_for_order(
             db,
             order,
@@ -1737,6 +1756,15 @@ def resend_mpesa_stk_push(
     validate_csrf(request, session)
     user = _auth_orders_user(db, session, pos_ok=True)
     account_id = _require_shop(user)
+    account = db.get(Account, account_id)
+    if account is not None and account.force_mpesa_prompt is False:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail=(
+                "M-PESA prompts are disabled for this business. Record the payment "
+                "using the customer's receipt code."
+            ),
+        )
 
     order = _get_owned_order(db, account_id, order_id)
     if order.status in TERMINAL_STATUSES:
