@@ -1390,7 +1390,7 @@ export function PosWorkspace({
                     htmlFor="pos-mpesa-receipt-code"
                   >
                     <i className="fa-solid fa-receipt" aria-hidden />
-                    <span>M-PESA receipt code</span>
+                    <span>M-PESA receipt code (optional)</span>
                   </label>
                   <div className="pos-customer-card__mpesa-input-wrap">
                     <input
@@ -1401,13 +1401,12 @@ export function PosWorkspace({
                       onChange={(e) => setMpesaReceiptCode(e.target.value)}
                       placeholder="Enter code from customer's SMS"
                       aria-label="M-PESA receipt code"
-                      aria-required="true"
-                      className={
-                        !mpesaReceiptCode.trim() ? "pos-input--required" : undefined
-                      }
                     />
                   </div>
-                  <small>Confirm the customer has paid {formatMoney(total)}.</small>
+                  <small>
+                    Confirm receipt of {formatMoney(total)}. Add the SMS code if
+                    available.
+                  </small>
                 </>
               )}
             </div>
@@ -1557,7 +1556,7 @@ export function PosWorkspace({
           {paymentMethod === "mpesa" && !forceMpesaPrompt ? (
             <div className="pos-walkin-phone">
               <label className="pos-label" htmlFor="pos-mpesa-receipt-code">
-                <i className="fa-solid fa-receipt" aria-hidden /> M-PESA receipt code
+                <i className="fa-solid fa-receipt" aria-hidden /> M-PESA receipt code (optional)
               </label>
               <input
                 id="pos-mpesa-receipt-code"
@@ -1567,12 +1566,11 @@ export function PosWorkspace({
                 onChange={(e) => setMpesaReceiptCode(e.target.value)}
                 placeholder="Enter code from customer's SMS"
                 aria-label="M-PESA receipt code"
-                aria-required="true"
-                className={
-                  !mpesaReceiptCode.trim() ? "pos-input--required" : undefined
-                }
               />
-              <small>Confirm the customer has paid {formatMoney(total)}.</small>
+              <small>
+                Confirm receipt of {formatMoney(total)}. Add the SMS code if
+                available.
+              </small>
             </div>
           ) : null}
         </>
@@ -1739,17 +1737,6 @@ export function PosWorkspace({
         );
         return;
       }
-    }
-    if (
-      paymentMethod === "mpesa" &&
-      !forceMpesaPrompt &&
-      !mpesaReceiptCode.trim()
-    ) {
-      await showError(
-        "M-PESA receipt code required",
-        "Enter the code from the customer's M-PESA SMS to record this manual payment.",
-      );
-      return;
     }
     if (paymentMethod === "credit" && !selectedCustomerId) {
       await showError(

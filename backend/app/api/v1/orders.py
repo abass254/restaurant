@@ -823,21 +823,6 @@ def create_order(
     )
     if (
         payload.payment_method == PAYMENT_MPESA
-        and not force_mpesa_prompt
-        and not direct_mpesa_receipt
-    ):
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "errors": {
-                    "mpesa_receipt_number": [
-                        "Enter the M-PESA transaction code from the customer's SMS.",
-                    ],
-                },
-            },
-        )
-    if (
-        payload.payment_method == PAYMENT_MPESA
         and force_mpesa_prompt
         and not direct_mpesa_receipt
         and not (payload.customer_phone and payload.customer_phone.strip())
@@ -1198,10 +1183,10 @@ def create_order(
                 detail=str(exc),
             ) from exc
 
-    # Direct M-PESA SMS code: confirm in the same transaction so a bad code
-    # never leaves an unpaid walk-in order behind.
+    # Manual M-PESA confirmation is only available when STK is disabled.
+    # Receipt codes are optional; without one, the cashier confirms payment.
     push_result: dict[str, str] | None = None
-    if payload.payment_method == PAYMENT_MPESA and direct_mpesa_receipt:
+    if payload.payment_method == PAYMENT_MPESA and not force_mpesa_prompt:
         try:
             matched_txn = confirm_mpesa_receipt_for_order(
                 db,

@@ -153,7 +153,7 @@ def _receipt_already_used(db: Session, normalized: str, *, exclude_order_id: str
 def record_merchant_direct_mpesa_for_order(
     db: Session,
     order: Order,
-    receipt_code: str,
+    receipt_code: str | None,
     *,
     confirmed_by_user_id: str | None = None,
 ) -> MpesaTransaction:
@@ -163,11 +163,9 @@ def record_merchant_direct_mpesa_for_order(
     money never sat in the hub Paybill, so nothing should be swept out.
     """
     normalized = normalize_mpesa_receipt(receipt_code)
-    if not normalized:
-        raise ValueError("Enter the M-PESA transaction code from the customer's SMS.")
-    if not _RECEIPT_RE.match(normalized):
+    if normalized and not _RECEIPT_RE.match(normalized):
         raise ValueError("Enter a valid M-PESA transaction code (6–20 letters/numbers).")
-    if _receipt_already_used(db, normalized, exclude_order_id=order.id):
+    if normalized and _receipt_already_used(db, normalized, exclude_order_id=order.id):
         raise ValueError("That M-PESA code is already linked to another paid order.")
 
     phone = (order.customer_phone or "").strip() or "254700000000"
@@ -184,11 +182,16 @@ def record_merchant_direct_mpesa_for_order(
         checkout_request_id=f"DIRECT-{uuid.uuid4().hex[:24].upper()}",
         status="success",
         result_code=0,
-        result_desc="Merchant confirmed direct M-PESA payment with SMS code.",
-        mpesa_receipt_number=normalized,
+        result_desc=(
+            "Merchant confirmed direct M-PESA payment with SMS code."
+            if normalized
+            else "Merchant confirmed direct M-PESA payment without receipt code."
+        ),
+        mpesa_receipt_number=normalized or None,
         completed_at=now,
         callback_payload={
             "merchant_direct_confirm": True,
+            "receipt_code_provided": bool(normalized),
             "confirmed_by": confirmed_by_user_id,
         },
         payout_status="skipped",
@@ -207,11 +210,18 @@ def record_merchant_direct_mpesa_for_order(
 def confirm_mpesa_receipt_for_order(
     db: Session,
     order: Order,
-    receipt_code: str,
+    receipt_code: str | None,
     *,
     confirmed_by_user_id: str | None = None,
 ) -> MpesaTransaction:
-    """Match an existing hub payment, or record a merchant-confirmed direct code."""
+    """Match a hub payment, or record merchant-confirmed direct payment."""
+    if not normalize_mpesa_receipt(receipt_code):
+        return record_merchant_direct_mpesa_for_order(
+            db,
+            order,
+            None,
+            confirmed_by_user_id=confirmed_by_user_id,
+        )
     try:
         return validate_mpesa_receipt_for_order(db, order, receipt_code)
     except ValueError as exc:
