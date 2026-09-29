@@ -11779,7 +11779,7 @@ html[data-trans-chap-machine="phone"] .trans-chap-app .mobile-nav a.is-active {
     border-radius: 12px;
 }
 
-/* 5. Mobile Phone 5-Tab Bar & More Drawer Sheet */
+/* 5. Phone tabs with a full-height navigation drawer */
 html[data-trans-chap-machine="tablet"] .mobile-nav__more-btn {
     display: none !important;
 }
@@ -11814,6 +11814,10 @@ html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/settings
     display: none !important;
 }
 
+html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/mpesa"] {
+    display: none !important;
+}
+
 .mobile-nav__more-btn {
     display: flex;
     flex-direction: column;
@@ -11843,44 +11847,83 @@ html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/settings
 .trans-chap-more-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 999;
+    z-index: 1200;
     background: rgba(0, 0, 0, 0.55);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
     display: flex;
-    align-items: flex-end;
-    justify-content: center;
+    align-items: stretch;
+    justify-content: flex-start;
 }
 
 .trans-chap-more-sheet {
-    width: 100%;
-    max-width: 560px;
+    display: flex;
+    flex-direction: column;
+    width: min(19rem, calc(100vw - 3rem));
+    height: 100%;
+    max-height: 100dvh;
+    padding: max(1rem, env(safe-area-inset-top)) 0.85rem max(0.85rem, env(safe-area-inset-bottom));
     background: var(--app-surface);
-    border-radius: 24px 24px 0 0;
-    border-top: 1px solid var(--app-border);
-    padding: 1.15rem 1.25rem max(1.25rem, env(safe-area-inset-bottom));
-    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.25);
+    border-right: 1px solid var(--app-border);
+    box-shadow: 12px 0 36px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    animation: trans-chap-drawer-in 180ms ease-out both;
+}
+
+@keyframes trans-chap-drawer-in {
+    from {
+        opacity: 0.7;
+        transform: translateX(-16px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
 }
 
 .trans-chap-more-sheet__head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 1rem;
-    padding-bottom: 0.65rem;
+    gap: 0.75rem;
+    flex: 0 0 auto;
+    margin-bottom: 0.8rem;
+    padding: 0.25rem 0.1rem 0.9rem;
     border-bottom: 1px solid var(--app-border);
+}
+
+.trans-chap-more-sheet__brand {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 0.7rem;
+}
+
+.trans-chap-more-sheet__brand > div {
+    display: grid;
+    min-width: 0;
+    gap: 0.15rem;
 }
 
 .trans-chap-more-sheet__head h3 {
     margin: 0;
-    font-size: 1.05rem;
+    font-size: 0.98rem;
     font-weight: 850;
     color: var(--app-text);
 }
 
+.trans-chap-more-sheet__brand > div > span {
+    overflow: hidden;
+    color: var(--app-text-secondary);
+    font-size: 0.75rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .trans-chap-more-sheet__close {
-    width: 36px;
-    height: 36px;
+    flex: 0 0 38px;
+    width: 38px;
+    height: 38px;
     border-radius: 10px;
     border: 0;
     background: var(--app-bg);
@@ -11892,29 +11935,34 @@ html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/settings
 }
 
 .trans-chap-more-sheet__grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.75rem;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .trans-chap-more-sheet__item {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 0.45rem;
-    padding: 0.95rem 0.5rem;
-    border-radius: 16px;
-    background: var(--app-bg);
-    border: 1px solid var(--app-border);
+    justify-content: flex-start;
+    gap: 0.85rem;
+    min-height: 48px;
+    padding: 0.65rem 0.75rem;
+    border-radius: 12px;
+    background: transparent;
+    border: 1px solid transparent;
     color: var(--app-text);
     text-decoration: none;
     font-family: inherit;
-    font-size: 0.82rem;
+    font-size: 0.86rem;
     font-weight: 750;
     line-height: inherit;
     cursor: pointer;
     width: 100%;
+    text-align: left;
     margin: 0;
     box-sizing: border-box;
     transition: all 0.15s ease;
@@ -11928,10 +11976,30 @@ html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/settings
 }
 
 .trans-chap-more-sheet__item i {
-    font-size: 1.25rem;
+    width: 1.25rem;
+    font-size: 1.05rem;
     color: var(--app-primary);
 }
 
+.trans-chap-more-sheet__item.is-active {
+    background: color-mix(in srgb, var(--app-primary) 11%, var(--app-surface));
+    border-color: color-mix(in srgb, var(--app-primary) 24%, transparent);
+    color: var(--app-primary);
+    font-weight: 800;
+}
+
+.trans-chap-more-sheet__item .trans-chap-more-sheet__chevron {
+    width: auto;
+    margin-left: auto;
+    color: var(--app-text-secondary);
+    font-size: 0.72rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .trans-chap-more-sheet {
+        animation: none;
+    }
+}
 /* 6. Card Edge Clipping Prevention */
 .trans-chap-dash__panel-head span {
     white-space: nowrap !important;

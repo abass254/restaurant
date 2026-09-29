@@ -348,6 +348,15 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
     setMoreOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (!moreOpen) return;
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setMoreOpen(false);
+    }
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [moreOpen]);
+
   return (
     <div className={`auth-split trans-chap-root${isSignIn ? " trans-chap-root--signin" : ""}`}>
       <section className="auth-split__panel">
@@ -399,13 +408,10 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
           {showNav ? (
             <>
               <nav
-                className={`mobile-nav mobile-nav--${Math.min(
-                  Math.max(items.length + 1, 3),
-                  7,
-                )}`}
+                className="mobile-nav mobile-nav--5"
                 style={
                   {
-                    "--mobile-nav-columns": Math.min(items.length + 1, 5),
+                    "--mobile-nav-columns": 5,
                   } as React.CSSProperties
                 }
                 aria-label="Trans Chap navigation"
@@ -444,77 +450,79 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                   type="button"
                   className={`mobile-nav__more-btn${moreOpen ? " is-active" : ""}`}
                   onClick={() => setMoreOpen(!moreOpen)}
-                  aria-label="More navigation options"
+                  aria-label="Open navigation menu"
+                  aria-expanded={moreOpen}
+                  aria-controls="trans-chap-mobile-drawer"
                 >
                   <span className="mobile-nav__icon">
-                    <i className="fa-solid fa-ellipsis-vertical" aria-hidden />
+                    <i className="fa-solid fa-bars" aria-hidden />
                   </span>
-                  <span className="mobile-nav__label">More</span>
+                  <span className="mobile-nav__label">Menu</span>
                 </button>
               </nav>
 
               {moreOpen ? (
-                <div className="trans-chap-more-backdrop" onClick={() => setMoreOpen(false)}>
-                  <div className="trans-chap-more-sheet" onClick={(e) => e.stopPropagation()}>
+                <div
+                  className="trans-chap-more-backdrop"
+                  onClick={() => setMoreOpen(false)}
+                >
+                  <aside
+                    id="trans-chap-mobile-drawer"
+                    className="trans-chap-more-sheet"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Navigation menu"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <header className="trans-chap-more-sheet__head">
-                      <h3>Menu</h3>
+                      <div className="trans-chap-more-sheet__brand">
+                        <span className="mobile-nav__brand-icon" aria-hidden>
+                          <TransChapLogoMark size={32} color="var(--app-primary)" accentColor="#e8412a" />
+                        </span>
+                        <div>
+                          <h3>Trans Chap</h3>
+                          {user?.active_account?.business_name || user?.account?.business_name ? (
+                            <span>
+                              {user.active_account?.business_name || user.account?.business_name}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
                       <button
                         type="button"
                         className="trans-chap-more-sheet__close"
+                        aria-label="Close navigation menu"
                         onClick={() => setMoreOpen(false)}
                       >
                         <i className="fa-solid fa-xmark" aria-hidden />
                       </button>
                     </header>
-                    <div className="trans-chap-more-sheet__grid">
-                      <Link
-                        href="/trans-chap/pos"
-                        className="trans-chap-more-sheet__item"
-                        onClick={() => setMoreOpen(false)}
-                      >
-                        <i className="fa-solid fa-cash-register" aria-hidden />
-                        <span>POS</span>
-                      </Link>
-                      <Link
-                        href="/trans-chap/suppliers"
-                        className="trans-chap-more-sheet__item"
-                        onClick={() => setMoreOpen(false)}
-                      >
-                        <i className="fa-solid fa-truck-field" aria-hidden />
-                        <span>Suppliers</span>
-                      </Link>
-                      <Link
-                        href="/trans-chap/customers"
-                        className="trans-chap-more-sheet__item"
-                        onClick={() => setMoreOpen(false)}
-                      >
-                        <i className="fa-solid fa-address-book" aria-hidden />
-                        <span>Customers</span>
-                      </Link>
-                      <Link
-                        href="/trans-chap/reports"
-                        className="trans-chap-more-sheet__item"
-                        onClick={() => setMoreOpen(false)}
-                      >
-                        <i className="fa-solid fa-chart-pie" aria-hidden />
-                        <span>Reports</span>
-                      </Link>
-                      <Link
-                        href="/trans-chap/mpesa"
-                        className="trans-chap-more-sheet__item"
-                        onClick={() => setMoreOpen(false)}
-                      >
-                        <i className="fa-solid fa-mobile-screen-button" aria-hidden />
-                        <span>M-PESA</span>
-                      </Link>
-                      <Link
-                        href="/trans-chap/settings"
-                        className="trans-chap-more-sheet__item"
-                        onClick={() => setMoreOpen(false)}
-                      >
-                        <i className="fa-solid fa-gear" aria-hidden />
-                        <span>Settings</span>
-                      </Link>
+                    <nav
+                      className="trans-chap-more-sheet__grid"
+                      aria-label="All sections"
+                    >
+                      {items.map((item) => {
+                        const isActive = item.exact
+                          ? pathname === item.href
+                          : pathname === item.href ||
+                            pathname.startsWith(`${item.href}/`);
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            className={`trans-chap-more-sheet__item${isActive ? " is-active" : ""}`}
+                            aria-current={isActive ? "page" : undefined}
+                            onClick={() => setMoreOpen(false)}
+                          >
+                            <i className={`fa-solid ${item.icon}`} aria-hidden />
+                            <span>{item.label}</span>
+                            <i
+                              className="fa-solid fa-chevron-right trans-chap-more-sheet__chevron"
+                              aria-hidden
+                            />
+                          </Link>
+                        );
+                      })}
                       <button
                         type="button"
                         className="trans-chap-more-sheet__item"
@@ -525,8 +533,8 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                         <i className="fa-solid fa-right-from-bracket" aria-hidden />
                         <span>Log out</span>
                       </button>
-                    </div>
-                  </div>
+                    </nav>
+                  </aside>
                 </div>
               ) : null}
             </>
