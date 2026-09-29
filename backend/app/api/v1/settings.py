@@ -250,6 +250,25 @@ def show_settings(
     }
 
 
+@router.get("/operations")
+def show_operations_settings(
+    services: ServiceContainer = Depends(get_services),
+    session: dict = Depends(get_request_session),
+):
+    user = require_user(services.db, session)
+    assert_merchant_section_any_access(user, "settings", "pos", "dashboard")
+    account_id = require_merchant_account_id(user)
+    account = services.db.get(Account, account_id)
+    if account is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Business account not found.")
+    return {
+        "allow_item_quantity_adjustment": account.allow_item_quantity_adjustment,
+        "allow_price_adjustment": account.allow_price_adjustment,
+        "adjust_selling_price_on_purchase": account.adjust_selling_price_on_purchase,
+        "force_mpesa_prompt": account.force_mpesa_prompt,
+    }
+
+
 @router.patch("/operations")
 def update_operations_settings(
     payload: OperationsSettingsUpdate,

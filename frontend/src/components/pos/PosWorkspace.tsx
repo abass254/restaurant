@@ -402,22 +402,32 @@ export function PosWorkspace({
   const [heldHydrated, setHeldHydrated] = useState(false);
   const [allowPriceUpdate, setAllowPriceUpdate] = useState(false);
   const [forceMpesaPrompt, setForceMpesaPrompt] = useState(true);
+  const [operationsSettingsLoaded, setOperationsSettingsLoaded] = useState(false);
+  const [operationsSettingsError, setOperationsSettingsError] = useState<string | null>(
+    null,
+  );
   const canEditPrice = priceEditEnabled || allowPriceUpdate;
 
-  useEffect(() => {
-    let cancelled = false;
-    apiFetch<SettingsOperationsResponse>(apiRoutes.settingsOperations)
-      .then((res) => {
-        if (!cancelled) {
-          setAllowPriceUpdate(res.allow_price_adjustment);
-          setForceMpesaPrompt(res.force_mpesa_prompt ?? true);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
+  const loadOperationsSettings = useCallback(async () => {
+    setOperationsSettingsError(null);
+    try {
+      const res = await apiFetch<SettingsOperationsResponse>(
+        apiRoutes.settingsOperations,
+      );
+      setAllowPriceUpdate(res.allow_price_adjustment);
+      setForceMpesaPrompt(res.force_mpesa_prompt);
+      setOperationsSettingsLoaded(true);
+    } catch (err) {
+      setOperationsSettingsLoaded(false);
+      setOperationsSettingsError(
+        extractErrorMessage(err, "Could not load payment settings."),
+      );
+    }
   }, []);
+
+  useEffect(() => {
+    void loadOperationsSettings();
+  }, [loadOperationsSettings]);
 
   const AUTO_PRINT_STORAGE_KEY = "pos:auto_print_receipt";
   const QUICK_ADD_QTY_STORAGE_KEY = "pos:quick_add_qty";
@@ -1477,10 +1487,21 @@ export function PosWorkspace({
     cart.length === 0 ||
     submitting ||
     (isTransChapSale &&
+      paymentMethod === "mpesa" &&
+      !operationsSettingsLoaded) ||
+    (isTransChapSale &&
       (paymentMethod === "" ||
         !TRANSCHAP_PAYMENT_METHODS.includes(paymentMethod)));
 
   const placeLabel = (() => {
+    if (
+      isTransChapSale &&
+      paymentMethod === "mpesa" &&
+      !operationsSettingsLoaded &&
+      !operationsSettingsError
+    ) {
+      return "Loading payment settings…";
+    }
     if (submitting) {
       if (isTransChapSale) {
         if (paymentMethod === "mpesa") {
@@ -2679,6 +2700,32 @@ export function PosWorkspace({
           </div>
 
           <footer className="pos-cart__footer">
+            {isTransChapSale && operationsSettingsError ? (
+              <div
+                role="alert"
+                style={{
+                  color: "#b42318",
+                  fontSize: "0.875rem",
+                  marginBottom: "0.75rem",
+                }}
+              >
+                {operationsSettingsError}{" "}
+                <button
+                  type="button"
+                  style={{
+                    background: "none",
+                    border: 0,
+                    color: "inherit",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                    textDecoration: "underline",
+                  }}
+                  onClick={() => void loadOperationsSettings()}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : null}
             {isTransChapSale ? (
               <div className="pos-cart__row pos-cart__row--pay pos-cart__row--pay-full">
                 <div
