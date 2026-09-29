@@ -111,7 +111,27 @@ type CartLine = {
   image_url: string | null;
   modifiers?: OrderItemModifier[] | null;
   notes?: string | null;
+  sellUnit?: string | null;
+  unitFactor?: number;
+  bulkFactor?: number;
+  autoPackFactor?: number;
 };
+
+/**
+ * Try to detect pack size from product names like "Unga (pack of 24)" or "Water (12pcs)".
+ */
+function detectPackSize(name: string): number | null {
+  const normalized = name.toLowerCase();
+  // Matches "pack of 24", "bundle of 12", "box of 6", etc.
+  const packMatch = normalized.match(/(?:pack|bundle|box|carton|case|crate)\s+(?:of\s+)?(\d+)/);
+  if (packMatch) return parseInt(packMatch[1], 10);
+
+  // Matches "24pcs", "12 pcs", "24 packets", etc.
+  const pcsMatch = normalized.match(/(\d+)\s*(?:pcs|packets|pieces|pkts)/);
+  if (pcsMatch) return parseInt(pcsMatch[1], 10);
+
+  return null;
+}
 
 type PosHeldSession = {
   id: string;
@@ -216,13 +236,13 @@ function parseHeldSessions(raw: string | null): PosHeldSession[] {
           typeof row.deliveryAddress === "string" ? row.deliveryAddress : "",
         deliveryCoords:
           row.deliveryCoords &&
-          typeof row.deliveryCoords === "object" &&
-          typeof (row.deliveryCoords as { lat?: unknown }).lat === "number" &&
-          typeof (row.deliveryCoords as { lng?: unknown }).lng === "number"
+            typeof row.deliveryCoords === "object" &&
+            typeof (row.deliveryCoords as { lat?: unknown }).lat === "number" &&
+            typeof (row.deliveryCoords as { lng?: unknown }).lng === "number"
             ? {
-                lat: (row.deliveryCoords as { lat: number }).lat,
-                lng: (row.deliveryCoords as { lng: number }).lng,
-              }
+              lat: (row.deliveryCoords as { lat: number }).lat,
+              lng: (row.deliveryCoords as { lng: number }).lng,
+            }
             : null,
         deliveryNotes:
           typeof row.deliveryNotes === "string" ? row.deliveryNotes : "",
@@ -272,6 +292,10 @@ function maxCartQty(item: InventoryItem): number | null {
   const stock = item.stock_quantity;
   if (stock == null || stock <= 0) return 0;
   return stock;
+}
+
+function stockUnitsForCartLine(line: CartLine): number {
+  return line.quantity * Math.max(1, line.unitFactor ?? 1);
 }
 
 /** On-hand units still free to sell (stock minus what's already in the cart). */
@@ -359,8 +383,6 @@ export function PosWorkspace({
   );
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [forceMpesaPrompt, setForceMpesaPrompt] = useState(true);
-  const [mpesaReceiptCode, setMpesaReceiptCode] = useState("");
   const [creditDueDate, setCreditDueDate] = useState("");
   const [customers, setCustomers] = useState<ShopCustomer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
@@ -377,6 +399,20 @@ export function PosWorkspace({
   const [quickAddQty, setQuickAddQty] = useState(1);
   const [heldSessions, setHeldSessions] = useState<PosHeldSession[]>([]);
   const [heldHydrated, setHeldHydrated] = useState(false);
+  const [allowPriceUpdate, setAllowPriceUpdate] = useState(false);
+  const canEditPrice = priceEditEnabled || allowPriceUpdate;
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<SettingsOperationsResponse>(apiRoutes.settingsOperations)
+      .then((res) => {
+        if (!cancelled) setAllowPriceUpdate(res.allow_price_adjustment);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const AUTO_PRINT_STORAGE_KEY = "pos:auto_print_receipt";
   const QUICK_ADD_QTY_STORAGE_KEY = "pos:quick_add_qty";
@@ -388,7 +424,7 @@ export function PosWorkspace({
       for (const line of session.cart) {
         map.set(
           line.inventoryItemId,
-          (map.get(line.inventoryItemId) ?? 0) + line.quantity,
+          (map.get(line.inventoryItemId) ?? 0) + stockUnitsForCartLine(line),
         );
       }
     }
@@ -442,14 +478,6 @@ export function PosWorkspace({
       .then((res) => setCustomers(res.data))
       .catch(() => {
         /* POS still works with typed name and phone. */
-      });
-
-    void apiFetch<SettingsOperationsResponse>(apiRoutes.settings)
-      .then((data) => {
-        setForceMpesaPrompt(data.force_mpesa_prompt ?? true);
-      })
-      .catch(() => {
-        setForceMpesaPrompt(true);
       });
   }, []);
 
@@ -559,7 +587,7 @@ export function PosWorkspace({
       );
       return;
     }
-    if (item.selling_price === null && !priceEditEnabled) {
+    if (item.selling_price === null && !canEditPrice) {
       void showError(
         "No price set",
         `"${item.product?.name ?? "This item"}" doesn't have a selling price yet. Set one in Inventory first.`,
@@ -576,13 +604,15 @@ export function PosWorkspace({
 
     const heldQty = heldQtyByItemId.get(item.id) ?? 0;
     const stockCap = maxCartQty(item);
-    const cap =
-      stockCap === null ? null : Math.max(0, stockCap - heldQty);
+    const availableStock = stockCap === null ? null : Math.max(0, stockCap - heldQty);
     let blocked = false;
     setCart((prev) => {
       const existing = prev.find((c) => c.inventoryItemId === item.id);
       const nextQty = (existing?.quantity ?? 0) + addAmount;
-      if (cap !== null && nextQty > cap) {
+      const unitFactor = Math.max(1, existing?.unitFactor ?? 1);
+      const maxLineQty =
+        availableStock === null ? null : Math.floor(availableStock / unitFactor);
+      if (maxLineQty !== null && nextQty > maxLineQty) {
         blocked = true;
         return prev;
       }
@@ -591,6 +621,7 @@ export function PosWorkspace({
           c.inventoryItemId === item.id ? { ...c, quantity: nextQty } : c,
         );
       }
+      const autoPackFactor = detectPackSize(item.product?.name ?? "") ?? undefined;
       return [
         ...prev,
         {
@@ -599,22 +630,25 @@ export function PosWorkspace({
           name: item.product?.name ?? `#${item.product_id}`,
           sku: item.product?.sku ?? null,
           unit_price: item.selling_price ?? 0,
+          base_price: item.selling_price ?? 0,
           quantity: addAmount,
           image_url: item.product?.image_url ?? null,
+          autoPackFactor,
+          unitFactor: 1,
+          bulkFactor: autoPackFactor,
+          sellUnit: null,
         },
       ];
     });
     if (blocked) {
       void showError(
         "Not enough stock",
-        cap === 1
-          ? `Only 1 unit of "${item.product?.name ?? "this item"}" is available${heldQty > 0 ? " (some are on a held sale)" : ""}.`
-          : `Only ${cap} units of "${item.product?.name ?? "this item"}" are available${heldQty > 0 ? " after held sales" : ""}.`,
+        `Only ${availableStock ?? 0} stock units of "${item.product?.name ?? "this item"}" are available${heldQty > 0 ? " after held sales" : ""}.`,
       );
       return;
     }
     flashPulse(item.id);
-  }, [heldQtyByItemId, priceEditEnabled, quickAddQty]);
+  }, [heldQtyByItemId, canEditPrice, quickAddQty]);
 
   useEffect(() => {
     function isEditableElement(el: Element | null): boolean {
@@ -719,7 +753,7 @@ export function PosWorkspace({
       if (
         selectedCategory !== "all" &&
         (item.product?.category || "").trim().toLowerCase() !==
-          selectedCategory.toLowerCase()
+        selectedCategory.toLowerCase()
       ) {
         return false;
       }
@@ -746,11 +780,11 @@ export function PosWorkspace({
         return prev.map((c) =>
           (c.lineId || c.inventoryItemId) === cartLineId
             ? {
-                ...c,
-                unit_price: effectiveUnitPrice,
-                modifiers: modifiers.length > 0 ? modifiers : null,
-                notes: notes || null,
-              }
+              ...c,
+              unit_price: effectiveUnitPrice,
+              modifiers: modifiers.length > 0 ? modifiers : null,
+              notes: notes || null,
+            }
             : c,
         );
       }
@@ -780,14 +814,18 @@ export function PosWorkspace({
     const item = target ? itemsById.get(target.inventoryItemId) : null;
     const stockCap = item ? maxCartQty(item) : null;
     const heldQty = target ? (heldQtyByItemId.get(target.inventoryItemId) ?? 0) : 0;
-    const cap =
+    const availableStock =
       stockCap === null ? null : Math.max(0, stockCap - heldQty);
+    const maxLineQty =
+      availableStock === null || !target
+        ? null
+        : Math.floor(availableStock / Math.max(1, target.unitFactor ?? 1));
     setCart((prev) =>
       prev
         .map((c) => {
           if ((c.lineId || c.inventoryItemId) !== key && c.inventoryItemId !== key) return c;
           let next = c.quantity + delta;
-          if (cap !== null) next = Math.min(next, cap);
+          if (maxLineQty !== null) next = Math.min(next, maxLineQty);
           return { ...c, quantity: next };
         })
         .filter((c) => c.quantity > 0),
@@ -799,10 +837,14 @@ export function PosWorkspace({
     const item = target ? itemsById.get(target.inventoryItemId) : null;
     const stockCap = item ? maxCartQty(item) : null;
     const heldQty = target ? (heldQtyByItemId.get(target.inventoryItemId) ?? 0) : 0;
-    const cap =
+    const availableStock =
       stockCap === null ? null : Math.max(0, stockCap - heldQty);
+    const maxLineQty =
+      availableStock === null || !target
+        ? null
+        : Math.floor(availableStock / Math.max(1, target.unitFactor ?? 1));
     let next = Math.max(0, Math.floor(Number(value) || 0));
-    if (cap !== null) next = Math.min(next, cap);
+    if (maxLineQty !== null) next = Math.min(next, maxLineQty);
     setCart((prev) =>
       prev
         .map((c) =>
@@ -819,8 +861,80 @@ export function PosWorkspace({
     setCart((prev) =>
       prev.map((c) =>
         (c.lineId || c.inventoryItemId) === key || c.inventoryItemId === key
-          ? { ...c, unit_price: next }
+          ? { ...c, unit_price: next, base_price: next / (c.unitFactor || 1) }
           : c,
+      ),
+    );
+  }
+
+  function updateLineUnit(key: string, sellUnit: string | null, unitFactor: number) {
+    setCart((prev) =>
+      prev.map((c) => {
+        if ((c.lineId || c.inventoryItemId) !== key && c.inventoryItemId !== key) return c;
+        const basePrice = c.base_price ?? c.unit_price / (c.unitFactor || 1);
+        return {
+          ...c,
+          sellUnit,
+          unitFactor,
+          bulkFactor: sellUnit === "Bulk" ? unitFactor : c.bulkFactor,
+          unit_price: basePrice * unitFactor,
+        };
+      })
+    );
+  }
+
+  function updateLineBulkFactor(key: string, value: string) {
+    const factor = Math.min(1_000_000, Math.max(2, Math.floor(Number(value) || 2)));
+    const target = cart.find(
+      (line) =>
+        (line.lineId || line.inventoryItemId) === key ||
+        line.inventoryItemId === key,
+    );
+    if (!target) return;
+    const item = itemsById.get(target.inventoryItemId);
+    const stockCap = item ? maxCartQty(item) : null;
+    const heldQty = heldQtyByItemId.get(target.inventoryItemId) ?? 0;
+    const maxLineQty =
+      stockCap === null
+        ? null
+        : Math.floor(Math.max(0, stockCap - heldQty) / factor);
+    if (maxLineQty === 0) {
+      void showError(
+        "Not enough stock",
+        `There isn't enough stock for one bulk of ${factor} units of "${target.name}".`,
+      );
+      return;
+    }
+    setCart((prev) =>
+      prev.map((line) => {
+        if ((line.lineId || line.inventoryItemId) !== key && line.inventoryItemId !== key) {
+          return line;
+        }
+        return {
+          ...line,
+          base_price: line.base_price ?? line.unit_price / (line.unitFactor || 1),
+          unitFactor: factor,
+          bulkFactor: factor,
+          sellUnit: "Bulk",
+          quantity:
+            maxLineQty === null
+              ? line.quantity
+              : Math.min(line.quantity, maxLineQty),
+          unit_price:
+            (line.base_price ?? line.unit_price / (line.unitFactor || 1)) * factor,
+        };
+      }),
+    );
+  }
+
+  function updateLineBulkPrice(key: string, value: string) {
+    const price = Math.max(0, Number(value) || 0);
+    setCart((prev) =>
+      prev.map((line) =>
+        (line.lineId || line.inventoryItemId) === key ||
+        line.inventoryItemId === key
+          ? { ...line, unit_price: price }
+          : line,
       ),
     );
   }
@@ -840,7 +954,6 @@ export function PosWorkspace({
     setDiscount("");
     setNotes("");
     setPaymentMethod(isTransChapSale ? "mpesa" : "");
-    setMpesaReceiptCode("");
     setCreditDueDate("");
     setSelectedCustomerId("");
     if (!isTransChapSale) {
@@ -1055,50 +1168,26 @@ export function PosWorkspace({
 
           {paymentMethod === "mpesa" ? (
             <div className="pos-customer-card__mpesa-box">
-              {forceMpesaPrompt ? (
-                <>
-                  <label
-                    className="pos-customer-card__mpesa-label"
-                    htmlFor="pos-customer-stk-phone"
-                  >
-                    <i className="fa-solid fa-mobile-screen-button" aria-hidden />
-                    <span>Send M-PESA prompt to:</span>
-                  </label>
-                  <div className="pos-customer-card__mpesa-input-wrap">
-                    <input
-                      id="pos-customer-stk-phone"
-                      type="tel"
-                      value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value)}
-                      placeholder="2547…"
-                      aria-label="M-PESA prompt phone"
-                      className={
-                        !customerPhone.trim() ? "pos-input--required" : undefined
-                      }
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <label
-                    className="pos-customer-card__mpesa-label"
-                    htmlFor="pos-customer-mpesa-code"
-                  >
-                    <i className="fa-solid fa-receipt" aria-hidden />
-                    <span>M-PESA code (optional):</span>
-                  </label>
-                  <div className="pos-customer-card__mpesa-input-wrap">
-                    <input
-                      id="pos-customer-mpesa-code"
-                      type="text"
-                      value={mpesaReceiptCode}
-                      onChange={(e) => setMpesaReceiptCode(e.target.value.toUpperCase())}
-                      placeholder="e.g. QJK7ABC123"
-                      aria-label="M-PESA transaction code"
-                    />
-                  </div>
-                </>
-              )}
+              <label
+                className="pos-customer-card__mpesa-label"
+                htmlFor="pos-customer-stk-phone"
+              >
+                <i className="fa-solid fa-mobile-screen-button" aria-hidden />
+                <span>Send M-PESA prompt to:</span>
+              </label>
+              <div className="pos-customer-card__mpesa-input-wrap">
+                <input
+                  id="pos-customer-stk-phone"
+                  type="tel"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="2547…"
+                  aria-label="M-PESA prompt phone"
+                  className={
+                    !customerPhone.trim() ? "pos-input--required" : undefined
+                  }
+                />
+              </div>
             </div>
           ) : null}
 
@@ -1114,13 +1203,12 @@ export function PosWorkspace({
               </div>
               <div className="pos-customer-card__credit-bar">
                 <div
-                  className={`pos-customer-card__credit-bar-fill${
-                    creditUtilization.isExceeded
+                  className={`pos-customer-card__credit-bar-fill${creditUtilization.isExceeded
                       ? " is-exceeded"
                       : creditUtilization.isLow
-                      ? " is-low"
-                      : ""
-                  }`}
+                        ? " is-low"
+                        : ""
+                    }`}
                   style={{ width: `${creditUtilization.pct}%` }}
                 />
               </div>
@@ -1147,25 +1235,23 @@ export function PosWorkspace({
 
               {paymentMethod === "credit" ? (
                 <div
-                  className={`pos-customer-card__validation ${
-                    total > selectedCustomer.available_credit
+                  className={`pos-customer-card__validation ${total > selectedCustomer.available_credit
                       ? "is-fail"
                       : "is-ok"
-                  }`}
+                    }`}
                 >
                   <i
-                    className={`fa-solid ${
-                      total > selectedCustomer.available_credit
+                    className={`fa-solid ${total > selectedCustomer.available_credit
                         ? "fa-triangle-exclamation"
                         : "fa-circle-check"
-                    }`}
+                      }`}
                     aria-hidden
                   />
                   <span>
                     {total > selectedCustomer.available_credit
                       ? `Exceeds available credit by ${formatMoney(
-                          total - selectedCustomer.available_credit,
-                        )}`
+                        total - selectedCustomer.available_credit,
+                      )}`
                       : `Credit approved for this sale (${formatMoney(total)})`}
                   </span>
                 </div>
@@ -1215,9 +1301,7 @@ export function PosWorkspace({
               <label className="pos-label" htmlFor="pos-walkin-phone-input">
                 <i className="fa-solid fa-mobile-screen-button" aria-hidden />{" "}
                 {paymentMethod === "mpesa"
-                  ? forceMpesaPrompt
-                    ? "M-PESA Phone (prompt recipient)"
-                    : "Customer Phone (optional)"
+                  ? "M-PESA Phone (prompt recipient)"
                   : "Customer Phone"}
               </label>
               <input
@@ -1227,36 +1311,19 @@ export function PosWorkspace({
                 onChange={(e) => setCustomerPhone(e.target.value)}
                 placeholder={
                   paymentMethod === "mpesa"
-                    ? forceMpesaPrompt
-                      ? "2547… (required for M-PESA)"
-                      : "Phone (optional)"
+                    ? "2547… (required for M-PESA)"
                     : "Phone (optional)"
                 }
                 aria-label={
                   paymentMethod === "mpesa" ? "M-PESA phone" : "Customer phone"
                 }
-                aria-required={paymentMethod === "mpesa" && forceMpesaPrompt}
+                aria-required={paymentMethod === "mpesa"}
                 className={
-                  paymentMethod === "mpesa" && forceMpesaPrompt && !customerPhone.trim()
+                  paymentMethod === "mpesa" && !customerPhone.trim()
                     ? "pos-input--required"
                     : undefined
                 }
               />
-              {paymentMethod === "mpesa" && !forceMpesaPrompt ? (
-                <div style={{ marginTop: "0.5rem" }}>
-                  <label className="pos-label" htmlFor="pos-walkin-mpesa-code">
-                    <i className="fa-solid fa-receipt" aria-hidden /> M-PESA Code (Optional)
-                  </label>
-                  <input
-                    id="pos-walkin-mpesa-code"
-                    type="text"
-                    value={mpesaReceiptCode}
-                    onChange={(e) => setMpesaReceiptCode(e.target.value.toUpperCase())}
-                    placeholder="e.g. QJK7ABC123 (optional)"
-                    aria-label="M-PESA transaction code"
-                  />
-                </div>
-              ) : null}
             </div>
           ) : null}
         </>
@@ -1337,8 +1404,7 @@ export function PosWorkspace({
     completeInPlace &&
     (isTransChapSale || fulfillment === "pickup" || fulfillment === "dine_in") &&
     paymentMethod !== "" &&
-    (IMMEDIATE_COMPLETE_PAYMENTS.has(paymentMethod) ||
-      (paymentMethod === "mpesa" && !forceMpesaPrompt));
+    IMMEDIATE_COMPLETE_PAYMENTS.has(paymentMethod);
 
   const paymentOptions = isTransChapSale
     ? TRANSCHAP_PAYMENT_METHODS
@@ -1354,18 +1420,14 @@ export function PosWorkspace({
   const placeLabel = (() => {
     if (submitting) {
       if (isTransChapSale) {
-        if (paymentMethod === "mpesa") {
-          return forceMpesaPrompt ? "Sending M-Pesa…" : "Completing M-Pesa sale…";
-        }
+        if (paymentMethod === "mpesa") return "Sending M-Pesa…";
         if (paymentMethod === "credit") return "Saving on credit…";
         return "Completing cash sale…";
       }
       return canCompleteSaleNow ? "Completing…" : "Placing order…";
     }
     if (isTransChapSale) {
-      if (paymentMethod === "mpesa") {
-        return forceMpesaPrompt ? "Send M-Pesa prompt" : "Complete M-Pesa sale";
-      }
+      if (paymentMethod === "mpesa") return "Send M-Pesa prompt";
       if (paymentMethod === "credit") return "Save on credit";
       return "Complete cash sale";
     }
@@ -1405,7 +1467,7 @@ export function PosWorkspace({
       );
       return;
     }
-    if (paymentMethod === "mpesa" && forceMpesaPrompt && !customerPhone.trim()) {
+    if (paymentMethod === "mpesa" && !customerPhone.trim()) {
       await showError(
         "Customer phone required",
         "Enter the customer's M-PESA phone number so we can send them the payment prompt.",
@@ -1450,12 +1512,12 @@ export function PosWorkspace({
           inventory_item_id: c.inventoryItemId,
           quantity: c.quantity,
           unit_price: c.unit_price,
+          sell_unit: c.sellUnit,
+          unit_factor:
+            c.sellUnit === "Bulk" ? c.unitFactor : undefined,
           modifiers: c.modifiers && c.modifiers.length ? c.modifiers : null,
           notes: c.notes?.trim() || null,
         })),
-        ...(paymentMethod === "mpesa" && mpesaReceiptCode.trim()
-          ? { mpesa_receipt_number: mpesaReceiptCode.trim() }
-          : {}),
       };
       const data = await apiFetch<OrderMutationResponse>(apiRoutes.orders, {
         method: "POST",
@@ -1467,8 +1529,7 @@ export function PosWorkspace({
         completeInPlace &&
         (orderFulfillment === "pickup" || orderFulfillment === "dine_in") &&
         paymentMethod !== "" &&
-        (IMMEDIATE_COMPLETE_PAYMENTS.has(paymentMethod) ||
-          (paymentMethod === "mpesa" && !forceMpesaPrompt));
+        IMMEDIATE_COMPLETE_PAYMENTS.has(paymentMethod);
 
       if (willCompleteNow) {
         try {
@@ -1486,7 +1547,7 @@ export function PosWorkspace({
       // is always saved, even if the push failed. Trans Chap POS keeps a
       // waiting panel so they can send the prompt again without leaving.
       const push = data.mpesa_push ?? null;
-      if (isTransChapSale && paymentMethod === "mpesa" && forceMpesaPrompt) {
+      if (isTransChapSale && paymentMethod === "mpesa") {
         suppressMerchantOrderNotification(order.id);
         clearCart();
         void reload({ silent: true, q: search });
@@ -1499,9 +1560,7 @@ export function PosWorkspace({
         }
         return;
       }
-      if (paymentMethod === "mpesa" && !forceMpesaPrompt) {
-        await toastSuccess(`Order ${order.order_number} completed`);
-      } else if (push && push.status === "sent") {
+      if (push && push.status === "sent") {
         await showSuccess(
           `Order ${order.order_number} · STK push sent`,
           push.message,
@@ -1608,7 +1667,7 @@ export function PosWorkspace({
                 ? "You can print the receipt or start the next sale."
                 : pendingMpesaWaiting
                   ? pendingMpesa.push?.message ||
-                    "Ask the customer to enter their PIN on the prompt."
+                  "Ask the customer to enter their PIN on the prompt."
                   : pendingMpesa.push && pendingMpesa.push.status !== "sent"
                     ? pendingMpesa.push.message
                     : "Payment was not received. Send the prompt again."}
@@ -1665,558 +1724,667 @@ export function PosWorkspace({
 
         {/* ── Main: catalog + ticket ─────────────────────────────── */}
         <div className="pos-main">
-        <div className="pos-catalog">
-          <header className="pos-catalog__head">
-            <h1 className="pos-title">
-              <i
-                className={
-                  isTransChapSale
-                    ? "fa-solid fa-utensils pos-title__icon"
-                    : "fa-solid fa-cash-register pos-title__icon"
-                }
-                aria-hidden="true"
-              />
-              {isTransChapSale ? "Select products" : "Point of sale"}
-            </h1>
-            <div className="pos-catalog__tools">
-              <label className="pos-quick-qty" title="Units added per product tap or scan">
-                <span className="pos-quick-qty__label">Qty</span>
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={quickAddQty}
-                  onChange={(e) => handleQuickAddQtyChange(e.target.value)}
-                  aria-label="Quantity per tap"
+          <div className="pos-catalog">
+            <header className="pos-catalog__head">
+              <h1 className="pos-title">
+                <i
+                  className={
+                    isTransChapSale
+                      ? "fa-solid fa-utensils pos-title__icon"
+                      : "fa-solid fa-cash-register pos-title__icon"
+                  }
+                  aria-hidden="true"
                 />
-              </label>
-              <div className="pos-quick-qty__presets" role="group" aria-label="Quick quantity presets">
-                {[1, 5, 10].map((preset) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    className={`pos-quick-qty__preset${quickAddQty === preset ? " is-active" : ""}`}
-                    onClick={() => handleQuickAddQtyChange(String(preset))}
-                    aria-pressed={quickAddQty === preset}
-                  >
-                    {preset}
-                  </button>
-                ))}
+                {isTransChapSale ? "Select products" : "Point of sale"}
+              </h1>
+              <div className="pos-catalog__tools">
+                <label className="pos-quick-qty" title="Units added per product tap or scan">
+                  <span className="pos-quick-qty__label">Qty</span>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={quickAddQty}
+                    onChange={(e) => handleQuickAddQtyChange(e.target.value)}
+                    aria-label="Quantity per tap"
+                  />
+                </label>
+                <div className="pos-quick-qty__presets" role="group" aria-label="Quick quantity presets">
+                  {[1, 5, 10].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      className={`pos-quick-qty__preset${quickAddQty === preset ? " is-active" : ""}`}
+                      onClick={() => handleQuickAddQtyChange(String(preset))}
+                      aria-pressed={quickAddQty === preset}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+                <label className={`pos-search${catalogPending ? " is-searching" : ""}`}>
+                  <i
+                    className="fa-solid fa-magnifying-glass pos-search__icon"
+                    aria-hidden="true"
+                  />
+                  <input
+                    type="search"
+                    placeholder="Search inventory or scan barcode…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    autoFocus
+                    aria-busy={catalogPending}
+                  />
+                  {search ? (
+                    <button
+                      type="button"
+                      className="pos-search__clear"
+                      onClick={() => setSearch("")}
+                      aria-label="Clear search"
+                    >
+                      <i className="fa-solid fa-xmark" aria-hidden="true" />
+                    </button>
+                  ) : null}
+                </label>
               </div>
-              <label className={`pos-search${catalogPending ? " is-searching" : ""}`}>
-              <i
-                className="fa-solid fa-magnifying-glass pos-search__icon"
-                aria-hidden="true"
-              />
-              <input
-                type="search"
-                placeholder="Search inventory or scan barcode…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                autoFocus
-                aria-busy={catalogPending}
-              />
-              {search ? (
+            </header>
+
+            {availableCategories.length > 1 ? (
+              <div
+                className="pos-category-chips"
+                role="tablist"
+                aria-label="Filter products by category"
+              >
                 <button
                   type="button"
-                  className="pos-search__clear"
-                  onClick={() => setSearch("")}
-                  aria-label="Clear search"
+                  role="tab"
+                  aria-selected={selectedCategory === "all"}
+                  className={`pos-category-chip${selectedCategory === "all" ? " is-active" : ""}`}
+                  onClick={() => setSelectedCategory("all")}
                 >
-                  <i className="fa-solid fa-xmark" aria-hidden="true" />
+                  <i className="fa-solid fa-layer-group" aria-hidden="true" />
+                  <span>All ({items.filter((i) => i.is_active && isSaleableRole(inventoryRole(i))).length})</span>
                 </button>
-              ) : null}
-            </label>
-            </div>
-          </header>
+                {availableCategories.map((cat) => {
+                  const count = items.filter(
+                    (i) =>
+                      i.is_active &&
+                      isSaleableRole(inventoryRole(i)) &&
+                      (i.product?.category || "").trim().toLowerCase() === cat.toLowerCase(),
+                  ).length;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      role="tab"
+                      aria-selected={selectedCategory.toLowerCase() === cat.toLowerCase()}
+                      className={`pos-category-chip${selectedCategory.toLowerCase() === cat.toLowerCase() ? " is-active" : ""}`}
+                      onClick={() => setSelectedCategory(cat)}
+                    >
+                      <span>{formatCategoryLabel(cat)}</span>
+                      <span className="pos-category-chip__count">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
 
-          {availableCategories.length > 1 ? (
-            <div
-              className="pos-category-chips"
-              role="tablist"
-              aria-label="Filter products by category"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={selectedCategory === "all"}
-                className={`pos-category-chip${selectedCategory === "all" ? " is-active" : ""}`}
-                onClick={() => setSelectedCategory("all")}
-              >
-                <i className="fa-solid fa-layer-group" aria-hidden="true" />
-                <span>All ({items.filter((i) => i.is_active && isSaleableRole(inventoryRole(i))).length})</span>
-              </button>
-              {availableCategories.map((cat) => {
-                const count = items.filter(
-                  (i) =>
-                    i.is_active &&
-                    isSaleableRole(inventoryRole(i)) &&
-                    (i.product?.category || "").trim().toLowerCase() === cat.toLowerCase(),
-                ).length;
-                return (
-                  <button
-                    key={cat}
-                    type="button"
-                    role="tab"
-                    aria-selected={selectedCategory.toLowerCase() === cat.toLowerCase()}
-                    className={`pos-category-chip${selectedCategory.toLowerCase() === cat.toLowerCase() ? " is-active" : ""}`}
-                    onClick={() => setSelectedCategory(cat)}
-                  >
-                    <span>{formatCategoryLabel(cat)}</span>
-                    <span className="pos-category-chip__count">{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
+            {error ? <p className="app-error">{error}</p> : null}
 
-          {error ? <p className="app-error">{error}</p> : null}
-
-          <AnimatePresence mode="wait">
-          {catalogPending ? (
-            <CatalogSkeleton key="pos-catalog-skeleton" />
-          ) : filteredItems.length === 0 ? (
-            <motion.div
-              key="pos-catalog-empty"
-              className="pos-empty"
-              initial={reduce ? false : { opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={reduce ? undefined : { opacity: 0, y: -6 }}
-              transition={{
-                duration: motionDuration.micro,
-                ease: easeOutExpressive,
-              }}
-            >
-              <i className="fa-solid fa-boxes-stacked" aria-hidden="true" />
-              <h3>
-                {items.length === 0 && !search.trim()
-                  ? "Inventory is empty"
-                  : "No items match your filters"}
-              </h3>
-              <p>
-                {items.length === 0 && !search.trim()
-                  ? "Add products in Inventory and they'll appear here for one-tap selling."
-                  : "Try a different search."}
-              </p>
-            </motion.div>
-          ) : (
-            <motion.ul
-              key={`pos-catalog-${loadedQuery}`}
-              className="pos-cards"
-              variants={reduce ? undefined : staggerContainer}
-              initial={reduce ? false : "hidden"}
-              animate={reduce ? undefined : "visible"}
-              exit={reduce ? undefined : { opacity: 0 }}
-              transition={{ duration: motionDuration.micro }}
-            >
-              {filteredItems.map((item) => {
-                const coverUrl =
-                  inventoryCoverUrl(item) || item.product?.image_url || null;
-                const inCartQty = cart
-                  .filter((c) => c.inventoryItemId === item.id)
-                  .reduce((sum, c) => sum + c.quantity, 0);
-                const heldQty = heldQtyByItemId.get(item.id) ?? 0;
-                const isPulsing = pulseId === item.id;
-                const isHotelDish = isHotelMenuItem(item);
-                const subtitleParts = [
-                  item.product?.category ? formatCategoryLabel(item.product.category) : null,
-                  item.product?.brand,
-                ].filter(Boolean) as string[];
-                const subtitle = subtitleParts.join(" · ");
-                const hasPrice = item.selling_price !== null;
-                const outOfStock = isOutOfStock(item);
-                const canAdd =
-                  (hasPrice || priceEditEnabled) && !outOfStock;
-                const stockCap = maxCartQty(item);
-                const effectiveCap =
-                  stockCap === null ? null : Math.max(0, stockCap - heldQty);
-                const atStockCap =
-                  effectiveCap !== null && inCartQty >= effectiveCap;
-                const availableQty = availableToSell(item, inCartQty + heldQty);
-                const stockIsLow =
-                  !outOfStock &&
-                  (item.is_low_stock ||
-                    (availableQty !== null &&
-                      item.low_stock_threshold != null &&
-                      availableQty <= item.low_stock_threshold));
-                return (
-                  <motion.li
-                    key={item.id}
-                    variants={reduce ? undefined : staggerItem}
-                    animate={
-                      isPulsing && !reduce
-                        ? { scale: [1, 1.025, 1] }
-                        : { scale: 1 }
-                    }
-                    transition={{
-                      duration: motionDuration.base,
-                      ease: easeOutExpressive,
-                    }}
-                    className={`pos-card${inCartQty > 0 ? " is-in-cart" : ""}${!canAdd ? " is-disabled" : ""}`}
-                  >
-                    <div className="pos-card__hit">
-                      <button
-                        type="button"
-                        className="pos-card__main"
-                        onClick={() => (isHotelDish ? setModifyingItem({ item }) : addToCart(item))}
-                        aria-label={`Add ${quickAddQty > 1 ? `${quickAddQty} of ` : ""}${item.product?.name ?? "item"} to order`}
-                        disabled={!canAdd}
-                      >
-                        <div className="pos-card__thumb" aria-hidden="true">
-                          {coverUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={resolveAssetUrl(coverUrl)}
-                              alt=""
-                              loading="lazy"
-                            />
-                          ) : (
-                            <span className="pos-card__thumb-fallback">
-                              {isHotelDish ? (
-                                <i className="fa-solid fa-utensils" aria-hidden="true" />
-                              ) : (
-                                nameInitial(item.product?.name)
-                              )}
-                            </span>
-                          )}
-                          {inCartQty > 0 ? (
-                            <span className="pos-card__in-cart-badge">
-                              <i className="fa-solid fa-check" aria-hidden="true" /> {inCartQty}
-                            </span>
-                          ) : null}
-                        </div>
-
-                        <div className="pos-card__info">
-                          {isHotelDish ? (
-                            <span className="pos-card__dish-tag">
-                              <i className="fa-solid fa-bowl-food" aria-hidden="true" /> Dish
-                            </span>
-                          ) : null}
-                          <span className="pos-card__name">
-                            {item.product?.name ?? `Item #${item.product_id}`}
-                          </span>
-                          {subtitle ? (
-                            <span className="pos-card__subtitle">
-                              {subtitle}
-                            </span>
-                          ) : null}
-                          <span className="pos-card__price">
-                            {outOfStock ? (
-                              <span className="pos-card__price-unset">
-                                Out of stock
-                              </span>
-                            ) : hasPrice && item.selling_price !== null ? (
-                              <>
-                                <span className="pos-card__price-amount">
-                                  {formatMoney(item.selling_price)}
-                                </span>
-                                {item.product?.unit ? (
-                                  <span className="pos-card__price-unit">
-                                    /{item.product.unit}
-                                  </span>
-                                ) : null}
-                              </>
-                            ) : (
-                              <span className="pos-card__price-unset">
-                                No price set
-                              </span>
-                            )}
-                          </span>
-                          {isServiceItem(item) ? (
-                            <span className="pos-card__stock">Service</span>
-                          ) : isHotelDish && item.stock_quantity == null ? (
-                            <span className="pos-card__stock is-fresh">
-                              <i className="fa-solid fa-kitchen-set" aria-hidden="true" /> Made to order
-                            </span>
-                          ) : outOfStock ? (
-                            <span className="pos-card__stock is-out">
-                              {item.stock_quantity == null
-                                ? "Stock not set"
-                                : `${item.stock_quantity} on hand`}
-                            </span>
-                          ) : availableQty !== null ? (
-                            <span
-                              className={`pos-card__stock${stockIsLow ? " is-low" : ""}`}
-                            >
-                              {`${availableQty} available`}
-                              {inCartQty > 0 ? ` · ${inCartQty} in order` : ""}
-                            </span>
-                          ) : null}
-                        </div>
-                      </button>
-
-                      <div className="pos-card__action">
-                        {inCartQty > 0 ? (
-                          <div
-                            className="pos-card__qty"
-                            role="group"
-                            aria-label={`Quantity of ${item.product?.name ?? "item"} in order`}
-                          >
-                            <button
-                              type="button"
-                              aria-label="Decrease quantity"
-                              onClick={() =>
-                                changeQuantity(item.id, -1)
-                              }
-                            >
-                              <i
-                                className="fa-solid fa-minus"
-                                aria-hidden="true"
-                              />
-                            </button>
-                            <input
-                              type="number"
-                              min={0}
-                              max={effectiveCap ?? undefined}
-                              value={inCartQty}
-                              onChange={(e) =>
-                                setQuantity(item.id, e.target.value)
-                              }
-                              aria-label={`Quantity of ${item.product?.name ?? "item"}`}
-                            />
-                            <button
-                              type="button"
-                              aria-label="Increase quantity"
-                              disabled={atStockCap}
-                              onClick={() =>
-                                isHotelDish
-                                  ? setModifyingItem({ item })
-                                  : changeQuantity(item.id, 1)
-                              }
-                            >
-                              <i
-                                className="fa-solid fa-plus"
-                                aria-hidden="true"
-                              />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            className="pos-card__add"
-                            onClick={() => (isHotelDish ? setModifyingItem({ item }) : addToCart(item))}
-                            disabled={!canAdd}
-                            aria-label={`Add ${quickAddQty > 1 ? `${quickAddQty} of ` : ""}${item.product?.name ?? "item"} to order`}
-                          >
-                            <i className={isHotelDish ? "fa-solid fa-sliders" : "fa-solid fa-plus"} aria-hidden="true" />
-                            <span className="pos-card__add-label">{isHotelDish ? "Options" : "Add"}</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </motion.li>
-                );
-              })}
-            </motion.ul>
-          )}
-          </AnimatePresence>
-        </div>
-
-        <section
-          className={`pos-ticket${cart.length ? " has-lines" : ""}`}
-          aria-label="Order items"
-        >
-          {cart.length > 0 ? (
-            <div className="pos-cart__lines pos-ticket__lines">
-              <ul>
-                <AnimatePresence initial={false}>
-                  {cart.map((line) => {
-                    const lineKey = line.lineId || line.inventoryItemId;
-                    const lineTotal = line.unit_price * line.quantity;
-                    const stockItem = itemsById.get(line.inventoryItemId);
-                    const isHotelDish = stockItem ? isHotelMenuItem(stockItem) : false;
-                    const stockCap = stockItem ? maxCartQty(stockItem) : null;
-                    const heldQty = heldQtyByItemId.get(line.inventoryItemId) ?? 0;
+            <AnimatePresence mode="wait">
+              {catalogPending ? (
+                <CatalogSkeleton key="pos-catalog-skeleton" />
+              ) : filteredItems.length === 0 ? (
+                <motion.div
+                  key="pos-catalog-empty"
+                  className="pos-empty"
+                  initial={reduce ? false : { opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={reduce ? undefined : { opacity: 0, y: -6 }}
+                  transition={{
+                    duration: motionDuration.micro,
+                    ease: easeOutExpressive,
+                  }}
+                >
+                  <i className="fa-solid fa-boxes-stacked" aria-hidden="true" />
+                  <h3>
+                    {items.length === 0 && !search.trim()
+                      ? "Inventory is empty"
+                      : "No items match your filters"}
+                  </h3>
+                  <p>
+                    {items.length === 0 && !search.trim()
+                      ? "Add products in Inventory and they'll appear here for one-tap selling."
+                      : "Try a different search."}
+                  </p>
+                </motion.div>
+              ) : (
+                <motion.ul
+                  key={`pos-catalog-${loadedQuery}`}
+                  className="pos-cards"
+                  variants={reduce ? undefined : staggerContainer}
+                  initial={reduce ? false : "hidden"}
+                  animate={reduce ? undefined : "visible"}
+                  exit={reduce ? undefined : { opacity: 0 }}
+                  transition={{ duration: motionDuration.micro }}
+                >
+                  {filteredItems.map((item) => {
+                    const coverUrl =
+                      inventoryCoverUrl(item) || item.product?.image_url || null;
+                    const itemCartLines = cart.filter(
+                      (line) => line.inventoryItemId === item.id,
+                    );
+                    const inCartQty = itemCartLines.reduce(
+                      (sum, line) => sum + line.quantity,
+                      0,
+                    );
+                    const inCartStockQty = itemCartLines.reduce(
+                      (sum, line) => sum + stockUnitsForCartLine(line),
+                      0,
+                    );
+                    const cartUnitFactor = Math.max(
+                      1,
+                      itemCartLines[0]?.unitFactor ?? 1,
+                    );
+                    const heldQty = heldQtyByItemId.get(item.id) ?? 0;
+                    const isPulsing = pulseId === item.id;
+                    const isHotelDish = isHotelMenuItem(item);
+                    const subtitleParts = [
+                      item.product?.category ? formatCategoryLabel(item.product.category) : null,
+                      item.product?.brand,
+                    ].filter(Boolean) as string[];
+                    const subtitle = subtitleParts.join(" · ");
+                    const hasPrice = item.selling_price !== null;
+                    const outOfStock = isOutOfStock(item);
+                    const canAdd =
+                      (hasPrice || canEditPrice) && !outOfStock;
+                    const stockCap = maxCartQty(item);
                     const effectiveCap =
                       stockCap === null ? null : Math.max(0, stockCap - heldQty);
+                    const effectiveLineCap =
+                      effectiveCap === null
+                        ? null
+                        : Math.floor(effectiveCap / cartUnitFactor);
                     const atStockCap =
-                      effectiveCap !== null && line.quantity >= effectiveCap;
-                    const showLinePriceEdit =
-                      priceEditEnabled && !isTransChapSale;
+                      effectiveCap !== null && inCartStockQty >= effectiveCap;
+                    const availableQty = availableToSell(
+                      item,
+                      inCartStockQty + heldQty,
+                    );
+                    const stockIsLow =
+                      !outOfStock &&
+                      (item.is_low_stock ||
+                        (availableQty !== null &&
+                          item.low_stock_threshold != null &&
+                          availableQty <= item.low_stock_threshold));
                     return (
                       <motion.li
-                        key={lineKey}
-                        layout={!reduce}
-                        initial={
-                          reduce ? false : { opacity: 0, y: 6, scale: 0.98 }
-                        }
+                        key={item.id}
+                        variants={reduce ? undefined : staggerItem}
                         animate={
-                          reduce
-                            ? undefined
-                            : { opacity: 1, y: 0, scale: 1 }
+                          isPulsing && !reduce
+                            ? { scale: [1, 1.025, 1] }
+                            : { scale: 1 }
                         }
-                        exit={
-                          reduce
-                            ? undefined
-                            : { opacity: 0, scale: 0.96, x: 8 }
-                        }
-                        transition={springSoft}
-                        className={`pos-line${
-                          showLinePriceEdit ? " pos-line--priced" : ""
-                        }${isTransChapSale ? " pos-line--simple" : ""}`}
+                        transition={{
+                          duration: motionDuration.base,
+                          ease: easeOutExpressive,
+                        }}
+                        className={`pos-card${inCartQty > 0 ? " is-in-cart" : ""}${!canAdd ? " is-disabled" : ""}`}
                       >
-                        {!isTransChapSale ? (
-                          <div className="pos-line__thumb" aria-hidden="true">
-                            {line.image_url ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={resolveAssetUrl(line.image_url)}
-                                alt=""
-                              />
+                        <div className="pos-card__hit">
+                          <button
+                            type="button"
+                            className="pos-card__main"
+                            onClick={() => (isHotelDish ? setModifyingItem({ item }) : addToCart(item))}
+                            aria-label={`Add ${quickAddQty > 1 ? `${quickAddQty} of ` : ""}${item.product?.name ?? "item"} to order`}
+                            disabled={!canAdd}
+                          >
+                            <div className="pos-card__thumb" aria-hidden="true">
+                              {coverUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={resolveAssetUrl(coverUrl)}
+                                  alt=""
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <span className="pos-card__thumb-fallback">
+                                  {isHotelDish ? (
+                                    <i className="fa-solid fa-utensils" aria-hidden="true" />
+                                  ) : (
+                                    nameInitial(item.product?.name)
+                                  )}
+                                </span>
+                              )}
+                              {inCartQty > 0 ? (
+                                <span className="pos-card__in-cart-badge">
+                                  <i className="fa-solid fa-check" aria-hidden="true" /> {inCartQty}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div className="pos-card__info">
+                              {isHotelDish ? (
+                                <span className="pos-card__dish-tag">
+                                  <i className="fa-solid fa-bowl-food" aria-hidden="true" /> Dish
+                                </span>
+                              ) : null}
+                              <span className="pos-card__name">
+                                {item.product?.name ?? `Item #${item.product_id}`}
+                              </span>
+                              {subtitle ? (
+                                <span className="pos-card__subtitle">
+                                  {subtitle}
+                                </span>
+                              ) : null}
+                              <span className="pos-card__price">
+                                {outOfStock ? (
+                                  <span className="pos-card__price-unset">
+                                    Out of stock
+                                  </span>
+                                ) : hasPrice && item.selling_price !== null ? (
+                                  <>
+                                    <span className="pos-card__price-amount">
+                                      {formatMoney(item.selling_price)}
+                                    </span>
+                                    {item.product?.unit ? (
+                                      <span className="pos-card__price-unit">
+                                        /{item.product.unit}
+                                      </span>
+                                    ) : null}
+                                  </>
+                                ) : (
+                                  <span className="pos-card__price-unset">
+                                    No price set
+                                  </span>
+                                )}
+                              </span>
+                              {isServiceItem(item) ? (
+                                <span className="pos-card__stock">Service</span>
+                              ) : isHotelDish && item.stock_quantity == null ? (
+                                <span className="pos-card__stock is-fresh">
+                                  <i className="fa-solid fa-kitchen-set" aria-hidden="true" /> Made to order
+                                </span>
+                              ) : outOfStock ? (
+                                <span className="pos-card__stock is-out">
+                                  {item.stock_quantity == null
+                                    ? "Stock not set"
+                                    : `${item.stock_quantity} on hand`}
+                                </span>
+                              ) : availableQty !== null ? (
+                                <span
+                                  className={`pos-card__stock${stockIsLow ? " is-low" : ""}`}
+                                >
+                                  {`${availableQty} available`}
+                                  {inCartQty > 0
+                                    ? ` · ${inCartStockQty} in order`
+                                    : ""}
+                                </span>
+                              ) : null}
+                            </div>
+                          </button>
+
+                          <div className="pos-card__action">
+                            {inCartQty > 0 ? (
+                              <div
+                                className="pos-card__qty"
+                                role="group"
+                                aria-label={`Quantity of ${item.product?.name ?? "item"} in order`}
+                              >
+                                <button
+                                  type="button"
+                                  aria-label="Decrease quantity"
+                                  onClick={() =>
+                                    changeQuantity(item.id, -1)
+                                  }
+                                >
+                                  <i
+                                    className="fa-solid fa-minus"
+                                    aria-hidden="true"
+                                  />
+                                </button>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={effectiveLineCap ?? undefined}
+                                  value={inCartQty}
+                                  onChange={(e) =>
+                                    setQuantity(item.id, e.target.value)
+                                  }
+                                  aria-label={`Quantity of ${item.product?.name ?? "item"}`}
+                                />
+                                <button
+                                  type="button"
+                                  aria-label="Increase quantity"
+                                  disabled={atStockCap}
+                                  onClick={() =>
+                                    isHotelDish
+                                      ? setModifyingItem({ item })
+                                      : changeQuantity(item.id, 1)
+                                  }
+                                >
+                                  <i
+                                    className="fa-solid fa-plus"
+                                    aria-hidden="true"
+                                  />
+                                </button>
+                              </div>
                             ) : (
-                              <span>{nameInitial(line.name)}</span>
+                              <button
+                                type="button"
+                                className="pos-card__add"
+                                onClick={() => (isHotelDish ? setModifyingItem({ item }) : addToCart(item))}
+                                disabled={!canAdd}
+                                aria-label={`Add ${quickAddQty > 1 ? `${quickAddQty} of ` : ""}${item.product?.name ?? "item"} to order`}
+                              >
+                                <i className={isHotelDish ? "fa-solid fa-sliders" : "fa-solid fa-plus"} aria-hidden="true" />
+                                <span className="pos-card__add-label">{isHotelDish ? "Options" : "Add"}</span>
+                              </button>
                             )}
                           </div>
-                        ) : null}
-                        <div className="pos-line__main">
-                          <strong title={line.name}>{line.name}</strong>
-                          {line.modifiers && line.modifiers.length > 0 ? (
-                            <div className="pos-cart__line-mods">
-                              {line.modifiers.map((m, mIdx) => (
-                                <span key={mIdx} className="pos-cart__mod-chip">
-                                  + {m.name} {m.price > 0 ? `(+${formatMoney(m.price)})` : ""}
-                                </span>
-                              ))}
-                            </div>
-                          ) : null}
-                          {line.notes ? (
-                            <div className="pos-cart__mod-note">Note: {line.notes}</div>
-                          ) : null}
-                          {isHotelDish || (stockItem && isHotelMenuItem(stockItem)) ? (
-                            <button
-                              type="button"
-                              className="pos-cart__customize-btn"
-                              onClick={() => {
-                                if (stockItem) {
-                                  setModifyingItem({
-                                    item: stockItem,
-                                    cartLineId: lineKey,
-                                    initialModifiers: line.modifiers,
-                                    initialNotes: line.notes,
-                                  });
-                                }
-                              }}
-                            >
-                              <i className="fa-solid fa-sliders" aria-hidden="true" />
-                              {line.modifiers && line.modifiers.length > 0 ? "Edit add-ons" : "+ Add-ons"}
-                            </button>
-                          ) : null}
-                          {!showLinePriceEdit && !isTransChapSale ? (
-                            <span>{formatMoney(line.unit_price)} ea</span>
-                          ) : null}
-                          {stockItem &&
-                          !isServiceItem(stockItem) &&
-                          !isTransChapSale ? (
-                            <span className="pos-line__stock">
-                              {stockItem.stock_quantity == null
-                                ? "Stock not set"
-                                : effectiveCap !== null
-                                  ? `${Math.max(0, effectiveCap - line.quantity)} of ${effectiveCap} left`
-                                  : null}
-                            </span>
-                          ) : null}
-                        </div>
-                        {showLinePriceEdit ? (
-                          <label className="pos-line__price-edit">
-                            <span className="pos-line__price-label">Price</span>
-                            <input
-                              type="number"
-                              min={0}
-                              step="0.01"
-                              value={line.unit_price}
-                              onChange={(e) =>
-                                setUnitPrice(
-                                  lineKey,
-                                  e.target.value,
-                                )
-                              }
-                              aria-label={`Unit price for ${line.name}`}
-                            />
-                          </label>
-                        ) : null}
-                        <div className="pos-line__qty">
-                          <button
-                            type="button"
-                            aria-label="Decrease quantity"
-                            onClick={() =>
-                              changeQuantity(lineKey, -1)
-                            }
-                          >
-                            <i
-                              className="fa-solid fa-minus"
-                              aria-hidden="true"
-                            />
-                          </button>
-                          <input
-                            type="number"
-                            min={0}
-                            max={effectiveCap ?? undefined}
-                            value={line.quantity}
-                            onChange={(e) =>
-                              setQuantity(
-                                lineKey,
-                                e.target.value,
-                              )
-                            }
-                            aria-label={`Quantity of ${line.name}`}
-                          />
-                          <button
-                            type="button"
-                            aria-label="Increase quantity"
-                            disabled={atStockCap}
-                            onClick={() =>
-                              changeQuantity(lineKey, 1)
-                            }
-                          >
-                            <i
-                              className="fa-solid fa-plus"
-                              aria-hidden="true"
-                            />
-                          </button>
-                        </div>
-                        <div className="pos-line__total">
-                          <strong>{formatMoney(lineTotal)}</strong>
-                          <button
-                            type="button"
-                            className="pos-line__remove"
-                            aria-label={`Remove ${line.name}`}
-                            onClick={() =>
-                              removeLine(lineKey)
-                            }
-                          >
-                            <i
-                              className="fa-solid fa-trash"
-                              aria-hidden="true"
-                            />
-                          </button>
                         </div>
                       </motion.li>
                     );
                   })}
-                </AnimatePresence>
-              </ul>
-            </div>
-          ) : (
-            <div className="pos-ticket__empty">
-              <div className="pos-ticket__empty-icon">
-                <i className="fa-solid fa-receipt" aria-hidden="true" />
+                </motion.ul>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <section
+            className={`pos-ticket${cart.length ? " has-lines" : ""}`}
+            aria-label="Order items"
+          >
+            {cart.length > 0 ? (
+              <div className="pos-cart__lines pos-ticket__lines">
+                <ul>
+                  <AnimatePresence initial={false}>
+                    {cart.map((line) => {
+                      const lineKey = line.lineId || line.inventoryItemId;
+                      const lineTotal = line.unit_price * line.quantity;
+                      const stockItem = itemsById.get(line.inventoryItemId);
+                      const isHotelDish = stockItem ? isHotelMenuItem(stockItem) : false;
+                      const stockCap = stockItem ? maxCartQty(stockItem) : null;
+                      const heldQty = heldQtyByItemId.get(line.inventoryItemId) ?? 0;
+                      const effectiveCap =
+                        stockCap === null ? null : Math.max(0, stockCap - heldQty);
+                      const effectiveLineCap =
+                        effectiveCap === null
+                          ? null
+                          : Math.floor(
+                              effectiveCap / Math.max(1, line.unitFactor ?? 1),
+                            );
+                      const atStockCap =
+                        effectiveLineCap !== null &&
+                        line.quantity >= effectiveLineCap;
+                      const showLinePriceEdit =
+                        canEditPrice && !isTransChapSale;
+                      return (
+                        <motion.li
+                          key={lineKey}
+                          layout={!reduce}
+                          initial={
+                            reduce ? false : { opacity: 0, y: 6, scale: 0.98 }
+                          }
+                          animate={
+                            reduce
+                              ? undefined
+                              : { opacity: 1, y: 0, scale: 1 }
+                          }
+                          exit={
+                            reduce
+                              ? undefined
+                              : { opacity: 0, scale: 0.96, x: 8 }
+                          }
+                          transition={springSoft}
+                          className={`pos-line${showLinePriceEdit ? " pos-line--priced" : ""
+                            }${isTransChapSale ? " pos-line--simple" : ""}`}
+                        >
+                          {!isTransChapSale ? (
+                            <div className="pos-line__thumb" aria-hidden="true">
+                              {line.image_url ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={resolveAssetUrl(line.image_url)}
+                                  alt=""
+                                />
+                              ) : (
+                                <span>{nameInitial(line.name)}</span>
+                              )}
+                            </div>
+                          ) : null}
+                          <div className="pos-line__main">
+                            <div className="pos-line__title-row">
+                              <strong title={line.name}>{line.name}</strong>
+                              {isTransChapSale &&
+                              line.sellUnit === "Bulk" &&
+                              line.bulkFactor &&
+                              line.bulkFactor > 1 ? (
+                                <input
+                                  type="number"
+                                  min={2}
+                                  max={1_000_000}
+                                  step={1}
+                                  className="pos-line__bulk-factor"
+                                  value={line.bulkFactor}
+                                  onChange={(event) =>
+                                    updateLineBulkFactor(lineKey, event.target.value)
+                                  }
+                                  aria-label={`Units per bulk for ${line.name}`}
+                                  title="Units per bulk"
+                                />
+                              ) : null}
+                            </div>
+                            {line.modifiers && line.modifiers.length > 0 ? (
+                              <div className="pos-cart__line-mods">
+                                {line.modifiers.map((m, mIdx) => (
+                                  <span key={mIdx} className="pos-cart__mod-chip">
+                                    + {m.name} {m.price > 0 ? `(+${formatMoney(m.price)})` : ""}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                            {line.notes ? (
+                              <div className="pos-cart__mod-note">Note: {line.notes}</div>
+                            ) : null}
+                            {isHotelDish || (stockItem && isHotelMenuItem(stockItem)) ? (
+                              <button
+                                type="button"
+                                className="pos-cart__customize-btn"
+                                onClick={() => {
+                                  if (stockItem) {
+                                    setModifyingItem({
+                                      item: stockItem,
+                                      cartLineId: lineKey,
+                                      initialModifiers: line.modifiers,
+                                      initialNotes: line.notes,
+                                    });
+                                  }
+                                }}
+                              >
+                                <i className="fa-solid fa-sliders" aria-hidden="true" />
+                                {line.modifiers && line.modifiers.length > 0 ? "Edit add-ons" : "+ Add-ons"}
+                              </button>
+                            ) : null}
+                            {!showLinePriceEdit && !isTransChapSale ? (
+                              <span>{formatMoney(line.unit_price)} ea</span>
+                            ) : null}
+                            {stockItem &&
+                              !isServiceItem(stockItem) &&
+                              !isTransChapSale ? (
+                              <span className="pos-line__stock">
+                                {stockItem.stock_quantity == null
+                                  ? "Stock not set"
+                                  : effectiveCap !== null
+                                    ? `${Math.max(0, effectiveCap - line.quantity)} of ${effectiveCap} left`
+                                    : null}
+                              </span>
+                            ) : null}
+                          </div>
+                          {showLinePriceEdit ? (
+                            <label className="pos-line__price-edit">
+                              <span className="pos-line__price-label">Price</span>
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={line.unit_price}
+                                onChange={(e) =>
+                                  setUnitPrice(
+                                    lineKey,
+                                    e.target.value,
+                                  )
+                                }
+                                aria-label={`Unit price for ${line.name}`}
+                              />
+                            </label>
+                          ) : null}
+                          <div className="pos-line__qty-wrap">
+                            {line.autoPackFactor ? (
+                              <div className="pos-line__unit-toggle">
+                                <button
+                                  type="button"
+                                  className={!line.sellUnit || line.unitFactor === 1 ? "is-active" : ""}
+                                  onClick={() => updateLineUnit(lineKey, null, 1)}
+                                >
+                                  Single
+                                </button>
+                                <button
+                                  type="button"
+                                  className={line.sellUnit === "Bulk" || line.unitFactor === line.autoPackFactor ? "is-active" : ""}
+                                  onClick={() =>
+                                    updateLineUnit(
+                                      lineKey,
+                                      "Bulk",
+                                      line.bulkFactor ?? line.autoPackFactor!,
+                                    )
+                                  }
+                                  title={`Units per bulk: ${line.bulkFactor ?? line.autoPackFactor}`}
+                                >
+                                  Bulk
+                                </button>
+                              </div>
+                            ) : null}
+                            <div className="pos-line__qty">
+                              <button
+                                type="button"
+                                aria-label="Decrease quantity"
+                                onClick={() =>
+                                  changeQuantity(lineKey, -1)
+                                }
+                              >
+                                <i
+                                  className="fa-solid fa-minus"
+                                  aria-hidden="true"
+                                />
+                              </button>
+                              <input
+                                type="number"
+                                min={0}
+                                max={effectiveLineCap ?? undefined}
+                                value={line.quantity}
+                                onChange={(e) =>
+                                  setQuantity(
+                                    lineKey,
+                                    e.target.value,
+                                  )
+                                }
+                                aria-label={`Quantity of ${line.name}`}
+                              />
+                              <button
+                                type="button"
+                                aria-label="Increase quantity"
+                                disabled={atStockCap}
+                                onClick={() =>
+                                  changeQuantity(lineKey, 1)
+                                }
+                              >
+                                <i
+                                  className="fa-solid fa-plus"
+                                  aria-hidden="true"
+                                />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="pos-line__total">
+                            {isTransChapSale &&
+                            line.sellUnit === "Bulk" &&
+                            line.bulkFactor &&
+                            line.bulkFactor > 1 ? (
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                className="pos-line__bulk-price"
+                                value={line.unit_price}
+                                onChange={(event) =>
+                                  updateLineBulkPrice(lineKey, event.target.value)
+                                }
+                                aria-label={`Bulk price for ${line.name}`}
+                                title="Bulk price"
+                              />
+                            ) : null}
+                            {!isTransChapSale &&
+                            line.sellUnit === "Bulk" &&
+                            line.bulkFactor &&
+                            line.bulkFactor > 1 ? (
+                              <input
+                                type="number"
+                                min={2}
+                                max={1_000_000}
+                                step={1}
+                                className="pos-line__bulk-factor"
+                                value={line.bulkFactor}
+                                onChange={(event) =>
+                                  updateLineBulkFactor(lineKey, event.target.value)
+                                }
+                                aria-label={`Units per bulk for ${line.name}`}
+                                title="Units per bulk"
+                              />
+                            ) : null}
+                            <strong>{formatMoney(lineTotal)}</strong>
+                            <button
+                              type="button"
+                              className="pos-line__remove"
+                              aria-label={`Remove ${line.name}`}
+                              onClick={() =>
+                                removeLine(lineKey)
+                              }
+                            >
+                              <i
+                                className="fa-solid fa-trash"
+                                aria-hidden="true"
+                              />
+                            </button>
+                          </div>
+                        </motion.li>
+                      );
+                    })}
+                  </AnimatePresence>
+                </ul>
               </div>
-              <h3>No items in order</h3>
-              <p>Tap products from the catalog to add them to this order.</p>
-              <button
-                type="button"
-                className="pos-ticket__empty-btn"
-                onClick={() => {
-                  setMobileScreen("catalog");
-                  window.scrollTo({ top: 0, behavior: "smooth" });
-                }}
-              >
-                <i className="fa-solid fa-arrow-left" aria-hidden="true" />
-                <span>Select products</span>
-              </button>
-            </div>
-          )}
-        </section>
+            ) : (
+              <div className="pos-ticket__empty">
+                <div className="pos-ticket__empty-icon">
+                  <i className="fa-solid fa-receipt" aria-hidden="true" />
+                </div>
+                <h3>No items in order</h3>
+                <p>Tap products from the catalog to add them to this order.</p>
+                <button
+                  type="button"
+                  className="pos-ticket__empty-btn"
+                  onClick={() => {
+                    setMobileScreen("catalog");
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                >
+                  <i className="fa-solid fa-arrow-left" aria-hidden="true" />
+                  <span>Select products</span>
+                </button>
+              </div>
+            )}
+          </section>
         </div>
 
         {/* ── Cart (right) — order meta only ─────────────────────── */}
@@ -2268,8 +2436,8 @@ export function PosWorkspace({
                   const sessionTotal = Math.max(
                     0,
                     cartSubtotal(session.cart) +
-                      (Number(session.deliveryFee) || 0) -
-                      (Number(session.discount) || 0),
+                    (Number(session.deliveryFee) || 0) -
+                    (Number(session.discount) || 0),
                   );
                   return (
                     <li key={session.id} className="pos-held__item">

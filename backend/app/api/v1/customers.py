@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date
+import re
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import NoReturn
 
@@ -37,6 +38,7 @@ from app.support.merchant_permissions import (
     assert_merchant_section_any_access,
 )
 from app.support.mpesa_merchant_copy import merchant_safe_stk_error
+from app.support.mpesa_order_link import normalize_mpesa_receipt
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 
@@ -71,6 +73,11 @@ class CustomerUpdateRequest(BaseModel):
 
 class CreditCollectRequest(BaseModel):
     amount: float = Field(gt=0, le=99_999_999.99)
+
+
+class ManualCreditCollectRequest(BaseModel):
+    amount: Decimal | None = Field(default=None, gt=0, le=99_999_999.99, decimal_places=2)
+    mpesa_code: str | None = Field(default=None, max_length=50)
 
 
 class CustomerOut(BaseModel):
@@ -161,6 +168,18 @@ def list_customers(
             ),
         )
     return payload
+
+
+@router.get("/credit-settings")
+def get_customer_credit_settings(
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    user = require_user(db, session)
+    assert_merchant_section_any_access(user, *TILL_CUSTOMER_SECTIONS)
+    account_id = require_merchant_account_id(user)
+    account = db.get(Account, account_id)
+    return {"force_mpesa_prompt": account.force_mpesa_prompt if account else True}
 
 
 @router.post("/verify-whatsapp")
@@ -444,6 +463,123 @@ def collect_customer_credit(
     }
 
 
+@router.post("/{customer_id}/manual-collect")
+def manually_collect_customer_credit(
+    customer_id: str,
+    payload: ManualCreditCollectRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    validate_csrf(request, session)
+    user = require_user(db, session)
+    assert_merchant_section_any_access(user, *TILL_CUSTOMER_SECTIONS)
+    account_id = require_merchant_account_id(user)
+    account = db.get(Account, account_id)
+    if account is None or account.force_mpesa_prompt is not False:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Manual credit payments are available only when enforce STK push is disabled.",
+        )
+
+    customer = (
+        db.query(ShopCustomer)
+        .filter(
+            ShopCustomer.id == customer_id,
+            ShopCustomer.account_id == account_id,
+        )
+        .with_for_update()
+        .first()
+    )
+    if customer is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Customer not found.")
+
+    outstanding = Decimal(str(customer.outstanding_balance or 0)).quantize(Decimal("0.01"))
+    if outstanding <= 0:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="This customer does not owe anything.",
+        )
+    amount = (
+        payload.amount.quantize(Decimal("0.01"))
+        if payload.amount is not None
+        else outstanding
+    )
+    if amount > outstanding:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="That is more than this customer owes.",
+        )
+
+    receipt_code = normalize_mpesa_receipt(payload.mpesa_code)
+    if receipt_code and not re.fullmatch(r"[A-Z0-9]{6,20}", receipt_code):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Enter a valid M-PESA transaction code (6–20 letters/numbers).",
+        )
+    if receipt_code:
+        duplicate = (
+            db.query(MpesaTransaction)
+            .filter(
+                MpesaTransaction.status == "success",
+                MpesaTransaction.mpesa_receipt_number == receipt_code,
+            )
+            .first()
+        )
+        if duplicate:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="That M-PESA code is already recorded on another successful payment.",
+            )
+
+    try:
+        applied = CustomerService(db).collect_credit(customer, amount)
+    except CustomerServiceError as exc:
+        _raise_service_error(exc)
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    collected_amount = int(round(float(applied)))
+    txn = MpesaTransaction(
+        initiated_by_user_id=user.id,
+        phone_number=customer.phone,
+        amount=collected_amount,
+        account_reference=f"TAB{customer.id[:8]}",
+        transaction_desc=f"Manual tab payment {customer.name}"[:200],
+        status="success",
+        result_code=0,
+        result_desc=(
+            f"Manually recorded credit payment of KES {applied}"
+            + (f" with receipt {receipt_code}." if receipt_code else " (no M-PESA code).")
+        )[:500],
+        mpesa_receipt_number=receipt_code or None,
+        completed_at=now,
+        callback_payload={
+            "manual_credit_collection": True,
+            "payment_amount": str(applied),
+        },
+        account_id=account_id,
+        shop_customer_id=customer.id,
+        credit_collect_amount=collected_amount,
+        credit_collected_at=now,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(txn)
+    db.commit()
+    db.refresh(txn)
+    return {
+        "message": "Credit payment recorded.",
+        "data": _customer_out(customer),
+        "collection": {
+            "id": txn.id,
+            "status": txn.status,
+            "amount": float(applied),
+            "receipt_code": receipt_code or None,
+            "collected": True,
+        },
+    }
+
+
 @router.get("/{customer_id}/collections/{transaction_id}")
 def get_credit_collection(
     customer_id: str,
@@ -540,4 +676,3 @@ def send_customer_whatsapp_reminder(
         "message_id": result.message_id,
         "pay_bill_url": pay_bill_url,
     }
-

@@ -67,6 +67,7 @@ class OpeningInvestmentUpdate(BaseModel):
 
 class OperationsSettingsUpdate(BaseModel):
     allow_item_quantity_adjustment: bool | None = None
+    allow_price_adjustment: bool | None = None
     adjust_selling_price_on_purchase: bool | None = None
     force_mpesa_prompt: bool | None = None
 
@@ -228,6 +229,9 @@ def show_settings(
         "allow_item_quantity_adjustment": (
             account.allow_item_quantity_adjustment if account else True
         ),
+        "allow_price_adjustment": (
+            account.allow_price_adjustment if account else False
+        ),
         "adjust_selling_price_on_purchase": (
             account.adjust_selling_price_on_purchase if account else True
         ),
@@ -275,6 +279,7 @@ def update_operations_settings(
     services.db.refresh(account)
     return {
         "allow_item_quantity_adjustment": account.allow_item_quantity_adjustment,
+        "allow_price_adjustment": account.allow_price_adjustment,
         "adjust_selling_price_on_purchase": account.adjust_selling_price_on_purchase,
         "force_mpesa_prompt": account.force_mpesa_prompt,
     }

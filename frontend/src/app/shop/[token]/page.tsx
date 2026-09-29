@@ -297,7 +297,7 @@ export default function StorefrontPage() {
               <header className="sf-cart__head">
                 <strong>
                   <i className="fa-solid fa-basket-shopping" aria-hidden="true" />{" "}
-                  Your order
+                  Selected products
                 </strong>
                 <span>
                   {itemCount} item{itemCount === 1 ? "" : "s"}

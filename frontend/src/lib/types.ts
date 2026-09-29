@@ -592,6 +592,7 @@ export type SettingsResponse = {
   can_set_opening_investment: boolean;
   suggested_opening_stock: string;
   allow_item_quantity_adjustment?: boolean;
+  allow_price_adjustment?: boolean;
   adjust_selling_price_on_purchase?: boolean;
   force_mpesa_prompt?: boolean;
   inventory_integration?: InventoryIntegrationConfig | null;
@@ -599,6 +600,7 @@ export type SettingsResponse = {
 
 export type SettingsOperationsResponse = {
   allow_item_quantity_adjustment: boolean;
+  allow_price_adjustment: boolean;
   adjust_selling_price_on_purchase: boolean;
   force_mpesa_prompt: boolean;
 };
@@ -1069,6 +1071,7 @@ export type MpesaTransaction = {
 
 export type MpesaTransactionsResponse = {
   transactions: MpesaTransaction[];
+  total?: number;
   dev_sample_data?: boolean;
 };
 
@@ -1625,6 +1628,7 @@ export type OrderCreatePayload = {
     quantity: number;
     unit_price?: number | null;
     sell_unit?: string | null;
+    unit_factor?: number | null;
     notes?: string | null;
     modifiers?: OrderItemModifier[] | null;
   }[];
@@ -1818,6 +1822,7 @@ export type CreditCollection = {
   status: string;
   amount: number;
   collected?: boolean;
+  receipt_code?: string | null;
 };
 
 export type CreditCollectResponse = {
@@ -1825,6 +1830,13 @@ export type CreditCollectResponse = {
   data: ShopCustomer;
   collection: CreditCollection;
 };
+
+export type ManualCreditCollectRequest = {
+  amount?: number;
+  mpesa_code?: string;
+};
+
+export type ManualCreditCollectResponse = CreditCollectResponse;
 
 export type CreditCollectionStatusResponse = {
   message: string | null;

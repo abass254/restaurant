@@ -132,6 +132,7 @@ const PATH_SECTION_MAP: Array<{ prefix: string; section: MerchantSection }> = [
   { prefix: "/trans-chap/make-a-sale", section: "pos" },
   { prefix: "/trans-chap/transact", section: "pos" },
   { prefix: "/trans-chap/pos", section: "pos" },
+  { prefix: "/trans-chap/mpesa", section: "pos" },
   { prefix: "/trans-chap/credit", section: "customer" },
   { prefix: "/trans-chap/customers", section: "customer" },
   { prefix: "/trans-chap/suppliers", section: "supplier" },

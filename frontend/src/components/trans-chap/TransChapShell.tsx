@@ -79,6 +79,13 @@ function getNavItems(restaurant: boolean): NavDef[] {
       section: "inventory",
     },
     {
+      href: "/trans-chap/mpesa",
+      label: "M-PESA",
+      title: "M-PESA",
+      icon: "fa-mobile-screen-button",
+      section: "pos",
+    },
+    {
       href: "/trans-chap/settings",
       label: "Settings",
       title: "Settings",
@@ -163,6 +170,9 @@ function headerMeta(
       title: restaurant ? "Supplies" : "Purchases",
       backHref: "/trans-chap",
     };
+  }
+  if (pathname.startsWith("/trans-chap/mpesa")) {
+    return { title: "M-PESA", backHref: "/trans-chap" };
   }
   if (pathname.startsWith("/trans-chap/credit")) {
     return { title: "On tab", backHref: "/trans-chap/customers" };
@@ -488,6 +498,14 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                       >
                         <i className="fa-solid fa-chart-pie" aria-hidden />
                         <span>Reports</span>
+                      </Link>
+                      <Link
+                        href="/trans-chap/mpesa"
+                        className="trans-chap-more-sheet__item"
+                        onClick={() => setMoreOpen(false)}
+                      >
+                        <i className="fa-solid fa-mobile-screen-button" aria-hidden />
+                        <span>M-PESA</span>
                       </Link>
                       <Link
                         href="/trans-chap/settings"
