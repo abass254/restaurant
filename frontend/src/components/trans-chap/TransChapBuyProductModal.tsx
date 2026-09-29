@@ -111,7 +111,7 @@ export function TransChapBuyProductModal({
       >
         <div className="trans-chap-purchase-modal__grid">
           <div className="auth-split__field">
-            <label htmlFor={`${baseId}-name`}>Product Name</label>
+            <label htmlFor={`${baseId}-name`}>Product name</label>
             <div className="trans-chap-input">
               <input
                 id={`${baseId}-name`}
@@ -124,10 +124,13 @@ export function TransChapBuyProductModal({
                 onChange={(event) => patch({ name: event.target.value })}
               />
             </div>
+            <small className="trans-chap-purchase-modal__field-hint">
+              This name will identify the item on the purchase.
+            </small>
           </div>
 
           <div className="auth-split__field">
-            <label htmlFor={`${baseId}-sku`}>SKU / Barcode</label>
+            <label htmlFor={`${baseId}-sku`}>SKU or barcode <span>(optional)</span></label>
             <div className="trans-chap-input">
               <input
                 id={`${baseId}-sku`}
@@ -138,37 +141,46 @@ export function TransChapBuyProductModal({
                 onChange={(event) => patch({ sku: event.target.value })}
               />
             </div>
+            <small className="trans-chap-purchase-modal__field-hint">
+              Add one if you want to find this product by scanning it.
+            </small>
           </div>
 
           <div className="auth-split__field">
-            <label htmlFor={`${baseId}-weight`}>Weight</label>
+            <label htmlFor={`${baseId}-weight`}>Product size <span>(optional)</span></label>
             <div className="trans-chap-input">
               <input
                 id={`${baseId}-weight`}
                 type="text"
                 className="auth-split__input"
-                placeholder="Weight"
+                placeholder="e.g. 400 g or 1 L"
                 value={draft.weight}
                 onChange={(event) => patch({ weight: event.target.value })}
               />
             </div>
+            <small className="trans-chap-purchase-modal__field-hint">
+              Helps distinguish sizes of the same product.
+            </small>
           </div>
 
           <div className="auth-split__field">
-            <label htmlFor={`${baseId}-alert`}>Alert quantity</label>
+            <label htmlFor={`${baseId}-alert`}>Low-stock alert <span>(optional)</span></label>
             <div className="trans-chap-input">
               <input
                 id={`${baseId}-alert`}
                 type="text"
                 inputMode="numeric"
                 className="auth-split__input"
-                placeholder="Alert quantity"
+                placeholder="e.g. 5"
                 value={draft.alertQuantity}
                 onChange={(event) =>
                   patch({ alertQuantity: event.target.value })
                 }
               />
             </div>
+            <small className="trans-chap-purchase-modal__field-hint">
+              Get a reminder when stock reaches this quantity.
+            </small>
           </div>
 
           <div className="trans-chap-purchase-modal__bundle trans-chap-purchase-modal__span">
@@ -188,11 +200,14 @@ export function TransChapBuyProductModal({
 
           {draft.isBundle ? (
             <div className="auth-split__field trans-chap-purchase-modal__span">
-              <label htmlFor={`${baseId}-bundle`}>Units per bundle</label>
+              <label htmlFor={`${baseId}-bundle`}>Single units in one bundle</label>
               <div className="trans-chap-input">
                 <input
                   id={`${baseId}-bundle`}
-                  type="text"
+                  type="number"
+                  min="2"
+                  step="1"
+                  required
                   inputMode="numeric"
                   className="auth-split__input"
                   placeholder="e.g. 24"
@@ -202,6 +217,9 @@ export function TransChapBuyProductModal({
                   }
                 />
               </div>
+              <small className="trans-chap-purchase-modal__field-hint">
+                For example, enter 30 if each crate contains 30 pieces.
+              </small>
             </div>
           ) : null}
 

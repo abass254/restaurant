@@ -2571,7 +2571,9 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
 }
 
 .trans-chap-purchase-modal {
+    width: min(600px, calc(100vw - 2rem));
     max-width: 600px;
+    max-height: min(90dvh, 720px);
 }
 
 .trans-chap-purchase-modal .inventory-modal__head {
@@ -2596,14 +2598,21 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
 .trans-chap-purchase-modal__body {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    padding: 1.15rem 1.35rem 1.3rem;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0;
 }
 
 .trans-chap-purchase-modal__grid {
     display: grid;
     grid-template-columns: 1fr;
     gap: 0.85rem 0.9rem;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 1.15rem 1.35rem 1.25rem;
 }
 
 .trans-chap-purchase-modal__span {
@@ -2614,7 +2623,11 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
     gap: 0.75rem;
-    margin-top: 0.1rem;
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0.9rem 1.35rem 1.1rem;
+    border-top: 1px solid var(--app-border);
+    background: var(--app-surface);
 }
 
 .trans-chap-purchase-modal__actions .auth-split__btn,
@@ -2648,6 +2661,20 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
 .trans-chap-purchase-modal .auth-split__field {
     gap: 0.4rem;
     margin: 0;
+}
+
+.trans-chap-purchase-modal .auth-split__field label span {
+    color: var(--app-text-secondary);
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+.trans-chap-purchase-modal__field-hint {
+    color: var(--app-text-secondary);
+    font-size: 0.72rem;
+    line-height: 1.4;
 }
 
 .trans-chap-purchase-modal .auth-split__field label,
@@ -2740,17 +2767,24 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
 }
 
 @media (max-width: 560px) {
-    .trans-chap-purchase-modal__body {
-        padding: 1rem;
+    .trans-chap-purchase-modal {
+        width: calc(100vw - 1rem);
+        max-height: calc(100dvh - 1rem);
+        border-radius: 16px;
     }
 
     .trans-chap-purchase-modal .inventory-modal__head {
-        padding: 1rem;
+        padding: 0.95rem 1rem;
+    }
+
+    .trans-chap-purchase-modal__grid {
+        padding: 0.95rem 1rem;
     }
 
     .trans-chap-purchase-modal__actions {
         grid-template-columns: 1fr 1.2fr;
         gap: 0.55rem;
+        padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
     }
 }
 
