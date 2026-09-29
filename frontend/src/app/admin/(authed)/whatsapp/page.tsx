@@ -88,7 +88,6 @@ export default function AdminWhatsappPage() {
     const body = text.trim();
     if (!to || !body) {
       await showError("Missing fields", "Enter a phone number and a message.");
-      return;
     }
     setSending(true);
     setLastResult(null);
@@ -271,11 +270,11 @@ export default function AdminWhatsappPage() {
 
           <div className="admin-wa-card">
             <div className="admin-wa-card__header">
-              <p className="admin-wa-card__label">Host Phone Device</p>
-              <i className="fa-solid fa-mobile-screen-button admin-wa-card__icon" aria-hidden="true" />
+              <p className="admin-wa-card__label">WhatsApp Username</p>
+              <i className="fa-brands fa-whatsapp admin-wa-card__icon" aria-hidden="true" />
             </div>
             <p className="admin-wa-card__value">
-              {status?.host_number ? `+${status.host_number.replace(/\D/g, "")}` : "Not linked"}
+              {status?.host_username || status?.host_name || (status?.ready ? "Connected User" : "Not linked")}
             </p>
             <p className="admin-wa-card__sub">
               <i className="fa-solid fa-shield-halved" /> {status?.configured ? "Token Authenticated" : "Token missing"}

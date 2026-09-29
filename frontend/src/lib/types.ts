@@ -581,26 +581,7 @@ export type SettingsResponse = {
   supported_platforms?: string[];
   connected_platforms?: string[];
   any_channel_connected?: boolean;
-  opening_amount: string | null;
-  opening_amount_set_at: string | null;
-  can_set_opening_amount: boolean;
-  opening_stock: string | null;
-  opening_stock_set_at: string | null;
-  can_set_opening_stock: boolean;
-  opening_investment: string | null;
-  opening_investment_set_at: string | null;
-  can_set_opening_investment: boolean;
-  suggested_opening_stock: string;
-  allow_item_quantity_adjustment?: boolean;
-  adjust_selling_price_on_purchase?: boolean;
-  force_mpesa_prompt?: boolean;
   inventory_integration?: InventoryIntegrationConfig | null;
-};
-
-export type SettingsOperationsResponse = {
-  allow_item_quantity_adjustment: boolean;
-  adjust_selling_price_on_purchase: boolean;
-  force_mpesa_prompt: boolean;
 };
 
 export type ChannelPlatform =
@@ -1078,22 +1059,7 @@ export type MpesaStkPushResponse = {
   outcome?: "paid" | "failed" | "pending" | "resent";
 };
 
-export type ProductType = "retail" | "meal" | "addon" | "service" | "product";
-
-export type MealAddon = {
-  id: string;
-  meal_id: string;
-  addon_id: string;
-  additional_price?: number | null;
-  is_default: boolean;
-  is_required: boolean;
-  max_quantity: number;
-  sort_order: number;
-  addon_name?: string | null;
-  addon_code?: string | null;
-  addon_price?: number | null;
-  created_at?: string | null;
-};
+export type ProductType = "product" | "service";
 
 export type ProductImage = {
   url: string;
@@ -1135,9 +1101,6 @@ export type CatalogProduct = {
   created_by_account_id: string | null;
   created_by_user_id: string | null;
   shops_carrying_count?: number;
-  total_quantity?: number | null;
-  addons?: MealAddon[] | null;
-  is_active?: boolean;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -1352,7 +1315,7 @@ export type OrderSource =
   | "facebook"
   | "rider_request";
 
-export type OrderFulfillmentType = "pickup" | "delivery" | "dine_in";
+export type OrderFulfillmentType = "pickup" | "delivery";
 
 export type OrderPaymentMethod = "mpesa" | "cash" | "card" | "credit" | "other";
 
@@ -1370,15 +1333,6 @@ export type OrderStatus =
   | "cancelled"
   | "refunded";
 
-export type OrderItemModifier = {
-  id?: string;
-  name: string;
-  price: number;
-  group?: string | null;
-  option_id?: string | null;
-  quantity?: number;
-};
-
 export type OrderItem = {
   id: string;
   inventory_item_id: string | null;
@@ -1389,7 +1343,6 @@ export type OrderItem = {
   unit_price: number;
   line_total: number;
   notes: string | null;
-  modifiers?: OrderItemModifier[] | null;
   /** Current on-hand stock for the linked inventory item, when known. */
   stock_quantity?: number | null;
 };
@@ -1559,8 +1512,7 @@ export type Order = {
   assigned_rider_name?: string | null;
   rider_assigned_at?: string | null;
   rider_dispatched_at?: string | null;
-  table_number?: string | null;
-  server_name?: string | null;
+  rider_trip_phase?: string | null;
   rider_search_expires_at?: string | null;
 };
 
@@ -1615,9 +1567,6 @@ export type OrderCreatePayload = {
   notes?: string | null;
   /** When set with payment_method=mpesa, closes the sale with this SMS code (no STK). */
   mpesa_receipt_number?: string | null;
-  table_number?: string | null;
-  server_name?: string | null;
-  date_to_pay?: string | null;
   items: {
     inventory_item_id?: string | null;
     product_name?: string | null;
@@ -1626,7 +1575,6 @@ export type OrderCreatePayload = {
     unit_price?: number | null;
     sell_unit?: string | null;
     notes?: string | null;
-    modifiers?: OrderItemModifier[] | null;
   }[];
 };
 
@@ -1736,9 +1684,6 @@ export type ShopCustomer = {
   credit_limit: number;
   outstanding_balance: number;
   available_credit: number;
-  physical_location?: string | null;
-  pay_bill_url?: string | null;
-  date_to_pay?: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -2064,6 +2009,8 @@ export type AdminWhatsappStatus = {
   starting: boolean;
   state: string;
   host_number: string | null;
+  host_name?: string | null;
+  host_username?: string | null;
   connected_at: string | null;
   has_qr: boolean;
   qr: string | null;

@@ -43,6 +43,8 @@ class OpenWaStatus:
     qr: str | None
     error: str | None
     session_id: str | None
+    host_name: str | None = None
+    host_username: str | None = None
     agent_error: str | None = None
 
 
@@ -166,6 +168,7 @@ class OpenWaAgentService:
                 agent_error=_error_from_response(response) or "Agent status failed.",
             )
 
+        resolved_name = _str_or_none(data.get("host_name") or data.get("host_username"))
         return OpenWaStatus(
             reachable=True,
             ready=bool(data.get("ready")),
@@ -177,6 +180,8 @@ class OpenWaAgentService:
             qr=_str_or_none(data.get("qr")),
             error=_str_or_none(data.get("error")),
             session_id=_str_or_none(data.get("session_id")),
+            host_name=resolved_name,
+            host_username=resolved_name,
             agent_error=None,
         )
 

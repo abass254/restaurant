@@ -54,6 +54,7 @@ let lastError = null;
 let lastQr = null;
 let connectedAt = null;
 let hostNumber = null;
+let hostUsername = null;
 
 ev.on("qr.**", (qr, sessionId, namespace) => {
   if (typeof qr !== "string" || !qr) return;
@@ -101,6 +102,8 @@ function statusPayload() {
     // Prefer qr over starting so Admin can show the code while create() is still awaiting scan.
     state: ready ? "ready" : lastQr ? "qr" : starting ? "starting" : "offline",
     host_number: hostNumber,
+    host_name: hostUsername,
+    host_username: hostUsername,
     connected_at: connectedAt,
     has_qr: Boolean(lastQr),
     qr: lastQr,
@@ -108,6 +111,92 @@ function statusPayload() {
     session_id: SESSION_ID,
     headless: HEADLESS,
   };
+}
+
+async function fetchHostIdentity() {
+  if (!client) return;
+  try {
+    const host = await client.getHostNumber();
+    hostNumber = host ? String(host).replace(/\D/g, "") : null;
+  } catch {
+    // ignore
+  }
+
+  function isPhone(val) {
+    if (!val) return false;
+    const digits = String(val).replace(/\D/g, "");
+    // If it consists almost entirely of digits, spaces, plus, dashes, parentheses
+    return digits.length >= 7 && String(val).replace(/[\d\s+\-()]/g, "").length === 0;
+  }
+
+  try {
+    const me = await client.getMe();
+    console.log("[whatsapp-agent] getMe raw:", JSON.stringify(me));
+
+    let directEval = null;
+    try {
+      directEval = await client.getPage().evaluate(() => {
+        const conn = window.Store?.Conn;
+        const pushname = conn?.pushname;
+        const meObj = window.Store?.Me;
+        const contact = meObj?.wid ? window.Store?.Contact?.get(meObj.wid) : null;
+        return {
+          connPushname: pushname || null,
+          mePushname: meObj?.pushname || meObj?.attributes?.pushname || null,
+          contactPushname: contact?.pushname || null,
+          contactName: contact?.name || null,
+          contactVerifiedName: contact?.verifiedName || null,
+        };
+      });
+      console.log("[whatsapp-agent] directEval:", JSON.stringify(directEval));
+    } catch (evalErr) {
+      console.warn("[whatsapp-agent] directEval failed:", evalErr?.message || evalErr);
+    }
+
+    const candidates = [
+      directEval?.connPushname,
+      directEval?.contactPushname,
+      directEval?.contactVerifiedName,
+      directEval?.contactName,
+      directEval?.mePushname,
+      me?.pushname,
+      me?.verifiedName,
+      me?.name,
+    ];
+
+    let found = null;
+    for (const c of candidates) {
+      const s = String(c || "").trim();
+      if (s && !isPhone(s)) {
+        found = s;
+        break;
+      }
+    }
+
+    if (!found && hostNumber) {
+      try {
+        const contact = await client.getContact(`${hostNumber}@c.us`);
+        console.log("[whatsapp-agent] contact raw:", JSON.stringify({
+          pushname: contact?.pushname,
+          name: contact?.name,
+          verifiedName: contact?.verifiedName,
+          formattedName: contact?.formattedName,
+        }));
+        for (const c of [contact?.pushname, contact?.verifiedName, contact?.name]) {
+          const s = String(c || "").trim();
+          if (s && !isPhone(s)) {
+            found = s;
+            break;
+          }
+        }
+      } catch {}
+    }
+
+    hostUsername = found || null;
+    console.log(`[whatsapp-agent] resolved hostUsername="${hostUsername}" hostNumber="${hostNumber}"`);
+  } catch (err) {
+    console.warn("[whatsapp-agent] error fetching host username:", err instanceof Error ? err.message : err);
+  }
 }
 
 async function startClient() {
@@ -138,12 +227,7 @@ async function startClient() {
     client = created;
     lastQr = null;
     connectedAt = new Date().toISOString();
-    try {
-      const host = await client.getHostNumber();
-      hostNumber = host ? String(host).replace(/\D/g, "") : null;
-    } catch {
-      hostNumber = null;
-    }
+    await fetchHostIdentity();
     client.onStateChanged((state) => {
       if (state === "CONFLICT" || state === "UNLAUNCHED") {
         lastError = `WhatsApp state: ${state}`;
@@ -152,10 +236,11 @@ async function startClient() {
         client = null;
         connectedAt = null;
         hostNumber = null;
+        hostUsername = null;
         lastError = "Session unpaired. Scan the QR code again.";
       }
     });
-    console.log(`[whatsapp-agent] ready session=${SESSION_ID} host=${hostNumber || "?"}`);
+    console.log(`[whatsapp-agent] ready session=${SESSION_ID} host=${hostUsername || hostNumber || "?"}`);
   } catch (err) {
     lastError = err instanceof Error ? err.message : String(err);
     client = null;
@@ -170,6 +255,7 @@ async function stopClient() {
   client = null;
   connectedAt = null;
   hostNumber = null;
+  hostUsername = null;
   if (!current) return;
   try {
     await current.kill();
@@ -185,7 +271,10 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "dukai-whatsapp-agent" });
 });
 
-app.get("/status", requireAuth, (_req, res) => {
+app.get("/status", requireAuth, async (_req, res) => {
+  if (client && !hostUsername) {
+    await fetchHostIdentity();
+  }
   res.json(statusPayload());
 });
 

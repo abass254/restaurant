@@ -24,6 +24,8 @@ class AdminWhatsappStatusOut(BaseModel):
     starting: bool
     state: str
     host_number: str | None = None
+    host_name: str | None = None
+    host_username: str | None = None
     connected_at: str | None = None
     has_qr: bool = False
     qr: str | None = None
@@ -63,6 +65,8 @@ def admin_whatsapp_status(
         starting=st.starting,
         state=st.state,
         host_number=st.host_number,
+        host_name=st.host_name or st.host_username,
+        host_username=st.host_username or st.host_name,
         connected_at=st.connected_at,
         has_qr=st.has_qr,
         qr=st.qr,
