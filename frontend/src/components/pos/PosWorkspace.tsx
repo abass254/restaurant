@@ -2230,22 +2230,24 @@ export function PosWorkspace({
                             disabled={!canAdd}
                           >
                             <div className="pos-card__thumb" aria-hidden="true">
+                              <span className="pos-card__thumb-fallback">
+                                {isHotelDish ? (
+                                  <i className="fa-solid fa-utensils" aria-hidden="true" />
+                                ) : (
+                                  nameInitial(item.product?.name)
+                                )}
+                              </span>
                               {coverUrl ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img
                                   src={resolveAssetUrl(coverUrl)}
                                   alt=""
                                   loading="lazy"
+                                  onError={(event) => {
+                                    event.currentTarget.style.display = "none";
+                                  }}
                                 />
-                              ) : (
-                                <span className="pos-card__thumb-fallback">
-                                  {isHotelDish ? (
-                                    <i className="fa-solid fa-utensils" aria-hidden="true" />
-                                  ) : (
-                                    nameInitial(item.product?.name)
-                                  )}
-                                </span>
-                              )}
+                              ) : null}
                               {inCartQty > 0 ? (
                                 <span className="pos-card__in-cart-badge">
                                   <i className="fa-solid fa-check" aria-hidden="true" /> {inCartQty}
