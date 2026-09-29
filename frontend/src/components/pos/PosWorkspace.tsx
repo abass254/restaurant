@@ -93,6 +93,7 @@ const IMMEDIATE_COMPLETE_PAYMENTS: ReadonlySet<OrderPaymentMethod> = new Set([
   "card",
   "credit",
 ]);
+const POS_PREFERRED_SELL_UNITS_KEY = "pos:preferred_sell_units:v1";
 
 const TRANSCHAP_PAYMENT_METHODS: OrderPaymentMethod[] = [
   "cash",
@@ -117,6 +118,61 @@ type CartLine = {
   bulkFactor?: number;
   autoPackFactor?: number;
 };
+
+type PreferredSellUnit = {
+  sellUnit: string | null;
+  unitFactor: number;
+};
+
+function readPreferredSellUnit(item: InventoryItem): PreferredSellUnit | null {
+  try {
+    const raw = window.localStorage.getItem(POS_PREFERRED_SELL_UNITS_KEY);
+    if (!raw) return null;
+    const saved = JSON.parse(raw) as Record<string, unknown>;
+    const value = saved[item.id];
+    if (!value || typeof value !== "object") return null;
+    const preference = value as Record<string, unknown>;
+    const sellUnit =
+      typeof preference.sellUnit === "string" ? preference.sellUnit : null;
+    const unitFactor = Number(preference.unitFactor);
+    if (!Number.isFinite(unitFactor) || unitFactor <= 0 || unitFactor > 1_000_000) {
+      return null;
+    }
+
+    const fractionalUnit = fractionalSellUnits(item).find(
+      (unit) => unit.name === sellUnit && unit.factor === unitFactor,
+    );
+    if (fractionalUnit) return { sellUnit, unitFactor };
+
+    if (
+      fractionalSellUnits(item).length === 0 &&
+      sellUnit === "Bulk" &&
+      unitFactor >= 2
+    ) {
+      return { sellUnit, unitFactor };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberPreferredSellUnit(
+  itemId: string,
+  preference: PreferredSellUnit,
+) {
+  try {
+    const raw = window.localStorage.getItem(POS_PREFERRED_SELL_UNITS_KEY);
+    const saved = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    saved[itemId] = preference;
+    window.localStorage.setItem(
+      POS_PREFERRED_SELL_UNITS_KEY,
+      JSON.stringify(saved),
+    );
+  } catch {
+    // The selection still applies to the current cart if storage is unavailable.
+  }
+}
 
 /**
  * Try to detect pack size from product names like "Unga (pack of 24)" or "Water (12pcs)".
@@ -656,11 +712,21 @@ export function PosWorkspace({
     const heldQty = heldQtyByItemId.get(item.id) ?? 0;
     const stockCap = maxCartQty(item);
     const availableStock = stockCap === null ? null : Math.max(0, stockCap - heldQty);
+    const savedPreference = readPreferredSellUnit(item);
+    const preferredSellUnit =
+      savedPreference &&
+      (availableStock === null || savedPreference.unitFactor <= availableStock)
+        ? savedPreference
+        : null;
+    const initialUnitFactor = preferredSellUnit?.unitFactor ?? 1;
     let blocked = false;
     setCart((prev) => {
       const existing = prev.find((c) => c.inventoryItemId === item.id);
       const nextQty = (existing?.quantity ?? 0) + addAmount;
-      const unitFactor = Math.max(0.0001, existing?.unitFactor ?? 1);
+      const unitFactor = Math.max(
+        0.0001,
+        existing?.unitFactor ?? initialUnitFactor,
+      );
       const maxLineQty =
         availableStock === null ? null : Math.floor(availableStock / unitFactor);
       if (maxLineQty !== null && nextQty > maxLineQty) {
@@ -683,14 +749,17 @@ export function PosWorkspace({
           product_id: item.product_id,
           name: item.product?.name ?? `#${item.product_id}`,
           sku: item.product?.sku ?? null,
-          unit_price: item.selling_price ?? 0,
+          unit_price: (item.selling_price ?? 0) * initialUnitFactor,
           base_price: item.selling_price ?? 0,
           quantity: addAmount,
           image_url: item.product?.image_url ?? null,
           autoPackFactor,
-          unitFactor: 1,
-          bulkFactor: autoPackFactor,
-          sellUnit: null,
+          unitFactor: initialUnitFactor,
+          bulkFactor:
+            preferredSellUnit?.sellUnit === "Bulk"
+              ? initialUnitFactor
+              : autoPackFactor,
+          sellUnit: preferredSellUnit?.sellUnit ?? null,
         },
       ];
     });
@@ -948,6 +1017,7 @@ export function PosWorkspace({
       );
       return;
     }
+    rememberPreferredSellUnit(target.inventoryItemId, { sellUnit, unitFactor });
     setCart((prev) =>
       prev.map((line) => {
         if (
@@ -997,6 +1067,10 @@ export function PosWorkspace({
       );
       return;
     }
+    rememberPreferredSellUnit(target.inventoryItemId, {
+      sellUnit: "Bulk",
+      unitFactor: factor,
+    });
     setCart((prev) =>
       prev.map((line) => {
         if ((line.lineId || line.inventoryItemId) !== key && line.inventoryItemId !== key) {
