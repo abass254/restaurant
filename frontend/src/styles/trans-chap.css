@@ -1172,6 +1172,15 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-card__stock.is-fresh {
 }
 
 /* Keep cart line controls compact so name / qty / total stay on one row */
+.trans-chap-pos-host.fb-app .pos-cart__lines ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+
 .trans-chap-pos-host.fb-app .pos-line__qty input {
     min-height: 0;
     height: 28px;
@@ -1182,26 +1191,120 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-card__stock.is-fresh {
 
 .trans-chap-pos-host.fb-app .pos-line,
 .trans-chap-pos-host.fb-app .pos-line--simple {
+    display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
-    gap: 10px;
+    gap: 0.9rem;
     align-items: center;
-    padding: 8px 10px;
+    padding: 0.45rem 0.1rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.trans-chap-pos-host.fb-app .pos-line:last-child,
+.trans-chap-pos-host.fb-app .pos-line--simple:last-child {
+    border-bottom: none;
 }
 
 .trans-chap-pos-host.fb-app .pos-line--priced {
     grid-template-columns: 40px minmax(0, 1fr) auto auto auto;
 }
 
+.trans-chap-pos-host.fb-app .pos-line__qty-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.65rem;
+    min-width: 0;
+}
+
+.trans-chap-pos-host.fb-app .pos-line__unit-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.2rem;
+    border-radius: 999px;
+    background: rgba(17, 24, 39, 0.03);
+    border: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.trans-chap-pos-host.fb-app .pos-line__unit-toggle button {
+    border: 0;
+    background: transparent;
+    color: var(--app-text-secondary);
+    border-radius: 999px;
+    padding: 0.2rem 0.48rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.trans-chap-pos-host.fb-app .pos-line__unit-toggle button.is-active {
+    background: var(--app-surface);
+    color: var(--app-text);
+    box-shadow: 0 1px 2px rgba(26, 16, 12, 0.08);
+}
+
+.trans-chap-pos-host.fb-app .pos-line__qty {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem;
+    padding: 0.12rem 0.18rem;
+    border-radius: 999px;
+    background: rgba(17, 24, 39, 0.04);
+    border: 1px solid rgba(17, 24, 39, 0.06);
+}
+
 .trans-chap-pos-host.fb-app .pos-line__qty button {
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
     color: var(--app-primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.trans-chap-pos-host.fb-app .pos-line__qty input {
+    width: 2rem;
+    height: 28px;
+    border: none;
+    background: transparent;
+    text-align: center;
+    color: var(--app-text);
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.trans-chap-pos-host.fb-app .pos-line__main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.18rem;
+}
+
+.trans-chap-pos-host.fb-app .pos-line__title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    min-width: 0;
 }
 
 .trans-chap-pos-host.fb-app .pos-line__main strong {
-    font-size: 0.88rem;
+    min-width: 0;
+    flex: 1;
+    font-size: 1.12rem;
     font-weight: 800;
+    letter-spacing: -0.03em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    color: var(--app-text);
 }
 
 .trans-chap-pos-host.fb-app .pos-line__main span {
@@ -1209,8 +1312,134 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-card__stock.is-fresh {
 }
 
 .trans-chap-pos-host.fb-app .pos-line__total {
-    min-width: 4.5rem;
+    min-width: 5.5rem;
     text-align: right;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.55rem;
+}
+
+.trans-chap-pos-host.fb-app .pos-line__total strong {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--app-text);
+}
+
+.trans-chap-pos-host.fb-app .pos-line__bulk-factor {
+    width: 5.25rem;
+    min-width: 0;
+    min-height: 0;
+    height: 40px;
+    padding: 0.35rem 0.5rem;
+    border: 2px solid var(--brown-700);
+    border-radius: 2px;
+    background: var(--app-surface);
+    color: var(--app-text);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 650;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.trans-chap-pos-host.fb-app .pos-line__bulk-price {
+    width: 6.5rem;
+    min-width: 0;
+    min-height: 0;
+    height: 40px;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--app-border);
+    border-radius: 10px;
+    background: var(--app-surface);
+    color: var(--app-text);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 700;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 639px) {
+    .trans-chap-pos-host.fb-app .pos-line,
+    .trans-chap-pos-host.fb-app .pos-line--simple {
+        gap: 0.35rem;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-line__qty-wrap {
+        gap: 0.25rem;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-line__unit-toggle {
+        gap: 0;
+        padding: 0.12rem;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-line__unit-toggle button {
+        padding-inline: 0.3rem;
+        font-size: 0.65rem;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-line__qty {
+        gap: 0;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-line__qty button {
+        width: 24px;
+        height: 28px;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-line__qty input {
+        width: 1.5rem;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-line__total {
+        min-width: 0;
+        gap: 0.25rem;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-line__bulk-factor {
+        width: 3.5rem;
+        padding-inline: 0.2rem;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-line__bulk-price {
+        width: 4.5rem;
+        padding-inline: 0.25rem;
+        font-size: 0.8rem;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-line__total strong {
+        font-size: 0.85rem;
+    }
+}
+
+.trans-chap-pos-host.fb-app .pos-line__bulk-factor:focus {
+    outline: 2px solid color-mix(in srgb, var(--app-primary) 28%, transparent);
+    border-color: var(--app-primary);
+}
+
+.trans-chap-pos-host.fb-app .pos-line__bulk-price:focus {
+    outline: 2px solid color-mix(in srgb, var(--app-primary) 28%, transparent);
+    border-color: var(--app-primary);
+}
+
+.trans-chap-pos-host.fb-app .pos-line__remove {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(17, 24, 39, 0.04);
+    color: var(--app-text-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.trans-chap-pos-host.fb-app .pos-line__remove:hover {
+    background: rgba(232, 65, 42, 0.08);
+    color: var(--app-primary);
 }
 
 .trans-chap-pos-host.fb-app .pos-place {
@@ -1351,6 +1580,246 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
 
 .trans-chap-pos-host.fb-app .pos-mpesa-wait.is-paid .pos-mpesa-wait__title {
     color: #15803d;
+}
+
+.trans-chap-mpesa {
+    width: min(100%, 960px);
+    margin: 0 auto;
+    padding: 1rem max(var(--trans-chap-gutter-x), env(safe-area-inset-left))
+        calc(1.5rem + env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    color: var(--app-text);
+}
+
+.trans-chap-mpesa__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.trans-chap-mpesa__head h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 850;
+    letter-spacing: -0.025em;
+}
+
+.trans-chap-mpesa__head p {
+    margin: 0.25rem 0 0;
+    color: var(--app-text-secondary);
+    font-size: 0.84rem;
+}
+
+.trans-chap-mpesa__refresh,
+.trans-chap-mpesa__more {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    min-height: 40px;
+    padding: 0.5rem 0.8rem;
+    border: 1px solid var(--app-border);
+    border-radius: 11px;
+    background: var(--app-surface);
+    color: var(--app-text);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 750;
+    cursor: pointer;
+}
+
+.trans-chap-mpesa__refresh:disabled,
+.trans-chap-mpesa__more:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.trans-chap-mpesa__search {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-height: 46px;
+    padding: 0 0.85rem;
+    border: 1px solid var(--app-border);
+    border-radius: 13px;
+    background: var(--app-surface);
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-mpesa__search:focus-within {
+    border-color: var(--app-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-primary) 12%, transparent);
+}
+
+.trans-chap-mpesa__search input {
+    width: 100%;
+    min-width: 0;
+    height: 44px;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--app-text);
+    font: inherit;
+    font-size: 0.9rem;
+}
+
+.trans-chap-mpesa__loading,
+.trans-chap-mpesa__list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.trans-chap-mpesa__skeleton,
+.trans-chap-mpesa__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--app-border);
+    border-radius: 14px;
+    background: var(--app-surface);
+}
+
+.trans-chap-mpesa__skeleton {
+    grid-template-columns: 1fr 0.7fr 0.8fr;
+}
+
+.trans-chap-mpesa__main,
+.trans-chap-mpesa__details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.trans-chap-mpesa__main > strong {
+    color: var(--app-primary);
+    font-size: 1rem;
+    font-weight: 850;
+    letter-spacing: 0.025em;
+}
+
+.trans-chap-mpesa__main > span,
+.trans-chap-mpesa__details > strong {
+    color: var(--app-text);
+    font-size: 0.88rem;
+    font-weight: 750;
+}
+
+.trans-chap-mpesa__main > small,
+.trans-chap-mpesa__details > time {
+    color: var(--app-text-secondary);
+    font-size: 0.75rem;
+    overflow-wrap: anywhere;
+}
+
+.trans-chap-mpesa__details {
+    align-items: flex-end;
+    text-align: right;
+}
+
+.trans-chap-mpesa__status {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-text-secondary) 12%, transparent);
+    color: var(--app-text-secondary);
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: capitalize;
+}
+
+.trans-chap-mpesa__status.is-success {
+    background: color-mix(in srgb, #15803d 12%, transparent);
+    color: #15803d;
+}
+
+.trans-chap-mpesa__status.is-failed,
+.trans-chap-mpesa__status.is-cancelled {
+    background: color-mix(in srgb, #dc2626 10%, transparent);
+    color: #b91c1c;
+}
+
+.trans-chap-mpesa__status.is-pending {
+    background: color-mix(in srgb, #d97706 12%, transparent);
+    color: #b45309;
+}
+
+.trans-chap-mpesa__summary {
+    color: var(--app-text-secondary);
+    font-size: 0.78rem;
+    font-weight: 650;
+}
+
+.trans-chap-mpesa__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 2.5rem 1rem;
+    border: 1px dashed var(--app-border);
+    border-radius: 16px;
+    background: var(--app-surface);
+    text-align: center;
+}
+
+.trans-chap-mpesa__empty > i {
+    color: var(--app-primary);
+    font-size: 1.4rem;
+}
+
+.trans-chap-mpesa__empty > strong {
+    font-size: 0.95rem;
+}
+
+.trans-chap-mpesa__empty > span {
+    max-width: 34ch;
+    color: var(--app-text-secondary);
+    font-size: 0.8rem;
+}
+
+.trans-chap-mpesa__error {
+    margin: 0;
+    color: var(--app-danger, #b91c1c);
+    font-size: 0.8rem;
+}
+
+.trans-chap-mpesa__more {
+    align-self: center;
+    min-width: 210px;
+    border-color: color-mix(in srgb, var(--app-primary) 30%, var(--app-border));
+    color: var(--app-primary);
+}
+
+@media (max-width: 560px) {
+    .trans-chap-mpesa {
+        gap: 0.7rem;
+        padding-top: 0.75rem;
+    }
+
+    .trans-chap-mpesa__head h2 {
+        font-size: 1.05rem;
+    }
+
+    .trans-chap-mpesa__row {
+        gap: 0.5rem;
+        padding: 0.75rem;
+    }
+
+    .trans-chap-mpesa__main > strong {
+        font-size: 0.9rem;
+    }
+
+    .trans-chap-mpesa__details > strong {
+        font-size: 0.8rem;
+    }
 }
 
 .trans-chap-pos-host.fb-app .pos-mpesa-wait__amount {

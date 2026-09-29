@@ -208,8 +208,11 @@ export const apiRoutes = {
     `${apiUrl}/api/v1/orders/${id}/assign-rider`,
   customers: `${apiUrl}/api/v1/customers`,
   customersOwing: `${apiUrl}/api/v1/customers?owing=1`,
+  customerCreditSettings: `${apiUrl}/api/v1/customers/credit-settings`,
   customersImport: `${apiUrl}/api/v1/customers/import`,
   customer: (id: string) => `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}`,
+  customerManualCollect: (id: string) =>
+    `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/manual-collect`,
   customerUpdate: (id: string) =>
     `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/update`,
   customerCollect: (id: string) =>

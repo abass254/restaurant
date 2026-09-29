@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
+from app.api.v1 import customers as customers_api
 from app.models import ShopCustomer
 from app.services.customer_service import (
     CustomerService,
@@ -251,3 +253,138 @@ def test_update_customer_date_to_pay() -> None:
     )
     assert updated.date_to_pay == date(2026, 11, 20)
 
+
+def test_manual_credit_collection_records_partial_payment(monkeypatch) -> None:
+    customer = ShopCustomer(
+        id="cust-1",
+        account_id="acct-1",
+        name="Amina",
+        phone="254700000001",
+        credit_limit=Decimal("1000.00"),
+        outstanding_balance=Decimal("80.00"),
+    )
+    user = SimpleNamespace(id="user-1")
+    db = MagicMock()
+    db.get.return_value = SimpleNamespace(force_mpesa_prompt=False)
+    customer_query = MagicMock()
+    customer_query.filter.return_value.with_for_update.return_value.first.return_value = customer
+    transaction_query = MagicMock()
+    transaction_query.filter.return_value.first.return_value = None
+    db.query.side_effect = lambda model: (
+        customer_query if model is ShopCustomer else transaction_query
+    )
+    monkeypatch.setattr(customers_api, "validate_csrf", lambda *_: None)
+    monkeypatch.setattr(customers_api, "require_user", lambda *_: user)
+    monkeypatch.setattr(
+        customers_api,
+        "assert_merchant_section_any_access",
+        lambda *_: None,
+    )
+    monkeypatch.setattr(
+        customers_api,
+        "require_merchant_account_id",
+        lambda *_: "acct-1",
+    )
+    monkeypatch.setattr(
+        customers_api,
+        "_customer_out",
+        lambda row: {"id": row.id, "outstanding_balance": float(row.outstanding_balance)},
+    )
+
+    response = customers_api.manually_collect_customer_credit(
+        customer.id,
+        customers_api.ManualCreditCollectRequest(amount=Decimal("30.00")),
+        request=None,
+        db=db,
+        session={},
+    )
+
+    assert customer.outstanding_balance == Decimal("50.00")
+    assert response["collection"]["amount"] == 30.0
+    assert response["collection"]["receipt_code"] is None
+    recorded = db.add.call_args.args[0]
+    assert recorded.status == "success"
+    assert recorded.mpesa_receipt_number is None
+    assert recorded.callback_payload["manual_credit_collection"] is True
+    db.commit.assert_called_once()
+
+
+def test_manual_credit_collection_defaults_to_full_balance(monkeypatch) -> None:
+    customer = ShopCustomer(
+        id="cust-1",
+        account_id="acct-1",
+        name="Amina",
+        phone="254700000001",
+        credit_limit=Decimal("1000.00"),
+        outstanding_balance=Decimal("80.00"),
+    )
+    user = SimpleNamespace(id="user-1")
+    db = MagicMock()
+    db.get.return_value = SimpleNamespace(force_mpesa_prompt=False)
+    customer_query = MagicMock()
+    customer_query.filter.return_value.with_for_update.return_value.first.return_value = customer
+    transaction_query = MagicMock()
+    transaction_query.filter.return_value.first.return_value = None
+    db.query.side_effect = lambda model: (
+        customer_query if model is ShopCustomer else transaction_query
+    )
+    monkeypatch.setattr(customers_api, "validate_csrf", lambda *_: None)
+    monkeypatch.setattr(customers_api, "require_user", lambda *_: user)
+    monkeypatch.setattr(
+        customers_api,
+        "assert_merchant_section_any_access",
+        lambda *_: None,
+    )
+    monkeypatch.setattr(
+        customers_api,
+        "require_merchant_account_id",
+        lambda *_: "acct-1",
+    )
+    monkeypatch.setattr(
+        customers_api,
+        "_customer_out",
+        lambda row: {"id": row.id, "outstanding_balance": float(row.outstanding_balance)},
+    )
+
+    response = customers_api.manually_collect_customer_credit(
+        customer.id,
+        customers_api.ManualCreditCollectRequest(mpesa_code="qgh7abc123"),
+        request=None,
+        db=db,
+        session={},
+    )
+
+    assert customer.outstanding_balance == Decimal("0.00")
+    assert response["collection"]["amount"] == 80.0
+    assert response["collection"]["receipt_code"] == "QGH7ABC123"
+    assert db.add.call_args.args[0].mpesa_receipt_number == "QGH7ABC123"
+
+
+def test_manual_credit_collection_is_blocked_when_stk_is_enforced(monkeypatch) -> None:
+    user = SimpleNamespace(id="user-1")
+    db = MagicMock()
+    db.get.return_value = SimpleNamespace(force_mpesa_prompt=True)
+    monkeypatch.setattr(customers_api, "validate_csrf", lambda *_: None)
+    monkeypatch.setattr(customers_api, "require_user", lambda *_: user)
+    monkeypatch.setattr(
+        customers_api,
+        "assert_merchant_section_any_access",
+        lambda *_: None,
+    )
+    monkeypatch.setattr(
+        customers_api,
+        "require_merchant_account_id",
+        lambda *_: "acct-1",
+    )
+
+    with pytest.raises(customers_api.HTTPException) as exc_info:
+        customers_api.manually_collect_customer_credit(
+            "cust-1",
+            customers_api.ManualCreditCollectRequest(),
+            request=None,
+            db=db,
+            session={},
+        )
+
+    assert exc_info.value.status_code == 403
+    db.query.assert_not_called()

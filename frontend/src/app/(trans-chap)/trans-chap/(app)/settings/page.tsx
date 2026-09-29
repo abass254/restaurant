@@ -75,6 +75,7 @@ export default function TransChapSettingsPage() {
   const [autoRepliesSaving, setAutoRepliesSaving] = useState(false);
   const [adjustSellingPrice, setAdjustSellingPrice] = useState(true);
   const [allowQuantityAdjustment, setAllowQuantityAdjustment] = useState(true);
+  const [allowPriceAdjustment, setAllowPriceAdjustment] = useState(false);
   const [forceMpesaPrompt, setForceMpesaPrompt] = useState(true);
   const [operationsSaving, setOperationsSaving] = useState(false);
   const [settingsQuery, setSettingsQuery] = useState("");
@@ -149,6 +150,7 @@ export default function TransChapSettingsPage() {
           setOpeningInvestmentInput(data.opening_investment || "");
         }
         setAllowQuantityAdjustment(data.allow_item_quantity_adjustment ?? true);
+        setAllowPriceAdjustment(data.allow_price_adjustment ?? false);
         setAdjustSellingPrice(data.adjust_selling_price_on_purchase ?? true);
         setForceMpesaPrompt(data.force_mpesa_prompt ?? true);
         const ig = data.user.instagram_account;
@@ -194,6 +196,7 @@ export default function TransChapSettingsPage() {
         },
       );
       setAllowQuantityAdjustment(data.allow_item_quantity_adjustment);
+      setAllowPriceAdjustment(data.allow_price_adjustment);
       setAdjustSellingPrice(data.adjust_selling_price_on_purchase);
       await toastSuccess(successMessage);
     } catch {
@@ -224,6 +227,15 @@ export default function TransChapSettingsPage() {
       enabled
         ? "Selling price shown on purchases"
         : "Selling price hidden on purchases",
+    );
+  }
+
+  async function handleAllowPriceAdjustmentToggle(enabled: boolean) {
+    await updateOperations(
+      { allow_price_adjustment: enabled },
+      enabled
+        ? "Sale price update allowed at POS"
+        : "Sale price update disabled at POS",
     );
   }
 
@@ -809,11 +821,39 @@ export default function TransChapSettingsPage() {
               )}
             </span>
           </div>
+          <div className="ios-settings__row ios-settings__row--static">
+            <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
+              <i className="fa-solid fa-money-bill-transfer" />
+            </span>
+            <span className="ios-settings__label">Allow sale price update</span>
+            <span className="ios-settings__trailing">
+              {owner ? (
+                <button
+                  type="button"
+                  role="switch"
+                  className={`theme-switch${allowPriceAdjustment ? " is-on" : ""}`}
+                  aria-checked={allowPriceAdjustment}
+                  aria-label="Allow sale price update"
+                  disabled={operationsSaving}
+                  onClick={() =>
+                    void handleAllowPriceAdjustmentToggle(!allowPriceAdjustment)
+                  }
+                >
+                  <span className="theme-switch__thumb" aria-hidden />
+                </button>
+              ) : (
+                <span className="ios-settings__value">Owner only</span>
+              )}
+            </span>
+          </div>
         </div>
         <p className="ios-settings__footer">
           {allowQuantityAdjustment
-            ? "Owners can edit stock quantities."
-            : "Quantities are read-only; purchases still increase stock."}
+            ? "Owners can edit stock quantities. "
+            : "Quantities are read-only. "}
+          {allowPriceAdjustment
+            ? "Sale prices can be modified during checkout."
+            : "Sale prices are fixed during checkout."}
         </p>
       </section>
       ) : null}

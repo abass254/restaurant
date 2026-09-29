@@ -30,6 +30,8 @@ import { buildDebtReminderWhatsAppUrl } from "@/lib/trans-chap-credit";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import { checkKenyanPhone } from "@/lib/phone-checker";
 import type {
+  ManualCreditCollectRequest,
+  ManualCreditCollectResponse,
   CustomerImportResponse,
   ShopCustomer,
   ShopCustomerMutationResponse,
@@ -117,6 +119,11 @@ export function TransChapCustomersList() {
   const [importError, setImportError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<CustomerImportResponse | null>(null);
   const [sendingWaId, setSendingWaId] = useState<string | null>(null);
+  const [forceMpesaPrompt, setForceMpesaPrompt] = useState(true);
+  const [manualCollectingId, setManualCollectingId] = useState<string | null>(null);
+  const [manualPaymentValues, setManualPaymentValues] = useState<
+    Record<string, { amount: string; mpesaCode: string }>
+  >({});
 
   const createPhoneCheck = useMemo(
     () => checkKenyanPhone(createForm.phone),
@@ -141,8 +148,12 @@ export function TransChapCustomersList() {
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const rows = await fetchShopCustomers();
+      const [rows, settings] = await Promise.all([
+        fetchShopCustomers(),
+        apiFetch<{ force_mpesa_prompt: boolean }>(apiRoutes.customerCreditSettings),
+      ]);
       setCustomers(rows);
+      setForceMpesaPrompt(settings.force_mpesa_prompt);
       setError(null);
     } catch (err) {
       setError(extractErrorMessage(err, "Could not load customers."));
@@ -150,6 +161,41 @@ export function TransChapCustomersList() {
       setLoading(false);
     }
   }, []);
+
+  async function handleManualCollect(customer: ShopCustomer) {
+    const values = manualPaymentValues[customer.id] ?? { amount: "", mpesaCode: "" };
+    const payload: ManualCreditCollectRequest = {};
+    const rawAmount = values.amount.trim().replace(/,/g, "");
+    if (rawAmount) {
+      const amount = Number(rawAmount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        await showError("Check payment amount", "Enter an amount greater than zero.");
+        return;
+      }
+      payload.amount = amount;
+    }
+    if (values.mpesaCode.trim()) payload.mpesa_code = values.mpesaCode.trim();
+
+    setManualCollectingId(customer.id);
+    try {
+      const result = await apiFetch<ManualCreditCollectResponse>(
+        apiRoutes.customerManualCollect(customer.id),
+        { method: "POST", body: JSON.stringify(payload) },
+      );
+      setCustomers((prev) =>
+        prev.map((row) => (row.id === customer.id ? result.data : row)),
+      );
+      setManualPaymentValues((prev) => ({
+        ...prev,
+        [customer.id]: { amount: "", mpesaCode: "" },
+      }));
+      await toastSuccess(result.message);
+    } catch (err) {
+      await showError("Could not record payment", extractErrorMessage(err));
+    } finally {
+      setManualCollectingId(null);
+    }
+  }
 
   useEffect(() => {
     void reload();
@@ -838,6 +884,86 @@ export function TransChapCustomersList() {
                         </button>
                       )}
                     </div>
+
+                    {owes && !forceMpesaPrompt ? (
+                      <form
+                        className="trans-chap-form"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void handleManualCollect(customer);
+                        }}
+                      >
+                        <p className="trans-chap-form__lead">
+                          Record a payment without an STK prompt. Leave amount blank to clear
+                          the full balance; an M-PESA code is optional.
+                        </p>
+                        <div className="trans-chap-form__fields">
+                          <div className="auth-split__field">
+                            <label htmlFor={`${panelId}-manual-amount`}>
+                              Amount paid (KES, optional)
+                            </label>
+                            <div className="trans-chap-input">
+                              <input
+                                id={`${panelId}-manual-amount`}
+                                type="text"
+                                inputMode="decimal"
+                                className="auth-split__input"
+                                placeholder={`Full balance: ${customer.outstanding_balance}`}
+                                value={
+                                  manualPaymentValues[customer.id]?.amount ?? ""
+                                }
+                                onChange={(event) =>
+                                  setManualPaymentValues((prev) => ({
+                                    ...prev,
+                                    [customer.id]: {
+                                      amount: event.target.value,
+                                      mpesaCode: prev[customer.id]?.mpesaCode ?? "",
+                                    },
+                                  }))
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="auth-split__field">
+                            <label htmlFor={`${panelId}-manual-mpesa-code`}>
+                              M-PESA code (optional)
+                            </label>
+                            <div className="trans-chap-input">
+                              <input
+                                id={`${panelId}-manual-mpesa-code`}
+                                type="text"
+                                autoComplete="off"
+                                className="auth-split__input"
+                                placeholder="e.g. QGH7ABC123"
+                                value={
+                                  manualPaymentValues[customer.id]?.mpesaCode ?? ""
+                                }
+                                onChange={(event) =>
+                                  setManualPaymentValues((prev) => ({
+                                    ...prev,
+                                    [customer.id]: {
+                                      amount: prev[customer.id]?.amount ?? "",
+                                      mpesaCode: event.target.value,
+                                    },
+                                  }))
+                                }
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        <div className="trans-chap-form__actions">
+                          <button
+                            type="submit"
+                            className="auth-split__btn"
+                            disabled={manualCollectingId === customer.id}
+                          >
+                            {manualCollectingId === customer.id
+                              ? "Recording…"
+                              : "Record credit payment"}
+                          </button>
+                        </div>
+                      </form>
+                    ) : null}
                   </div>
                 </TransChapPanel>
               </MotionItem>

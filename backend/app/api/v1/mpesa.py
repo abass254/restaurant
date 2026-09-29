@@ -6,6 +6,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.mpesa_verify_tokens import (
@@ -545,27 +546,38 @@ def list_transactions(
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
     limit: int = 50,
+    offset: int = 0,
+    has_receipt_code: bool = False,
 ):
     user = require_user(db, session)
-    assert_merchant_section_access(user, "settings")
+    assert_merchant_section_any_access(user, "settings", "pos")
     _require_merchant(user)
     limit = max(1, min(limit, 200))
-    rows = (
-        db.query(MpesaTransaction)
-        .filter(
-            MpesaTransaction.account_id == active_account_id(user),
+    offset = max(0, offset)
+    query = db.query(MpesaTransaction).filter(
+        MpesaTransaction.account_id == active_account_id(user),
+    )
+    if has_receipt_code:
+        query = query.filter(
+            MpesaTransaction.mpesa_receipt_number.is_not(None),
+            func.trim(MpesaTransaction.mpesa_receipt_number) != "",
         )
+    total = query.with_entities(func.count(MpesaTransaction.id)).scalar() or 0
+    rows = (
+        query
         .order_by(
             MpesaTransaction.created_at.is_(None),
             MpesaTransaction.created_at.desc(),
             MpesaTransaction.id.desc(),
         )
         .limit(limit)
+        .offset(offset)
         .all()
     )
     transactions = [_serialize_transaction(db, t) for t in rows]
     return {
         "transactions": transactions,
+        "total": total,
         "dev_sample_data": False,
     }
 

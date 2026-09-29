@@ -163,6 +163,7 @@ class OrderItemPayload(BaseModel):
     unit_price: float | None = Field(default=None, ge=0, le=99_999_999.99)
     # Pack/crate name (e.g. "Crate"). Stock deducts quantity × unit factor.
     sell_unit: str | None = Field(default=None, max_length=64)
+    unit_factor: int | None = Field(default=None, ge=2, le=1_000_000)
     notes: str | None = Field(default=None, max_length=1000)
 
 
@@ -918,15 +919,32 @@ def create_order(
             try:
                 resolved_unit = resolve_sell_unit(inv_item, line.sell_unit)
             except ValueError as exc:
+                if line.unit_factor is not None and line.sell_unit:
+                    resolved_unit = {
+                        "name": line.sell_unit.strip(),
+                        "factor": line.unit_factor,
+                    }
+                else:
+                    raise HTTPException(
+                        status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail={
+                            "errors": {
+                                f"items.{idx}.sell_unit": [str(exc)],
+                            },
+                        },
+                    ) from exc
+            if line.unit_factor is not None and not line.sell_unit:
                 raise HTTPException(
                     status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail={
                         "errors": {
-                            f"items.{idx}.sell_unit": [str(exc)],
+                            f"items.{idx}.unit_factor": [
+                                "A sell unit is required when providing a unit factor.",
+                            ],
                         },
                     },
-                ) from exc
-            unit_factor = int(resolved_unit["factor"])
+                )
+            unit_factor = line.unit_factor or int(resolved_unit["factor"])
             sell_unit_label = str(resolved_unit["name"]) if unit_factor > 1 else None
 
         # Resolve display name + price from the snapshot or the explicit payload.
@@ -951,7 +969,7 @@ def create_order(
             if unit_factor > 1 and resolved_unit:
                 name = f"{name} ({resolved_unit['name']})"
         else:
-            if line.sell_unit and str(line.sell_unit).strip():
+            if (line.sell_unit and str(line.sell_unit).strip()) or line.unit_factor is not None:
                 raise HTTPException(
                     status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail={
@@ -1138,22 +1156,6 @@ def create_order(
                 f"M-PESA code {matched_txn.mpesa_receipt_number} recorded. Sale closed."
             ),
         }
-    elif payload.payment_method == PAYMENT_MPESA and not force_mpesa_prompt:
-        prev_status = order.status
-        now_paid = datetime.utcnow()
-        order.status = PAYMENT_RECEIVED
-        order.paid_at = now_paid
-        order.updated_at = now_paid
-        db.add(
-            OrderStatusHistory(
-                order_id=order.id,
-                from_status=prev_status,
-                to_status=PAYMENT_RECEIVED,
-                changed_by_user_id=user.id,
-                note="M-PESA payment recorded without STK prompt.",
-                created_at=now_paid,
-            ),
-        )
 
     db.commit()
     db.refresh(order)
@@ -1215,7 +1217,7 @@ def create_order(
 
     # STK push after commit so the receipt can link to a real order id.
     # Failures are non-fatal — cashier can retry or enter a code later.
-    if payload.payment_method == PAYMENT_MPESA and force_mpesa_prompt and not direct_mpesa_receipt:
+    if payload.payment_method == PAYMENT_MPESA and not direct_mpesa_receipt:
         push_result = _trigger_mpesa_for_order(
             db,
             order,
