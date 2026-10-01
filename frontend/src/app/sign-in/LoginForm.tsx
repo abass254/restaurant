@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AuthShell } from "@/components/auth/AuthShell";
+import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
+import {
+  TransChapBrandHeader,
+  TransChapHeroContent,
+} from "@/components/trans-chap/TransChapAuth";
 import { apiFetch, ApiError, resetCsrfCookie } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { firstAllowedPath } from "@/lib/merchant-permissions";
@@ -30,6 +35,7 @@ type Props = {
   statusOk?: boolean;
   nextPath?: string | null;
   embedded?: boolean;
+  brand?: "dukai" | "trans-chap";
   signInPath?: string;
 };
 
@@ -111,11 +117,26 @@ function SignInStatusAlert({
 
 function LoginFrame({
   embedded,
+  isTransChap,
   children,
 }: {
   embedded?: boolean;
+  isTransChap?: boolean;
   children: React.ReactNode;
 }) {
+  if (isTransChap) {
+    return (
+      <AuthShell
+        className="auth-split--trans-chap"
+        heroLabel="TRANS CHAP"
+        heroContent={<TransChapHeroContent />}
+        brandHeader={<TransChapBrandHeader />}
+        panelAction={<ThemeToggle />}
+      >
+        {children}
+      </AuthShell>
+    );
+  }
   if (embedded) {
     return (
       <div className="trans-chap-signin">
@@ -132,8 +153,10 @@ export default function LoginForm({
   statusOk = false,
   nextPath = null,
   embedded = false,
+  brand,
   signInPath,
 }: Props) {
+  const isTransChap = brand === "trans-chap" || signInPath === "/trans-chap/sign-in";
   const [mode, setMode] = useState<Mode>("otp");
   const [otpStep, setOtpStep] = useState<OtpStep>("request");
   const [identifier, setIdentifier] = useState("");
@@ -151,7 +174,7 @@ export default function LoginForm({
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
 
   useEffect(() => {
-    if (embedded) return;
+    if (embedded || isTransChap) return;
     let cancelled = false;
     apiFetch<{ google: boolean }>(apiRoutes.signupOptions)
       .then((opts) => {
@@ -163,7 +186,7 @@ export default function LoginForm({
     return () => {
       cancelled = true;
     };
-  }, [embedded]);
+  }, [embedded, isTransChap]);
 
   useEffect(() => {
     if (!statusMessage) return;
@@ -322,7 +345,7 @@ export default function LoginForm({
 
   if (mode === "otp" && otpStep === "verify") {
     return (
-      <LoginFrame embedded={embedded}>
+      <LoginFrame embedded={embedded} isTransChap={isTransChap}>
         <div className="auth-otp">
           <button
             type="button"
@@ -337,16 +360,16 @@ export default function LoginForm({
           >
             ←
           </button>
-          {embedded ? null : (
+          {!embedded || isTransChap ? (
             <>
-              <h1 className="auth-split__title">Sign in to your dashboard</h1>
+              <h1 className="auth-split__title">Enter verification code</h1>
               <p className="auth-split__subtitle">
                 Enter {OTP_LENGTH}-digit code sent to
                 <br />
                 <strong>{maskedTarget || identifier}</strong>
               </p>
             </>
-          )}
+          ) : null}
 
           <form className="auth-otp__form" onSubmit={(e) => void verifyCode(e)}>
             <div className="auth-otp-grid" role="group" aria-label="One-time code">
@@ -373,7 +396,7 @@ export default function LoginForm({
             </div>
 
             {error ? (
-              embedded ? (
+              embedded || isTransChap ? (
                 <SignInStatusAlert message={error} embedded />
               ) : (
                 <p role="alert" className="auth-otp__error">
@@ -381,7 +404,7 @@ export default function LoginForm({
                 </p>
               )
             ) : null}
-            {!embedded && devCode ? (
+            {!embedded && !isTransChap && devCode ? (
               <p className="auth-otp__hint">
                 Code: <strong>{devCode}</strong>
               </p>
@@ -412,21 +435,29 @@ export default function LoginForm({
 
   if (mode === "password") {
     return (
-      <LoginFrame embedded={embedded}>
-        {embedded ? null : (
+      <LoginFrame embedded={embedded} isTransChap={isTransChap}>
+        {!embedded || isTransChap ? (
           <>
-            <h1 className="auth-split__title">Sign in to your dashboard</h1>
+            <h1 className="auth-split__title">
+              {isTransChap ? "Sign in to Trans Chap" : "Sign in to your dashboard"}
+            </h1>
             <p className="auth-split__subtitle">
-              Enter your email address and password to continue
+              {isTransChap
+                ? "Enter your email address and password to open your register"
+                : "Enter your email address and password to continue"}
             </p>
           </>
-        )}
-
-        {error ? (
-          <SignInStatusAlert message={error} ok={statusOk} embedded={embedded} />
         ) : null}
 
-        {!embedded && googleEnabled ? (
+        {error ? (
+          <SignInStatusAlert
+            message={error}
+            ok={statusOk}
+            embedded={embedded || isTransChap}
+          />
+        ) : null}
+
+        {!embedded && !isTransChap && googleEnabled ? (
           <>
             <a
               href={apiRoutes.googleAuth(googleNext)}
@@ -472,75 +503,70 @@ export default function LoginForm({
           </button>
         </form>
 
-        {embedded ? (
-          <>
-            <Link
-              href="/forgot-password?next=/trans-chap/sign-in"
-              className="auth-split__link auth-split__link--end"
-            >
-              Forgot password?
-            </Link>
-            <button
-              type="button"
-              className="auth-split__link auth-split__link--end"
-              onClick={switchToOtp}
-              style={{
-                border: "none",
-                background: "transparent",
-                cursor: "pointer",
-                font: "inherit",
-              }}
-            >
-              Use OTP instead
-            </button>
-          </>
-        ) : (
-          <>
-            <Link href="/forgot-password" className="auth-split__link auth-split__link--end">
-              Forgot password?
-            </Link>
-            <p className="auth-split__footer">
-              <button
-                type="button"
-                onClick={switchToOtp}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  color: "var(--auth-accent, #e85d04)",
-                  font: "inherit",
-                  fontWeight: 650,
-                  cursor: "pointer",
-                  padding: 0,
-                }}
-              >
-                Use OTP instead
-              </button>
-            </p>
-            <p className="auth-split__footer">
-              Don&apos;t have an account yet? <Link href="/signup">Register Now.</Link>
-            </p>
-          </>
-        )}
+        <Link
+          href={
+            isTransChap
+              ? "/forgot-password?next=/trans-chap/sign-in"
+              : "/forgot-password"
+          }
+          className="auth-split__link auth-split__link--end"
+        >
+          Forgot password?
+        </Link>
+        <p className="auth-split__footer">
+          <button
+            type="button"
+            onClick={switchToOtp}
+            style={{
+              border: "none",
+              background: "transparent",
+              color: "var(--auth-accent, #e85d04)",
+              font: "inherit",
+              fontWeight: 650,
+              cursor: "pointer",
+              padding: 0,
+            }}
+          >
+            Use OTP instead
+          </button>
+        </p>
+        <p className="auth-split__footer">
+          {isTransChap ? (
+            <>
+              Looking for merchant dashboard?{" "}
+              <Link href="/sign-in">Sign in here.</Link>
+            </>
+          ) : (
+            <>
+              Don&apos;t have an account yet?{" "}
+              <Link href="/signup">Register Now.</Link>
+            </>
+          )}
+        </p>
       </LoginFrame>
     );
   }
 
   return (
-    <LoginFrame embedded={embedded}>
-      {embedded ? null : (
+    <LoginFrame embedded={embedded} isTransChap={isTransChap}>
+      {!embedded || isTransChap ? (
         <>
-          <h1 className="auth-split__title">Sign in to your dashboard</h1>
+          <h1 className="auth-split__title">
+            {isTransChap ? "Sign in with OTP" : "Sign in to your dashboard"}
+          </h1>
           <p className="auth-split__subtitle">
-            Enter your Email address or Mobile Number to continue
+            {isTransChap
+              ? "Enter your Email address or Mobile Number to receive a login code"
+              : "Enter your Email address or Mobile Number to continue"}
           </p>
         </>
-      )}
+      ) : null}
 
       {error ? (
-        <SignInStatusAlert message={error} embedded={embedded} />
+        <SignInStatusAlert message={error} embedded={embedded || isTransChap} />
       ) : null}
       {info && !error ? (
-        <SignInStatusAlert message={info} ok embedded={embedded} />
+        <SignInStatusAlert message={info} ok embedded={embedded || isTransChap} />
       ) : null}
 
       <form className="auth-split__form" onSubmit={(e) => void requestCode(e)}>
@@ -570,25 +596,36 @@ export default function LoginForm({
         </button>
       </form>
 
-      <button
-        type="button"
-        className="auth-split__link auth-split__link--end"
-        onClick={switchToPassword}
-        style={{
-          border: "none",
-          background: "transparent",
-          cursor: "pointer",
-          font: "inherit",
-        }}
-      >
-        Use password instead
-      </button>
+      <p className="auth-split__footer">
+        <button
+          type="button"
+          onClick={switchToPassword}
+          style={{
+            border: "none",
+            background: "transparent",
+            color: "var(--auth-accent, #e85d04)",
+            font: "inherit",
+            fontWeight: 650,
+            cursor: "pointer",
+            padding: 0,
+          }}
+        >
+          Use password instead
+        </button>
+      </p>
 
-      {embedded ? null : (
-        <p className="auth-split__footer">
-          Don&apos;t have an account yet? <Link href="/signup">Register Now.</Link>
-        </p>
-      )}
+      <p className="auth-split__footer">
+        {isTransChap ? (
+          <>
+            Looking for merchant dashboard?{" "}
+            <Link href="/sign-in">Sign in here.</Link>
+          </>
+        ) : (
+          <>
+            Don&apos;t have an account yet? <Link href="/signup">Register Now.</Link>
+          </>
+        )}
+      </p>
     </LoginFrame>
   );
 }

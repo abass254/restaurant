@@ -437,6 +437,7 @@ export function PosWorkspace({
 
   const [cart, setCart] = useState<CartLine[]>([]);
   const [bulkFactorDrafts, setBulkFactorDrafts] = useState<Record<string, string>>({});
+  const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
   const [mobileScreen, setMobileScreen] = useState<"catalog" | "order">("catalog");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   // Visual "just-added" pulse: holds the inventoryItem id that should flash.
@@ -1001,6 +1002,8 @@ export function PosWorkspace({
         line.inventoryItemId === key,
     );
     if (!target) return;
+    clearLinePriceDraft(key);
+    clearLinePriceDraft(target.inventoryItemId);
     const item = itemsById.get(target.inventoryItemId);
     const stockCap = item ? maxCartQty(item) : null;
     const heldQty = heldQtyByItemId.get(target.inventoryItemId) ?? 0;
@@ -1111,16 +1114,64 @@ export function PosWorkspace({
     });
   }
 
+  function updateLinePrice(key: string, price: number) {
+    setCart((prev) =>
+      prev.map((line) => {
+        if (
+          (line.lineId || line.inventoryItemId) !== key &&
+          line.inventoryItemId !== key
+        ) {
+          return line;
+        }
+        return {
+          ...line,
+          unit_price: price,
+          ...(line.unitFactor === 1 || !line.unitFactor ? { base_price: price } : {}),
+        };
+      }),
+    );
+  }
+
+  function handleLinePriceInput(key: string, value: string) {
+    const cleaned = value.replace(/[^0-9.]/g, "");
+    const parts = cleaned.split(".");
+    const normalized = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join("")}` : cleaned;
+    setPriceDrafts((prev) => ({ ...prev, [key]: normalized }));
+    if (normalized !== "" && normalized !== ".") {
+      const parsed = Number(normalized);
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        updateLinePrice(key, parsed);
+      }
+    }
+  }
+
+  function finishLinePriceInput(key: string) {
+    setPriceDrafts((prev) => {
+      const draft = prev[key];
+      if (draft !== undefined) {
+        if (draft === "" || draft === ".") {
+          updateLinePrice(key, 0);
+        }
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }
+      return prev;
+    });
+  }
+
+  function clearLinePriceDraft(key: string) {
+    setPriceDrafts((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
   function updateLineBulkPrice(key: string, value: string) {
     const price = Math.max(0, Number(value) || 0);
-    setCart((prev) =>
-      prev.map((line) =>
-        (line.lineId || line.inventoryItemId) === key ||
-        line.inventoryItemId === key
-          ? { ...line, unit_price: price }
-          : line,
-      ),
-    );
+    updateLinePrice(key, price);
   }
 
   function removeLine(key: string) {
@@ -1131,6 +1182,7 @@ export function PosWorkspace({
       delete next[key];
       return next;
     });
+    clearLinePriceDraft(key);
   }
 
   function clearCart() {
@@ -1139,6 +1191,7 @@ export function PosWorkspace({
     setCustomerPhone("");
     setMpesaReceiptCode("");
     setBulkFactorDrafts({});
+    setPriceDrafts({});
     setDeliveryAddress("");
     setDeliveryCoords(null);
     setDeliveryNotes("");
@@ -1180,6 +1233,8 @@ export function PosWorkspace({
 
   function applyHeldSession(session: PosHeldSession) {
     setCart(session.cart.map((line) => ({ ...line })));
+    setBulkFactorDrafts({});
+    setPriceDrafts({});
     setSource(isTransChapSale ? "walkin" : session.source);
     setFulfillment(isTransChapSale ? (isRestaurant ? session.fulfillment : "pickup") : session.fulfillment);
     setTableNumber(session.tableNumber || "Table 1");
@@ -2623,20 +2678,34 @@ export function PosWorkspace({
                           </div>
                           <div className="pos-line__total">
                             {isTransChapSale &&
-                            line.sellUnit === "Bulk" &&
-                            line.bulkFactor &&
-                            line.bulkFactor > 1 ? (
+                            ((line.sellUnit === "Bulk" &&
+                              line.bulkFactor &&
+                              line.bulkFactor > 1) ||
+                              fractionalUnits.length > 0) ? (
                               <input
-                                type="number"
-                                min={0}
-                                step="0.01"
+                                type="text"
+                                inputMode="decimal"
                                 className="pos-line__bulk-price"
-                                value={line.unit_price}
-                                onChange={(event) =>
-                                  updateLineBulkPrice(lineKey, event.target.value)
+                                value={
+                                  priceDrafts[lineKey] ??
+                                  (Number.isFinite(line.unit_price)
+                                    ? String(line.unit_price)
+                                    : "")
                                 }
-                                aria-label={`Bulk price for ${line.name}`}
-                                title="Bulk price"
+                                onChange={(event) =>
+                                  handleLinePriceInput(lineKey, event.target.value)
+                                }
+                                onBlur={() => finishLinePriceInput(lineKey)}
+                                aria-label={
+                                  fractionalUnits.length > 0
+                                    ? `Unit price for ${line.name}`
+                                    : `Bulk price for ${line.name}`
+                                }
+                                title={
+                                  fractionalUnits.length > 0
+                                    ? "Unit price"
+                                    : "Bulk price"
+                                }
                               />
                             ) : null}
                             {!isTransChapSale &&

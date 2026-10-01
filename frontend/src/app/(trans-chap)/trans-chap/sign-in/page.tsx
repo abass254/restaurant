@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { TransChapShell } from "@/components/trans-chap/TransChapShell";
 import { BackendUnavailableError } from "@/lib/backend";
 import { getServerUser } from "@/lib/server-auth";
 import LoginForm from "@/app/sign-in/LoginForm";
@@ -37,14 +36,12 @@ export default async function TransChapSignInPage({ searchParams }: PageProps) {
   }
 
   return (
-    <TransChapShell>
-      <LoginForm
-        statusMessage={params.error || null}
-        statusOk={false}
-        nextPath={nextPath}
-        embedded
-        signInPath="/trans-chap/sign-in"
-      />
-    </TransChapShell>
+    <LoginForm
+      statusMessage={params.error || null}
+      statusOk={false}
+      nextPath={nextPath}
+      brand="trans-chap"
+      signInPath="/trans-chap/sign-in"
+    />
   );
 }

@@ -5,9 +5,10 @@ import { useEffect, useState } from "react";
 type Props = {
   /** Vertical word drawn on the hero art (e.g. MERCHANTS, ONBOARDING). */
   label?: string;
+  children?: React.ReactNode;
 };
 
-export function AuthHeroPanel({ label = "MERCHANTS" }: Props) {
+export function AuthHeroPanel({ label = "MERCHANTS", children }: Props) {
   const word = label.trim().toUpperCase() || "MERCHANTS";
   const long = word.length > 8;
   const fontSize = long ? 56 : 72;
@@ -19,7 +20,7 @@ export function AuthHeroPanel({ label = "MERCHANTS" }: Props) {
   }, []);
 
   return (
-    <aside className="auth-split__hero" aria-hidden="true">
+    <aside className="auth-split__hero" aria-hidden={children ? undefined : "true"}>
       <div className="auth-split__hero-glow" />
       <svg
         className="auth-split__art"
@@ -221,6 +222,7 @@ export function AuthHeroPanel({ label = "MERCHANTS" }: Props) {
           </g>
         </g>
       </svg>
+      {children}
     </aside>
   );
 }
