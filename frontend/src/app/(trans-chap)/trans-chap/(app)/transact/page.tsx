@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function TransChapTransactRedirectPage() {
-  redirect("/trans-chap/make-a-sale");
+  redirect("/trans-chap/sales");
 }

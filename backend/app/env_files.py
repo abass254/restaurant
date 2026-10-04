@@ -1,4 +1,4 @@
-"""Resolve the shared DukAI environment file (repo-root `.env` only)."""
+"""Resolve the shared DukAI environment files (repo-root `.env` + optional `.env.local`)."""
 
 from __future__ import annotations
 
@@ -28,5 +28,13 @@ def dukai_env_file() -> Path:
     return PROJECT_ROOT / ".env"
 
 
+def dukai_local_env_file() -> Path:
+    return PROJECT_ROOT / ".env.local"
+
+
 def dukai_env_files() -> tuple[str, ...]:
-    return (str(dukai_env_file()),)
+    # pydantic-settings lets later files override earlier ones.
+    files = [dukai_env_file()]
+    if dukai_local_env_file().exists():
+        files.append(dukai_local_env_file())
+    return tuple(str(f) for f in files)

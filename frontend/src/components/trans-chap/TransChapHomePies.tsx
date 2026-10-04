@@ -2,16 +2,27 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { TransChapRangeFilter } from "@/components/trans-chap/TransChapRangeFilter";
+import { TransChapSalesChart } from "@/components/trans-chap/TransChapSalesChart";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { TransChapTodaySkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { MotionFade } from "@/components/app/MotionList";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { isShopOwner, userCanAccessSection } from "@/lib/merchant-permissions";
 import { fetchWalkinOrders, isCountedWalkinSale } from "@/lib/trans-chap-orders";
-import { fetchTransChapPurchases } from "@/lib/trans-chap-purchases";
+import { fetchTransChapPurchases, type TransChapPurchase } from "@/lib/trans-chap-purchases";
 import { fetchOwingCustomers } from "@/lib/trans-chap-credit";
 import { formatKesDigits, formatKsh } from "@/lib/trans-chap-receipt";
 import { nairobiDateKey, parseIso } from "@/lib/nairobi-time";
+import {
+  buildChartBuckets,
+  inRange,
+  rangeForPreset,
+  rangeLabel,
+  type DateRange,
+  type RangePreset,
+} from "@/lib/trans-chap-range";
+import type { Order } from "@/lib/types";
 
 type Slice = {
   name: string;
@@ -19,9 +30,10 @@ type Slice = {
   fill: string;
 };
 
-function isToday(iso: string | null | undefined, todayKey: string): boolean {
-  const date = parseIso(iso);
-  return date ? nairobiDateKey(date) === todayKey : false;
+const PRESETS: RangePreset[] = ["today", "yesterday", "7d", "30d", "custom"];
+
+function orderTime(order: Order): Date | null {
+  return parseIso(order.paid_at || order.placed_at || order.created_at);
 }
 
 function Money({ amount }: { amount: number }) {
@@ -39,22 +51,18 @@ export function TransChapHomePies() {
   const owner = isShopOwner(user);
   const canInventory = userCanAccessSection(user, "inventory");
   const canCustomers = userCanAccessSection(user, "customer");
-  const [salesTotal, setSalesTotal] = useState(0);
-  const [salesCount, setSalesCount] = useState(0);
-  const [cashTotal, setCashTotal] = useState(0);
-  const [creditTotal, setCreditTotal] = useState(0);
-  const [mpesaTotal, setMpesaTotal] = useState(0);
-  const [purchaseTotal, setPurchaseTotal] = useState(0);
-  const [purchaseCount, setPurchaseCount] = useState(0);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [purchases, setPurchases] = useState<TransChapPurchase[]>([]);
   const [owingTotal, setOwingTotal] = useState(0);
   const [owingCount, setOwingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const todayKey = nairobiDateKey(new Date());
+  const [range, setRange] = useState<DateRange>(() => rangeForPreset("today", todayKey));
 
   const reload = useCallback(async () => {
     setLoading(true);
-    const todayKey = nairobiDateKey(new Date());
-    const [sales, purchases, owing] = await Promise.all([
+    const [sales, bought, owing] = await Promise.all([
       fetchWalkinOrders(),
       canInventory
         ? fetchTransChapPurchases({ accountId })
@@ -67,31 +75,11 @@ export function TransChapHomePies() {
             error: null as string | null,
           }),
     ]);
-    const paidToday = sales.orders.filter((order) => {
-      if (!isCountedWalkinSale(order)) return false;
-      return isToday(order.paid_at || order.placed_at || order.created_at, todayKey);
-    });
-    const mpesa = paidToday
-      .filter((order) => order.payment_method === "mpesa")
-      .reduce((sum, order) => sum + order.total, 0);
-    const credit = paidToday
-      .filter((order) => order.payment_method === "credit")
-      .reduce((sum, order) => sum + order.total, 0);
-    const cash = paidToday
-      .filter((order) => order.payment_method !== "mpesa" && order.payment_method !== "credit")
-      .reduce((sum, order) => sum + order.total, 0);
-    const salesSum = paidToday.reduce((sum, order) => sum + order.total, 0);
-    const purchasesToday = purchases.purchases.filter((row) => isToday(row.paidAt, todayKey));
-    setSalesTotal(salesSum);
-    setSalesCount(paidToday.length);
-    setCashTotal(cash);
-    setCreditTotal(credit);
-    setMpesaTotal(mpesa);
-    setPurchaseTotal(purchasesToday.reduce((sum, row) => sum + row.total, 0));
-    setPurchaseCount(purchasesToday.length);
+    setOrders(sales.orders.filter(isCountedWalkinSale));
+    setPurchases(bought.purchases.filter((row) => !row.voidedAt));
     setOwingTotal(owing.owingTotal);
     setOwingCount(owing.customers?.length ?? 0);
-    setError(sales.error || purchases.error || owing.error);
+    setError(sales.error || bought.error || owing.error);
     setLoading(false);
   }, [accountId, canCustomers, canInventory]);
 
@@ -99,69 +87,117 @@ export function TransChapHomePies() {
     void reload();
   }, [reload]);
 
+  const stats = useMemo(() => {
+    const salesRows = orders
+      .map((order) => ({ order, when: orderTime(order) }))
+      .filter((row): row is { order: Order; when: Date } => inRange(row.when, range));
+    const purchaseRows = purchases
+      .map((row) => ({ when: parseIso(row.paidAt), total: row.total }))
+      .filter((row): row is { when: Date; total: number } => inRange(row.when, range));
+
+    const sumBy = (method: (m: string | null | undefined) => boolean) =>
+      salesRows
+        .filter((row) => method(row.order.payment_method))
+        .reduce((sum, row) => sum + row.order.total, 0);
+
+    return {
+      salesTotal: salesRows.reduce((sum, row) => sum + row.order.total, 0),
+      salesCount: salesRows.length,
+      purchaseTotal: purchaseRows.reduce((sum, row) => sum + row.total, 0),
+      purchaseCount: purchaseRows.length,
+      mpesaTotal: sumBy((m) => m === "mpesa"),
+      creditTotal: sumBy((m) => m === "credit"),
+      cashTotal: sumBy((m) => m !== "mpesa" && m !== "credit"),
+      buckets: buildChartBuckets(
+        range,
+        salesRows.map((row) => ({ when: row.when, total: row.order.total })),
+        purchaseRows,
+      ),
+    };
+  }, [orders, purchases, range]);
+
+  const { salesTotal, salesCount, purchaseTotal, purchaseCount } = stats;
   const profit = salesTotal - purchaseTotal;
+  const period = rangeLabel(range, todayKey);
   const paySlices = useMemo<Slice[]>(
     () => [
-      { name: "M-PESA", value: mpesaTotal, fill: "var(--trans-chap-mpesa)" },
-      { name: "Cash", value: cashTotal, fill: "var(--trans-chap-cash)" },
-      { name: "Credit", value: creditTotal, fill: "var(--trans-chap-credit)" },
+      { name: "M-PESA", value: stats.mpesaTotal, fill: "var(--trans-chap-mpesa)" },
+      { name: "Cash", value: stats.cashTotal, fill: "var(--trans-chap-cash)" },
+      { name: "Credit", value: stats.creditTotal, fill: "var(--trans-chap-credit)" },
     ],
-    [cashTotal, creditTotal, mpesaTotal],
+    [stats.cashTotal, stats.creditTotal, stats.mpesaTotal],
   );
   const payMax = Math.max(salesTotal, 1);
   const hasPayments = paySlices.some((slice) => slice.value > 0);
-
   if (loading) {
     return <TransChapTodaySkeleton />;
   }
 
-  if (error && salesTotal === 0 && purchaseTotal === 0) {
+  if (error && orders.length === 0 && purchases.length === 0) {
     return <TransChapStatus tone="error">{error}</TransChapStatus>;
   }
 
   return (
-    <MotionFade as="div" className="trans-chap-dash__analytics" aria-label="Today’s analytics">
-      <article
-        className={`trans-chap-dash__spotlight${profit < 0 ? " is-loss" : ""}`}
-      >
-        <div className="trans-chap-dash__spotlight-copy">
-          <span>{profit < 0 ? "Net loss today" : "Net profit today"}</span>
-          <Money amount={profit} />
-          <p>
-            Sales {formatKsh(salesTotal)} − Purchases {formatKsh(purchaseTotal)}
-          </p>
-        </div>
-        <i
-          className={`fa-solid ${profit < 0 ? "fa-arrow-trend-down" : "fa-arrow-trend-up"}`}
-          aria-hidden
+    <MotionFade as="div" className="trans-chap-dash__analytics" aria-label="Sales analytics">
+      <article className={`trans-chap-dash__spotlight${profit < 0 ? " is-loss" : ""}`}>
+        <TransChapRangeFilter
+          value={range}
+          onChange={setRange}
+          todayKey={todayKey}
+          presets={PRESETS}
         />
-      </article>
 
-      <div className="trans-chap-dash__stat-grid">
-        <article className="trans-chap-dash__stat trans-chap-dash__stat--sale">
-          <span>Sales</span>
-          <Money amount={salesTotal} />
-          <em>
-            {salesCount === 0
-              ? "No sales yet"
-              : `${salesCount} sale${salesCount === 1 ? "" : "s"}`}
-          </em>
-        </article>
-        <article className="trans-chap-dash__stat trans-chap-dash__stat--purchase">
-          <span>Purchases</span>
-          <Money amount={purchaseTotal} />
-          <em>
-            {purchaseCount === 0
-              ? "No restock yet"
-              : `${purchaseCount} purchase${purchaseCount === 1 ? "" : "s"}`}
-          </em>
-        </article>
-      </div>
+        <div className="trans-chap-dash__spotlight-main">
+          <div className="trans-chap-dash__spotlight-copy">
+            <span>
+              {profit < 0 ? "Net loss" : "Net profit"} {period}
+            </span>
+            <Money amount={profit} />
+            <p>
+              Sales {formatKsh(salesTotal)} − Purchases {formatKsh(purchaseTotal)}
+            </p>
+          </div>
+          <i
+            className={`fa-solid ${profit < 0 ? "fa-arrow-trend-down" : "fa-arrow-trend-up"}`}
+            aria-hidden
+          />
+        </div>
+
+        <TransChapSalesChart
+          buckets={stats.buckets}
+          emptyText={`No sales or purchases ${period}.`}
+        />
+
+        <div className="trans-chap-dash__totals">
+          <div className="trans-chap-dash__total is-sale">
+            <span>
+              <i aria-hidden /> Sales
+            </span>
+            <Money amount={salesTotal} />
+            <em>
+              {salesCount === 0
+                ? "No sales"
+                : `${salesCount} sale${salesCount === 1 ? "" : "s"}`}
+            </em>
+          </div>
+          <div className="trans-chap-dash__total is-purchase">
+            <span>
+              <i aria-hidden /> Purchases
+            </span>
+            <Money amount={purchaseTotal} />
+            <em>
+              {purchaseCount === 0
+                ? "No restock"
+                : `${purchaseCount} purchase${purchaseCount === 1 ? "" : "s"}`}
+            </em>
+          </div>
+        </div>
+      </article>
 
       <section className="trans-chap-dash__panel" aria-labelledby="trans-chap-pay-heading">
         <header className="trans-chap-dash__panel-head">
           <h3 id="trans-chap-pay-heading">How customers paid</h3>
-          <span>{hasPayments ? formatKsh(salesTotal) : "Today"}</span>
+          <span>{hasPayments ? formatKsh(salesTotal) : period}</span>
         </header>
         {hasPayments ? (
           <ul className="trans-chap-dash__mix">
@@ -194,8 +230,8 @@ export function TransChapHomePies() {
           </ul>
         ) : (
           <p className="trans-chap-dash__empty">
-            No paid sales yet today. Sales will break down into M-PESA, cash, and
-            credit here.
+            No paid sales {period}. Sales will break down into M-PESA, cash, and credit
+            here.
           </p>
         )}
       </section>

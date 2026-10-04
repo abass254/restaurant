@@ -80,6 +80,12 @@ const links: NavLink[] = [
     matchPrefix: true,
   },
   {
+    href: "/admin/logs",
+    icon: "fa-chart-line",
+    label: "Logs",
+    matchPrefix: true,
+  },
+  {
     href: "/admin/settings",
     icon: "fa-gear",
     label: "Settings",

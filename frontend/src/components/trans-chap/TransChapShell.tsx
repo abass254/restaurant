@@ -20,6 +20,13 @@ import { detectTransChapMachine, syncTransChapMachine } from "@/lib/trans-chap-m
 import { isRestaurantStore } from "@/lib/onboarding";
 
 const NAV_COLLAPSED_KEY = "trans-chap-nav-collapsed";
+const PHONE_HIDDEN_NAV_HREFS = new Set([
+  "/trans-chap/pos",
+  "/trans-chap/customers",
+  "/trans-chap/suppliers",
+  "/trans-chap/settings",
+  "/trans-chap/mpesa",
+]);
 
 type NavDef = {
   href: string;
@@ -44,7 +51,7 @@ function getNavItems(restaurant: boolean): NavDef[] {
       section: "inventory",
     },
     {
-      href: "/trans-chap/make-a-sale",
+      href: "/trans-chap/sales",
       label: restaurant ? "Orders" : "Sales",
       title: restaurant ? "Orders" : "Sales",
       icon: restaurant ? "fa-bell-concierge" : "fa-receipt",
@@ -86,6 +93,12 @@ function getNavItems(restaurant: boolean): NavDef[] {
       section: "pos",
     },
     {
+      href: "/trans-chap/reports",
+      label: "Reports",
+      title: "Reports",
+      icon: "fa-chart-pie",
+    },
+    {
       href: "/trans-chap/settings",
       label: "Settings",
       title: "Settings",
@@ -100,10 +113,10 @@ function headerMeta(
   mode: string | null,
   restaurant = false,
 ): { title: string; backHref: string | null } {
-  if (pathname.startsWith("/trans-chap/make-a-sale/receipt")) {
-    return { title: "Receipt", backHref: "/trans-chap/make-a-sale" };
+  if (pathname.startsWith("/trans-chap/sales/receipt")) {
+    return { title: "Receipt", backHref: "/trans-chap/sales" };
   }
-  if (pathname.startsWith("/trans-chap/make-a-sale/new")) {
+  if (pathname.startsWith("/trans-chap/sales/new")) {
     return {
       title:
         restaurant
@@ -113,7 +126,7 @@ function headerMeta(
           : mode === "select" || mode === "single"
             ? "Select"
             : "Scan",
-      backHref: "/trans-chap/make-a-sale",
+      backHref: "/trans-chap/sales",
     };
   }
   if (pathname.startsWith("/trans-chap/purchases/unavailable")) {
@@ -159,7 +172,7 @@ function headerMeta(
       backHref: "/trans-chap",
     };
   }
-  if (pathname.startsWith("/trans-chap/make-a-sale")) {
+  if (pathname.startsWith("/trans-chap/sales")) {
     return {
       title: restaurant ? "Orders" : "Sales",
       backHref: "/trans-chap",
@@ -341,6 +354,10 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // Must match the hrefs hidden on phone in trans-chap.css; +1 for the Menu button.
+  const phoneNavColumns =
+    items.filter((item) => !PHONE_HIDDEN_NAV_HREFS.has(item.href)).length + 1;
+
   const isHome = pathname === "/trans-chap" || pathname === "/trans-chap/";
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -411,7 +428,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                 className="mobile-nav mobile-nav--5"
                 style={
                   {
-                    "--mobile-nav-columns": 5,
+                    "--mobile-nav-columns": phoneNavColumns,
                   } as React.CSSProperties
                 }
                 aria-label="Trans Chap navigation"

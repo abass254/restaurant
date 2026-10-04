@@ -210,7 +210,7 @@ export function TransChapCreditList() {
       ) : error && customers.length === 0 ? (
         <TransChapStatus tone="error">{error}</TransChapStatus>
       ) : customers.length === 0 ? (
-        <TransChapStatus actionHref="/trans-chap/make-a-sale/new" actionLabel="Make a sale">
+        <TransChapStatus actionHref="/trans-chap/sales/new" actionLabel="Make a sale">
           Nobody owes the shop right now.
         </TransChapStatus>
       ) : filtered.length === 0 ? (

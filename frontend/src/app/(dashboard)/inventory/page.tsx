@@ -41,6 +41,7 @@ import type {
   InventoryImportResponse,
   InventoryResponse,
   ProductType,
+  SettingsOperationsResponse,
 } from "@/lib/types";
 
 type AddPanelView = "search" | "create";
@@ -82,7 +83,8 @@ function isOutOfStock(item: InventoryItem): boolean {
 
 export default function InventoryPage() {
   const user = useAuthUser();
-  const canEditQty = isShopOwner(user);
+  const [staffQtyAllowed, setStaffQtyAllowed] = useState(false);
+  const canEditQty = isShopOwner(user) || staffQtyAllowed;
   const reduce = useReducedMotion();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,6 +113,20 @@ export default function InventoryPage() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<SettingsOperationsResponse>(apiRoutes.settingsOperations)
+      .then((data) => {
+        if (!cancelled) setStaffQtyAllowed(data.allow_item_quantity_adjustment);
+      })
+      .catch(() => {
+        /* staff without settings access keep read-only quantities */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     try {

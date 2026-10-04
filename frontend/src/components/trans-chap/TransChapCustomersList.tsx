@@ -12,6 +12,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { MotionItem, MotionList } from "@/components/app/MotionList";
+import { TransChapCustomerTab } from "@/components/trans-chap/TransChapCustomerTab";
 import { TransChapFab } from "@/components/trans-chap/TransChapFab";
 import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
@@ -27,6 +28,7 @@ import { apiRoutes } from "@/lib/config";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { fetchShopCustomers } from "@/lib/trans-chap-customers";
 import { buildDebtReminderWhatsAppUrl } from "@/lib/trans-chap-credit";
+import { formatNairobiDate } from "@/lib/nairobi-time";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import { checkKenyanPhone } from "@/lib/phone-checker";
 import type {
@@ -111,6 +113,7 @@ export function TransChapCustomersList() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [tabOpenId, setTabOpenId] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState<CustomerForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -705,66 +708,211 @@ export function TransChapCustomersList() {
                   badge={badge}
                   onToggle={() => toggle(customer)}
                 >
-                  <div className="trans-chap-form__block">
-                    {hasCredit ? (
-                      <div className="trans-chap-customer-credit-card">
-                        <div className="trans-chap-customer-credit-card__head">
-                          <span className="trans-chap-customer-credit-card__title">
-                            <i className="fa-solid fa-wallet" aria-hidden /> Credit Tab Overview
-                          </span>
-                          <span
-                            className={`trans-chap-customer-credit-card__status ${
-                              owes ? "is-owes" : "is-clear"
-                            }`}
-                          >
-                            {owes
-                              ? `Tab Active · ${creditPct}% available`
-                              : "✓ Full Credit Available"}
-                          </span>
-                        </div>
-
-                        <div className="trans-chap-customer-credit-card__meter">
-                          <div
-                            className={`trans-chap-customer-credit-card__meter-bar${
-                              customer.available_credit <= 0
-                                ? " is-exceeded"
-                                : creditPct <= 25
-                                ? " is-low"
-                                : ""
-                            }`}
-                            style={{ width: `${creditPct}%` }}
-                          />
-                        </div>
-
-                        <div className="trans-chap-customer-credit-card__stats">
-                          <div className="trans-chap-customer-credit-card__stat">
-                            <span>Available</span>
-                            <strong className="is-avail">
-                              {formatKsh(customer.available_credit)}
-                            </strong>
-                          </div>
-                          <div className="trans-chap-customer-credit-card__stat">
-                            <span>Limit</span>
-                            <strong>{formatKsh(customer.credit_limit)}</strong>
-                          </div>
-                          <div className="trans-chap-customer-credit-card__stat">
-                            <span>Owes</span>
-                            <strong className={owes ? "is-debt" : "is-clear"}>
-                              {formatKsh(customer.outstanding_balance)}
-                            </strong>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="trans-chap-customer-cash-card">
-                        <i className="fa-solid fa-money-bill-wave" aria-hidden />
+                  <div className="trans-chap-form__block trans-chap-customer-detail">
+                    <section
+                      className={`trans-chap-customer-balance${owes ? " is-owes" : " is-clear"}`}
+                    >
+                      <div className="trans-chap-customer-balance__top">
                         <div>
-                          <strong>Walk-in Customer</strong>
-                          <p>No credit tab limit configured for this customer.</p>
+                          <span className="trans-chap-customer-balance__label">
+                            {owes ? "Balance owed" : "Balance"}
+                          </span>
+                          <strong className="trans-chap-customer-balance__amount">
+                            {owes ? formatKsh(customer.outstanding_balance) : "All paid up"}
+                          </strong>
                         </div>
+                        {customer.date_to_pay && owes ? (
+                          <span className="trans-chap-customer-balance__due">
+                            <i className="fa-regular fa-calendar" aria-hidden />
+                            Due {formatNairobiDate(customer.date_to_pay)}
+                          </span>
+                        ) : null}
                       </div>
-                    )}
 
+                      {hasCredit ? (
+                        <div className="trans-chap-customer-balance__limit">
+                          <div className="trans-chap-customer-credit-card__meter">
+                            <div
+                              className={`trans-chap-customer-credit-card__meter-bar${
+                                customer.available_credit <= 0
+                                  ? " is-exceeded"
+                                  : creditPct <= 25
+                                  ? " is-low"
+                                  : ""
+                              }`}
+                              style={{ width: `${creditPct}%` }}
+                            />
+                          </div>
+                          <p>
+                            <strong>{formatKsh(customer.available_credit)}</strong> of{" "}
+                            {formatKsh(customer.credit_limit)} credit available
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="trans-chap-customer-balance__note">
+                          {owes
+                            ? "No credit limit set — this tab has no cap."
+                            : "Cash only — no credit limit set."}
+                        </p>
+                      )}
+
+                      {owes ? (
+                        <button
+                          type="button"
+                          className="trans-chap-customer-balance__toggle"
+                          aria-expanded={tabOpenId === customer.id}
+                          onClick={() =>
+                            setTabOpenId((cur) => (cur === customer.id ? null : customer.id))
+                          }
+                        >
+                          <i className="fa-solid fa-receipt" aria-hidden />
+                          <span>
+                            {tabOpenId === customer.id ? "Hide items" : "View items on this tab"}
+                          </span>
+                          <i
+                            className={`fa-solid fa-chevron-${
+                              tabOpenId === customer.id ? "up" : "down"
+                            }`}
+                            aria-hidden
+                          />
+                        </button>
+                      ) : null}
+
+                      {owes && tabOpenId === customer.id ? (
+                        <TransChapCustomerTab
+                          customerId={customer.id}
+                          balance={customer.outstanding_balance}
+                        />
+                      ) : null}
+                    </section>
+
+                    <div className="trans-chap-customer-actions">
+                      {owes ? (
+                        <Link
+                          href="/trans-chap/credit"
+                          className="trans-chap-btn trans-chap-btn--primary trans-chap-customer-actions__wide"
+                        >
+                          <i className="fa-solid fa-mobile-screen-button" aria-hidden />
+                          <span>Collect via STK Push</span>
+                        </Link>
+                      ) : null}
+
+                      {owes && waUrl ? (
+                        <button
+                          type="button"
+                          className="trans-chap-btn trans-chap-btn--ghost"
+                          disabled={sendingWaId === customer.id}
+                          onClick={() => void handleSendWhatsAppReminder(customer)}
+                        >
+                          <i className="fa-brands fa-whatsapp" aria-hidden />
+                          <span>{sendingWaId === customer.id ? "Sending…" : "Remind"}</span>
+                        </button>
+                      ) : null}
+
+                      {owes && customer.pay_bill_url ? (
+                        <button
+                          type="button"
+                          className="trans-chap-btn trans-chap-btn--ghost"
+                          onClick={() => {
+                            void navigator.clipboard.writeText(customer.pay_bill_url!);
+                            void toastSuccess("Pay link copied!");
+                          }}
+                        >
+                          <i className="fa-solid fa-link" aria-hidden />
+                          <span>Copy pay link</span>
+                        </button>
+                      ) : null}
+
+                      <Link
+                        href={`/trans-chap/pos?customer=${customer.id}`}
+                        className={`trans-chap-btn ${
+                          owes ? "trans-chap-btn--ghost" : "trans-chap-btn--primary"
+                        } trans-chap-customer-actions__wide`}
+                      >
+                        <i className="fa-solid fa-cart-shopping" aria-hidden />
+                        <span>Start POS sale</span>
+                      </Link>
+
+                      {!owes ? (
+                        <button
+                          type="button"
+                          className="trans-chap-btn trans-chap-btn--ghost trans-chap-customer-actions__wide trans-chap-customer-actions__danger"
+                          disabled={removingId === customer.id}
+                          onClick={() => void removeCustomer(customer)}
+                        >
+                          <i className="fa-solid fa-trash-can" aria-hidden />
+                          <span>{removingId === customer.id ? "Removing…" : "Remove customer"}</span>
+                        </button>
+                      ) : null}
+                    </div>
+
+                    {owes && !forceMpesaPrompt ? (
+                      <form
+                        className="trans-chap-customer-manual"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void handleManualCollect(customer);
+                        }}
+                      >
+                        <div className="trans-chap-customer-manual__head">
+                          <span className="trans-chap-customer-section-label">
+                            Record a payment
+                          </span>
+                          <p>Leave amount blank to clear the full balance.</p>
+                        </div>
+                        <div className="trans-chap-customer-manual__fields">
+                          <label htmlFor={`${panelId}-manual-amount`}>
+                            <span>Amount (KES)</span>
+                            <input
+                              id={`${panelId}-manual-amount`}
+                              type="text"
+                              inputMode="decimal"
+                              className="auth-split__input"
+                              placeholder={formatKsh(customer.outstanding_balance)}
+                              value={manualPaymentValues[customer.id]?.amount ?? ""}
+                              onChange={(event) =>
+                                setManualPaymentValues((prev) => ({
+                                  ...prev,
+                                  [customer.id]: {
+                                    amount: event.target.value,
+                                    mpesaCode: prev[customer.id]?.mpesaCode ?? "",
+                                  },
+                                }))
+                              }
+                            />
+                          </label>
+                          <label htmlFor={`${panelId}-manual-mpesa-code`}>
+                            <span>M-PESA code (optional)</span>
+                            <input
+                              id={`${panelId}-manual-mpesa-code`}
+                              type="text"
+                              autoComplete="off"
+                              className="auth-split__input"
+                              placeholder="QGH7ABC123"
+                              value={manualPaymentValues[customer.id]?.mpesaCode ?? ""}
+                              onChange={(event) =>
+                                setManualPaymentValues((prev) => ({
+                                  ...prev,
+                                  [customer.id]: {
+                                    amount: prev[customer.id]?.amount ?? "",
+                                    mpesaCode: event.target.value,
+                                  },
+                                }))
+                              }
+                            />
+                          </label>
+                        </div>
+                        <button
+                          type="submit"
+                          className="trans-chap-btn trans-chap-btn--secondary"
+                          disabled={manualCollectingId === customer.id}
+                        >
+                          {manualCollectingId === customer.id ? "Recording…" : "Record payment"}
+                        </button>
+                      </form>
+                    ) : null}
+
+                    <span className="trans-chap-customer-section-label">Details</span>
                     <div className="trans-chap-customer-contact">
                       <div className="trans-chap-customer-contact__item">
                         <span className="trans-chap-customer-contact__label">Contact</span>
@@ -812,12 +960,12 @@ export function TransChapCustomersList() {
                         </div>
                       ) : null}
 
-                      {customer.date_to_pay ? (
+                      {customer.date_to_pay && !owes ? (
                         <div className="trans-chap-customer-contact__item">
                           <span className="trans-chap-customer-contact__label">Date to pay</span>
                           <div className="trans-chap-customer-contact__val">
                             <i className="fa-regular fa-calendar-check" aria-hidden />
-                            <span>{customer.date_to_pay}</span>
+                            <span>{formatNairobiDate(customer.date_to_pay)}</span>
                           </div>
                         </div>
                       ) : null}
@@ -830,140 +978,6 @@ export function TransChapCustomersList() {
                       ) : null}
                     </div>
 
-                    <div className="trans-chap-credit__actions" style={{ marginBottom: "0.85rem" }}>
-                      <Link
-                        href={`/trans-chap/pos?customer=${customer.id}`}
-                        className="trans-chap-btn trans-chap-btn--primary"
-                      >
-                        <i className="fa-solid fa-cart-shopping" aria-hidden />
-                        <span>Start POS Sale</span>
-                      </Link>
-
-                      {owes && waUrl ? (
-                        <button
-                          type="button"
-                          className="trans-chap-btn trans-chap-btn--whatsapp"
-                          disabled={sendingWaId === customer.id}
-                          onClick={() => void handleSendWhatsAppReminder(customer)}
-                        >
-                          <i className="fa-brands fa-whatsapp" aria-hidden />
-                          <span>
-                            {sendingWaId === customer.id
-                              ? "Sending via OpenWA…"
-                              : "Send WhatsApp Reminder"}
-                          </span>
-                        </button>
-                      ) : null}
-
-                      {owes && customer.pay_bill_url ? (
-                        <button
-                          type="button"
-                          className="trans-chap-btn trans-chap-btn--ghost"
-                          onClick={() => {
-                            void navigator.clipboard.writeText(customer.pay_bill_url!);
-                            void toastSuccess("Pay link copied!");
-                          }}
-                        >
-                          <i className="fa-solid fa-copy" aria-hidden />
-                          <span>Copy Pay Link</span>
-                        </button>
-                      ) : null}
-
-                      {owes ? (
-                        <Link href="/trans-chap/credit" className="trans-chap-form__secondary">
-                          Collect via STK Push
-                        </Link>
-                      ) : (
-                        <button
-                          type="button"
-                          className="trans-chap-form__secondary"
-                          disabled={removingId === customer.id}
-                          onClick={() => void removeCustomer(customer)}
-                        >
-                          {removingId === customer.id ? "Removing…" : "Remove customer"}
-                        </button>
-                      )}
-                    </div>
-
-                    {owes && !forceMpesaPrompt ? (
-                      <form
-                        className="trans-chap-form"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          void handleManualCollect(customer);
-                        }}
-                      >
-                        <p className="trans-chap-form__lead">
-                          Record a payment without an STK prompt. Leave amount blank to clear
-                          the full balance; an M-PESA code is optional.
-                        </p>
-                        <div className="trans-chap-form__fields">
-                          <div className="auth-split__field">
-                            <label htmlFor={`${panelId}-manual-amount`}>
-                              Amount paid (KES, optional)
-                            </label>
-                            <div className="trans-chap-input">
-                              <input
-                                id={`${panelId}-manual-amount`}
-                                type="text"
-                                inputMode="decimal"
-                                className="auth-split__input"
-                                placeholder={`Full balance: ${customer.outstanding_balance}`}
-                                value={
-                                  manualPaymentValues[customer.id]?.amount ?? ""
-                                }
-                                onChange={(event) =>
-                                  setManualPaymentValues((prev) => ({
-                                    ...prev,
-                                    [customer.id]: {
-                                      amount: event.target.value,
-                                      mpesaCode: prev[customer.id]?.mpesaCode ?? "",
-                                    },
-                                  }))
-                                }
-                              />
-                            </div>
-                          </div>
-                          <div className="auth-split__field">
-                            <label htmlFor={`${panelId}-manual-mpesa-code`}>
-                              M-PESA code (optional)
-                            </label>
-                            <div className="trans-chap-input">
-                              <input
-                                id={`${panelId}-manual-mpesa-code`}
-                                type="text"
-                                autoComplete="off"
-                                className="auth-split__input"
-                                placeholder="e.g. QGH7ABC123"
-                                value={
-                                  manualPaymentValues[customer.id]?.mpesaCode ?? ""
-                                }
-                                onChange={(event) =>
-                                  setManualPaymentValues((prev) => ({
-                                    ...prev,
-                                    [customer.id]: {
-                                      amount: prev[customer.id]?.amount ?? "",
-                                      mpesaCode: event.target.value,
-                                    },
-                                  }))
-                                }
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        <div className="trans-chap-form__actions">
-                          <button
-                            type="submit"
-                            className="auth-split__btn"
-                            disabled={manualCollectingId === customer.id}
-                          >
-                            {manualCollectingId === customer.id
-                              ? "Recording…"
-                              : "Record credit payment"}
-                          </button>
-                        </div>
-                      </form>
-                    ) : null}
                   </div>
                 </TransChapPanel>
               </MotionItem>

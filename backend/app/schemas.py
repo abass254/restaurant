@@ -361,6 +361,8 @@ class StockMovementOut(BaseModel):
     unit_cost: float | None = None
     created_by: str | None
     created_at: datetime | None
+    voided_at: datetime | None = None
+    void_reason: str | None = None
     inventory_item: InventoryItemOut | None = None
 
     @classmethod
@@ -394,6 +396,8 @@ class StockMovementOut(BaseModel):
             unit_cost=unit_cost_out,
             created_by=movement.created_by,
             created_at=movement.created_at,
+            voided_at=getattr(movement, "voided_at", None),
+            void_reason=getattr(movement, "void_reason", None),
             inventory_item=item_out,
         )
 

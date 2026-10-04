@@ -77,6 +77,15 @@ export function nairobiDateKey(date: Date): string {
   }).format(date);
 }
 
+/** True when `key` falls within the last `days` Nairobi calendar days, today included. */
+export function isWithinLastDays(key: string, days: number, todayKey: string): boolean {
+  const [ty, tm, td] = todayKey.split("-").map(Number);
+  const [ky, km, kd] = key.split("-").map(Number);
+  const diff =
+    (Date.UTC(ty, tm - 1, td) - Date.UTC(ky, km - 1, kd)) / 86_400_000;
+  return diff >= 0 && diff < days;
+}
+
 function shiftDateKey(key: string, days: number): string {
   const [year, month, day] = key.split("-").map(Number);
   const shifted = new Date(Date.UTC(year, month - 1, day + days));
@@ -105,6 +114,27 @@ export function formatNairobiDateTime(iso: string | null | undefined): string {
     return "";
   }
   return date.toLocaleString(KENYA_LOCALE, dateTimeOptions);
+}
+
+const stamp24Format = new Intl.DateTimeFormat("en-GB", {
+  timeZone: NAIROBI_TZ,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+
+/** Nairobi time as `HH:mm dd/mm/yyyy` (24-hour), e.g. `14:05 03/10/2026`. */
+export function formatNairobiStamp24(iso: string | null | undefined): string {
+  const date = parseIso(iso);
+  if (!date) {
+    return "";
+  }
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    stamp24Format.formatToParts(date).find((p) => p.type === type)?.value ?? "";
+  return `${part("hour")}:${part("minute")} ${part("day")}/${part("month")}/${part("year")}`;
 }
 
 export function formatNairobiListTime(iso: string | null | undefined): string {

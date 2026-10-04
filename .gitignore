@@ -2,6 +2,7 @@
 .DS_Store
 .env
 .env.dev
+.env.local
 .env.prod
 .env.backup
 .env.production
@@ -44,3 +45,4 @@ rider-app.tar.gz
 .git.nested-backup/
 **/.git.nested-backup/
 /storage/framework/views/*.php
+

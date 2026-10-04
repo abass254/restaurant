@@ -51,8 +51,8 @@ export function payModeFromMethod(method: string | null | undefined): TransChapP
 }
 
 export function transChapReceiptHref(orderId: string | null | undefined): string {
-  if (!orderId) return "/trans-chap/make-a-sale/receipt";
-  return `/trans-chap/make-a-sale/receipt?order=${encodeURIComponent(orderId)}`;
+  if (!orderId) return "/trans-chap/sales/receipt";
+  return `/trans-chap/sales/receipt?order=${encodeURIComponent(orderId)}`;
 }
 
 export function saveTransChapReceipt(receipt: TransChapReceipt): void {

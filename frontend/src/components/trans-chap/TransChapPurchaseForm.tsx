@@ -23,7 +23,7 @@ import {
   type PurchaseStatus,
 } from "@/components/trans-chap/TransChapPurchaseFields";
 import { TransChapSupplierField } from "@/components/trans-chap/TransChapSupplierField";
-import { confirmAction, showError, showInternalError, toastSuccess } from "@/lib/alerts";
+import { confirmAction, extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { findInventoryByBarcode } from "@/lib/barcode";
 import { apiRoutes, resolveAssetUrl } from "@/lib/config";
@@ -799,9 +799,18 @@ export function TransChapPurchaseForm() {
     }
 
     setSaving(true);
+    let nextInventory = inventory;
+    const savedKeys = new Set<string>();
     try {
-      let nextInventory = inventory;
       const note = buildPurchaseNote(purchaseMeta);
+      // Resolve every line's inventory item before recording any stock, so a
+      // failure here leaves nothing half-saved for a retry to duplicate.
+      const prepared: {
+        line: BasketLine;
+        item: InventoryItem;
+        cost: number;
+        sellingPrice: number | null;
+      }[] = [];
       for (const line of basket) {
         const cost = Number(line.unitCostInput);
         const sellRaw = Number(line.sellingPriceInput);
@@ -867,8 +876,17 @@ export function TransChapPurchaseForm() {
           }
         }
 
-        item = await receiveStock({
+        nextInventory = [
           item,
+          ...nextInventory.filter((entry) => entry.id !== item.id),
+        ];
+        prepared.push({ line, item, cost, sellingPrice });
+      }
+
+      for (const prep of prepared) {
+        const { line, cost, sellingPrice } = prep;
+        let item = await receiveStock({
+          item: prep.item,
           quantity: line.quantity * Math.max(1, line.unitFactor || 1),
           reason: "receive",
           // Persist buying price per stock (base) unit.
@@ -881,6 +899,7 @@ export function TransChapPurchaseForm() {
               ? [note, `${line.quantity} ${line.sellUnit}`].filter(Boolean).join(" · ")
               : note,
         });
+        savedKeys.add(line.key);
         // If this was a pack buy, store pack buying price on attributes.
         if (line.unitFactor > 1 && line.sellUnit) {
           const packs = allSellUnits(item).filter((unit) => unit.factor > 1);
@@ -941,8 +960,18 @@ export function TransChapPurchaseForm() {
           : `${basket.length} purchases saved`,
       );
       router.push("/trans-chap/purchases");
-    } catch {
-      await showInternalError();
+    } catch (err) {
+      setInventory(nextInventory);
+      const message = extractErrorMessage(err, "The purchase could not be saved.");
+      if (savedKeys.size > 0) {
+        setBasket(basket.filter((line) => !savedKeys.has(line.key)));
+        await showError(
+          "Purchase partly saved",
+          `${savedKeys.size} of ${basket.length} items were saved and removed from the list. ${message} Fix the remaining items, then save again.`,
+        );
+      } else {
+        await showError("Purchase not saved", message);
+      }
     } finally {
       setSaving(false);
     }

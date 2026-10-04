@@ -56,7 +56,7 @@ export function TransChapHome() {
             <>
               {canPos ? (
                 <Link
-                  href="/trans-chap/make-a-sale/new?mode=select"
+                  href="/trans-chap/sales/new?mode=select"
                   className="trans-chap-btn trans-chap-btn--primary"
                 >
                   <i className="fa-solid fa-plus" aria-hidden />

@@ -19,9 +19,12 @@ from app.services.inventory_stock_service import (
     adjust_stock,
     apply_unit_costs,
     deduct_stock,
+    PurchaseVoidError,
     lines_from_order,
     restore_stock,
+    void_purchase,
 )
+from app.models import InventoryItem, StockMovement
 
 
 def test_normalize_scan_value_strips_non_alnum() -> None:
@@ -265,4 +268,104 @@ def test_adjust_stock_rejects_untracked() -> None:
             direction="in",
             account_id="acc-1",
             reason="receive",
+        )
+
+
+class _VoidDB:
+    def __init__(self, movement, item):
+        self.rows = {StockMovement: movement, InventoryItem: item}
+        self.added = []
+
+    def query(self, model, *_args, **_kwargs):
+        return _FakeQuery(self.rows[model])
+
+    def add(self, obj):
+        self.added.append(obj)
+
+
+def _purchase(**overrides):
+    values = dict(
+        id="mv-1",
+        account_id="acc-1",
+        inventory_item_id="item-1",
+        direction="in",
+        reason="receive",
+        quantity=Decimal("3.000"),
+        quantity_before=Decimal("2.000"),
+        quantity_after=Decimal("5.000"),
+        voided_at=None,
+        voided_by=None,
+        void_reason=None,
+    )
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _stocked_item(qty):
+    return SimpleNamespace(
+        id="item-1",
+        stock_quantity=Decimal(qty),
+        product=SimpleNamespace(name="Soap"),
+        updated_at=None,
+    )
+
+
+def test_void_purchase_removes_stock_and_logs_reversal() -> None:
+    movement = _purchase()
+    item = _stocked_item("5.000")
+    db = _VoidDB(movement, item)
+    result = void_purchase(
+        db,  # type: ignore[arg-type]
+        "mv-1",
+        account_id="acc-1",
+        reason="  Wrong item  ",
+        user_id="user-1",
+    )
+    assert result is movement
+    assert item.stock_quantity == Decimal("2.000")
+    assert movement.voided_at is not None
+    assert movement.voided_by == "user-1"
+    assert movement.void_reason == "Wrong item"
+    assert len(db.added) == 1
+    reversal = db.added[0]
+    assert reversal.direction == "out"
+    assert reversal.quantity == Decimal("3.000")
+    assert reversal.note == "Voided purchase · Wrong item"
+
+
+def test_void_record_only_purchase_keeps_stock() -> None:
+    movement = _purchase(quantity_before=Decimal("8.000"), quantity_after=Decimal("8.000"))
+    item = _stocked_item("8.000")
+    db = _VoidDB(movement, item)
+    void_purchase(db, "mv-1", account_id="acc-1", reason="dup")  # type: ignore[arg-type]
+    assert item.stock_quantity == Decimal("8.000")
+    assert db.added == []
+    assert movement.voided_at is not None
+
+
+def test_void_purchase_rejects_when_stock_already_used() -> None:
+    movement = _purchase()
+    item = _stocked_item("1.000")
+    db = _VoidDB(movement, item)
+    with pytest.raises(InsufficientStockError):
+        void_purchase(db, "mv-1", account_id="acc-1", reason="oops")  # type: ignore[arg-type]
+    assert movement.voided_at is None
+    assert item.stock_quantity == Decimal("1.000")
+
+
+def test_void_purchase_rejects_non_purchase_and_double_void() -> None:
+    item = _stocked_item("5.000")
+    with pytest.raises(PurchaseVoidError):
+        void_purchase(
+            _VoidDB(_purchase(direction="out"), item),  # type: ignore[arg-type]
+            "mv-1",
+            account_id="acc-1",
+            reason="nope",
+        )
+    with pytest.raises(PurchaseVoidError):
+        void_purchase(
+            _VoidDB(_purchase(voided_at="earlier"), item),  # type: ignore[arg-type]
+            "mv-1",
+            account_id="acc-1",
+            reason="again",
         )

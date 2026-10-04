@@ -8254,3 +8254,223 @@ td.admin-table__actions {
   background: #1e293b !important;
   border-color: #334155 !important;
 }
+
+/* Logs & traffic dashboard ---------------------------------------- */
+
+.admin-logs {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.admin-logs .admin-stat-grid {
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+}
+
+.admin-logs .admin-stat {
+  gap: 0.75rem;
+}
+
+.admin-logs__stat-small {
+  font-size: 1.05rem;
+  white-space: nowrap;
+}
+
+.admin-logs__chart {
+  width: 100%;
+  min-height: 240px;
+}
+
+.admin-logs__split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  gap: 1.25rem;
+}
+
+@media (max-width: 1100px) {
+  .admin-logs__split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.admin-logs__codes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.admin-logs__code-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 4rem minmax(0, 1fr) 4rem;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.admin-logs__code-row:hover,
+.admin-logs__code-row.is-active {
+  background: var(--color-surface-muted, #f7f4ef);
+  border-color: var(--color-border, #e8e2d8);
+}
+
+.admin-logs__bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-surface-muted, #f1f5f9);
+  overflow: hidden;
+}
+
+.admin-logs__bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.admin-logs__count {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.admin-logs__compact td,
+.admin-logs__compact th {
+  padding-top: 0.45rem;
+  padding-bottom: 0.45rem;
+  font-size: 0.85rem;
+}
+
+.admin-logs__scroll {
+  max-height: 520px;
+  overflow: auto;
+}
+
+.admin-logs__mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.admin-logs__slow {
+  color: var(--color-danger, #b91c1c);
+  font-weight: 600;
+}
+
+.admin-logs__path {
+  max-width: 480px;
+}
+
+.admin-logs__path code {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-logs__source {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.admin-logs__source--backend {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.admin-logs__source--frontend {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+[data-theme="dark"] .admin-logs__source--backend {
+  background: #1e1b4b;
+  color: #a5b4fc;
+}
+
+[data-theme="dark"] .admin-logs__source--frontend {
+  background: #042f2e;
+  color: #5eead4;
+}
+
+.admin-logs__console {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem;
+  max-height: 560px;
+  overflow: auto;
+  border-radius: 12px;
+  background: #0b1120;
+  color: #e2e8f0;
+}
+
+.admin-logs__line {
+  display: grid;
+  grid-template-columns: auto auto auto minmax(0, 10rem) minmax(0, 1fr);
+  align-items: start;
+  gap: 0.6rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+}
+
+.admin-logs__line + .admin-logs__line {
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.admin-logs__line.is-error,
+.admin-logs__line.is-critical {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.admin-logs__line.is-warning {
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.admin-logs__time {
+  color: #94a3b8;
+  padding-top: 0.15rem;
+}
+
+.admin-logs__logger {
+  color: #94a3b8;
+  font-size: 0.78rem;
+  padding-top: 0.15rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-logs__message {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: inherit;
+}
+
+@media (max-width: 760px) {
+  .admin-logs__line {
+    grid-template-columns: auto auto auto;
+  }
+
+  .admin-logs__logger,
+  .admin-logs__message {
+    grid-column: 1 / -1;
+  }
+}

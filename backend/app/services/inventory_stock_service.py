@@ -204,6 +204,76 @@ def adjust_stock(
     return movements
 
 
+class PurchaseVoidError(ValueError):
+    """Raised when a stock movement cannot be voided as a purchase."""
+
+
+def void_purchase(
+    db: Session,
+    movement_id: str,
+    *,
+    account_id: str,
+    reason: str,
+    user_id: str | None = None,
+) -> StockMovement | None:
+    """Void a purchase (stock-in / receive) and take its stock back out.
+
+    History-only purchases (``record_only``) never added stock, so they are
+    just marked voided. Returns ``None`` when the movement does not exist.
+    """
+    movement = (
+        db.query(StockMovement)
+        .filter(
+            StockMovement.id == movement_id,
+            StockMovement.account_id == account_id,
+        )
+        .with_for_update()
+        .first()
+    )
+    if movement is None:
+        return None
+    if movement.direction != "in" or movement.reason != "receive":
+        raise PurchaseVoidError("Only purchases can be voided.")
+    if movement.voided_at is not None:
+        raise PurchaseVoidError("This purchase is already voided.")
+
+    trimmed_reason = reason.strip()[:1000]
+    now = datetime.utcnow()
+    qty = Decimal(str(movement.quantity)).quantize(Decimal("0.001"))
+    added_stock = (
+        movement.quantity_before is None
+        or movement.quantity_after is None
+        or movement.quantity_after != movement.quantity_before
+    )
+
+    item = _locked_item(db, movement.inventory_item_id, account_id=account_id)
+    if added_stock and item is not None and item.stock_quantity is not None and qty > 0:
+        before = Decimal(str(item.stock_quantity)).quantize(Decimal("0.001"))
+        if qty > before:
+            raise InsufficientStockError(_product_name(item), qty, before)
+        after = before - qty
+        item.stock_quantity = after
+        item.updated_at = now
+        reversal = StockMovement(
+            account_id=account_id,
+            inventory_item_id=item.id,
+            direction="out",
+            quantity=qty,
+            quantity_before=before,
+            quantity_after=after,
+            reason="adjustment",
+            note=f"Voided purchase · {trimmed_reason}"[:500],
+            created_by=user_id,
+            created_at=now,
+        )
+        db.add(reversal)
+
+    movement.voided_at = now
+    movement.voided_by = user_id
+    movement.void_reason = trimmed_reason
+    return movement
+
+
 def apply_unit_costs(
     movements: list[StockMovement],
     costs: dict[str, float],

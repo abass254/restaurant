@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthUser } from "@/components/app/AuthProvider";
+import { TransChapRangeFilter } from "@/components/trans-chap/TransChapRangeFilter";
+import { TransChapSalesChart } from "@/components/trans-chap/TransChapSalesChart";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { TransChapStoreProfile } from "@/components/trans-chap/TransChapStoreProfile";
 import { TransChapTodaySkeleton } from "@/components/trans-chap/TransChapSkeleton";
@@ -12,40 +14,26 @@ import { nairobiDateKey, parseIso } from "@/lib/nairobi-time";
 import { fetchWalkinOrders, isCountedWalkinSale } from "@/lib/trans-chap-orders";
 import { fetchTransChapPurchases, type TransChapPurchase } from "@/lib/trans-chap-purchases";
 import { inventoryProductName } from "@/lib/trans-chap-product";
+import {
+  buildChartBuckets,
+  inRange,
+  rangeForPreset,
+  rangeLabel,
+  type DateRange,
+  type RangePreset,
+} from "@/lib/trans-chap-range";
 import { formatKesDigits, formatKsh } from "@/lib/trans-chap-receipt";
-import type {
-  InventoryItem,
-  InventoryResponse,
-  Order,
-} from "@/lib/types";
+import type { InventoryItem, InventoryResponse, Order } from "@/lib/types";
 
-type WhenFilter = "today" | "week" | "all" | "net";
+type ReportView = "performance" | "worth";
+type ProductSort = "amount" | "qty";
 
-const WHEN_CHIPS: { id: WhenFilter; label: string }[] = [
-  { id: "today", label: "Today" },
-  { id: "week", label: "7 days" },
-  { id: "all", label: "All" },
-  { id: "net", label: "NET" },
-];
+const PRESETS: RangePreset[] = ["today", "yesterday", "7d", "30d", "month", "all", "custom"];
+const LIST_PREVIEW = 5;
+const STOCK_PREVIEW = 6;
 
-function dateKeyFromIso(iso: string | null | undefined): string | null {
-  const date = parseIso(iso);
-  return date ? nairobiDateKey(date) : null;
-}
-
-function isWithinLastDays(key: string, days: number, todayKey: string): boolean {
-  const [ty, tm, td] = todayKey.split("-").map(Number);
-  const [ky, km, kd] = key.split("-").map(Number);
-  const diff =
-    (Date.UTC(ty, tm - 1, td) - Date.UTC(ky, km - 1, kd)) / 86_400_000;
-  return diff >= 0 && diff < days;
-}
-
-function inPeriod(key: string | null, when: WhenFilter, todayKey: string): boolean {
-  if (when === "all") return true;
-  if (!key) return false;
-  if (when === "today") return key === todayKey;
-  return isWithinLastDays(key, 7, todayKey);
+function orderTime(order: Order): Date | null {
+  return parseIso(order.paid_at || order.placed_at || order.created_at);
 }
 
 function Money({ amount }: { amount: number }) {
@@ -57,17 +45,29 @@ function Money({ amount }: { amount: number }) {
   );
 }
 
+function percent(part: number, whole: number): number {
+  return whole > 0 ? Math.round((part / whole) * 100) : 0;
+}
+
 export function TransChapReports() {
   const user = useAuthUser();
+  const accountId = user.active_account?.id || user.account?.id;
   const [orders, setOrders] = useState<Order[]>([]);
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [purchases, setPurchases] = useState<TransChapPurchase[]>([]);
+  const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [when, setWhen] = useState<WhenFilter>("today");
   const [openingAmount, setOpeningAmount] = useState<number | null>(null);
   const [openingStock, setOpeningStock] = useState<number | null>(null);
   const [openingInvestment, setOpeningInvestment] = useState<number | null>(null);
+
+  const todayKey = nairobiDateKey(new Date());
+  const [view, setView] = useState<ReportView>("performance");
+  const [range, setRange] = useState<DateRange>(() => rangeForPreset("today", todayKey));
+  const [productSort, setProductSort] = useState<ProductSort>("amount");
+  const [showAllProducts, setShowAllProducts] = useState(false);
+  const [showAllStock, setShowAllStock] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -75,17 +75,22 @@ export function TransChapReports() {
       const [sales, inventory, bought, settingsData] = await Promise.all([
         fetchWalkinOrders(),
         apiFetch<InventoryResponse>(apiRoutes.inventory),
-        fetchTransChapPurchases({
-          accountId: user.active_account?.id || user.account?.id,
-        }),
-        apiFetch<any>(apiRoutes.settings).catch(() => null),
+        fetchTransChapPurchases({ accountId }),
+        apiFetch<{
+          opening_amount?: number | string | null;
+          opening_stock?: number | string | null;
+          opening_investment?: number | string | null;
+        }>(apiRoutes.settings).catch(() => null),
       ]);
-      setOrders(sales.orders);
+      setOrders(sales.orders.filter(isCountedWalkinSale));
       setItems(inventory.data);
-      setPurchases(bought.purchases);
+      setPurchases(bought.purchases.filter((row) => !row.voidedAt));
+      setTruncated(sales.truncated || bought.truncated);
       setOpeningAmount(settingsData?.opening_amount ? Number(settingsData.opening_amount) : null);
       setOpeningStock(settingsData?.opening_stock ? Number(settingsData.opening_stock) : null);
-      setOpeningInvestment(settingsData?.opening_investment ? Number(settingsData.opening_investment) : null);
+      setOpeningInvestment(
+        settingsData?.opening_investment ? Number(settingsData.opening_investment) : null,
+      );
       setError(sales.error || bought.error ? internalErrorMessage() : null);
     } catch {
       setOrders([]);
@@ -98,157 +103,169 @@ export function TransChapReports() {
     } finally {
       setLoading(false);
     }
-  }, [user.account?.id, user.active_account?.id]);
+  }, [accountId]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  const todayKey = nairobiDateKey(new Date());
+  const earliestKey = useMemo(() => {
+    let earliest: string | null = null;
+    const consider = (when: Date | null) => {
+      if (!when) return;
+      const key = nairobiDateKey(when);
+      if (!earliest || key < earliest) earliest = key;
+    };
+    orders.forEach((order) => consider(orderTime(order)));
+    purchases.forEach((row) => consider(parseIso(row.paidAt)));
+    return earliest;
+  }, [orders, purchases]);
 
-  const report = useMemo(() => {
-    // For NET tab, we use ALL history to calculate cash flow accurately
-    const isNet = when === "net";
-    const filterWhen = isNet ? "all" : when;
+  const itemLookup = useMemo(() => {
+    const byId = new Map(items.map((item) => [item.id, item]));
+    const byName = new Map(items.map((item) => [inventoryProductName(item), item]));
+    return { byId, byName };
+  }, [items]);
 
-    const paid = orders.filter((order) => {
-      if (!isCountedWalkinSale(order)) return false;
-      const key = dateKeyFromIso(order.paid_at || order.placed_at || order.created_at);
-      return inPeriod(key, filterWhen, todayKey);
-    });
-    const bought = purchases.filter((row) =>
-      inPeriod(dateKeyFromIso(row.paidAt), filterWhen, todayKey),
-    );
+  const stockValue = useMemo(
+    () =>
+      items.reduce(
+        (sum, item) => sum + Math.max(0, item.stock_quantity || 0) * (item.buying_price || 0),
+        0,
+      ),
+    [items],
+  );
 
-    const salesTotal = paid.reduce((sum, order) => sum + order.total, 0);
-    const mpesaTotal = paid
-      .filter((order) => order.payment_method === "mpesa")
-      .reduce((sum, order) => sum + order.total, 0);
-    const creditTotal = paid
-      .filter((order) => order.payment_method === "credit")
-      .reduce((sum, order) => sum + order.total, 0);
-    const cashTotal = paid
-      .filter((order) => order.payment_method !== "mpesa" && order.payment_method !== "credit")
-      .reduce((sum, order) => sum + order.total, 0);
-    const purchaseTotal = bought.reduce((sum, row) => sum + row.total, 0);
-    const forSalePurchaseTotal = bought
-      .filter((row) => row.inventoryRole === "for_sale")
-      .reduce((sum, row) => sum + row.total, 0);
-    const rawPurchaseTotal = bought
-      .filter((row) => row.inventoryRole === "raw_material")
-      .reduce((sum, row) => sum + row.total, 0);
-    const bothPurchaseTotal = bought
-      .filter((row) => row.inventoryRole === "both")
-      .reduce((sum, row) => sum + row.total, 0);
-    const units = paid.reduce(
-      (sum, order) =>
-        sum + (order.items?.reduce((qty, line) => qty + (line.quantity || 0), 0) ?? 0),
-      0,
-    );
+  const lowStock = useMemo(
+    () =>
+      items
+        .filter(
+          (item) =>
+            item.stock_quantity != null && (item.stock_quantity <= 0 || item.is_low_stock),
+        )
+        .sort((a, b) => (a.stock_quantity ?? 0) - (b.stock_quantity ?? 0)),
+    [items],
+  );
 
-    const itemByInvId = new Map(items.map((i) => [i.id, i]));
-    let cogsTotal = 0;
+  const period = useMemo(() => {
+    const sales = orders
+      .map((order) => ({ order, when: orderTime(order) }))
+      .filter((row): row is { order: Order; when: Date } => inRange(row.when, range));
+    const bought = purchases
+      .map((row) => ({ row, when: parseIso(row.paidAt) }))
+      .filter((r): r is { row: TransChapPurchase; when: Date } => inRange(r.when, range));
 
-    const productTotals = new Map<string, { qty: number; amount: number }>();
-    for (const order of paid) {
+    const sumSales = (match: (method: string | null | undefined) => boolean) =>
+      sales
+        .filter(({ order }) => match(order.payment_method))
+        .reduce((sum, { order }) => sum + order.total, 0);
+    const sumPurchases = (role: TransChapPurchase["inventoryRole"]) =>
+      bought
+        .filter(({ row }) => row.inventoryRole === role)
+        .reduce((sum, { row }) => sum + row.total, 0);
+
+    let cogs = 0;
+    let units = 0;
+    const products = new Map<string, { qty: number; amount: number }>();
+    for (const { order } of sales) {
       for (const line of order.items ?? []) {
         const name = line.product_name?.trim() || "Sale";
-        const current = productTotals.get(name) ?? { qty: 0, amount: 0 };
-        current.qty += line.quantity || 0;
+        const qty = line.quantity || 0;
+        const current = products.get(name) ?? { qty: 0, amount: 0 };
+        current.qty += qty;
         current.amount += line.line_total || 0;
-        productTotals.set(name, current);
-
-        let buyingPrice = 0;
-        if (line.inventory_item_id) {
-          const inv = itemByInvId.get(line.inventory_item_id);
-          if (inv && inv.buying_price != null) {
-            buyingPrice = inv.buying_price;
-          }
-        } else {
-          const inv = items.find((i) => inventoryProductName(i) === name);
-          if (inv && inv.buying_price != null) {
-            buyingPrice = inv.buying_price;
-          }
-        }
-        cogsTotal += (line.quantity || 0) * buyingPrice;
+        products.set(name, current);
+        units += qty;
+        const inv = line.inventory_item_id
+          ? itemLookup.byId.get(line.inventory_item_id)
+          : itemLookup.byName.get(name);
+        cogs += qty * (inv?.buying_price ?? 0);
       }
     }
-    const topProducts = [...productTotals.entries()]
-      .sort((a, b) => b[1].amount - a[1].amount)
-      .slice(0, 5)
-      .map(([name, stats]) => ({ name, ...stats }));
 
-    const lowStock = items.filter(
-      (item) =>
-        item.stock_quantity != null &&
-        (item.stock_quantity <= 0 || item.is_low_stock),
-    );
-
-    const stockValue = items.reduce(
-      (sum, item) => sum + Math.max(0, item.stock_quantity || 0) * (item.buying_price || 0),
-      0
-    );
-    
-    // For NET tab, we calculate total cash flow and net equity
-    const cashOnHand = (openingAmount || 0) + salesTotal - purchaseTotal; 
-    const currentEquity = cashOnHand + stockValue;
-    
-    const initialEquity = openingInvestment != null 
-      ? openingInvestment 
-      : ((openingAmount || 0) + (openingStock || 0));
-      
-    // As requested: OI - (OA + OS + TP - TS + TD - TC)
-    // We treat openingInvestment as OI. If null, we default to 0 to avoid breaking the math.
-    const OI = openingInvestment || 0;
-    const OA = openingAmount || 0;
-    const OS = openingStock || 0;
-    const TP = purchaseTotal;
-    const TS = salesTotal;
-    const TC = creditTotal; // Amount customers have not paid
-    const TD = 0; // Amount not paid to suppliers (to be implemented if tracked)
-
-    const netProfit = OI - (OA + OS + TP - TS + TD - TC);
-    const trueValue = (OA + OS + TP - TS) + TC - TD;
+    const salesTotal = sales.reduce((sum, { order }) => sum + order.total, 0);
+    const purchaseTotal = bought.reduce((sum, { row }) => sum + row.total, 0);
 
     return {
       salesTotal,
-      cashTotal,
-      creditTotal,
-      mpesaTotal,
-      purchaseTotal,
-      forSalePurchaseTotal,
-      rawPurchaseTotal,
-      bothPurchaseTotal,
-      cogsTotal,
-      stockValue,
-      cashOnHand,
-      currentEquity,
-      trueValue,
-      initialEquity,
-      netProfit,
-      profit: salesTotal - cogsTotal,
-      saleCount: paid.length,
-      purchaseCount: bought.length,
+      saleCount: sales.length,
       units,
-      topProducts,
-      lowStock,
+      purchaseTotal,
+      purchaseCount: bought.length,
+      forSalePurchases: sumPurchases("for_sale"),
+      rawPurchases: sumPurchases("raw_material"),
+      bothPurchases: sumPurchases("both"),
+      mpesaTotal: sumSales((m) => m === "mpesa"),
+      creditTotal: sumSales((m) => m === "credit"),
+      cashTotal: sumSales((m) => m !== "mpesa" && m !== "credit"),
+      cogs,
+      profit: salesTotal - cogs,
+      products: [...products.entries()].map(([name, stats]) => ({ name, ...stats })),
+      buckets: buildChartBuckets(
+        range,
+        sales.map(({ order, when }) => ({ when, total: order.total })),
+        bought.map(({ row, when }) => ({ when, total: row.total })),
+      ),
     };
-  }, [items, orders, purchases, todayKey, when]);
+  }, [itemLookup, orders, purchases, range]);
 
-  const purchaseBreakdown = (() => {
+  const worth = useMemo(() => {
+    const salesTotal = orders.reduce((sum, order) => sum + order.total, 0);
+    const purchaseTotal = purchases.reduce((sum, row) => sum + row.total, 0);
+    const creditTotal = orders
+      .filter((order) => order.payment_method === "credit")
+      .reduce((sum, order) => sum + order.total, 0);
+
+    // OI - (OA + OS + TP - TS + TD - TC); supplier debt (TD) is not tracked yet.
+    const OI = openingInvestment || 0;
+    const OA = openingAmount || 0;
+    const OS = openingStock || 0;
+    const TD = 0;
+    return {
+      salesTotal,
+      purchaseTotal,
+      creditTotal,
+      cashGenerated: OA + salesTotal - purchaseTotal,
+      initialEquity: openingInvestment ?? OA + OS,
+      netProfit: OI - (OA + OS + purchaseTotal - salesTotal + TD - creditTotal),
+      trueValue: OA + OS + purchaseTotal - salesTotal + creditTotal - TD,
+    };
+  }, [openingAmount, openingInvestment, openingStock, orders, purchases]);
+
+  const periodText = rangeLabel(range, todayKey);
+  const margin = percent(period.profit, period.salesTotal);
+  const avgSale = period.saleCount > 0 ? period.salesTotal / period.saleCount : 0;
+
+  const sortedProducts = useMemo(
+    () =>
+      [...period.products].sort((a, b) =>
+        productSort === "qty" ? b.qty - a.qty || b.amount - a.amount : b.amount - a.amount,
+      ),
+    [period.products, productSort],
+  );
+  const visibleProducts = showAllProducts ? sortedProducts : sortedProducts.slice(0, LIST_PREVIEW);
+  const productMax = Math.max(
+    1,
+    ...sortedProducts.map((row) => (productSort === "qty" ? row.qty : row.amount)),
+  );
+
+  const outCount = lowStock.filter((item) => (item.stock_quantity ?? 0) <= 0).length;
+  const visibleStock = showAllStock ? lowStock : lowStock.slice(0, STOCK_PREVIEW);
+
+  const paySlices = [
+    { key: "mpesa", label: "M-PESA", value: period.mpesaTotal },
+    { key: "cash", label: "Cash", value: period.cashTotal },
+    { key: "credit", label: "Credit", value: period.creditTotal },
+  ];
+
+  const purchaseNote = (() => {
     const parts = [
-      `${report.purchaseCount} purchase${report.purchaseCount === 1 ? "" : "s"}`,
+      `${period.purchaseCount} purchase${period.purchaseCount === 1 ? "" : "s"}`,
     ];
-    if (report.rawPurchaseTotal > 0 || report.bothPurchaseTotal > 0) {
-      if (report.forSalePurchaseTotal > 0) {
-        parts.push(`sale ${formatKsh(report.forSalePurchaseTotal)}`);
-      }
-      if (report.rawPurchaseTotal > 0) {
-        parts.push(`raw ${formatKsh(report.rawPurchaseTotal)}`);
-      }
-      if (report.bothPurchaseTotal > 0) {
-        parts.push(`both ${formatKsh(report.bothPurchaseTotal)}`);
-      }
+    if (period.rawPurchases > 0 || period.bothPurchases > 0) {
+      if (period.forSalePurchases > 0) parts.push(`sale ${formatKsh(period.forSalePurchases)}`);
+      if (period.rawPurchases > 0) parts.push(`raw ${formatKsh(period.rawPurchases)}`);
+      if (period.bothPurchases > 0) parts.push(`both ${formatKsh(period.bothPurchases)}`);
     }
     return parts.join(" · ");
   })();
@@ -256,20 +273,45 @@ export function TransChapReports() {
   return (
     <div className="trans-chap-sales trans-chap-reports">
       <TransChapStoreProfile>
-        <div className="trans-chap-sales__filters">
-          <div className="trans-chap-sales__chips" role="group" aria-label="Report period">
-            {WHEN_CHIPS.map((chip) => (
-              <button
-                key={chip.id}
-                type="button"
-                className={`trans-chap-sales__chip${when === chip.id ? " is-active" : ""}`}
-                aria-pressed={when === chip.id}
-                onClick={() => setWhen(chip.id)}
-              >
-                {chip.label}
-              </button>
-            ))}
+        <div className="trans-chap-reports__toolbar">
+          <div className="trans-chap-reports__views" role="tablist" aria-label="Report type">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "performance"}
+              className={view === "performance" ? "is-on" : undefined}
+              onClick={() => setView("performance")}
+            >
+              <i className="fa-solid fa-chart-column" aria-hidden />
+              Performance
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "worth"}
+              className={view === "worth" ? "is-on" : undefined}
+              onClick={() => setView("worth")}
+            >
+              <i className="fa-solid fa-scale-balanced" aria-hidden />
+              Business worth
+            </button>
           </div>
+          {view === "performance" ? (
+            <TransChapRangeFilter
+              value={range}
+              onChange={(next) => {
+                setRange(next);
+                setShowAllProducts(false);
+              }}
+              todayKey={todayKey}
+              presets={PRESETS}
+              earliestKey={earliestKey}
+            />
+          ) : (
+            <p className="trans-chap-reports__hint">
+              Uses your full history and the opening figures from Settings.
+            </p>
+          )}
         </div>
 
         <div className="trans-chap-reports__scroll">
@@ -277,163 +319,299 @@ export function TransChapReports() {
             <TransChapTodaySkeleton />
           ) : error && orders.length === 0 && purchases.length === 0 ? (
             <TransChapStatus tone="error">{error}</TransChapStatus>
+          ) : view === "worth" ? (
+            <div className="trans-chap-reports__body">
+              <section
+                className={`trans-chap-reports__profit trans-chap-reports__wide${
+                  worth.netProfit < 0 ? " is-loss" : ""
+                }`}
+              >
+                <div className="trans-chap-reports__profit-copy">
+                  <span>{worth.netProfit < 0 ? "Net loss" : "Net profit"} · all time</span>
+                  <Money amount={worth.netProfit} />
+                  <p>Overall return on what you invested</p>
+                </div>
+                <i
+                  className={`fa-solid ${
+                    worth.netProfit < 0 ? "fa-arrow-trend-down" : "fa-arrow-trend-up"
+                  }`}
+                  aria-hidden
+                />
+              </section>
+
+              <section className="trans-chap-reports__kpis trans-chap-reports__wide">
+                <article className="trans-chap-reports__kpi trans-chap-reports__kpi--opening">
+                  <span>Total invested</span>
+                  <Money amount={worth.initialEquity} />
+                  <small>Opening investment</small>
+                </article>
+                <article className="trans-chap-reports__kpi trans-chap-reports__kpi--opening">
+                  <span>True value</span>
+                  <Money amount={worth.trueValue} />
+                  <small>Estimated business value</small>
+                </article>
+                <article className="trans-chap-reports__kpi trans-chap-reports__kpi--stock">
+                  <span>Stock value</span>
+                  <Money amount={stockValue} />
+                  <small>Inventory at buying price</small>
+                </article>
+                <article className="trans-chap-reports__kpi trans-chap-reports__kpi--sale">
+                  <span>Cash generated</span>
+                  <Money amount={worth.cashGenerated} />
+                  <small>Opening cash + sales − purchases</small>
+                </article>
+              </section>
+
+              <section className="trans-chap-reports__block trans-chap-reports__wide">
+                <header className="trans-chap-reports__block-head">
+                  <h2>How it adds up</h2>
+                </header>
+                <dl className="trans-chap-reports__ledger">
+                  <div>
+                    <dt>Opening investment</dt>
+                    <dd>{formatKsh(openingInvestment ?? 0)}</dd>
+                  </div>
+                  <div>
+                    <dt>Opening cash</dt>
+                    <dd>{formatKsh(openingAmount ?? 0)}</dd>
+                  </div>
+                  <div>
+                    <dt>Opening stock</dt>
+                    <dd>{formatKsh(openingStock ?? 0)}</dd>
+                  </div>
+                  <div>
+                    <dt>All sales</dt>
+                    <dd className="is-plus">+{formatKsh(worth.salesTotal)}</dd>
+                  </div>
+                  <div>
+                    <dt>All purchases</dt>
+                    <dd className="is-minus">−{formatKsh(worth.purchaseTotal)}</dd>
+                  </div>
+                  <div>
+                    <dt>Credit sales still owed</dt>
+                    <dd>{formatKsh(worth.creditTotal)}</dd>
+                  </div>
+                </dl>
+              </section>
+            </div>
           ) : (
             <div className="trans-chap-reports__body">
-              {when === "net" ? (
-                <>
-                  <section
-                    className={`trans-chap-reports__profit${report.netProfit < 0 ? " is-loss" : ""}`}
-                    aria-label={report.netProfit < 0 ? "Loss" : "Profit"}
-                  >
-                    <div className="trans-chap-reports__profit-copy">
-                      <span>{report.netProfit < 0 ? "Net Loss" : "Net Profit"}</span>
-                      <Money amount={report.netProfit} />
-                      <p>Overall Return on Investment</p>
-                    </div>
-                    <i
-                      className={`fa-solid ${report.netProfit < 0 ? "fa-arrow-trend-down" : "fa-arrow-trend-up"}`}
-                      aria-hidden
-                    />
-                  </section>
-                  <section className="trans-chap-reports__kpis" aria-label="Totals">
-                    <article className="trans-chap-reports__kpi trans-chap-reports__kpi--opening">
-                      <span>Total Invested</span>
-                      <Money amount={report.initialEquity} />
-                      <small>Initial Equity Baseline</small>
-                    </article>
-                    <article className="trans-chap-reports__kpi trans-chap-reports__kpi--opening">
-                      <span>True Value</span>
-                      <Money amount={report.trueValue} />
-                      <small>Est. Total Merchant Value</small>
-                    </article>
-                    <article className="trans-chap-reports__kpi trans-chap-reports__kpi--stock">
-                      <span>Stock Value</span>
-                      <Money amount={report.stockValue} />
-                      <small>Value of physical inventory</small>
-                    </article>
-                    <article className="trans-chap-reports__kpi trans-chap-reports__kpi--sale">
-                      <span>Cash Generated</span>
-                      <Money amount={report.cashOnHand} />
-                      <small>Total Sales minus Total Purchases</small>
-                    </article>
-                  </section>
-                </>
-              ) : (
-                <>
-                  <section
-                    className={`trans-chap-reports__profit${report.profit < 0 ? " is-loss" : ""}`}
-                    aria-label={report.profit < 0 ? "Loss" : "Profit"}
-                  >
-                    <div className="trans-chap-reports__profit-copy">
-                      <span>{report.profit < 0 ? "Loss" : "Profit"}</span>
-                      <Money amount={report.profit} />
-                      <p>Sales minus cost of goods sold in this period</p>
-                    </div>
-                    <i
-                      className={`fa-solid ${report.profit < 0 ? "fa-arrow-trend-down" : "fa-arrow-trend-up"}`}
-                      aria-hidden
-                    />
-                  </section>
+              <section
+                className={`trans-chap-reports__profit${period.profit < 0 ? " is-loss" : ""}`}
+              >
+                <div className="trans-chap-reports__profit-copy">
+                  <span>
+                    {period.profit < 0 ? "Gross loss" : "Gross profit"} {periodText}
+                  </span>
+                  <Money amount={period.profit} />
+                  <p>
+                    Sales {formatKsh(period.salesTotal)} − Cost of goods{" "}
+                    {formatKsh(period.cogs)}
+                  </p>
+                </div>
+                {period.salesTotal > 0 ? (
+                  <span className="trans-chap-reports__margin">
+                    <b>{margin}%</b>
+                    margin
+                  </span>
+                ) : (
+                  <i className="fa-solid fa-chart-line" aria-hidden />
+                )}
+              </section>
 
-              <section className="trans-chap-reports__kpis" aria-label="Totals">
+              <section className="trans-chap-reports__block trans-chap-reports__chart-block">
+                <header className="trans-chap-reports__block-head">
+                  <h2>Sales vs purchases</h2>
+                  <ul className="trans-chap-reports__legend">
+                    <li className="is-sale">Sales</li>
+                    <li className="is-purchase">Purchases</li>
+                  </ul>
+                </header>
+                <TransChapSalesChart
+                  buckets={period.buckets}
+                  height={190}
+                  emptyText={`No sales or purchases ${periodText}.`}
+                />
+              </section>
+
+              <section className="trans-chap-reports__kpis trans-chap-reports__wide">
                 <article className="trans-chap-reports__kpi trans-chap-reports__kpi--sale">
                   <span>Sales</span>
-                  <Money amount={report.salesTotal} />
+                  <Money amount={period.salesTotal} />
                   <small>
-                    {report.saleCount} sale{report.saleCount === 1 ? "" : "s"} · {report.units}{" "}
-                    sold
+                    {period.saleCount} sale{period.saleCount === 1 ? "" : "s"} · {period.units}{" "}
+                    item{period.units === 1 ? "" : "s"}
                   </small>
                 </article>
                 <article className="trans-chap-reports__kpi trans-chap-reports__kpi--purchase">
                   <span>Purchases</span>
-                  <Money amount={report.purchaseTotal} />
-                  <small>{purchaseBreakdown}</small>
+                  <Money amount={period.purchaseTotal} />
+                  <small>{purchaseNote}</small>
+                </article>
+                <article className="trans-chap-reports__kpi trans-chap-reports__kpi--avg">
+                  <span>Average sale</span>
+                  <Money amount={avgSale} />
+                  <small>Per receipt</small>
                 </article>
                 <article className="trans-chap-reports__kpi trans-chap-reports__kpi--stock">
-                  <span>Current Stock</span>
-                  <Money amount={report.stockValue} />
-                  <small>Total inventory value</small>
+                  <span>Stock value</span>
+                  <Money amount={stockValue} />
+                  <small>Right now, at buying price</small>
                 </article>
-                {openingAmount !== null ? (
-                  <article className="trans-chap-reports__kpi trans-chap-reports__kpi--opening">
-                    <span>Opening Stock</span>
-                    <Money amount={openingAmount} />
-                    <small>Set from settings</small>
-                  </article>
-                ) : null}
               </section>
 
-                </>
-              )}
-
-              <section className="trans-chap-reports__split" aria-label="How customers paid">
-                <article className="trans-chap-reports__pay trans-chap-reports__pay--mpesa">
-                  <span>M-PESA</span>
-                  <Money amount={report.mpesaTotal} />
-                </article>
-                <article className="trans-chap-reports__pay trans-chap-reports__pay--credit">
-                  <span>Credit</span>
-                  <Money amount={report.creditTotal} />
-                </article>
-                {report.cashTotal > 0 ? (
-                  <article className="trans-chap-reports__pay trans-chap-reports__pay--cash">
-                    <span>Cash</span>
-                    <Money amount={report.cashTotal} />
-                  </article>
-                ) : null}
-              </section>
-
-              <section
-                className="trans-chap-reports__block"
-                aria-labelledby="trans-chap-top-products"
-              >
-                <h2 id="trans-chap-top-products">Top products</h2>
-                {report.topProducts.length === 0 ? (
-                  <p className="trans-chap-sales__empty">No paid sales in this period.</p>
-                ) : (
-                  <ul>
-                    {report.topProducts.map((row, index) => (
-                      <li key={row.name}>
-                        <em className="trans-chap-reports__rank" aria-hidden>
-                          {index + 1}
-                        </em>
-                        <span>
-                          <strong>{row.name}</strong>
-                          <small>{row.qty} sold</small>
-                        </span>
-                        <b>{formatKsh(row.amount)}</b>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
-              <section
-                className="trans-chap-reports__block"
-                aria-labelledby="trans-chap-stock-alerts"
-              >
-                <h2 id="trans-chap-stock-alerts">Stock alerts</h2>
-                {report.lowStock.length === 0 ? (
-                  <p className="trans-chap-sales__empty">No low-stock items right now.</p>
-                ) : (
-                  <ul>
-                    {report.lowStock.map((item) => {
-                      const qty = item.stock_quantity ?? 0;
+              <section className="trans-chap-reports__block">
+                <header className="trans-chap-reports__block-head">
+                  <h2>How customers paid</h2>
+                  <span>{formatKsh(period.salesTotal)}</span>
+                </header>
+                {period.salesTotal > 0 ? (
+                  <ul className="trans-chap-reports__mix">
+                    {paySlices.map((slice) => {
+                      const pct = percent(slice.value, period.salesTotal);
                       return (
-                        <li key={item.id}>
-                          <span>
-                            <strong>{inventoryProductName(item)}</strong>
-                            <small>{qty <= 0 ? "Out of stock" : `${qty} left`}</small>
-                          </span>
-                          <b className={qty <= 0 ? "is-out" : "is-low"}>
-                            {qty <= 0 ? "Out" : "Low"}
-                          </b>
+                        <li key={slice.key} className={`is-${slice.key}`}>
+                          <div>
+                            <span>{slice.label}</span>
+                            <strong>
+                              {formatKsh(slice.value)}
+                              <em>{pct}%</em>
+                            </strong>
+                          </div>
+                          <div className="trans-chap-reports__track" aria-hidden>
+                            <b style={{ width: `${slice.value > 0 ? Math.max(pct, 3) : 0}%` }} />
+                          </div>
                         </li>
                       );
                     })}
                   </ul>
+                ) : (
+                  <p className="trans-chap-reports__empty">No paid sales {periodText}.</p>
                 )}
               </section>
+
+              <section className="trans-chap-reports__block">
+                <header className="trans-chap-reports__block-head">
+                  <h2>Top products</h2>
+                  <div className="trans-chap-reports__toggle" role="group" aria-label="Sort by">
+                    <button
+                      type="button"
+                      className={productSort === "amount" ? "is-on" : undefined}
+                      aria-pressed={productSort === "amount"}
+                      onClick={() => setProductSort("amount")}
+                    >
+                      Revenue
+                    </button>
+                    <button
+                      type="button"
+                      className={productSort === "qty" ? "is-on" : undefined}
+                      aria-pressed={productSort === "qty"}
+                      onClick={() => setProductSort("qty")}
+                    >
+                      Qty
+                    </button>
+                  </div>
+                </header>
+                {sortedProducts.length === 0 ? (
+                  <p className="trans-chap-reports__empty">No paid sales {periodText}.</p>
+                ) : (
+                  <>
+                    <ol className="trans-chap-reports__products">
+                      {visibleProducts.map((row, index) => {
+                        const metric = productSort === "qty" ? row.qty : row.amount;
+                        return (
+                          <li key={row.name}>
+                            <em className="trans-chap-reports__rank">{index + 1}</em>
+                            <div>
+                              <div className="trans-chap-reports__product-row">
+                                <strong>{row.name}</strong>
+                                <b>
+                                  {productSort === "qty"
+                                    ? `${row.qty} sold`
+                                    : formatKsh(row.amount)}
+                                </b>
+                              </div>
+                              <div className="trans-chap-reports__product-meta">
+                                <div className="trans-chap-reports__track" aria-hidden>
+                                  <b style={{ width: `${percent(metric, productMax)}%` }} />
+                                </div>
+                                <small>
+                                  {productSort === "qty"
+                                    ? formatKsh(row.amount)
+                                    : `${row.qty} sold`}
+                                </small>
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                    {sortedProducts.length > LIST_PREVIEW ? (
+                      <button
+                        type="button"
+                        className="trans-chap-reports__more"
+                        onClick={() => setShowAllProducts((v) => !v)}
+                      >
+                        {showAllProducts
+                          ? "Show top 5"
+                          : `Show all ${sortedProducts.length} products`}
+                      </button>
+                    ) : null}
+                  </>
+                )}
+              </section>
+
+              <section className="trans-chap-reports__block">
+                <header className="trans-chap-reports__block-head">
+                  <h2>Stock alerts</h2>
+                  {lowStock.length > 0 ? (
+                    <div className="trans-chap-reports__counts">
+                      {outCount > 0 ? <span className="is-out">{outCount} out</span> : null}
+                      {lowStock.length - outCount > 0 ? (
+                        <span className="is-low">{lowStock.length - outCount} low</span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </header>
+                {lowStock.length === 0 ? (
+                  <p className="trans-chap-reports__empty">
+                    <i className="fa-solid fa-circle-check" aria-hidden /> Everything is in
+                    stock.
+                  </p>
+                ) : (
+                  <>
+                    <ul className="trans-chap-reports__stock">
+                      {visibleStock.map((item) => {
+                        const qty = item.stock_quantity ?? 0;
+                        return (
+                          <li key={item.id}>
+                            <strong>{inventoryProductName(item)}</strong>
+                            <span className={qty <= 0 ? "is-out" : "is-low"}>
+                              {qty <= 0 ? "Out of stock" : `${qty} left`}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {lowStock.length > STOCK_PREVIEW ? (
+                      <button
+                        type="button"
+                        className="trans-chap-reports__more"
+                        onClick={() => setShowAllStock((v) => !v)}
+                      >
+                        {showAllStock ? "Show fewer" : `Show all ${lowStock.length} items`}
+                      </button>
+                    ) : null}
+                  </>
+                )}
+              </section>
+
+              {truncated ? (
+                <p className="trans-chap-reports__hint trans-chap-reports__wide">
+                  Only your most recent sales and purchases are loaded, so long date ranges
+                  may be incomplete.
+                </p>
+              ) : null}
             </div>
           )}
         </div>

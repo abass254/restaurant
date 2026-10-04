@@ -7,11 +7,15 @@ import { TransChapFab } from "@/components/trans-chap/TransChapFab";
 import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
+import { TransChapViewToggle } from "@/components/trans-chap/TransChapViewToggle";
+import { TransChapFilterChips, type ChipOption } from "@/components/trans-chap/TransChapFilterChips";
 import { MotionItem, MotionList } from "@/components/app/MotionList";
+import { summarizeFailures, useTransChapListView } from "@/lib/trans-chap-list-view";
 import { showError, showInternalError, toastSuccess, promptMpesaReceipt, promptPendingStk, extractErrorMessage } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
-import { formatNairobiDateTime, nairobiDateKey, parseIso } from "@/lib/nairobi-time";
+import { isStoreAdmin } from "@/lib/merchant-permissions";
+import { formatNairobiStamp24, isWithinLastDays, nairobiDateKey, parseIso } from "@/lib/nairobi-time";
 import {
   orderHasPendingMpesa,
   orderHasSuccessfulMpesa,
@@ -20,6 +24,7 @@ import { buildMpesaFlowSteps, MpesaFlowStatus } from "@/components/app/MpesaFlow
 import {
   fetchWalkinOrders,
   promptAndUndoWalkinSale,
+  promptAndUndoWalkinSales,
   walkinUndoAction,
 } from "@/lib/trans-chap-orders";
 import { formatKsh, receiptFromOrder, transChapPayLabel, transChapReceiptHref } from "@/lib/trans-chap-receipt";
@@ -28,8 +33,6 @@ import type { Order, OrderMutationResponse } from "@/lib/types";
 type WhenFilter = "all" | "today" | "week";
 type MethodFilter = "all" | "credit" | "mpesa";
 type StatusFilter = "all" | "paid" | "waiting" | "failed" | "voided";
-
-type ChipOption<T extends string> = { id: T; label: string };
 
 const WHEN_CHIPS: ChipOption<Exclude<WhenFilter, "all">>[] = [
   { id: "today", label: "Today" },
@@ -75,14 +78,6 @@ function orderDateKey(order: Order): string | null {
   return date ? nairobiDateKey(date) : null;
 }
 
-function isWithinLastDays(key: string, days: number, todayKey: string): boolean {
-  const [ty, tm, td] = todayKey.split("-").map(Number);
-  const [ky, km, kd] = key.split("-").map(Number);
-  const diff =
-    (Date.UTC(ty, tm - 1, td) - Date.UTC(ky, km - 1, kd)) / 86_400_000;
-  return diff >= 0 && diff < days;
-}
-
 function matchesQuery(order: Order, query: string): boolean {
   if (!query) return true;
   const haystack = [
@@ -97,34 +92,6 @@ function matchesQuery(order: Order, query: string): boolean {
     .join(" ")
     .toLowerCase();
   return haystack.includes(query);
-}
-
-function FilterChips<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T | "all";
-  options: ChipOption<T>[];
-  onChange: (id: T | "all") => void;
-}) {
-  return (
-    <div className="trans-chap-sales__chips-group" role="group" aria-label={label}>
-      {options.map((option) => (
-        <button
-          key={option.id}
-          type="button"
-          className={`trans-chap-sales__chip${value === option.id ? " is-active" : ""}`}
-          aria-pressed={value === option.id}
-          onClick={() => onChange(value === option.id ? "all" : option.id)}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 export function TransChapSalesList() {
@@ -142,6 +109,12 @@ export function TransChapSalesList() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [undoingId, setUndoingId] = useState<string | null>(null);
   const [stkBusyId, setStkBusyId] = useState<string | null>(null);
+  const [view, setView] = useTransChapListView("trans-chap-sales-view");
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [bulkUndoing, setBulkUndoing] = useState(false);
+  const canVoid = isStoreAdmin(user);
+  const undoActionFor = (order: Order) => (canVoid ? walkinUndoAction(order) : null);
   const shopName =
     user.active_account?.business_name ||
     user.account?.business_name ||
@@ -277,8 +250,129 @@ export function TransChapSalesList() {
     .filter(Boolean)
     .join(" · ");
 
+  const undoable = useMemo(
+    () => (canVoid ? filtered.filter((order) => walkinUndoAction(order) !== null) : []),
+    [canVoid, filtered],
+  );
+  const selectedOrders = undoable.filter((order) => selectedIds.has(order.id));
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function startSelecting() {
+    setOpenId(null);
+    setSelecting(true);
+    setSelectedIds(new Set());
+  }
+
+  function stopSelecting() {
+    setSelecting(false);
+    setSelectedIds(new Set());
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds(
+      selectedOrders.length === undoable.length
+        ? new Set()
+        : new Set(undoable.map((order) => order.id)),
+    );
+  }
+
+  async function undoSelected() {
+    if (!selectedOrders.length || bulkUndoing) return;
+    setBulkUndoing(true);
+    try {
+      const result = await promptAndUndoWalkinSales(selectedOrders);
+      if (!result) return;
+      const byId = new Map(result.updated.map((order) => [order.id, order]));
+      setOrders((prev) => prev.map((row) => byId.get(row.id) ?? row));
+      if (result.failures.length) {
+        setSelectedIds(
+          new Set(selectedOrders.filter((o) => !byId.has(o.id)).map((o) => o.id)),
+        );
+        await showError(
+          result.updated.length
+            ? `Voided ${result.updated.length}, ${result.failures.length} failed`
+            : "Could not void sales",
+          summarizeFailures(result.failures),
+        );
+        return;
+      }
+      await toastSuccess(
+        result.updated.length === 1 ? "Sale voided" : `${result.updated.length} sales voided`,
+      );
+      stopSelecting();
+    } finally {
+      setBulkUndoing(false);
+    }
+  }
+
+  function renderCheck(order: Order, label: string) {
+    if (!undoActionFor(order)) return null;
+    const picked = selectedIds.has(order.id);
+    return (
+      <button
+        type="button"
+        role="checkbox"
+        className={`trans-chap-panel__check${picked ? " is-on" : ""}`}
+        aria-checked={picked}
+        aria-label={`${picked ? "Unselect" : "Select"} ${label}`}
+        onClick={() => toggleSelected(order.id)}
+      >
+        {picked ? <i className="fa-solid fa-check" aria-hidden /> : null}
+      </button>
+    );
+  }
+
+  function renderActions(order: Order, product: string) {
+    const sale = saleStatus(order);
+    const undo = undoActionFor(order);
+    const busy = stkBusyId === order.id || undoingId === order.id || bulkUndoing;
+    return (
+      <>
+        {sale.tone === "wait" || (order.payment_method === "mpesa" && sale.tone === "fail" && order.status !== "cancelled" && order.status !== "refunded") ? (
+          <button
+            type="button"
+            className="trans-chap-panel__link"
+            disabled={busy}
+            onClick={() => void handlePendingStk(order)}
+          >
+            {stkBusyId === order.id ? "Working…" : "Complete M-PESA"}
+          </button>
+        ) : null}
+        {undo ? (
+          <button
+            type="button"
+            className="trans-chap-panel__link trans-chap-panel__void"
+            disabled={busy}
+            onClick={() => void undoSale(order)}
+          >
+            {undoingId === order.id
+              ? "Working…"
+              : undo === "refund"
+                ? "Refund"
+                : "Void sale"}
+          </button>
+        ) : null}
+        <Link
+          href={transChapReceiptHref(order.id)}
+          className="trans-chap-panel__link"
+          aria-label={`Open receipt for ${product}`}
+        >
+          Open receipt
+        </Link>
+      </>
+    );
+  }
+
   return (
-    <div className="trans-chap-sales">
+    <div className={`trans-chap-sales${view === "list" ? " trans-chap-sales--list" : ""}`}>
       <div className="trans-chap-sales__filters">
         <div className="trans-chap-sales__search-row">
           <label className="trans-chap-sales__search">
@@ -302,12 +396,23 @@ export function TransChapSalesList() {
             <i className="fa-solid fa-sliders" aria-hidden />
             {activeFilterCount ? <em>{activeFilterCount}</em> : null}
           </button>
+          <TransChapViewToggle view={view} onChange={setView} label="Sales layout" />
+          {orders.some((order) => undoActionFor(order) !== null) ? (
+            <button
+              type="button"
+              className={`trans-chap-sales__chip${selecting ? " is-active" : ""}`}
+              aria-pressed={selecting}
+              onClick={() => (selecting ? stopSelecting() : startSelecting())}
+            >
+              {selecting ? "Done" : "Select"}
+            </button>
+          ) : null}
         </div>
         {filtersOpen ? (
           <div id="trans-chap-sales-filters" className="trans-chap-sales__chips">
-            <FilterChips label="When" value={when} options={WHEN_CHIPS} onChange={setWhen} />
-            <FilterChips label="Payment" value={method} options={METHOD_CHIPS} onChange={setMethod} />
-            <FilterChips label="Status" value={status} options={STATUS_CHIPS} onChange={setStatus} />
+            <TransChapFilterChips label="When" value={when} options={WHEN_CHIPS} onChange={setWhen} />
+            <TransChapFilterChips label="Payment" value={method} options={METHOD_CHIPS} onChange={setMethod} />
+            <TransChapFilterChips label="Status" value={status} options={STATUS_CHIPS} onChange={setStatus} />
             {activeFilterCount ? (
               <button
                 type="button"
@@ -339,7 +444,7 @@ export function TransChapSalesList() {
           <TransChapStatus tone="error">{error}</TransChapStatus>
         ) : orders.length === 0 ? (
           <TransChapStatus
-            actionHref="/trans-chap/make-a-sale/new"
+            actionHref="/trans-chap/sales/new"
             actionLabel="Make a sale"
           >
             No sales yet.
@@ -350,6 +455,70 @@ export function TransChapSalesList() {
               ? "No sales match these filters."
               : "No sales yet."}
           </p>
+        ) : view === "list" ? (
+          <div className="trans-chap-stock-table-wrap trans-chap-stock-table-wrap--cards">
+            <table className="trans-chap-stock-table trans-chap-stock-table--cards trans-chap-stock-table--sale">
+              <thead>
+                <tr>
+                  {selecting ? <th className="trans-chap-stock-table__check" scope="col"> </th> : null}
+                  <th scope="col">Items</th>
+                  <th scope="col">Ref</th>
+                  <th scope="col">Qty</th>
+                  <th scope="col">Total</th>
+                  <th scope="col">Method</th>
+                  <th scope="col">Customer</th>
+                  <th scope="col">Time</th>
+                  <th scope="col">Status</th>
+                  <th className="trans-chap-stock-table__actions" scope="col">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((order) => {
+                  const items = order.items ?? [];
+                  const product = items[0]?.product_name || "Sale";
+                  const extra = items.length > 1 ? ` +${items.length - 1}` : "";
+                  const qty = items.reduce((sum, line) => sum + (line.quantity || 0), 0);
+                  const sale = saleStatus(order);
+                  const receipt = receiptFromOrder(order, shopName);
+                  const picked = selectedIds.has(order.id);
+                  const undone = order.status === "cancelled" || order.status === "refunded";
+                  return (
+                    <tr
+                      key={order.id}
+                      className={`${undone ? "is-inactive" : ""}${picked ? " is-picked" : ""}`}
+                    >
+                      {selecting ? (
+                        <td className="trans-chap-stock-table__check">
+                          {renderCheck(order, `${product}${extra}`)}
+                        </td>
+                      ) : null}
+                      <td className="trans-chap-stock-table__product">{`${product}${extra}`}</td>
+                      <td className="trans-chap-stock-table__mono">{receipt.orderNumber}</td>
+                      <td className="trans-chap-stock-table__mono">{qty}</td>
+                      <td className="trans-chap-stock-table__strong">{formatKsh(order.total)}</td>
+                      <td>{transChapPayLabel(receipt.payMode)}</td>
+                      <td className="trans-chap-stock-table__wrap">
+                        {receipt.customerName?.trim() || "Walk-in"}
+                      </td>
+                      <td className="trans-chap-stock-table__mono">
+                        {formatNairobiStamp24(receipt.paidAt) || "—"}
+                      </td>
+                      <td>
+                        <em className={`trans-chap-panel__badge is-${sale.tone}`}>{sale.label}</em>
+                      </td>
+                      <td className="trans-chap-stock-table__actions">
+                        <div className="trans-chap-stock-table__actions-inner">
+                          {selecting ? null : renderActions(order, product)}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <MotionList as="div" className="trans-chap-sales__stagger">
             {filtered.map((order) => {
@@ -362,11 +531,11 @@ export function TransChapSalesList() {
               0,
             );
             const sale = saleStatus(order);
-            const undo = walkinUndoAction(order);
-            const open = openId === order.id;
+            const undoable = undoActionFor(order) !== null;
+            const open = !selecting && openId === order.id;
             const panelId = `${listId}-${order.id}`;
             const receipt = receiptFromOrder(order, shopName);
-            const paidAt = formatNairobiDateTime(receipt.paidAt);
+            const paidAt = formatNairobiStamp24(receipt.paidAt);
             return (
               <MotionItem key={order.id} as="div">
               <TransChapPanel
@@ -377,47 +546,27 @@ export function TransChapSalesList() {
                 qty={`Qty ${qty}`}
                 price={formatKsh(order.total)}
                 badge={sale}
-                onToggle={() => setOpenId(open ? null : order.id)}
+                inactive={selecting && !undoable}
+                picking={selecting}
+                picked={selectedIds.has(order.id)}
+                onToggle={() => {
+                  if (!selecting) setOpenId(open ? null : order.id);
+                  else if (undoable) toggleSelected(order.id);
+                }}
                 headAction={
-                  <Link
-                    href={transChapReceiptHref(order.id)}
-                    className="trans-chap-panel__receipt"
-                    aria-label={`Open receipt for ${product}`}
-                  >
-                    <i className="fa-solid fa-receipt" aria-hidden />
-                  </Link>
-                }
-                action={
-                  <>
-                    {sale.tone === "wait" || (order.payment_method === "mpesa" && sale.tone === "fail" && order.status !== "cancelled" && order.status !== "refunded") ? (
-                      <button
-                        type="button"
-                        className="trans-chap-panel__link"
-                        disabled={stkBusyId === order.id || undoingId === order.id}
-                        onClick={() => void handlePendingStk(order)}
-                      >
-                        {stkBusyId === order.id ? "Working…" : "Complete M-PESA"}
-                      </button>
-                    ) : null}
-                    {undo ? (
-                      <button
-                        type="button"
-                        className="trans-chap-panel__link trans-chap-panel__void"
-                        disabled={undoingId === order.id}
-                        onClick={() => void undoSale(order)}
-                      >
-                        {undoingId === order.id
-                          ? "Working…"
-                          : undo === "refund"
-                            ? "Refund"
-                            : "Void sale"}
-                      </button>
-                    ) : null}
-                    <Link href={transChapReceiptHref(order.id)} className="trans-chap-panel__link">
-                      Open receipt
+                  selecting ? (
+                    renderCheck(order, `${product}${extra}`)
+                  ) : (
+                    <Link
+                      href={transChapReceiptHref(order.id)}
+                      className="trans-chap-panel__receipt"
+                      aria-label={`Open receipt for ${product}`}
+                    >
+                      <i className="fa-solid fa-receipt" aria-hidden />
                     </Link>
-                  </>
+                  )
                 }
+                action={renderActions(order, product)}
               >
                 <p className="trans-chap-panel__lead">
                   {sale.label === "Voided"
@@ -487,7 +636,26 @@ export function TransChapSalesList() {
           <p className="trans-chap-sales__empty">Showing the most recent 2,000 sales.</p>
         ) : null}
       </div>
-      <TransChapFab label="New sale" href="/trans-chap/pos" />
+      {selecting ? (
+        <div className="trans-chap-bulk-bar">
+          <p className="trans-chap-bulk-bar__count">
+            {selectedOrders.length ? `${selectedOrders.length} selected` : "Tap sales to select"}
+          </p>
+          <button type="button" disabled={bulkUndoing || !undoable.length} onClick={toggleSelectAll}>
+            {undoable.length && selectedOrders.length === undoable.length ? "None" : "All"}
+          </button>
+          <button
+            type="button"
+            className="trans-chap-bulk-bar__disable"
+            disabled={bulkUndoing || !selectedOrders.length}
+            onClick={() => void undoSelected()}
+          >
+            {bulkUndoing ? "Voiding…" : "Void"}
+          </button>
+        </div>
+      ) : (
+        <TransChapFab label="New sale" href="/trans-chap/pos" />
+      )}
     </div>
   );
 }

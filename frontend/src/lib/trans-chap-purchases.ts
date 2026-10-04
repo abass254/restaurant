@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api";
-import { internalErrorMessage } from "@/lib/alerts";
+import { extractErrorMessage, internalErrorMessage, promptVoidReason } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import {
   findInventoryByName,
@@ -24,7 +24,10 @@ export type TransChapPurchase = {
   unitCost: number;
   total: number;
   supplier: string | null;
+  category: string | null;
   paidAt: string;
+  voidedAt: string | null;
+  voidReason: string | null;
 };
 
 const MAX_PAGES = 20;
@@ -46,8 +49,61 @@ export function purchaseFromMovement(movement: StockMovement): TransChapPurchase
     unitCost,
     total: unitCost * quantity,
     supplier: supplierLabelFromNote(movement.note),
+    category: movement.inventory_item?.product?.category?.trim() || null,
     paidAt: movement.created_at || new Date().toISOString(),
+    voidedAt: movement.voided_at ?? null,
+    voidReason: movement.void_reason ?? null,
   };
+}
+
+export async function promptAndVoidTransChapPurchase(
+  purchase: Pick<TransChapPurchase, "id">,
+): Promise<TransChapPurchase | null> {
+  const reason = await promptVoidReason(
+    "Void this purchase?",
+    "The stock it added will be taken back out. Get any money back from the supplier yourself.",
+    "Void purchase",
+  );
+  if (!reason) return null;
+  return voidTransChapPurchase(purchase.id, reason);
+}
+
+export async function voidTransChapPurchase(
+  id: string,
+  reason: string,
+): Promise<TransChapPurchase> {
+  const data = await apiFetch<{ data: StockMovement }>(
+    apiRoutes.inventoryStockMovementVoid(id),
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    },
+  );
+  return purchaseFromMovement(data.data);
+}
+
+/** Void several purchases with one reason. One at a time so stock errors stay per row. */
+export async function promptAndVoidTransChapPurchases(
+  purchases: Pick<TransChapPurchase, "id" | "productName">[],
+): Promise<{ updated: TransChapPurchase[]; failures: string[] } | null> {
+  if (!purchases.length) return null;
+  const count = purchases.length;
+  const reason = await promptVoidReason(
+    `Void ${count} purchase${count === 1 ? "" : "s"}?`,
+    "The stock they added will be taken back out. Get any money back from the supplier yourself.",
+    `Void ${count}`,
+  );
+  if (!reason) return null;
+  const updated: TransChapPurchase[] = [];
+  const failures: string[] = [];
+  for (const purchase of purchases) {
+    try {
+      updated.push(await voidTransChapPurchase(purchase.id, reason));
+    } catch (err) {
+      failures.push(`${purchase.productName}: ${extractErrorMessage(err)}`);
+    }
+  }
+  return { updated, failures };
 }
 
 function supplierLabelFromNote(note: string | null | undefined): string | null {

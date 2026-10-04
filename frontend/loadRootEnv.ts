@@ -1,9 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
-/** Load the shared repo-root `.env` (does not override existing process.env). */
-export function loadRootEnvFile(): void {
-  const path = join(__dirname, "..", ".env");
+function loadEnvFile(path: string): void {
   if (!existsSync(path)) {
     return;
   }
@@ -30,4 +28,13 @@ export function loadRootEnvFile(): void {
     }
     process.env[key] = value;
   }
+}
+
+/**
+ * Load the shared repo-root `.env.local` then `.env` (neither overrides
+ * existing process.env, so `.env.local` must be read first to win).
+ */
+export function loadRootEnvFile(): void {
+  loadEnvFile(join(__dirname, "..", ".env.local"));
+  loadEnvFile(join(__dirname, "..", ".env"));
 }

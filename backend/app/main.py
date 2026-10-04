@@ -26,6 +26,7 @@ from app.web.mpesa_webhook import router as mpesa_webhook_router
 from app.web.webhooks import router as webhooks_router
 from app.core.boot_guards import assert_production_secrets, fastapi_docs_kwargs
 from app.core.http_error_logging import log_unhandled_error, register_http_error_logging
+from app.core.log_buffer import RequestLogMiddleware, install_log_handler
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
         level=logging.DEBUG if settings.app_debug else logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",
     )
+    install_log_handler()
     app = FastAPI(
         title=settings.app_name,
         debug=settings.app_debug,
@@ -85,6 +87,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(RequestLogMiddleware)
 
     @app.get("/sanctum/csrf-cookie")
     def sanctum_csrf_cookie(request: Request, response: Response):

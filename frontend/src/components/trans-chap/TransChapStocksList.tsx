@@ -12,6 +12,7 @@ import { apiFetch } from "@/lib/api";
 import { confirmAction, showError, showInternalError, toastSuccess, internalErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { formatKsh } from "@/lib/trans-chap-receipt";
+import { useTransChapIsPhone } from "@/lib/trans-chap-list-view";
 import {
   inventoryCoverUrl,
   inventoryProductName,
@@ -100,7 +101,7 @@ export function TransChapStocksList() {
   const user = useAuthUser();
   const canEditQty = isShopOwner(user);
   const [allowQuantityAdjustment, setAllowQuantityAdjustment] = useState(true);
-  const canAdjustQty = canEditQty && allowQuantityAdjustment;
+  const canAdjustQty = allowQuantityAdjustment;
   const restaurant = isRestaurantStore(user.active_account ?? user.account);
   const roleFilters = restaurant
     ? [...BASE_ROLE_FILTERS, RAW_ROLE_FILTER]
@@ -121,7 +122,8 @@ export function TransChapStocksList() {
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [bulkSaving, setBulkSaving] = useState(false);
-  const [view, setView] = useState<StocksView>("grid");
+  const [storedView, setView] = useState<StocksView>("grid");
+  const view: StocksView = useTransChapIsPhone() ? "grid" : storedView;
   const [qtyDrafts, setQtyDrafts] = useState<Record<string, string>>({});
   const [qtySavingId, setQtySavingId] = useState<string | null>(null);
 

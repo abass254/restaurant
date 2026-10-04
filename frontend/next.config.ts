@@ -92,6 +92,11 @@ const nextConfig: NextConfig = {
         permanent: true,
       },
       {
+        source: "/trans-chap/make-a-sale/:path*",
+        destination: "/trans-chap/sales/:path*",
+        permanent: true,
+      },
+      {
         source: "/setup-checklist",
         destination: "/tools/onboarding",
         permanent: true,

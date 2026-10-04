@@ -1060,6 +1060,13 @@ class StockMovement(Base):
         nullable=True,
     )
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    voided_by: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    void_reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
     account: Mapped[Account] = relationship()
     inventory_item: Mapped[InventoryItem] = relationship()

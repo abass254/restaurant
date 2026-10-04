@@ -2768,7 +2768,8 @@ async def generate_catalog_primary_image(
     )
 
 
-from app.api.v1 import admin_bot_sandbox, admin_webhooks  # noqa: E402
+from app.api.v1 import admin_bot_sandbox, admin_logs, admin_webhooks  # noqa: E402
 
 router.include_router(admin_bot_sandbox.router)
 router.include_router(admin_webhooks.router)
+router.include_router(admin_logs.router)

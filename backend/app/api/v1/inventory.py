@@ -11,6 +11,7 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
     status,
 )
@@ -23,6 +24,7 @@ from app.core.session import require_user, validate_csrf
 from app.support.merchant_permissions import (
     active_account_id,
     assert_merchant_section_any_access,
+    require_store_admin,
 )
 from app.core.upload_tokens import (
     UPLOAD_TOKEN_MAX_AGE,
@@ -34,14 +36,16 @@ from app.core.upload_tokens import (
 from app.core.uploads import delete_upload, save_upload
 from app.database import get_db
 from app.dependencies import ServiceContainer, get_request_session, get_services
-from app.models import InventoryItem, Product, StockMovement, User
+from app.models import Account, InventoryItem, Product, StockMovement, User
 from app.schemas import InventoryItemOut, StockMovementOut
 from app.services.inventory_import_service import import_inventory_from_excel
 from app.services.inventory_stock_service import (
     InsufficientStockError,
+    PurchaseVoidError,
     UntrackedStockError,
     adjust_stock,
     apply_unit_costs,
+    void_purchase,
 )
 from app.services.sell_units import normalize_sell_units_payload
 from app.services.feed_post_link_service import add_post_link
@@ -82,8 +86,9 @@ def _auth_inventory_user(
     return user
 
 
-def _require_stock_qty_owner(user: User) -> None:
-    """Staff may view inventory / sell; only the shop owner may change quantities."""
+def _require_stock_qty_allowed(db: Session, user: User, account_id) -> None:
+    """Owners may always change quantities; staff only while the shop's
+    "Allow item quantity adjustment" setting is on."""
     from app.support.merchant_permissions import is_membership_owner, get_active_membership
 
     if user.is_super_admin():
@@ -93,9 +98,12 @@ def _require_stock_qty_owner(user: User) -> None:
         return
     if membership is None and user.is_system_admin():
         return
+    account = db.get(Account, account_id)
+    if account is not None and account.allow_item_quantity_adjustment:
+        return
     raise HTTPException(
         status.HTTP_403_FORBIDDEN,
-        detail="Only the shop owner can update inventory quantities.",
+        detail="Item quantity adjustment is turned off. Ask the shop owner to enable it in Settings.",
     )
 
 
@@ -158,6 +166,10 @@ class StockMovementsCreate(BaseModel):
     note: str | None = Field(default=None, max_length=500)
     record_only: bool = False
     lines: list[StockMovementLineIn] = Field(min_length=1, max_length=200)
+
+
+class StockMovementVoid(BaseModel):
+    reason: str = Field(min_length=3, max_length=1000)
 
 
 @router.get("")
@@ -378,10 +390,10 @@ def create_stock_movements(
         )
 
     # Purchases (stock-in / receive) are allowed for inventory staff; other
-    # quantity changes stay owner-only (opening stock, adjustments, etc.).
+    # quantity changes need the owner or the quantity-adjustment setting.
     is_purchase = payload.direction == "in" and reason == "receive"
     if not is_purchase:
-        _require_stock_qty_owner(user)
+        _require_stock_qty_allowed(db, user, account_id)
 
     lines = [(line.inventory_item_id, line.quantity) for line in payload.lines]
     try:
@@ -439,6 +451,56 @@ def create_stock_movements(
     }
 
 
+@router.post("/stock-movements/{movement_id}/void")
+def void_stock_movement(
+    movement_id: str,
+    payload: StockMovementVoid,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Void a purchase and remove the stock it added."""
+    validate_csrf(request, session)
+    user = _auth_inventory_user(db, session, pos_write_ok=True)
+    require_store_admin(user, "Only the store admin can void a purchase.")
+    account_id = _require_shop(user)
+
+    try:
+        movement = void_purchase(
+            db,
+            movement_id,
+            account_id=str(account_id),
+            reason=payload.reason,
+            user_id=str(user.id),
+        )
+    except InsufficientStockError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Only {format(exc.available.normalize(), 'f')} of {exc.product_name} "
+                f"left in stock, so {format(exc.requested.normalize(), 'f')} cannot be "
+                "taken back out. Adjust the stock first."
+            ),
+        ) from exc
+    except PurchaseVoidError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    if movement is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Purchase not found.")
+
+    db.commit()
+    db.refresh(movement)
+    db.refresh(movement, attribute_names=["inventory_item"])
+    if movement.inventory_item is not None:
+        db.refresh(movement.inventory_item, attribute_names=["product"])
+    return {
+        "message": "Purchase voided.",
+        "data": StockMovementOut.from_model(movement, include_item=True),
+    }
+
+
 @router.get("/{item_id}")
 def get_inventory_item(
     item_id: str,
@@ -455,6 +517,7 @@ def get_inventory_item(
 def create_inventory_item(
     payload: InventoryCreate,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
 ):
@@ -469,19 +532,33 @@ def create_inventory_item(
             detail={"errors": {"product_id": ["Catalog product not found."]}},
         )
 
-    exists = (
-        db.query(InventoryItem.id)
+    existing = (
+        db.query(InventoryItem)
         .filter(
             InventoryItem.account_id == account_id,
             InventoryItem.product_id == product.id,
         )
         .first()
     )
-    if exists:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"errors": {"product_id": ["This product is already in your inventory."]}},
-        )
+    if existing is not None:
+        if payload.stock_quantity:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"errors": {"product_id": ["This product is already in your inventory."]}},
+            )
+        # Purchase forms only list active items, so buying a switched-off item
+        # lands here; hand back the existing row instead of failing mid-purchase.
+        if not existing.is_active:
+            existing.is_active = True
+            existing.updated_at = datetime.utcnow()
+            db.commit()
+            db.refresh(existing)
+        db.refresh(existing, attribute_names=["product"])
+        response.status_code = status.HTTP_200_OK
+        return {
+            "message": "Already in inventory.",
+            "data": InventoryItemOut.from_model(existing),
+        }
 
     stock_quantity = payload.stock_quantity
     low_stock_threshold = payload.low_stock_threshold
@@ -490,7 +567,7 @@ def create_inventory_item(
         low_stock_threshold = None
     elif stock_quantity is not None and stock_quantity != 0:
         # Zero qty is used when staff add a new product then record a purchase.
-        _require_stock_qty_owner(user)
+        _require_stock_qty_allowed(db, user, account_id)
 
     now = datetime.utcnow()
     item = InventoryItem(
@@ -537,7 +614,7 @@ def update_inventory_item(
     data = payload.model_dump(exclude_unset=True)
 
     if "stock_quantity" in data:
-        _require_stock_qty_owner(user)
+        _require_stock_qty_allowed(db, user, account_id)
 
     if data.get("inventory_role") is None:
         data.pop("inventory_role", None)

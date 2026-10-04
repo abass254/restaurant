@@ -178,6 +178,22 @@ def active_account_id(user: User) -> str:
     return str(membership.account_id)
 
 
+def is_store_admin(user: User) -> bool:
+    if user.is_super_admin():
+        return True
+    membership = get_active_membership(user)
+    if membership is not None:
+        return is_membership_owner(user)
+    return user.is_system_admin()
+
+
+def require_store_admin(user: User, detail: str) -> User:
+    """Only the store admin (shop owner) may void sales or purchases."""
+    if not is_store_admin(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=detail)
+    return user
+
+
 def require_merchant_admin(user: User) -> User:
     membership = require_active_membership(user)
     if normalize_membership_role(membership.role) != "systemadmin":

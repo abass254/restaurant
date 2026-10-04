@@ -357,6 +357,38 @@ export type AdminWebhookEventsResponse = {
   total: number;
 };
 
+export type AdminLogRequest = {
+  ts: string;
+  method: string;
+  path: string;
+  status: number;
+  duration_ms: number;
+  ip: string | null;
+  /** Frontend only: request was rewritten to the backend. */
+  proxied?: boolean;
+};
+
+export type AdminLogLine = {
+  ts: string;
+  level: string;
+  logger: string;
+  message: string;
+};
+
+export type AdminLogFeed = {
+  started_at: string;
+  requests: AdminLogRequest[];
+  logs: AdminLogLine[];
+  request_capacity: number;
+  log_capacity: number;
+  capturing?: boolean;
+};
+
+export type AdminLogsResponse = {
+  backend: AdminLogFeed;
+  frontend: AdminLogFeed;
+};
+
 export type AdminOrderDetailResponse = {
   data: Order;
   merchant_name: string | null;
@@ -1228,6 +1260,8 @@ export type StockMovement = {
   unit_cost?: number | null;
   created_by: string | null;
   created_at: string | null;
+  voided_at?: string | null;
+  void_reason?: string | null;
   inventory_item?: InventoryItem | null;
 };
 
@@ -1746,6 +1780,41 @@ export type ShopCustomer = {
   date_to_pay?: string | null;
   created_at: string | null;
   updated_at: string | null;
+};
+
+export type CustomerTabSaleItem = {
+  id: string;
+  name: string;
+  quantity: number;
+  sell_unit: string | null;
+  unit_price: number;
+  line_total: number;
+};
+
+export type CustomerTabSale = {
+  id: string;
+  order_number: string;
+  placed_at: string | null;
+  total: number;
+  amount_due: number;
+  state: "unpaid" | "partial" | "paid";
+  items: CustomerTabSaleItem[];
+};
+
+export type CustomerTabPayment = {
+  id: string;
+  amount: number;
+  receipt_code: string | null;
+  paid_at: string | null;
+  manual: boolean;
+};
+
+export type CustomerTab = {
+  customer_id: string;
+  outstanding_balance: number;
+  opening_balance_due: number;
+  sales: CustomerTabSale[];
+  payments: CustomerTabPayment[];
 };
 
 export type ShopCustomersListResponse = {

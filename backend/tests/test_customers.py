@@ -388,3 +388,81 @@ def test_manual_credit_collection_is_blocked_when_stk_is_enforced(monkeypatch) -
 
     assert exc_info.value.status_code == 403
     db.query.assert_not_called()
+
+
+def test_customer_tab_attributes_balance_to_newest_sales(monkeypatch) -> None:
+    from datetime import datetime
+
+    from app.models import MpesaTransaction, Order, OrderItem
+
+    customer = ShopCustomer(
+        id="cust-1",
+        account_id="acct-1",
+        name="Amina",
+        phone="254700000001",
+        credit_limit=Decimal("0.00"),
+        outstanding_balance=Decimal("750.00"),
+    )
+
+    def make_order(order_id: str, total: str, day: int) -> Order:
+        order = Order(
+            id=order_id,
+            order_number=f"N-{order_id}",
+            total=Decimal(total),
+            created_at=datetime(2026, 10, day),
+        )
+        order.items = [
+            OrderItem(
+                id=f"{order_id}-line",
+                product_name="Sugar 1kg",
+                quantity=2,
+                unit_price=Decimal(total) / 2,
+                line_total=Decimal(total),
+            )
+        ]
+        return order
+
+    newest, middle, oldest = (
+        make_order("o3", "300.00", 3),
+        make_order("o2", "400.00", 2),
+        make_order("o1", "500.00", 1),
+    )
+    payment = MpesaTransaction(
+        id="pay-1",
+        amount=450,
+        credit_collect_amount=450,
+        credit_collected_at=datetime(2026, 10, 2),
+        callback_payload={"manual_credit_collection": True, "payment_amount": "450.00"},
+    )
+
+    db = MagicMock()
+    order_query = MagicMock()
+    order_query.options.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
+        newest,
+        middle,
+        oldest,
+    ]
+    payment_query = MagicMock()
+    payment_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
+        payment
+    ]
+    db.query.side_effect = lambda model: order_query if model is Order else payment_query
+
+    monkeypatch.setattr(customers_api, "require_user", lambda *_: SimpleNamespace(id="u"))
+    monkeypatch.setattr(customers_api, "assert_merchant_section_any_access", lambda *_: None)
+    monkeypatch.setattr(customers_api, "require_merchant_account_id", lambda *_: "acct-1")
+    monkeypatch.setattr(
+        customers_api.CustomerService, "get_customer", lambda self, *_: customer
+    )
+
+    data = customers_api.get_customer_tab("cust-1", db=db, session={})["data"]
+
+    assert [(s["id"], s["amount_due"], s["state"]) for s in data["sales"]] == [
+        ("o3", 300.0, "unpaid"),
+        ("o2", 400.0, "unpaid"),
+        ("o1", 50.0, "partial"),
+    ]
+    assert data["opening_balance_due"] == 0.0
+    assert data["sales"][0]["items"][0]["name"] == "Sugar 1kg"
+    assert data["payments"][0]["amount"] == 450.0
+    assert data["payments"][0]["manual"] is True

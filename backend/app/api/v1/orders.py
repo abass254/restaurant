@@ -86,12 +86,13 @@ from app.support.order_status import (
     READY,
     REFUNDED,
     SOURCE_RIDER_REQUEST,
+    SOURCE_WALKIN,
     TERMINAL_STATUSES,
     BEING_PREPARED,
     allowed_next_statuses,
     can_transition,
 )
-from app.support.merchant_permissions import active_account_id
+from app.support.merchant_permissions import active_account_id, require_store_admin
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -1486,6 +1487,9 @@ def transition_order(
             detail="Use Confirm delivery / Confirm handover to close this order.",
         )
 
+    if target in (CANCELLED, REFUNDED) and order.source == SOURCE_WALKIN:
+        require_store_admin(user, "Only the store admin can void a sale.")
+
     if target == OUT_FOR_DELIVERY and order_needs_delivery_details(order):
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -2020,6 +2024,8 @@ def delete_order(
             status.HTTP_409_CONFLICT,
             detail="Only orders still in 'placed' can be deleted. Cancel it instead.",
         )
+    if order.source == SOURCE_WALKIN:
+        require_store_admin(user, "Only the store admin can void a sale.")
 
     db.delete(order)
     db.commit()

@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api";
-import { internalErrorMessage, promptVoidReason } from "@/lib/alerts";
+import { extractErrorMessage, internalErrorMessage, promptVoidReason } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { orderHasSuccessfulMpesa } from "@/lib/orders";
 import type { Order, OrderMutationResponse, OrdersListResponse } from "@/lib/types";
@@ -83,4 +83,46 @@ export async function promptAndUndoWalkinSale(order: {
   );
   if (!reason) return null;
   return transitionWalkinSale(order.id, isRefund ? "refunded" : "cancelled", reason);
+}
+
+/** Void (or refund, once completed) several sales with one reason. */
+export async function promptAndUndoWalkinSales(
+  orders: Order[],
+): Promise<{ updated: Order[]; failures: string[] } | null> {
+  const targets = orders.flatMap((order) => {
+    const action = walkinUndoAction(order);
+    return action ? [{ order, action }] : [];
+  });
+  if (!targets.length) return null;
+  const count = targets.length;
+  const refunds = targets.filter((t) => t.action === "refund").length;
+  const hasMpesa = targets.some((t) => t.order.payment_method === "mpesa");
+  const reason = await promptVoidReason(
+    `Void ${count} sale${count === 1 ? "" : "s"}?`,
+    [
+      "Stock will come back.",
+      refunds ? `${refunds} completed sale${refunds === 1 ? " is" : "s are"} refunded instead of voided.` : null,
+      hasMpesa ? "M-PESA is not reversed — return the money yourself." : null,
+    ]
+      .filter(Boolean)
+      .join(" "),
+    `Void ${count}`,
+  );
+  if (!reason) return null;
+  const updated: Order[] = [];
+  const failures: string[] = [];
+  for (const { order, action } of targets) {
+    try {
+      updated.push(
+        await transitionWalkinSale(
+          order.id,
+          action === "refund" ? "refunded" : "cancelled",
+          reason,
+        ),
+      );
+    } catch (err) {
+      failures.push(`${order.order_number || order.id}: ${extractErrorMessage(err)}`);
+    }
+  }
+  return { updated, failures };
 }

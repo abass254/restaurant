@@ -548,6 +548,18 @@ export function getCategory(id: string | null | undefined): ProductCategoryDef |
   return PRODUCT_CATEGORIES.find((c) => c.id === id) ?? null;
 }
 
+/** Short label for category filter chips (POS, purchases). */
+export function formatCategoryLabel(cat: string): string {
+  const norm = cat.trim().toLowerCase();
+  if (norm === "food_beverage" || norm === "food_&_beverage") {
+    return "Food & Drinks";
+  }
+  if (norm === "hotel_menu" || norm === "hotel") {
+    return "Dishes";
+  }
+  return cat.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function categoriesFor(productType: ProductType): ProductCategoryDef[] {
   return PRODUCT_CATEGORIES.filter((c) => c.appliesTo.includes(productType));
 }

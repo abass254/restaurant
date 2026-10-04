@@ -155,6 +155,8 @@ export const apiRoutes = {
   inventoryByCode: (code: string) =>
     `${apiUrl}/api/v1/inventory/by-code?code=${encodeURIComponent(code)}`,
   inventoryStockMovements: `${apiUrl}/api/v1/inventory/stock-movements`,
+  inventoryStockMovementVoid: (id: string) =>
+    `${apiUrl}/api/v1/inventory/stock-movements/${id}/void`,
   inventoryItem: (id: string) => `${apiUrl}/api/v1/inventory/${id}`,
   inventoryMedia: (id: string) => `${apiUrl}/api/v1/inventory/${id}/media`,
   inventoryMediaPost: (id: string) =>
@@ -211,6 +213,8 @@ export const apiRoutes = {
   customerCreditSettings: `${apiUrl}/api/v1/customers/credit-settings`,
   customersImport: `${apiUrl}/api/v1/customers/import`,
   customer: (id: string) => `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}`,
+  customerTab: (id: string) =>
+    `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/tab`,
   customerManualCollect: (id: string) =>
     `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/manual-collect`,
   customerUpdate: (id: string) =>
@@ -280,6 +284,8 @@ export const apiRoutes = {
   adminMerchants: `${apiUrl}/api/v1/admin/merchants`,
   adminOrders: `${apiUrl}/api/v1/admin/orders`,
   adminWebhookEvents: `${apiUrl}/api/v1/admin/webhook-events`,
+  /** Served by the Next.js server itself (combines backend + frontend logs). */
+  adminLogs: "/internal/logs",
   adminWebhookEvent: (id: string) => `${apiUrl}/api/v1/admin/webhook-events/${id}`,
   adminOrder: (id: string) => `${apiUrl}/api/v1/admin/orders/${id}`,
   adminOrderTransition: (id: string) => `${apiUrl}/api/v1/admin/orders/${id}/transition`,

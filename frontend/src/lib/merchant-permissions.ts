@@ -129,7 +129,7 @@ const PATH_SECTION_MAP: Array<{ prefix: string; section: MerchantSection }> = [
   { prefix: "/trans-chap/chats", section: "tickets" },
   { prefix: "/trans-chap/stocks", section: "inventory" },
   { prefix: "/trans-chap/purchases", section: "inventory" },
-  { prefix: "/trans-chap/make-a-sale", section: "pos" },
+  { prefix: "/trans-chap/sales", section: "pos" },
   { prefix: "/trans-chap/transact", section: "pos" },
   { prefix: "/trans-chap/pos", section: "pos" },
   { prefix: "/trans-chap/mpesa", section: "pos" },
@@ -176,6 +176,11 @@ export function isShopOwner(user: AuthUser): boolean {
     return normalizeMerchantRole(membership.role) === "systemadmin";
   }
   return normalizeMerchantRole(user.user_role) === "systemadmin";
+}
+
+/** Only the store admin may void sales or purchases. */
+export function isStoreAdmin(user: AuthUser): boolean {
+  return isShopOwner(user) || normalizeMerchantRole(user.user_role) === "superadmin";
 }
 
 export function userAllowedSections(user: AuthUser): MerchantSection[] {

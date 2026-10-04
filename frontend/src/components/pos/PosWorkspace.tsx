@@ -38,9 +38,11 @@ import {
   formatMoney,
   orderHasSuccessfulMpesa,
 } from "@/lib/orders";
-import { paymentStatusFromOrder } from "@/lib/trans-chap-receipt";
+import { paymentStatusFromOrder, receiptFromOrder } from "@/lib/trans-chap-receipt";
+import { TransChapReceiptPrint } from "@/components/trans-chap/TransChapReceiptSlip";
 import { findInventoryByBarcode } from "@/lib/barcode";
 import { packUnits } from "@/lib/sell-units";
+import { formatCategoryLabel } from "@/lib/product-categories";
 import {
   inventoryCoverUrl,
   inventoryRole,
@@ -83,7 +85,7 @@ export type PosWorkspaceProps = {
   completeInPlace?: boolean;
   /**
    * Trans Chap counter sales: walk-in + pickup only, cash / M-Pesa / credit.
-   * Matches `/trans-chap/make-a-sale` payment rules.
+   * Matches `/trans-chap/sales` payment rules.
    */
   salesProfile?: "full" | "transchap";
 };
@@ -398,17 +400,6 @@ function availableToSell(item: InventoryItem, inCartQty: number): number | null 
   return Math.max(0, stock - Math.max(0, inCartQty));
 }
 
-function formatCategoryLabel(cat: string): string {
-  const norm = cat.trim().toLowerCase();
-  if (norm === "food_beverage" || norm === "food_&_beverage") {
-    return "Food & Drinks";
-  }
-  if (norm === "hotel_menu" || norm === "hotel") {
-    return "Dishes";
-  }
-  return cat.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 export function PosWorkspace({
   completeInPlace = false,
   salesProfile = "full",
@@ -451,6 +442,8 @@ export function PosWorkspace({
   const scanToastTimer = useRef<number | null>(null);
 
   const authUser = useOptionalAuthUser();
+  const receiptShopName =
+    authUser?.active_account?.business_name || authUser?.account?.business_name || "DukAI";
   const isRestaurant = Boolean(
     authUser && isRestaurantStore(authUser.active_account ?? authUser.account),
   );
@@ -3176,7 +3169,9 @@ export function PosWorkspace({
         ) : null}
       </div>
 
-      {completeInPlace && receiptOrder ? (
+      {completeInPlace && receiptOrder && isTransChapSale ? (
+        <TransChapReceiptPrint receipt={receiptFromOrder(receiptOrder, receiptShopName)} />
+      ) : completeInPlace && receiptOrder ? (
         <section className="orders-receipt-print" aria-hidden="true">
           <header className="orders-receipt-print__head">
             <h2>Sales Receipt</h2>

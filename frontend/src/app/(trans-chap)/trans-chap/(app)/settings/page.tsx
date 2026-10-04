@@ -849,8 +849,8 @@ export default function TransChapSettingsPage() {
         </div>
         <p className="ios-settings__footer">
           {allowQuantityAdjustment
-            ? "Owners can edit stock quantities. "
-            : "Quantities are read-only. "}
+            ? "Owners and staff can edit stock quantities. "
+            : "Quantities are read-only for staff. "}
           {allowPriceAdjustment
             ? "Sale prices can be modified during checkout."
             : "Sale prices are fixed during checkout."}

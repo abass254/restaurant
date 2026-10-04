@@ -9,12 +9,12 @@ from typing import NoReturn
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.session import require_user, validate_csrf
 from app.database import get_db
 from app.dependencies import get_request_session
-from app.models import Account, MpesaTransaction, ShopCustomer
+from app.models import Account, MpesaTransaction, Order, ShopCustomer
 from app.services.customer_import_service import import_customers_from_excel
 from app.services.credit_pay_service import CreditPayService
 from app.services.openwa_service import OpenWaAgentService
@@ -39,10 +39,13 @@ from app.support.merchant_permissions import (
 )
 from app.support.mpesa_merchant_copy import merchant_safe_stk_error
 from app.support.mpesa_order_link import normalize_mpesa_receipt
+from app.support.order_status import CANCELLED, PAYMENT_CREDIT, REFUNDED
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 
 TILL_CUSTOMER_SECTIONS = ("customer", "pos", "dashboard")
+TAB_SALES_LIMIT = 100
+TAB_PAYMENTS_LIMIT = 20
 
 
 class CustomerCreateRequest(BaseModel):
@@ -133,6 +136,18 @@ def _customer_out(customer: ShopCustomer) -> CustomerOut:
         created_at=_iso(customer.created_at),
         updated_at=_iso(customer.updated_at),
     )
+
+
+def _tab_payment_out(txn: MpesaTransaction) -> dict[str, object]:
+    payload = txn.callback_payload if isinstance(txn.callback_payload, dict) else {}
+    amount = payload.get("payment_amount") or txn.credit_collect_amount or txn.amount
+    return {
+        "id": txn.id,
+        "amount": _money_out(amount),
+        "receipt_code": txn.mpesa_receipt_number,
+        "paid_at": _iso(txn.credit_collected_at),
+        "manual": bool(payload.get("manual_credit_collection")),
+    }
 
 
 def _raise_service_error(exc: CustomerServiceError) -> NoReturn:
@@ -317,6 +332,94 @@ def get_customer(
     except CustomerServiceError as exc:
         _raise_service_error(exc)
     return {"data": _customer_out(customer)}
+
+
+@router.get("/{customer_id}/tab")
+def get_customer_tab(
+    customer_id: str,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Credit sales (with line items) and payments behind a customer's balance.
+
+    Payments are not linked to specific sales, so the outstanding balance is
+    attributed to the newest sales first (payments clear the oldest debt).
+    Whatever is left after all recorded sales is an opening/imported balance.
+    """
+    user = require_user(db, session)
+    assert_merchant_section_any_access(user, *TILL_CUSTOMER_SECTIONS)
+    account_id = require_merchant_account_id(user)
+    try:
+        customer = CustomerService(db).get_customer(account_id, customer_id)
+    except CustomerServiceError as exc:
+        _raise_service_error(exc)
+
+    orders = (
+        db.query(Order)
+        .options(selectinload(Order.items))
+        .filter(
+            Order.account_id == account_id,
+            Order.payment_method == PAYMENT_CREDIT,
+            Order.customer_phone == customer.phone,
+            Order.status.notin_((CANCELLED, REFUNDED)),
+        )
+        .order_by(Order.created_at.desc(), Order.id.desc())
+        .limit(TAB_SALES_LIMIT)
+        .all()
+    )
+
+    remaining = Decimal(str(customer.outstanding_balance or 0)).quantize(Decimal("0.01"))
+    sales = []
+    for order in orders:
+        total = Decimal(str(order.total or 0)).quantize(Decimal("0.01"))
+        due = min(total, remaining) if remaining > 0 else Decimal("0.00")
+        remaining -= due
+        sales.append(
+            {
+                "id": order.id,
+                "order_number": order.order_number,
+                "placed_at": _iso(order.placed_at or order.created_at),
+                "total": _money_out(total),
+                "amount_due": _money_out(due),
+                "state": "unpaid" if due == total else ("partial" if due > 0 else "paid"),
+                "items": [
+                    {
+                        "id": item.id,
+                        "name": item.product_name,
+                        "quantity": item.quantity,
+                        "sell_unit": item.sell_unit,
+                        "unit_price": _money_out(item.unit_price),
+                        "line_total": _money_out(item.line_total),
+                    }
+                    for item in order.items
+                ],
+            }
+        )
+
+    payments = (
+        db.query(MpesaTransaction)
+        .filter(
+            MpesaTransaction.account_id == account_id,
+            MpesaTransaction.shop_customer_id == customer.id,
+            MpesaTransaction.credit_collected_at.isnot(None),
+        )
+        .order_by(MpesaTransaction.credit_collected_at.desc())
+        .limit(TAB_PAYMENTS_LIMIT)
+        .all()
+    )
+
+    return {
+        "data": {
+            "customer_id": customer.id,
+            "outstanding_balance": _money_out(customer.outstanding_balance),
+            "opening_balance_due": _money_out(max(remaining, Decimal("0.00"))),
+            "sales": sales,
+            "payments": [
+                _tab_payment_out(txn)
+                for txn in payments
+            ],
+        }
+    }
 
 
 @router.post("/{customer_id}/update")
