@@ -127,6 +127,8 @@ export function TransChapCustomersList() {
   const [manualPaymentValues, setManualPaymentValues] = useState<
     Record<string, { amount: string; mpesaCode: string }>
   >({});
+  const [limitValues, setLimitValues] = useState<Record<string, string>>({});
+  const [savingLimitId, setSavingLimitId] = useState<string | null>(null);
 
   const createPhoneCheck = useMemo(
     () => checkKenyanPhone(createForm.phone),
@@ -197,6 +199,41 @@ export function TransChapCustomersList() {
       await showError("Could not record payment", extractErrorMessage(err));
     } finally {
       setManualCollectingId(null);
+    }
+  }
+
+  async function handleSaveLimit(customer: ShopCustomer, override?: number) {
+    const raw = limitValues[customer.id] ?? "";
+    const limit = override ?? parseCreditLimit(raw);
+    if (limit == null || (override == null && !raw.trim())) {
+      await showError("Check credit limit", "Enter a credit limit of 0 or more.");
+      return;
+    }
+    if (limit > 0 && limit < customer.outstanding_balance) {
+      await showError(
+        "Limit too low",
+        `${customer.name} already owes ${formatKsh(customer.outstanding_balance)}. Set a limit of at least that, or 0 for no cap.`,
+      );
+      return;
+    }
+
+    setSavingLimitId(customer.id);
+    try {
+      const res = await apiFetch<ShopCustomerMutationResponse>(
+        apiRoutes.customerUpdate(customer.id),
+        { method: "POST", body: JSON.stringify({ credit_limit: limit }) },
+      );
+      setCustomers((prev) =>
+        prev.map((row) => (row.id === customer.id ? res.data : row)),
+      );
+      setLimitValues((prev) => ({ ...prev, [customer.id]: "" }));
+      await toastSuccess(
+        limit > 0 ? `Credit limit set to ${formatKsh(limit)}` : "Credit limit removed",
+      );
+    } catch (err) {
+      await showError("Could not update credit limit", extractErrorMessage(err));
+    } finally {
+      setSavingLimitId(null);
     }
   }
 
@@ -911,6 +948,68 @@ export function TransChapCustomersList() {
                         </button>
                       </form>
                     ) : null}
+
+                    <form
+                      className="trans-chap-customer-manual trans-chap-customer-limit"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void handleSaveLimit(customer);
+                      }}
+                    >
+                      <div className="trans-chap-customer-manual__head">
+                        <span className="trans-chap-customer-section-label">Credit limit</span>
+                        <p>
+                          {hasCredit
+                            ? `Currently ${formatKsh(customer.credit_limit)}. Set 0 for no cap.`
+                            : "No limit set. Cap how much this customer can take on credit."}
+                        </p>
+                      </div>
+                      <div className="trans-chap-customer-limit__row">
+                        <label htmlFor={`${panelId}-credit-limit`} className="sr-only">
+                          New credit limit (KES)
+                        </label>
+                        <input
+                          id={`${panelId}-credit-limit`}
+                          type="text"
+                          inputMode="decimal"
+                          className="auth-split__input"
+                          placeholder={
+                            hasCredit
+                              ? formatKsh(customer.credit_limit)
+                              : owes
+                              ? `At least ${formatKsh(customer.outstanding_balance)}`
+                              : "e.g. 1000"
+                          }
+                          value={limitValues[customer.id] ?? ""}
+                          onChange={(event) =>
+                            setLimitValues((prev) => ({
+                              ...prev,
+                              [customer.id]: event.target.value,
+                            }))
+                          }
+                        />
+                        <button
+                          type="submit"
+                          className="trans-chap-btn trans-chap-btn--secondary"
+                          disabled={
+                            savingLimitId === customer.id ||
+                            !(limitValues[customer.id] ?? "").trim()
+                          }
+                        >
+                          {savingLimitId === customer.id ? "Saving…" : "Save"}
+                        </button>
+                      </div>
+                      {hasCredit ? (
+                        <button
+                          type="button"
+                          className="trans-chap-customer-limit__clear"
+                          disabled={savingLimitId === customer.id}
+                          onClick={() => void handleSaveLimit(customer, 0)}
+                        >
+                          Remove limit
+                        </button>
+                      ) : null}
+                    </form>
 
                     <span className="trans-chap-customer-section-label">Details</span>
                     <div className="trans-chap-customer-contact">

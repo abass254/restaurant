@@ -13,6 +13,7 @@ from app.support.order_delivery_details import (
     order_has_delivery_details,
     order_needs_delivery_details,
 )
+from app.support.order_payments import order_uses_payment
 from app.support.order_status import (
     AWAITING_DELIVERY_CONFIRMATION,
     AWAITING_PAYMENT,
@@ -72,7 +73,7 @@ def _has_phone(order) -> bool:
 
 
 def _is_mpesa(order) -> bool:
-    return (getattr(order, "payment_method", None) or "") == PAYMENT_MPESA
+    return order_uses_payment(order, PAYMENT_MPESA)
 
 
 def _delivery_details_step_state(
@@ -165,9 +166,8 @@ def workflow_steps(order) -> list[dict[str, str]]:
         return [{"key": current, "label": label, "state": "current"}]
 
     fulfillment = getattr(order, "fulfillment_type", FULFILLMENT_DELIVERY)
-    payment = getattr(order, "payment_method", None) or ""
     is_delivery = fulfillment == FULFILLMENT_DELIVERY
-    uses_mpesa = payment == PAYMENT_MPESA
+    uses_mpesa = _is_mpesa(order)
 
     steps: list[tuple[str, str]] = [("placed", "Created")]
     if uses_mpesa:

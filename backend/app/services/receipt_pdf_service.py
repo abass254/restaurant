@@ -16,6 +16,7 @@ from app.core.uploads import (
 )
 from app.models import Order
 from app.services.product_media_service import absolute_media_url
+from app.support.order_payments import payment_summary
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,8 @@ def build_order_receipt_pdf_bytes(
         pay = "M-PESA"
     elif (order.payment_method or "") == "cash":
         pay = "Cash"
+    elif (order.payment_method or "") == "split":
+        pay = payment_summary(order, currency)
 
     pdf = FPDF(orientation="P", unit="mm", format=(PAGE_W, 200))
     pdf.set_auto_page_break(auto=True, margin=8)

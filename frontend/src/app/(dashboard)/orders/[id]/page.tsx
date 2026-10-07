@@ -20,7 +20,6 @@ import { Skeleton } from "@/components/app/Skeleton";
 import {
   FULFILLMENT_ICONS,
   FULFILLMENT_LABELS,
-  PAYMENT_LABELS,
   SOURCE_ICONS,
   SOURCE_LABELS,
   STATUS_LABELS,
@@ -30,6 +29,8 @@ import {
   orderMissingDeliveryFields,
   orderNeedsDeliveryDetails,
   orderNeedsLiveUpdates,
+  orderPaymentLabel,
+  orderUsesPayment,
   orderWorkflowActions,
   orderWorkflowSteps,
   POS_SOURCES,
@@ -789,9 +790,7 @@ export default function OrderDetailPage() {
               </dd>
               <dt>Payment</dt>
               <dd>
-                {order.payment_method
-                  ? PAYMENT_LABELS[order.payment_method]
-                  : "—"}
+                {orderPaymentLabel(order)}
               </dd>
             </dl>
           </div>
@@ -839,7 +838,7 @@ export default function OrderDetailPage() {
             </div>
           ) : null}
 
-          {order.payment_method === "mpesa" ||
+          {orderUsesPayment(order, "mpesa") ||
           order.mpesa_transaction ||
           (order.mpesa_transactions?.length ?? 0) > 0 ? (
             <div className="orders-detail__card">
@@ -1094,7 +1093,7 @@ export default function OrderDetailPage() {
           </div>
           <div>
             <dt>Payment</dt>
-            <dd>{order.payment_method ? PAYMENT_LABELS[order.payment_method] : "Pay later"}</dd>
+            <dd>{order.payment_method ? orderPaymentLabel(order) : "Pay later"}</dd>
           </div>
         </dl>
 

@@ -22,6 +22,7 @@ from app.services.mpesa_service import MpesaApiError, MpesaConfigurationMissing
 from app.services.platform_runtime import is_dev_runtime
 from app.support.mpesa_order_link import link_mpesa_transaction_to_order
 from app.support.order_delivery_details import delivery_details_snapshot
+from app.support.order_payments import order_uses_payment, payment_portion
 from app.support.order_status import (
     AWAITING_PAYMENT,
     FULFILLMENT_DELIVERY,
@@ -112,7 +113,7 @@ class OrderPaymentService:
             "can_pay": (
                 not is_paid
                 and order.status not in TERMINAL_STATUSES
-                and (order.payment_method or PAYMENT_MPESA) == PAYMENT_MPESA
+                and (not order.payment_method or order_uses_payment(order, PAYMENT_MPESA))
             ),
             "tracking_url": OrderTrackingService.tracking_url(order.id, self.settings),
             "platform": platform,
@@ -201,8 +202,9 @@ class OrderPaymentService:
             order.delivery_address = clean_location[:2000]
             order.delivery_notes = clean_instructions[:2000]
 
-        if order.payment_method != PAYMENT_MPESA:
+        if not order_uses_payment(order, PAYMENT_MPESA):
             order.payment_method = PAYMENT_MPESA
+            order.payment_splits = None
 
         mpesa_message = "Payment could not be started. Please try again."
         if conversation and conversation.account:
@@ -222,7 +224,7 @@ class OrderPaymentService:
                 )
 
         try:
-            amount = max(1, int(round(float(order.total or 0))))
+            amount = max(1, int(round(float(payment_portion(order, PAYMENT_MPESA)))))
             txn = mpesa_service.stk_push(
                 self.db,
                 phone_number=normalized_phone,

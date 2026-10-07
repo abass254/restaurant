@@ -152,6 +152,8 @@ PAYMENT_CASH: Final = "cash"
 PAYMENT_CARD: Final = "card"
 PAYMENT_CREDIT: Final = "credit"
 PAYMENT_OTHER: Final = "other"
+# Total shared between several methods; see ``app.support.order_payments``.
+PAYMENT_SPLIT: Final = "split"
 
 PaymentMethod = Literal["mpesa", "cash", "card", "credit", "other"]
 

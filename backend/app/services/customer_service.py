@@ -253,7 +253,7 @@ class CustomerService:
         if credit_limit is not None:
             new_limit = _money(credit_limit)
             outstanding = _money(customer.outstanding_balance, field="Outstanding balance")
-            if new_limit < outstanding:
+            if new_limit > 0 and new_limit < outstanding:
                 raise CustomerServiceError(
                     "Credit limit cannot be lower than the amount already outstanding."
                 )

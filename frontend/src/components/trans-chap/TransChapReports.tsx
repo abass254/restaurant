@@ -11,6 +11,7 @@ import { apiFetch } from "@/lib/api";
 import { internalErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { nairobiDateKey, parseIso } from "@/lib/nairobi-time";
+import { orderPaymentPortion, orderPaymentPortions } from "@/lib/orders";
 import { fetchWalkinOrders, isCountedWalkinSale } from "@/lib/trans-chap-orders";
 import { fetchTransChapPurchases, type TransChapPurchase } from "@/lib/trans-chap-purchases";
 import { inventoryProductName } from "@/lib/trans-chap-product";
@@ -156,9 +157,18 @@ export function TransChapReports() {
       .filter((r): r is { row: TransChapPurchase; when: Date } => inRange(r.when, range));
 
     const sumSales = (match: (method: string | null | undefined) => boolean) =>
-      sales
-        .filter(({ order }) => match(order.payment_method))
-        .reduce((sum, { order }) => sum + order.total, 0);
+      sales.reduce(
+        (sum, { order }) =>
+          order.payment_method === "split"
+            ? sum +
+              orderPaymentPortions(order)
+                .filter((part) => match(part.method))
+                .reduce((s, part) => s + part.amount, 0)
+            : match(order.payment_method)
+              ? sum + order.total
+              : sum,
+        0,
+      );
     const sumPurchases = (role: TransChapPurchase["inventoryRole"]) =>
       bought
         .filter(({ row }) => row.inventoryRole === role)
@@ -212,9 +222,10 @@ export function TransChapReports() {
   const worth = useMemo(() => {
     const salesTotal = orders.reduce((sum, order) => sum + order.total, 0);
     const purchaseTotal = purchases.reduce((sum, row) => sum + row.total, 0);
-    const creditTotal = orders
-      .filter((order) => order.payment_method === "credit")
-      .reduce((sum, order) => sum + order.total, 0);
+    const creditTotal = orders.reduce(
+      (sum, order) => sum + orderPaymentPortion(order, "credit"),
+      0,
+    );
 
     // OI - (OA + OS + TP - TS + TD - TC); supplier debt (TD) is not tracked yet.
     const OI = openingInvestment || 0;

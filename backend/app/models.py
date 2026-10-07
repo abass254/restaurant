@@ -1125,6 +1125,8 @@ class Order(Base):
     currency: Mapped[str] = mapped_column(String(8), default="KES")
 
     payment_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Only for payment_method="split": [{"method": "cash", "amount": 500.0}, ...]
+    payment_splits: Mapped[Any | None] = mapped_column(JSON, nullable=True)
     mpesa_transaction_id: Mapped[str | None] = mapped_column(
         String(PK_LEN),
         ForeignKey("mpesa_transactions.id"),

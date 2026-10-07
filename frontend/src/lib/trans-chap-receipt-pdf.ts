@@ -3,7 +3,7 @@ import { formatNairobiDateTime } from "@/lib/nairobi-time";
 import {
   formatKesDigits,
   isTransChapReceiptPaid,
-  transChapPayLabel,
+  transChapReceiptPayLabel,
   type TransChapReceipt,
   type TransChapReceiptLine,
 } from "@/lib/trans-chap-receipt";
@@ -129,10 +129,12 @@ export function buildTransChapReceiptPdf(receipt: TransChapReceipt): File {
   doc.setFontSize(8);
   doc.setTextColor(...MUTED);
   const customer = receipt.customerName?.trim() || "Walk-in";
-  doc.text(`${transChapPayLabel(receipt.payMode)}  ·  ${customer}`, mid, y, {
-    align: "center",
-  });
-  y += 6;
+  const payLines: string[] = doc.splitTextToSize(
+    `${transChapReceiptPayLabel(receipt)}  ·  ${customer}`,
+    PAGE_W - MARGIN * 2,
+  );
+  doc.text(payLines, mid, y, { align: "center" });
+  y += 6 + (payLines.length - 1) * 4;
 
   if (receipt.mpesaReceiptNumber) {
     y += 2;

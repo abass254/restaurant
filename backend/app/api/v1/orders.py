@@ -81,6 +81,7 @@ from app.support.order_status import (
     PAYMENT_CASH,
     PAYMENT_CARD,
     PAYMENT_RECEIVED,
+    PAYMENT_SPLIT,
     PICKED_UP,
     PLACED,
     READY,
@@ -91,6 +92,12 @@ from app.support.order_status import (
     BEING_PREPARED,
     allowed_next_statuses,
     can_transition,
+)
+from app.support.order_payments import (
+    normalize_payment_splits,
+    order_uses_payment,
+    payment_methods,
+    payment_portion,
 )
 from app.support.merchant_permissions import active_account_id, require_store_admin
 
@@ -173,6 +180,11 @@ class OrderItemPayload(BaseModel):
     notes: str | None = Field(default=None, max_length=1000)
 
 
+class OrderPaymentSplitPayload(BaseModel):
+    method: Literal["mpesa", "cash", "card", "credit", "other"]
+    amount: float = Field(gt=0, le=99_999_999.99)
+
+
 class OrderCreate(BaseModel):
     source: Literal[
         "walkin",
@@ -191,7 +203,9 @@ class OrderCreate(BaseModel):
     delivery_address: str | None = Field(default=None, max_length=2000)
     delivery_notes: str | None = Field(default=None, max_length=2000)
 
-    payment_method: Literal["mpesa", "cash", "card", "credit", "other"] | None = None
+    payment_method: Literal["mpesa", "cash", "card", "credit", "other", "split"] | None = None
+    # Required when payment_method="split"; amounts must add up to the order total.
+    payments: list[OrderPaymentSplitPayload] | None = Field(default=None, max_length=5)
 
     delivery_fee: float | None = Field(default=0, ge=0, le=99_999_999.99)
     discount: float | None = Field(default=0, ge=0, le=99_999_999.99)
@@ -809,6 +823,27 @@ def create_order(
             },
         )
 
+    payment_method = payload.payment_method
+    payment_splits: list[dict[str, Any]] | None = None
+    if payment_method == PAYMENT_SPLIT:
+        payment_splits = normalize_payment_splits(
+            [p.model_dump() for p in (payload.payments or [])],
+        )
+        if len(payment_splits) < 2:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "errors": {
+                        "payments": [
+                            "Split payments need at least two different payment methods.",
+                        ],
+                    },
+                },
+            )
+    split_methods = {row["method"] for row in payment_splits or []}
+    uses_mpesa = payment_method == PAYMENT_MPESA or PAYMENT_MPESA in split_methods
+    uses_credit = payment_method == PAYMENT_CREDIT or PAYMENT_CREDIT in split_methods
+
     account = db.get(Account, account_id)
     force_mpesa_prompt = (
         account.force_mpesa_prompt
@@ -819,11 +854,11 @@ def create_order(
     # STK push needs a phone; typing an SMS code for a direct payment does not.
     direct_mpesa_receipt = (
         (payload.mpesa_receipt_number or "").strip()
-        if payload.payment_method == PAYMENT_MPESA
+        if uses_mpesa
         else ""
     )
     if (
-        payload.payment_method == PAYMENT_MPESA
+        uses_mpesa
         and force_mpesa_prompt
         and not direct_mpesa_receipt
         and not (payload.customer_phone and payload.customer_phone.strip())
@@ -840,7 +875,7 @@ def create_order(
         )
 
     if (
-        payload.payment_method == PAYMENT_MPESA
+        uses_mpesa
         and force_mpesa_prompt
         and not mpesa_service.get_merchant_profile(db, account_id)
     ):
@@ -855,7 +890,7 @@ def create_order(
             },
         )
 
-    if payload.payment_method == PAYMENT_CREDIT:
+    if uses_credit:
         if not (payload.customer_name and payload.customer_name.strip()):
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -1091,6 +1126,21 @@ def create_order(
     if total < 0:
         total = Decimal("0.00")
 
+    if payment_splits is not None:
+        split_total = sum((_money(row["amount"]) for row in payment_splits), Decimal("0"))
+        if split_total != total:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "errors": {
+                        "payments": [
+                            f"Split amounts add up to {split_total:,.2f} but the "
+                            f"order total is {total:,.2f}.",
+                        ],
+                    },
+                },
+            )
+
     now = datetime.utcnow()
     order = Order(
         account_id=account_id,
@@ -1108,7 +1158,8 @@ def create_order(
         discount=discount,
         total=total,
         currency=payload.currency.upper(),
-        payment_method=payload.payment_method,
+        payment_method=payment_method,
+        payment_splits=payment_splits,
         placed_by_user_id=user.id,
         placed_at=now,
         notes=(payload.notes or "").strip() or None,
@@ -1166,7 +1217,7 @@ def create_order(
         ) from exc
 
     credit_customer = None
-    if payload.payment_method == PAYMENT_CREDIT:
+    if uses_credit:
         try:
             customers = CustomerService(db)
             credit_customer = customers.get_or_create_for_sale(
@@ -1174,7 +1225,7 @@ def create_order(
                 name=payload.customer_name or "",
                 phone=payload.customer_phone or "",
             )
-            customers.charge_credit(credit_customer, total)
+            customers.charge_credit(credit_customer, payment_portion(order, PAYMENT_CREDIT))
             order.customer_name = credit_customer.name
             order.customer_phone = credit_customer.phone
         except CustomerServiceError as exc:
@@ -1187,7 +1238,7 @@ def create_order(
     # Manual M-PESA confirmation is only available when STK is disabled.
     # Receipt codes are optional; without one, the cashier confirms payment.
     push_result: dict[str, str] | None = None
-    if payload.payment_method == PAYMENT_MPESA and not force_mpesa_prompt:
+    if uses_mpesa and not force_mpesa_prompt:
         try:
             matched_txn = confirm_mpesa_receipt_for_order(
                 db,
@@ -1243,7 +1294,8 @@ def create_order(
         logger.exception("Merchant dashboard notification failed order_id=%s", order.id)
 
     if (
-        payload.payment_method in {PAYMENT_CASH, PAYMENT_CARD}
+        payment_method is not None
+        and payment_methods(order) <= {PAYMENT_CASH, PAYMENT_CARD}
         and (order.customer_phone or "").strip()
     ):
         try:
@@ -1288,7 +1340,7 @@ def create_order(
     # STK push after commit so the receipt can link to a real order id.
     # Failures are non-fatal — cashier can retry or enter a code later.
     if (
-        payload.payment_method == PAYMENT_MPESA
+        uses_mpesa
         and force_mpesa_prompt
         and not direct_mpesa_receipt
     ):
@@ -1351,13 +1403,14 @@ def _trigger_mpesa_for_order(
         profile.shortcode_type if profile else None,
         sandbox=mpesa_service.use_mpesa_sandbox(db),
     )
-    if float(order.total) < min_kes:
+    mpesa_due = float(payment_portion(order, PAYMENT_MPESA))
+    if mpesa_due < min_kes:
         return {
             "status": "skipped",
-            "message": f"Order total is below M-PESA's minimum of KES {min_kes}.",
+            "message": f"M-PESA amount is below M-PESA's minimum of KES {min_kes}.",
         }
 
-    amount = int(round(float(order.total)))
+    amount = int(round(mpesa_due))
     try:
         txn = mpesa_service.stk_push(
             db,
@@ -1417,10 +1470,13 @@ def update_order(
         )
 
     data = payload.model_dump(exclude_unset=True)
+    previous_total = _money(order.total)
     for key, value in data.items():
         if isinstance(value, str):
             value = value.strip() or None
         setattr(order, key, value)
+    if "payment_method" in data:
+        order.payment_splits = None
 
     # Recompute total if fee/discount changed.
     if "delivery_fee" in data or "discount" in data:
@@ -1431,6 +1487,12 @@ def update_order(
         ).quantize(Decimal("0.01"))
         if order.total < 0:
             order.total = Decimal("0.00")
+        if order.payment_method == PAYMENT_SPLIT and _money(order.total) != previous_total:
+            db.rollback()
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="This order was paid with split payments, so its total can't change.",
+            )
 
     order.updated_at = datetime.utcnow()
     db.commit()
@@ -1553,11 +1615,12 @@ def transition_order(
     if target in (CANCELLED, REFUNDED) and order.stock_deducted:
         restore_stock_for_order(db, order)
         order.stock_deducted = False
-    if target in (CANCELLED, REFUNDED) and order.payment_method == PAYMENT_CREDIT:
+    credit_due = payment_portion(order, PAYMENT_CREDIT)
+    if target in (CANCELLED, REFUNDED) and credit_due > 0:
         CustomerService(db).release_credit_for_order(
             str(account_id),
             phone=order.customer_phone,
-            amount=order.total,
+            amount=credit_due,
         )
 
     db.add(
@@ -1849,8 +1912,9 @@ def resend_mpesa_stk_push(
 
     # Ensure the order is recorded as expecting an M-PESA payment so the
     # callback flow can advance it to ``payment_received`` later on.
-    if order.payment_method != PAYMENT_MPESA:
+    if not order_uses_payment(order, PAYMENT_MPESA):
         order.payment_method = PAYMENT_MPESA
+        order.payment_splits = None
 
     push_result = _trigger_mpesa_for_order(
         db,

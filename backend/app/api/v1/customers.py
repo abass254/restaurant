@@ -39,7 +39,8 @@ from app.support.merchant_permissions import (
 )
 from app.support.mpesa_merchant_copy import merchant_safe_stk_error
 from app.support.mpesa_order_link import normalize_mpesa_receipt
-from app.support.order_status import CANCELLED, PAYMENT_CREDIT, REFUNDED
+from app.support.order_payments import payment_portion
+from app.support.order_status import CANCELLED, PAYMENT_CREDIT, PAYMENT_SPLIT, REFUNDED
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 
@@ -359,7 +360,7 @@ def get_customer_tab(
         .options(selectinload(Order.items))
         .filter(
             Order.account_id == account_id,
-            Order.payment_method == PAYMENT_CREDIT,
+            Order.payment_method.in_((PAYMENT_CREDIT, PAYMENT_SPLIT)),
             Order.customer_phone == customer.phone,
             Order.status.notin_((CANCELLED, REFUNDED)),
         )
@@ -371,7 +372,12 @@ def get_customer_tab(
     remaining = Decimal(str(customer.outstanding_balance or 0)).quantize(Decimal("0.01"))
     sales = []
     for order in orders:
-        total = Decimal(str(order.total or 0)).quantize(Decimal("0.01"))
+        if order.payment_method == PAYMENT_SPLIT:
+            total = payment_portion(order, PAYMENT_CREDIT)
+            if total <= 0:
+                continue
+        else:
+            total = Decimal(str(order.total or 0)).quantize(Decimal("0.01"))
         due = min(total, remaining) if remaining > 0 else Decimal("0.00")
         remaining -= due
         sales.append(

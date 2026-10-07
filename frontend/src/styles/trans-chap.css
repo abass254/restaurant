@@ -7917,6 +7917,39 @@ html[data-theme="dark"] .trans-chap-receipt {
     min-height: 44px;
 }
 
+.trans-chap-customer-limit__row {
+    display: flex;
+    gap: 0.55rem;
+}
+
+.trans-chap-customer-limit__row .auth-split__input {
+    flex: 1;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.trans-chap-customer-limit__row .trans-chap-btn {
+    flex: 0 0 auto;
+    padding-inline: 1.1rem;
+}
+
+.trans-chap-customer-limit__clear {
+    align-self: flex-start;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--app-text-secondary);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.trans-chap-customer-limit__clear:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
 .trans-chap-customer-tab {
     display: flex;
     flex-direction: column;

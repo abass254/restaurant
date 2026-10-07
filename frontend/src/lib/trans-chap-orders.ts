@@ -1,7 +1,7 @@
 import { apiFetch } from "@/lib/api";
 import { extractErrorMessage, internalErrorMessage, promptVoidReason } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
-import { orderHasSuccessfulMpesa } from "@/lib/orders";
+import { orderHasSuccessfulMpesa, orderUsesPayment } from "@/lib/orders";
 import type { Order, OrderMutationResponse, OrdersListResponse } from "@/lib/types";
 
 const MAX_PAGES = 20;
@@ -33,7 +33,7 @@ export async function fetchWalkinOrders(options?: {
 
 export function isCountedWalkinSale(order: Order): boolean {
   if (order.status === "cancelled" || order.status === "refunded") return false;
-  if (order.payment_method !== "mpesa") return true;
+  if (!orderUsesPayment(order, "mpesa")) return true;
   return orderHasSuccessfulMpesa(order);
 }
 
@@ -66,12 +66,13 @@ export async function promptAndUndoWalkinSale(order: {
   status: string;
   allowed_next_statuses?: string[] | null;
   payment_method?: string | null;
+  payment_splits?: Order["payment_splits"];
 }): Promise<Order | null> {
   const action = walkinUndoAction(order);
   if (!action) return null;
   const isRefund = action === "refund";
   const mpesaNote =
-    order.payment_method === "mpesa"
+    orderUsesPayment(order, "mpesa")
       ? " M-PESA is not reversed — return the money yourself."
       : "";
   const reason = await promptVoidReason(
@@ -96,7 +97,7 @@ export async function promptAndUndoWalkinSales(
   if (!targets.length) return null;
   const count = targets.length;
   const refunds = targets.filter((t) => t.action === "refund").length;
-  const hasMpesa = targets.some((t) => t.order.payment_method === "mpesa");
+  const hasMpesa = targets.some((t) => orderUsesPayment(t.order, "mpesa"));
   const reason = await promptVoidReason(
     `Void ${count} sale${count === 1 ? "" : "s"}?`,
     [

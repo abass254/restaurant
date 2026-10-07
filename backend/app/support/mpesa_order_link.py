@@ -27,9 +27,10 @@ def order_requires_mpesa_receipt_confirmation(order: Order) -> bool:
     customer's M-PESA transaction code (walk-in till payments, delayed
     callbacks, or customers who insist they have already paid).
     """
+    from app.support.order_payments import order_uses_payment
     from app.support.order_status import PAYMENT_MPESA
 
-    if str(getattr(order, "payment_method", "") or "") != PAYMENT_MPESA:
+    if not order_uses_payment(order, PAYMENT_MPESA):
         return False
     if getattr(order, "paid_at", None) is not None:
         return False
@@ -64,6 +65,11 @@ def order_has_successful_mpesa_payment(order: Order) -> bool:
 
 
 def _expected_order_amount(order: Order) -> int:
+    from app.support.order_payments import payment_portion
+    from app.support.order_status import PAYMENT_MPESA, PAYMENT_SPLIT
+
+    if (getattr(order, "payment_method", None) or "") == PAYMENT_SPLIT:
+        return max(1, int(round(float(payment_portion(order, PAYMENT_MPESA)))))
     return max(1, int(round(float(order.total or 0))))
 
 

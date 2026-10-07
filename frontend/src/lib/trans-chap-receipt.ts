@@ -1,5 +1,10 @@
-import { orderHasSuccessfulMpesa } from "@/lib/orders";
-import type { Order, OrderMpesaPushResult } from "@/lib/types";
+import {
+  PAYMENT_LABELS,
+  orderHasSuccessfulMpesa,
+  orderPaymentPortions,
+  orderUsesPayment,
+} from "@/lib/orders";
+import type { Order, OrderMpesaPushResult, OrderPaymentSplit } from "@/lib/types";
 import { toWhatsAppMsisdn } from "@/lib/whatsapp-phone";
 
 export { toWhatsAppMsisdn };
@@ -36,6 +41,8 @@ export type TransChapReceipt = {
   mpesaMessage: string | null;
   creditOutstanding: number | null;
   payBillUrl: string | null;
+  /** Set for split payments; payMode then reflects the part that still needs settling. */
+  paymentSplits: OrderPaymentSplit[] | null;
 };
 
 export function transChapPayLabel(payMode: TransChapPayMode): string {
@@ -44,10 +51,39 @@ export function transChapPayLabel(payMode: TransChapPayMode): string {
   return "Cash";
 }
 
+/** "Cash" or, for split payments, "Cash Ksh500.00 + M-PESA Ksh300.00". */
+export function transChapReceiptPayLabel(receipt: TransChapReceipt): string {
+  if (!receipt.paymentSplits?.length) return transChapPayLabel(receipt.payMode);
+  return receipt.paymentSplits
+    .map((p) => `${PAYMENT_LABELS[p.method] ?? p.method} ${formatKsh(Number(p.amount))}`)
+    .join(" + ");
+}
+
 export function payModeFromMethod(method: string | null | undefined): TransChapPayMode {
   if (method === "mpesa") return "mpesa";
   if (method === "credit") return "credit";
   return "cash";
+}
+
+function payModeFromOrder(order: Order): TransChapPayMode {
+  if (order.payment_method !== "split") return payModeFromMethod(order.payment_method);
+  if (orderUsesPayment(order, "mpesa")) return "mpesa";
+  if (orderUsesPayment(order, "credit")) return "credit";
+  return "cash";
+}
+
+function parsePaymentSplits(value: unknown): OrderPaymentSplit[] | null {
+  if (!Array.isArray(value)) return null;
+  const rows = value.flatMap((row) =>
+    row &&
+    typeof row.method === "string" &&
+    row.method in PAYMENT_LABELS &&
+    row.method !== "split" &&
+    Number.isFinite(Number(row.amount))
+      ? [{ method: row.method as OrderPaymentSplit["method"], amount: Number(row.amount) }]
+      : [],
+  );
+  return rows.length >= 2 ? rows : null;
 }
 
 export function transChapReceiptHref(orderId: string | null | undefined): string {
@@ -122,6 +158,7 @@ export function loadTransChapReceipt(): TransChapReceipt | null {
           ? Number(parsed.creditOutstanding)
           : null,
       payBillUrl: parsed.payBillUrl ?? null,
+      paymentSplits: parsePaymentSplits(parsed.paymentSplits),
     };
   } catch {
     return null;
@@ -142,8 +179,12 @@ export function isTransChapReceiptClosed(receipt: TransChapReceipt): boolean {
 
 export function transChapReceiptMessage(receipt: TransChapReceipt): string {
   const total = formatKsh(receipt.amount);
-  const paymentLine =
-    receipt.payMode === "mpesa"
+  const isSplit = Boolean(receipt.paymentSplits?.length);
+  const paymentLine = isSplit
+    ? `Paid with ${transChapReceiptPayLabel(receipt)}.${
+        receipt.mpesaReceiptNumber ? ` M-PESA receipt ${receipt.mpesaReceiptNumber}.` : ""
+      }`
+    : receipt.payMode === "mpesa"
       ? receipt.mpesaReceiptNumber
         ? `Paid via M-PESA. Receipt ${receipt.mpesaReceiptNumber}.`
         : "Paid via M-PESA."
@@ -152,12 +193,14 @@ export function transChapReceiptMessage(receipt: TransChapReceipt): string {
         : "Paid in cash.";
   return [
     `${receipt.orderNumber} Confirmed.`,
-    receipt.payMode === "credit"
-      ? `${total} on credit at ${receipt.shopName} for ${receipt.productName}.`
-      : `${total} paid to ${receipt.shopName} for ${receipt.productName}.`,
+    isSplit
+      ? `${total} sale at ${receipt.shopName} for ${receipt.productName}.`
+      : receipt.payMode === "credit"
+        ? `${total} on credit at ${receipt.shopName} for ${receipt.productName}.`
+        : `${total} paid to ${receipt.shopName} for ${receipt.productName}.`,
     receipt.customerName ? `Customer ${receipt.customerName}.` : "",
     paymentLine,
-    receipt.payMode === "credit" && receipt.creditOutstanding != null
+    (receipt.payMode === "credit" || isSplit) && receipt.creditOutstanding != null
       ? `Your tab is now ${formatKsh(receipt.creditOutstanding)}.`
       : "",
     receipt.payBillUrl ? `Pay your bill: ${receipt.payBillUrl}` : "",
@@ -187,7 +230,7 @@ export function receiptFromOrder(
     pay_bill_url?: string | null;
   } | null,
 ): TransChapReceipt {
-  const payMode = payModeFromMethod(order.payment_method);
+  const payMode = payModeFromOrder(order);
   const items: TransChapReceiptLine[] = (order.items ?? []).map((line) => ({
     name: line.product_name || "Sale",
     quantity: line.quantity || 1,
@@ -222,6 +265,8 @@ export function receiptFromOrder(
     creditOutstanding:
       creditTab?.outstanding_balance != null ? Number(creditTab.outstanding_balance) : null,
     payBillUrl: creditTab?.pay_bill_url ?? null,
+    paymentSplits:
+      order.payment_method === "split" ? orderPaymentPortions(order) : null,
   };
 }
 
@@ -247,8 +292,9 @@ export function paymentStatusFromOrder(
   order: Order,
   push?: OrderMpesaPushResult | null,
 ): TransChapPaymentStatus {
-  if (order.payment_method === "credit") return "pending";
-  if (order.payment_method !== "mpesa") return "paid";
+  if (!orderUsesPayment(order, "mpesa")) {
+    return orderUsesPayment(order, "credit") ? "pending" : "paid";
+  }
   if (orderHasSuccessfulMpesa(order)) return "paid";
   const txn = order.mpesa_transaction;
   if (txn?.status === "failed" || txn?.status === "cancelled") return "failed";

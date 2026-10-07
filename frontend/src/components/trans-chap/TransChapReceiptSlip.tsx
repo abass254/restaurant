@@ -9,8 +9,8 @@ import {
   formatKesDigits,
   isTransChapReceiptClosed,
   isTransChapReceiptPaid,
-  transChapPayLabel,
   transChapReceiptMessage,
+  transChapReceiptPayLabel,
   type TransChapReceipt,
 } from "@/lib/trans-chap-receipt";
 
@@ -37,6 +37,7 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
             : "Failed";
     const statusTone = paid ? "ok" : onCredit ? "credit" : waiting ? "wait" : "fail";
     const customer = receipt.customerName?.trim() || "Walk-in";
+    const creditPart = receipt.paymentSplits?.find((p) => p.method === "credit");
     const note = closed
       ? `Stock came back.${
           receipt.payMode === "mpesa"
@@ -46,9 +47,15 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
               : ""
         }`
       : onCredit
-        ? receipt.creditOutstanding != null
-          ? `On the customer’s tab. Tab total is now Ksh${formatKesDigits(receipt.creditOutstanding)}. We sent a pay link on WhatsApp.`
-          : "This sale is on the customer’s tab. It is not paid yet."
+        ? `${
+            creditPart
+              ? `Ksh${formatKesDigits(creditPart.amount)} is on the customer’s tab.`
+              : "On the customer’s tab."
+          }${
+            receipt.creditOutstanding != null
+              ? ` Tab total is now Ksh${formatKesDigits(receipt.creditOutstanding)}. We sent a pay link on WhatsApp.`
+              : " It is not paid yet."
+          }`
         : !paid
           ? waiting
             ? receipt.mpesaMessage || "Ask the customer to enter their PIN on the prompt."
@@ -75,7 +82,7 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
           <strong>{formatKesDigits(receipt.amount)}</strong>
         </p>
         <p className="trans-chap-slip__payline">
-          {transChapPayLabel(receipt.payMode)}
+          {transChapReceiptPayLabel(receipt)}
           <span aria-hidden="true" />
           {customer}
         </p>

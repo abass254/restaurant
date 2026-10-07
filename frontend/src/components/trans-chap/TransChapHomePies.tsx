@@ -14,6 +14,7 @@ import { fetchTransChapPurchases, type TransChapPurchase } from "@/lib/trans-cha
 import { fetchOwingCustomers } from "@/lib/trans-chap-credit";
 import { formatKesDigits, formatKsh } from "@/lib/trans-chap-receipt";
 import { nairobiDateKey, parseIso } from "@/lib/nairobi-time";
+import { orderPaymentPortions } from "@/lib/orders";
 import {
   buildChartBuckets,
   inRange,
@@ -96,9 +97,18 @@ export function TransChapHomePies() {
       .filter((row): row is { when: Date; total: number } => inRange(row.when, range));
 
     const sumBy = (method: (m: string | null | undefined) => boolean) =>
-      salesRows
-        .filter((row) => method(row.order.payment_method))
-        .reduce((sum, row) => sum + row.order.total, 0);
+      salesRows.reduce(
+        (sum, { order }) =>
+          order.payment_method === "split"
+            ? sum +
+              orderPaymentPortions(order)
+                .filter((part) => method(part.method))
+                .reduce((s, part) => s + part.amount, 0)
+            : method(order.payment_method)
+              ? sum + order.total
+              : sum,
+        0,
+      );
 
     return {
       salesTotal: salesRows.reduce((sum, row) => sum + row.order.total, 0),

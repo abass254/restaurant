@@ -17,8 +17,10 @@ import { apiRoutes } from "@/lib/config";
 import { isStoreAdmin } from "@/lib/merchant-permissions";
 import { formatNairobiStamp24, isWithinLastDays, nairobiDateKey, parseIso } from "@/lib/nairobi-time";
 import {
+  PAYMENT_LABELS,
   orderHasPendingMpesa,
   orderHasSuccessfulMpesa,
+  orderUsesPayment,
 } from "@/lib/orders";
 import { buildMpesaFlowSteps, MpesaFlowStatus } from "@/components/app/MpesaFlowStatus";
 import {
@@ -27,7 +29,13 @@ import {
   promptAndUndoWalkinSales,
   walkinUndoAction,
 } from "@/lib/trans-chap-orders";
-import { formatKsh, receiptFromOrder, transChapPayLabel, transChapReceiptHref } from "@/lib/trans-chap-receipt";
+import {
+  formatKsh,
+  receiptFromOrder,
+  transChapPayLabel,
+  transChapReceiptHref,
+  transChapReceiptPayLabel,
+} from "@/lib/trans-chap-receipt";
 import type { Order, OrderMutationResponse } from "@/lib/types";
 
 type WhenFilter = "all" | "today" | "week";
@@ -58,19 +66,16 @@ function saleStatus(order: Order): { label: string; tone: "ok" | "wait" | "fail"
   if (order.status === "refunded") {
     return { label: "Refunded", tone: "fail" };
   }
-  if (order.payment_method === "credit") {
+  if (orderUsesPayment(order, "mpesa") && !orderHasSuccessfulMpesa(order)) {
+    if (orderHasPendingMpesa(order) || order.status === "awaiting_payment") {
+      return { label: "Waiting", tone: "wait" };
+    }
+    return { label: "Failed", tone: "fail" };
+  }
+  if (orderUsesPayment(order, "credit")) {
     return { label: "On credit", tone: "credit" };
   }
-  if (order.payment_method !== "mpesa") {
-    return { label: "Paid", tone: "ok" };
-  }
-  if (orderHasSuccessfulMpesa(order)) {
-    return { label: "Paid", tone: "ok" };
-  }
-  if (orderHasPendingMpesa(order) || order.status === "awaiting_payment") {
-    return { label: "Waiting", tone: "wait" };
-  }
-  return { label: "Failed", tone: "fail" };
+  return { label: "Paid", tone: "ok" };
 }
 
 function orderDateKey(order: Order): string | null {
@@ -212,8 +217,8 @@ export function TransChapSalesList() {
     const needle = query.trim().toLowerCase();
     return orders.filter((order) => {
       if (!matchesQuery(order, needle)) return false;
-      if (method === "credit" && order.payment_method !== "credit") return false;
-      if (method === "mpesa" && order.payment_method !== "mpesa") return false;
+      if (method === "credit" && !orderUsesPayment(order, "credit")) return false;
+      if (method === "mpesa" && !orderUsesPayment(order, "mpesa")) return false;
       const tone = saleStatus(order).tone;
       if (status === "paid" && tone !== "ok") return false;
       if (status === "waiting" && tone !== "wait") return false;
@@ -336,7 +341,7 @@ export function TransChapSalesList() {
     const busy = stkBusyId === order.id || undoingId === order.id || bulkUndoing;
     return (
       <>
-        {sale.tone === "wait" || (order.payment_method === "mpesa" && sale.tone === "fail" && order.status !== "cancelled" && order.status !== "refunded") ? (
+        {sale.tone === "wait" || (orderUsesPayment(order, "mpesa") && sale.tone === "fail" && order.status !== "cancelled" && order.status !== "refunded") ? (
           <button
             type="button"
             className="trans-chap-panel__link"
@@ -498,7 +503,11 @@ export function TransChapSalesList() {
                       <td className="trans-chap-stock-table__mono">{receipt.orderNumber}</td>
                       <td className="trans-chap-stock-table__mono">{qty}</td>
                       <td className="trans-chap-stock-table__strong">{formatKsh(order.total)}</td>
-                      <td>{transChapPayLabel(receipt.payMode)}</td>
+                      <td title={transChapReceiptPayLabel(receipt)}>
+                        {receipt.paymentSplits
+                          ? receipt.paymentSplits.map((p) => PAYMENT_LABELS[p.method]).join(" + ")
+                          : transChapPayLabel(receipt.payMode)}
+                      </td>
                       <td className="trans-chap-stock-table__wrap">
                         {receipt.customerName?.trim() || "Walk-in"}
                       </td>
@@ -581,7 +590,7 @@ export function TransChapSalesList() {
                             ? "Waiting for M-PESA. Tap Complete M-PESA to send a prompt or enter the SMS code."
                             : "M-PESA didn’t go through. Tap Complete M-PESA to try again or enter the SMS code."}
                 </p>
-                {order.payment_method === "mpesa" && order.mpesa_transaction ? (
+                {orderUsesPayment(order, "mpesa") && order.mpesa_transaction ? (
                   <MpesaFlowStatus
                     steps={buildMpesaFlowSteps(order.mpesa_transaction)}
                     onStepAction={
@@ -613,7 +622,7 @@ export function TransChapSalesList() {
                   </div>
                   <div>
                     <dt>Method</dt>
-                    <dd>{transChapPayLabel(receipt.payMode)}</dd>
+                    <dd>{transChapReceiptPayLabel(receipt)}</dd>
                   </div>
                   <div>
                     <dt>Customer</dt>

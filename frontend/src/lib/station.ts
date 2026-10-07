@@ -1,3 +1,4 @@
+import { orderUsesPayment } from "@/lib/orders";
 import type { Order, OrderStatus, StoreStatus } from "@/lib/types";
 
 /** Orders that need an immediate kitchen action (confirm / start prep). */
@@ -50,7 +51,7 @@ export type StationPrimaryAction =
 
 export function stationPrimaryAction(order: Order): StationPrimaryAction | null {
   const next = order.allowed_next_statuses ?? [];
-  const isMpesa = order.payment_method === "mpesa";
+  const isMpesa = orderUsesPayment(order, "mpesa");
 
   if (order.status === "placed") {
     if (isMpesa && next.includes("awaiting_payment")) {

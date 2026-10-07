@@ -9,6 +9,7 @@ import type {
   Order,
   OrderFulfillmentType,
   OrderPaymentMethod,
+  OrderPaymentSplit,
   OrderSource,
   OrderStatus,
   OrderWorkflowAction,
@@ -87,6 +88,7 @@ export const PAYMENT_LABELS: Record<OrderPaymentMethod, string> = {
   card: "Card",
   credit: "Credit",
   other: "Other",
+  split: "Split",
 };
 
 export function formatMoney(amount: number, currency = "KES"): string {
@@ -94,6 +96,65 @@ export function formatMoney(amount: number, currency = "KES"): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+type PaymentFields = {
+  payment_method?: OrderPaymentMethod | string | null;
+  payment_splits?: OrderPaymentSplit[] | null;
+  total?: number | null;
+};
+
+/** Amount owed through each method; single-method orders owe the full total. */
+export function orderPaymentPortions(order: PaymentFields): OrderPaymentSplit[] {
+  if (order.payment_method === "split") {
+    return (order.payment_splits ?? []).filter((p) => Number(p.amount) > 0);
+  }
+  if (!order.payment_method) return [];
+  return [
+    {
+      method: order.payment_method as OrderPaymentSplit["method"],
+      amount: Number(order.total ?? 0),
+    },
+  ];
+}
+
+export function orderUsesPayment(
+  order: PaymentFields,
+  method: OrderPaymentSplit["method"],
+): boolean {
+  if (order.payment_method === method) return true;
+  return orderPaymentPortions(order).some((p) => p.method === method);
+}
+
+export function orderPaymentPortion(
+  order: PaymentFields,
+  method: OrderPaymentSplit["method"],
+): number {
+  return orderPaymentPortions(order)
+    .filter((p) => p.method === method)
+    .reduce((sum, p) => sum + Number(p.amount), 0);
+}
+
+/** "Cash" or, for split payments, "Cash KES 500.00 + M-PESA KES 300.00". */
+export function orderPaymentLabel(
+  order: PaymentFields & { currency?: string | null },
+): string {
+  if (!order.payment_method) return "—";
+  if (order.payment_method !== "split") {
+    return (
+      PAYMENT_LABELS[order.payment_method as OrderPaymentMethod] ??
+      order.payment_method
+    );
+  }
+  return orderPaymentPortions(order)
+    .map(
+      (p) =>
+        `${PAYMENT_LABELS[p.method] ?? p.method} ${formatMoney(
+          Number(p.amount),
+          order.currency ?? "KES",
+        )}`,
+    )
+    .join(" + ");
 }
 
 /** Orders created by the Instagram/WhatsApp DukAI sales agent. */
@@ -153,7 +214,7 @@ export function orderHasSuccessfulMpesa(order: Order): boolean {
 
 /** M-PESA orders without a reflected payment need a receipt code to mark paid. */
 export function orderRequiresMpesaReceiptConfirmation(order: Order): boolean {
-  if (order.payment_method !== "mpesa") return false;
+  if (!orderUsesPayment(order, "mpesa")) return false;
   if (order.paid_at) return false;
   return !orderHasSuccessfulMpesa(order);
 }
@@ -217,7 +278,7 @@ export function fallbackWorkflowActions(order: Order): OrderWorkflowAction[] {
   const mpesaPaid =
     !!order.paid_at || order.mpesa_transaction?.status === "success";
   const hasPhone = Boolean((order.customer_phone ?? "").trim());
-  const isMpesa = order.payment_method === "mpesa";
+  const isMpesa = orderUsesPayment(order, "mpesa");
 
   if (order.status === "placed") {
     if (isMpesa) {

@@ -16,6 +16,7 @@ from app.services.instagram_api import InstagramApiService
 from app.services.order_dm_templates import format_order_ref
 from app.services.order_tracking_service import OrderTrackingService
 from app.services.openwa_service import OpenWaAgentService
+from app.support.order_payments import order_uses_payment, payment_methods, payment_summary
 from app.support.order_status import (
     AWAITING_DELIVERY_CONFIRMATION,
     AWAITING_PAYMENT,
@@ -30,6 +31,7 @@ from app.support.order_status import (
     PAYMENT_MPESA,
     PAYMENT_OTHER,
     PAYMENT_RECEIVED,
+    PAYMENT_SPLIT,
     PICKED_UP,
     PLACED,
     READY,
@@ -237,6 +239,11 @@ def build_customer_receipt_whatsapp(
     if pay == PAYMENT_CREDIT:
         headline = f"{total} on credit at {shop_name}."
         payment_line = "On credit."
+    elif pay == PAYMENT_SPLIT:
+        headline = f"{total} sale at {shop_name}."
+        payment_line = f"Paid with {payment_summary(order, currency)}."
+        if receipt:
+            payment_line += f" M-PESA receipt {receipt}."
     elif pay == PAYMENT_MPESA:
         headline = f"{total} paid to {shop_name}."
         payment_line = (
@@ -269,7 +276,7 @@ def build_customer_receipt_whatsapp(
     if customer:
         lines.append(f"Customer {customer}.")
     lines.append(payment_line)
-    if pay == PAYMENT_CREDIT and credit_outstanding is not None:
+    if order_uses_payment(order, PAYMENT_CREDIT) and credit_outstanding is not None:
         lines.append(
             f"Your tab is now {_format_money(credit_outstanding, currency)}."
         )
@@ -292,9 +299,13 @@ def build_customer_receipt_email(
     currency = order.currency or "KES"
     ref = order.order_number
     status = STATUS_LABELS.get(order.status, (order.status or "").replace("_", " ").title())
-    pay_label = PAYMENT_METHOD_LABELS.get(
-        order.payment_method or "",
-        (order.payment_method or "—").replace("_", " ").title(),
+    pay_label = (
+        payment_summary(order, currency)
+        if order.payment_method == PAYMENT_SPLIT
+        else PAYMENT_METHOD_LABELS.get(
+            order.payment_method or "",
+            (order.payment_method or "—").replace("_", " ").title(),
+        )
     )
     when = _format_nairobi(order.paid_at or order.placed_at or order.created_at)
     receipt = _mpesa_receipt_for_order(order)
@@ -381,7 +392,8 @@ TILL_PAID_METHODS = frozenset({PAYMENT_CASH, PAYMENT_CARD})
 def should_send_customer_whatsapp(order: Order, status: str) -> bool:
     if status in CUSTOMER_WHATSAPP_STATUSES:
         return True
-    return status == PLACED and (order.payment_method or "") in TILL_PAID_METHODS
+    methods = payment_methods(order)
+    return status == PLACED and bool(methods) and methods <= TILL_PAID_METHODS
 
 
 class OrderNotificationService:
@@ -498,7 +510,7 @@ class OrderNotificationService:
 
         resolved_pay_bill = pay_bill_url
         resolved_outstanding = credit_outstanding
-        if (order.payment_method or "") == PAYMENT_CREDIT:
+        if order_uses_payment(order, PAYMENT_CREDIT):
             from app.services.credit_pay_service import CreditPayService
             from app.services.customer_service import CustomerService
 

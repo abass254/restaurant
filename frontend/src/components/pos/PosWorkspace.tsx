@@ -37,6 +37,7 @@ import {
   STATUS_LABELS,
   formatMoney,
   orderHasSuccessfulMpesa,
+  orderPaymentLabel,
 } from "@/lib/orders";
 import { paymentStatusFromOrder, receiptFromOrder } from "@/lib/trans-chap-receipt";
 import { TransChapReceiptPrint } from "@/components/trans-chap/TransChapReceiptSlip";
@@ -64,6 +65,7 @@ import type {
   OrderMpesaPushResult,
   OrderMutationResponse,
   OrderPaymentMethod,
+  OrderPaymentSplit,
   OrderSource,
   ShopCustomer,
   ShopCustomersListResponse,
@@ -101,6 +103,7 @@ const TRANSCHAP_PAYMENT_METHODS: OrderPaymentMethod[] = [
   "cash",
   "mpesa",
   "credit",
+  "split",
 ];
 
 type CartLine = {
@@ -226,6 +229,28 @@ function fractionalSellUnits(item: InventoryItem | null | undefined) {
   ];
 }
 
+type SplitMethod = OrderPaymentSplit["method"];
+
+/** One editable row of a split payment; amount stays a string while typing. */
+type SplitDraft = { method: SplitMethod; amount: string };
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function parseSplitDrafts(value: unknown): SplitDraft[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const rows = value.flatMap((row) =>
+    row &&
+    typeof row === "object" &&
+    typeof (row as SplitDraft).method === "string" &&
+    typeof (row as SplitDraft).amount === "string"
+      ? [{ method: (row as SplitDraft).method, amount: (row as SplitDraft).amount }]
+      : [],
+  );
+  return rows.length ? rows : undefined;
+}
+
 type PosHeldSession = {
   id: string;
   label: string;
@@ -234,6 +259,7 @@ type PosHeldSession = {
   fulfillment: OrderFulfillmentType;
   tableNumber?: string;
   paymentMethod: OrderPaymentMethod | "";
+  paymentSplits?: SplitDraft[];
   customerName: string;
   customerPhone: string;
   selectedCustomerId: string;
@@ -321,6 +347,7 @@ function parseHeldSessions(raw: string | null): PosHeldSession[] {
           typeof row.paymentMethod === "string"
             ? (row.paymentMethod as OrderPaymentMethod | "")
             : "",
+        paymentSplits: parseSplitDrafts(row.paymentSplits),
         customerName,
         customerPhone,
         selectedCustomerId:
@@ -467,6 +494,7 @@ export function PosWorkspace({
   const [paymentMethod, setPaymentMethod] = useState<OrderPaymentMethod | "">(
     isTransChapSale ? "mpesa" : "",
   );
+  const [splitRows, setSplitRows] = useState<SplitDraft[]>([]);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [mpesaReceiptCode, setMpesaReceiptCode] = useState("");
@@ -1192,6 +1220,7 @@ export function PosWorkspace({
     setDiscount("");
     setNotes("");
     setPaymentMethod(isTransChapSale ? "mpesa" : "");
+    setSplitRows([]);
     setCreditDueDate("");
     setSelectedCustomerId("");
     if (!isTransChapSale) {
@@ -1211,6 +1240,8 @@ export function PosWorkspace({
       fulfillment,
       tableNumber,
       paymentMethod,
+      paymentSplits:
+        paymentMethod === "split" ? splitRows.map((row) => ({ ...row })) : undefined,
       customerName,
       customerPhone,
       selectedCustomerId,
@@ -1231,14 +1262,24 @@ export function PosWorkspace({
     setSource(isTransChapSale ? "walkin" : session.source);
     setFulfillment(isTransChapSale ? (isRestaurant ? session.fulfillment : "pickup") : session.fulfillment);
     setTableNumber(session.tableNumber || "Table 1");
+    const restoredSplits =
+      session.paymentMethod === "split" && session.paymentSplits?.length
+        ? session.paymentSplits.map((row) => ({ ...row }))
+        : null;
     setPaymentMethod(
-      isTransChapSale
-        ? session.paymentMethod &&
-          TRANSCHAP_PAYMENT_METHODS.includes(session.paymentMethod)
-          ? session.paymentMethod
-          : "mpesa"
-        : session.paymentMethod,
+      restoredSplits
+        ? "split"
+        : isTransChapSale
+          ? session.paymentMethod &&
+            session.paymentMethod !== "split" &&
+            TRANSCHAP_PAYMENT_METHODS.includes(session.paymentMethod)
+            ? session.paymentMethod
+            : "mpesa"
+          : session.paymentMethod === "split"
+            ? ""
+            : session.paymentMethod,
     );
+    setSplitRows(restoredSplits ?? []);
     setCustomerName(session.customerName);
     setCustomerPhone(session.customerPhone);
     setSelectedCustomerId(session.selectedCustomerId);
@@ -1337,6 +1378,73 @@ export function PosWorkspace({
   const discountNum = Number(discount) || 0;
   const total = Math.max(0, subtotal + deliveryFeeNum - discountNum);
 
+  const isSplit = paymentMethod === "split";
+  const splitMethodOptions: SplitMethod[] = isTransChapSale
+    ? ["cash", "mpesa", "credit"]
+    : ["cash", "mpesa", "card", "credit", "other"];
+  const splitParts: OrderPaymentSplit[] = isSplit
+    ? splitRows
+        .map((row) => ({ method: row.method, amount: roundMoney(Number(row.amount) || 0) }))
+        .filter((row) => row.amount > 0)
+    : [];
+  const splitAllocated = roundMoney(splitParts.reduce((sum, row) => sum + row.amount, 0));
+  const splitRemaining = roundMoney(total - splitAllocated);
+  const splitPortion = (method: SplitMethod) =>
+    splitParts.filter((row) => row.method === method).reduce((sum, row) => sum + row.amount, 0);
+  const usesMpesa = paymentMethod === "mpesa" || (isSplit && splitPortion("mpesa") > 0);
+  const usesCredit = paymentMethod === "credit" || (isSplit && splitPortion("credit") > 0);
+  const mpesaDue = isSplit ? splitPortion("mpesa") : total;
+  const creditDue = isSplit ? splitPortion("credit") : total;
+  const completesImmediately =
+    paymentMethod !== "" &&
+    (isSplit ? !usesMpesa : IMMEDIATE_COMPLETE_PAYMENTS.has(paymentMethod));
+
+  function choosePaymentMethod(method: OrderPaymentMethod | "") {
+    setPaymentMethod(method);
+    if (method !== "mpesa" && method !== "split") setMpesaReceiptCode("");
+    if (method === "split" && splitRows.length === 0) {
+      setSplitRows([
+        { method: "cash", amount: "" },
+        { method: "mpesa", amount: "" },
+      ]);
+    }
+  }
+
+  function updateSplitRow(index: number, patch: Partial<SplitDraft>) {
+    setSplitRows((rows) => {
+      const next = rows.map((row, i) => (i === index ? { ...row, ...patch } : row));
+      // With two parts, typing one amount fills the other with what's left.
+      if (patch.amount !== undefined && next.length === 2) {
+        const typed = roundMoney(Number(patch.amount) || 0);
+        const rest = roundMoney(Math.max(0, total - typed));
+        next[1 - index] = { ...next[1 - index], amount: rest > 0 ? String(rest) : "" };
+      }
+      return next;
+    });
+  }
+
+  function addSplitRow() {
+    const used = new Set(splitRows.map((row) => row.method));
+    const method = splitMethodOptions.find((m) => !used.has(m));
+    if (!method) return;
+    setSplitRows((rows) => [
+      ...rows,
+      { method, amount: splitRemaining > 0 ? String(splitRemaining) : "" },
+    ]);
+  }
+
+  function removeSplitRow(index: number) {
+    setSplitRows((rows) => rows.filter((_, i) => i !== index));
+  }
+
+  function fillSplitRemainder(index: number) {
+    const current = roundMoney(Number(splitRows[index]?.amount) || 0);
+    const amount = roundMoney(current + splitRemaining);
+    setSplitRows((rows) =>
+      rows.map((row, i) => (i === index ? { ...row, amount: amount > 0 ? String(amount) : "" } : row)),
+    );
+  }
+
   useEffect(() => {
     if (typeof window === "undefined" || selectedCustomerId || customers.length === 0) return;
     const targetId = new URLSearchParams(window.location.search).get("customer");
@@ -1345,11 +1453,10 @@ export function PosWorkspace({
     }
   }, [customers, selectedCustomerId]);
 
-  const creditNeedsCustomer = paymentMethod === "credit";
+  const creditNeedsCustomer = usesCredit;
   const showWalkInPhone =
     !selectedCustomerId &&
-    (paymentMethod === "mpesa" ||
-      (!isTransChapSale && paymentMethod !== "credit"));
+    (usesMpesa || (!isTransChapSale && !usesCredit));
 
   const customerInitials = useMemo(() => {
     if (!selectedCustomer?.name) return "C";
@@ -1406,7 +1513,7 @@ export function PosWorkspace({
             </button>
           </div>
 
-          {paymentMethod === "mpesa" ? (
+          {usesMpesa ? (
             <div className="pos-customer-card__mpesa-box">
               {forceMpesaPrompt ? (
                 <>
@@ -1452,7 +1559,7 @@ export function PosWorkspace({
                     />
                   </div>
                   <small>
-                    Confirm receipt of {formatMoney(total)}. Add the SMS code if
+                    Confirm receipt of {formatMoney(mpesaDue)}. Add the SMS code if
                     available.
                   </small>
                 </>
@@ -1502,26 +1609,26 @@ export function PosWorkspace({
                 ) : null}
               </dl>
 
-              {paymentMethod === "credit" ? (
+              {usesCredit ? (
                 <div
-                  className={`pos-customer-card__validation ${total > selectedCustomer.available_credit
+                  className={`pos-customer-card__validation ${creditDue > selectedCustomer.available_credit
                       ? "is-fail"
                       : "is-ok"
                     }`}
                 >
                   <i
-                    className={`fa-solid ${total > selectedCustomer.available_credit
+                    className={`fa-solid ${creditDue > selectedCustomer.available_credit
                         ? "fa-triangle-exclamation"
                         : "fa-circle-check"
                       }`}
                     aria-hidden
                   />
                   <span>
-                    {total > selectedCustomer.available_credit
+                    {creditDue > selectedCustomer.available_credit
                       ? `Exceeds available credit by ${formatMoney(
-                        total - selectedCustomer.available_credit,
+                        creditDue - selectedCustomer.available_credit,
                       )}`
-                      : `Credit approved for this sale (${formatMoney(total)})`}
+                      : `Credit approved for this sale (${formatMoney(creditDue)})`}
                   </span>
                 </div>
               ) : null}
@@ -1569,7 +1676,7 @@ export function PosWorkspace({
             <div className="pos-walkin-phone">
               <label className="pos-label" htmlFor="pos-walkin-phone-input">
                 <i className="fa-solid fa-mobile-screen-button" aria-hidden />{" "}
-                {paymentMethod === "mpesa"
+                {usesMpesa
                   ? forceMpesaPrompt
                     ? "M-PESA Phone (prompt recipient)"
                     : "Customer Phone (optional)"
@@ -1581,18 +1688,18 @@ export function PosWorkspace({
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
                 placeholder={
-                  paymentMethod === "mpesa"
+                  usesMpesa
                     ? forceMpesaPrompt
                       ? "2547… (required for M-PESA)"
                       : "2547… (optional)"
                     : "Phone (optional)"
                 }
                 aria-label={
-                  paymentMethod === "mpesa" ? "M-PESA phone" : "Customer phone"
+                  usesMpesa ? "M-PESA phone" : "Customer phone"
                 }
-                aria-required={paymentMethod === "mpesa" && forceMpesaPrompt}
+                aria-required={usesMpesa && forceMpesaPrompt}
                 className={
-                  paymentMethod === "mpesa" &&
+                  usesMpesa &&
                   forceMpesaPrompt &&
                   !customerPhone.trim()
                     ? "pos-input--required"
@@ -1601,7 +1708,7 @@ export function PosWorkspace({
               />
             </div>
           ) : null}
-          {paymentMethod === "mpesa" && !forceMpesaPrompt ? (
+          {usesMpesa && !forceMpesaPrompt ? (
             <div className="pos-walkin-phone">
               <label className="pos-label" htmlFor="pos-mpesa-receipt-code">
                 <i className="fa-solid fa-receipt" aria-hidden /> M-PESA receipt code (optional)
@@ -1616,7 +1723,7 @@ export function PosWorkspace({
                 aria-label="M-PESA receipt code"
               />
               <small>
-                Confirm receipt of {formatMoney(total)}. Add the SMS code if
+                Confirm receipt of {formatMoney(mpesaDue)}. Add the SMS code if
                 available.
               </small>
             </div>
@@ -1698,18 +1805,21 @@ export function PosWorkspace({
   const canCompleteSaleNow =
     completeInPlace &&
     (isTransChapSale || fulfillment === "pickup" || fulfillment === "dine_in") &&
-    paymentMethod !== "" &&
-    IMMEDIATE_COMPLETE_PAYMENTS.has(paymentMethod);
+    completesImmediately;
 
   const paymentOptions = isTransChapSale
     ? TRANSCHAP_PAYMENT_METHODS
     : ALL_PAYMENT_METHODS;
 
+  const splitIncomplete =
+    isSplit && (new Set(splitParts.map((p) => p.method)).size < 2 || splitRemaining !== 0);
+
   const placeDisabled =
     cart.length === 0 ||
     submitting ||
+    splitIncomplete ||
     (isTransChapSale &&
-      paymentMethod === "mpesa" &&
+      usesMpesa &&
       !operationsSettingsLoaded) ||
     (isTransChapSale &&
       (paymentMethod === "" ||
@@ -1718,7 +1828,7 @@ export function PosWorkspace({
   const placeLabel = (() => {
     if (
       isTransChapSale &&
-      paymentMethod === "mpesa" &&
+      usesMpesa &&
       !operationsSettingsLoaded &&
       !operationsSettingsError
     ) {
@@ -1726,18 +1836,30 @@ export function PosWorkspace({
     }
     if (submitting) {
       if (isTransChapSale) {
-        if (paymentMethod === "mpesa") {
+        if (usesMpesa) {
           return forceMpesaPrompt ? "Sending M-Pesa…" : "Recording M-Pesa…";
         }
+        if (isSplit) return "Completing split sale…";
         if (paymentMethod === "credit") return "Saving on credit…";
         return "Completing cash sale…";
       }
       return canCompleteSaleNow ? "Completing…" : "Placing order…";
     }
+    if (splitIncomplete) {
+      return splitRemaining > 0
+        ? `Allocate ${formatMoney(splitRemaining)} more`
+        : splitRemaining < 0
+          ? `Over by ${formatMoney(-splitRemaining)}`
+          : "Use at least two methods";
+    }
     if (isTransChapSale) {
-      if (paymentMethod === "mpesa") {
-        return forceMpesaPrompt ? "Send M-Pesa prompt" : "Record M-Pesa payment";
+      if (usesMpesa) {
+        const amount = isSplit ? ` (${formatMoney(mpesaDue)})` : "";
+        return forceMpesaPrompt
+          ? `Send M-Pesa prompt${amount}`
+          : `Record M-Pesa payment${amount}`;
       }
+      if (isSplit) return "Complete split sale";
       if (paymentMethod === "credit") return "Save on credit";
       return "Complete cash sale";
     }
@@ -1759,7 +1881,16 @@ export function PosWorkspace({
     ) {
       await showError(
         "Choose how they pay",
-        "Pick cash sale, M-Pesa, or credit before completing this sale.",
+        "Pick cash sale, M-Pesa, credit, or split before completing this sale.",
+      );
+      return;
+    }
+    if (splitIncomplete) {
+      await showError(
+        "Finish the split payment",
+        new Set(splitParts.map((p) => p.method)).size < 2
+          ? "Enter amounts for at least two different payment methods."
+          : `The split adds up to ${formatMoney(splitAllocated)} but the total is ${formatMoney(total)}.`,
       );
       return;
     }
@@ -1777,7 +1908,7 @@ export function PosWorkspace({
       );
       return;
     }
-    if (paymentMethod === "mpesa" && !customerPhone.trim()) {
+    if (usesMpesa && !customerPhone.trim()) {
       if (forceMpesaPrompt) {
         await showError(
           "Customer phone required",
@@ -1786,7 +1917,7 @@ export function PosWorkspace({
         return;
       }
     }
-    if (paymentMethod === "credit" && !selectedCustomerId) {
+    if (usesCredit && !selectedCustomerId) {
       await showError(
         "Customer required",
         customers.length > 0
@@ -1795,7 +1926,7 @@ export function PosWorkspace({
       );
       return;
     }
-    if (paymentMethod === "credit" && !customerPhone.trim()) {
+    if (usesCredit && !customerPhone.trim()) {
       await showError(
         "Customer phone required",
         "The selected customer needs a phone number on file.",
@@ -1816,11 +1947,12 @@ export function PosWorkspace({
         delivery_address: orderFulfillment === "delivery" ? deliveryAddress.trim() || null : null,
         delivery_notes: orderFulfillment === "delivery" ? deliveryNotes.trim() || null : null,
         payment_method: paymentMethod || null,
+        payments: isSplit ? splitParts : undefined,
         mpesa_receipt_number:
-          paymentMethod === "mpesa" && !forceMpesaPrompt
+          usesMpesa && !forceMpesaPrompt
             ? mpesaReceiptCode.trim()
             : undefined,
-        date_to_pay: paymentMethod === "credit" ? creditDueDate.trim() || null : null,
+        date_to_pay: usesCredit ? creditDueDate.trim() || null : null,
         delivery_fee: orderFulfillment === "delivery" ? deliveryFeeNum : 0,
         discount: discountNum,
         notes: notes.trim() || null,
@@ -1844,8 +1976,7 @@ export function PosWorkspace({
       const willCompleteNow =
         completeInPlace &&
         (orderFulfillment === "pickup" || orderFulfillment === "dine_in") &&
-        paymentMethod !== "" &&
-        IMMEDIATE_COMPLETE_PAYMENTS.has(paymentMethod);
+        completesImmediately;
 
       if (willCompleteNow) {
         try {
@@ -1863,7 +1994,7 @@ export function PosWorkspace({
       // is always saved, even if the push failed. Trans Chap POS keeps a
       // waiting panel so they can send the prompt again without leaving.
       const push = data.mpesa_push ?? null;
-      if (isTransChapSale && paymentMethod === "mpesa") {
+      if (isTransChapSale && usesMpesa) {
         suppressMerchantOrderNotification(order.id);
         clearCart();
         void reload({ silent: true, q: search });
@@ -2992,7 +3123,7 @@ export function PosWorkspace({
             {isTransChapSale ? (
               <div className="pos-cart__row pos-cart__row--pay pos-cart__row--pay-full">
                 <div
-                  className="pos-pickers pos-pickers--three"
+                  className={`pos-pickers pos-pickers--${paymentOptions.length === 4 ? "four" : "three"}`}
                   role="radiogroup"
                   aria-label="Payment method"
                 >
@@ -3003,10 +3134,7 @@ export function PosWorkspace({
                       role="radio"
                       aria-checked={paymentMethod === p}
                       className={`pos-picker pos-picker--wide${paymentMethod === p ? " is-active" : ""}${p === "credit" ? " pos-picker--credit" : ""}${p === "cash" ? " pos-picker--cash" : ""}`}
-                      onClick={() => {
-                        setPaymentMethod(p);
-                        if (p !== "mpesa") setMpesaReceiptCode("");
-                      }}
+                      onClick={() => choosePaymentMethod(p)}
                     >
                       <span>
                         {p === "cash" ? "Cash sale" : PAYMENT_LABELS[p]}
@@ -3016,7 +3144,7 @@ export function PosWorkspace({
                 </div>
               </div>
             ) : null}
-            {paymentMethod === "credit" ? (
+            {usesCredit ? (
               <div className="pos-field" style={{ marginTop: "0.5rem" }}>
                 <label className="pos-label" htmlFor="pos-credit-due-date">
                   Date to pay (optional)
@@ -3063,7 +3191,7 @@ export function PosWorkspace({
                   className="pos-payment-select"
                   value={paymentMethod}
                   onChange={(e) =>
-                    setPaymentMethod(e.target.value as OrderPaymentMethod | "")
+                    choosePaymentMethod(e.target.value as OrderPaymentMethod | "")
                   }
                   aria-label="Payment method"
                 >
@@ -3073,9 +3201,94 @@ export function PosWorkspace({
                       {PAYMENT_LABELS[p]}
                     </option>
                   ))}
+                  <option value="split">Split payment</option>
                 </select>
               ) : null}
             </div>
+
+            {isSplit ? (
+              <div className="pos-split" role="group" aria-label="Split payment">
+                <div className="pos-split__head">
+                  <span className="pos-label">Split payment</span>
+                  <span
+                    className={`pos-split__status${
+                      splitRemaining === 0 ? " is-ok" : splitRemaining < 0 ? " is-over" : ""
+                    }`}
+                  >
+                    {splitRemaining === 0
+                      ? "Fully allocated"
+                      : splitRemaining > 0
+                        ? `${formatMoney(splitRemaining)} left`
+                        : `Over by ${formatMoney(-splitRemaining)}`}
+                  </span>
+                </div>
+                {splitRows.map((row, index) => {
+                  const taken = new Set(
+                    splitRows.filter((_, i) => i !== index).map((r) => r.method),
+                  );
+                  return (
+                    <div className="pos-split__row" key={index}>
+                      <select
+                        className="pos-payment-select"
+                        value={row.method}
+                        onChange={(e) =>
+                          updateSplitRow(index, { method: e.target.value as SplitMethod })
+                        }
+                        aria-label={`Payment ${index + 1} method`}
+                      >
+                        {splitMethodOptions
+                          .filter((m) => m === row.method || !taken.has(m))
+                          .map((m) => (
+                            <option key={m} value={m}>
+                              {PAYMENT_LABELS[m]}
+                            </option>
+                          ))}
+                      </select>
+                      <label className="pos-money-input">
+                        <span className="pos-money-input__prefix">KES</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          inputMode="decimal"
+                          value={row.amount}
+                          onChange={(e) => updateSplitRow(index, { amount: e.target.value })}
+                          placeholder="0"
+                          aria-label={`${PAYMENT_LABELS[row.method]} amount`}
+                        />
+                      </label>
+                      <div className="pos-split__actions">
+                        {splitRemaining > 0 ? (
+                          <button
+                            type="button"
+                            className="pos-split__fill"
+                            onClick={() => fillSplitRemainder(index)}
+                            title="Put the remaining balance on this method"
+                          >
+                            Rest
+                          </button>
+                        ) : null}
+                        {splitRows.length > 2 ? (
+                          <button
+                            type="button"
+                            className="pos-split__remove"
+                            onClick={() => removeSplitRow(index)}
+                            aria-label={`Remove ${PAYMENT_LABELS[row.method]}`}
+                          >
+                            <i className="fa-solid fa-xmark" aria-hidden />
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+                {splitRows.length < splitMethodOptions.length ? (
+                  <button type="button" className="pos-split__add" onClick={addSplitRow}>
+                    <i className="fa-solid fa-plus" aria-hidden /> Add method
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
 
             {isTransChapSale ? customerFields : null}
 
@@ -3210,7 +3423,7 @@ export function PosWorkspace({
               <dt>Payment</dt>
               <dd>
                 {receiptOrder.payment_method
-                  ? PAYMENT_LABELS[receiptOrder.payment_method]
+                  ? orderPaymentLabel(receiptOrder)
                   : "Pay later"}
               </dd>
             </div>

@@ -1391,7 +1391,19 @@ export type OrderSource =
 
 export type OrderFulfillmentType = "pickup" | "delivery" | "dine_in";
 
-export type OrderPaymentMethod = "mpesa" | "cash" | "card" | "credit" | "other";
+export type OrderPaymentMethod =
+  | "mpesa"
+  | "cash"
+  | "card"
+  | "credit"
+  | "other"
+  | "split";
+
+/** One part of a split payment; amounts across parts add up to the order total. */
+export type OrderPaymentSplit = {
+  method: Exclude<OrderPaymentMethod, "split">;
+  amount: number;
+};
 
 export type OrderStatus =
   | "placed"
@@ -1566,6 +1578,7 @@ export type Order = {
   total: number;
   currency: string;
   payment_method: OrderPaymentMethod | null;
+  payment_splits?: OrderPaymentSplit[] | null;
   mpesa_transaction_id: string | null;
   mpesa_transaction?: OrderMpesaTransaction | null;
   mpesa_transactions?: OrderMpesaTransaction[] | null;
@@ -1647,6 +1660,8 @@ export type OrderCreatePayload = {
   delivery_address?: string | null;
   delivery_notes?: string | null;
   payment_method?: OrderPaymentMethod | null;
+  /** Required when payment_method is "split". */
+  payments?: OrderPaymentSplit[] | null;
   delivery_fee?: number | null;
   discount?: number | null;
   currency?: string;

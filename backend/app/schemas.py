@@ -531,6 +531,7 @@ class OrderOut(BaseModel):
     currency: str
 
     payment_method: str | None
+    payment_splits: list[dict[str, Any]] | None = None
     mpesa_transaction_id: str | None
 
     placed_by_user_id: str | None
@@ -609,6 +610,7 @@ class OrderOut(BaseModel):
             total=float(order.total or 0),
             currency=order.currency,
             payment_method=order.payment_method,
+            payment_splits=getattr(order, "payment_splits", None),
             mpesa_transaction_id=order.mpesa_transaction_id,
             placed_by_user_id=order.placed_by_user_id,
             placed_at=order.placed_at,
@@ -673,7 +675,10 @@ def attach_order_mpesa_settlement(
     order_out: OrderOut,
     profile,
 ) -> OrderOut:
-    if order_out.payment_method != "mpesa" or profile is None:
+    uses_mpesa = order_out.payment_method == "mpesa" or any(
+        row.get("method") == "mpesa" for row in order_out.payment_splits or []
+    )
+    if not uses_mpesa or profile is None:
         return order_out
     order_out.mpesa_settlement = OrderMpesaSettlementOut(
         transaction_account=getattr(profile, "account_number", None),
