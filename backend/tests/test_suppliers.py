@@ -72,3 +72,71 @@ def test_delete_supplier_removes_row() -> None:
     service.delete_supplier("acct-1", "sup-1")
     db.delete.assert_called_once_with(existing)
     db.commit.assert_called_once()
+
+
+def test_create_and_update_supplier_credit_limit() -> None:
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+    captured = {}
+
+    def capture_add(obj) -> None:
+        captured["supplier"] = obj
+        obj.id = "sup-1"
+
+    db.add.side_effect = capture_add
+
+    service = SupplierService(db)
+    supplier = service.create_supplier(
+        "acct-1",
+        name="Test Supplier",
+        phone="0712345678",
+        credit_limit=5000,
+    )
+    assert supplier.credit_limit == 5000
+
+    existing = supplier
+    db.query.return_value.filter.return_value.first.return_value = existing
+    updated = service.update_supplier("acct-1", "sup-1", credit_limit=10000)
+    assert updated.credit_limit == 10000
+
+
+def test_record_payment_decreases_supplier_balance() -> None:
+    db = MagicMock()
+    supplier = MagicMock()
+    supplier.id = "sup-1"
+    supplier.balance = 10000.00
+    db.query.return_value.filter.return_value.first.return_value = supplier
+
+    captured = {}
+
+    def capture_add(obj) -> None:
+        captured["payment"] = obj
+        obj.id = "pay-1"
+
+    db.add.side_effect = capture_add
+
+    service = SupplierService(db)
+    sup, payment = service.record_payment(
+        "acct-1",
+        "sup-1",
+        amount=2500.0,
+        reference="QGH123ABC",
+        notes="Deposit for milk",
+    )
+
+    assert sup.balance == 7500.0
+    assert payment.amount == 2500.0
+    assert payment.reference == "QGH123ABC"
+    assert payment.notes == "Deposit for milk"
+    db.commit.assert_called_once()
+
+
+def test_record_payment_rejects_non_positive_amount() -> None:
+    db = MagicMock()
+    service = SupplierService(db)
+    with pytest.raises(SupplierServiceError, match="greater than zero"):
+        service.record_payment("acct-1", "sup-1", amount=0)
+    with pytest.raises(SupplierServiceError, match="greater than zero"):
+        service.record_payment("acct-1", "sup-1", amount=-50)
+
+

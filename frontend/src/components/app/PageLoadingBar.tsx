@@ -5,18 +5,16 @@ import { usePathname } from "next/navigation";
 import {
   isNavigationLoading,
   notifyNavigationStart,
+  notifyRouteChange,
   subscribeNavigationComplete,
   subscribeNavigationStart,
 } from "@/lib/navigation-loading";
 import { toastLoading } from "@/lib/alerts";
 
-const FALLBACK_COMPLETE_MS = 1500;
-
 export function PageLoadingBar() {
   const pathname = usePathname();
   const isFirstPath = useRef(true);
   const tickRef = useRef<number | null>(null);
-  const fallbackRef = useRef<number | null>(null);
   const [progress, setProgress] = useState(0);
   const [visible, setVisible] = useState(false);
 
@@ -25,25 +23,22 @@ export function PageLoadingBar() {
       window.clearInterval(tickRef.current);
       tickRef.current = null;
     }
-    if (fallbackRef.current) {
-      window.clearTimeout(fallbackRef.current);
-      fallbackRef.current = null;
-    }
   };
 
   const begin = () => {
     stopTicks();
     setVisible(true);
-    setProgress(14);
+    setProgress(16);
 
     tickRef.current = window.setInterval(() => {
       setProgress((current) => {
-        if (current >= 90) return current;
-        return Math.min(90, current + Math.random() * 10 + 4);
+        if (current >= 95) return current;
+        if (current < 45) return current + Math.random() * 8 + 4;
+        if (current < 70) return current + Math.random() * 4 + 2;
+        if (current < 86) return current + Math.random() * 2 + 1;
+        return Math.min(95, current + 0.35);
       });
-    }, 350);
-
-    fallbackRef.current = window.setTimeout(stopTicks, FALLBACK_COMPLETE_MS);
+    }, 240);
   };
 
   const finish = () => {
@@ -52,7 +47,7 @@ export function PageLoadingBar() {
     window.setTimeout(() => {
       setVisible(false);
       setProgress(0);
-    }, 220);
+    }, 260);
   };
 
   useEffect(() => {
@@ -75,9 +70,10 @@ export function PageLoadingBar() {
     }
 
     if (!isNavigationLoading()) {
-      notifyNavigationStart();
+      notifyNavigationStart(pathname);
       void toastLoading("Loading…");
     }
+    notifyRouteChange(pathname);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 

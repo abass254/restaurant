@@ -251,6 +251,8 @@ export const apiRoutes = {
   supplier: (id: string) => `${apiUrl}/api/v1/suppliers/${encodeURIComponent(id)}`,
   supplierUpdate: (id: string) =>
     `${apiUrl}/api/v1/suppliers/${encodeURIComponent(id)}/update`,
+  supplierPayments: (id: string) =>
+    `${apiUrl}/api/v1/suppliers/${encodeURIComponent(id)}/payments`,
   purchaseOrders: `${apiUrl}/api/v1/purchase-orders`,
   purchaseOrderSupplyItems: `${apiUrl}/api/v1/purchase-orders/supply-items`,
   purchaseOrder: (id: string) => `${apiUrl}/api/v1/purchase-orders/${encodeURIComponent(id)}`,

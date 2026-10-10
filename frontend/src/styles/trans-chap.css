@@ -380,6 +380,9 @@ button.trans-chap-header__icon {
     .trans-chap-pos-host.fb-app .pos-grid {
         grid-template-columns: minmax(0, 1fr) clamp(320px, 30%, 400px);
     }
+    .trans-chap-pos-host.fb-app .pos-grid.is-cart-collapsed {
+        grid-template-columns: minmax(0, 1fr) 52px;
+    }
 }
 
 .trans-chap-pos-host.fb-app .pos-main {
@@ -6774,12 +6777,43 @@ html[data-theme="dark"] .theme-switch:not(.is-on) {
     color: #fff;
 }
 
-.trans-chap-slip__pdf,
 .trans-chap-slip__print {
-    grid-column: 1 / -1;
+    grid-column: 1 / 2;
     border: 1px solid var(--app-border);
     background: var(--app-bg);
     color: var(--app-text);
+}
+
+.trans-chap-slip__pdf {
+    grid-column: 2 / 3;
+    border: 1px solid var(--app-border);
+    background: var(--app-bg);
+    color: var(--app-text);
+}
+
+.trans-chap-slip__printer-cfg {
+    grid-column: 1 / -1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 40px;
+    padding: 0.5rem 0.75rem;
+    border-radius: 12px;
+    border: 1px dashed var(--app-border);
+    background: transparent;
+    color: var(--app-text-muted, #64748b);
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.trans-chap-slip__printer-cfg:hover {
+    border-color: var(--brown-700, #5c4033);
+    color: var(--app-text);
+    background: var(--app-surface);
 }
 
 .trans-chap-slip__retry {
@@ -12024,6 +12058,10 @@ html[data-trans-chap-machine="tablet"] .trans-chap-pos-host.fb-app .pos-grid {
     gap: 0.85rem;
     padding: 0.75rem var(--trans-chap-gutter-x) 1.25rem;
     align-items: stretch;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-pos-host.fb-app .pos-grid.is-cart-collapsed {
+    grid-template-columns: minmax(0, 1fr) 52px;
 }
 
 html[data-trans-chap-machine="tablet"] .trans-chap-pos-host.fb-app .pos-main {

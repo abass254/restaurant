@@ -136,6 +136,12 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
           ))}
         </ul>
 
+        {receipt.tax && receipt.tax > 0 ? (
+          <p className="trans-chap-slip__tax" style={{ display: "flex", justifyContent: "space-between", margin: "0.25rem 0", fontSize: "0.85rem", color: "var(--app-text-secondary, #6b7280)" }}>
+            <span>Tax (16%)</span>
+            <strong>{formatKesDigits(receipt.tax)}</strong>
+          </p>
+        ) : null}
         <p className="trans-chap-slip__total">
           <span>Total</span>
           <strong>{formatKesDigits(receipt.amount)}</strong>

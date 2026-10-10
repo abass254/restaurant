@@ -1634,6 +1634,7 @@ export type Order = {
   pickup_lng?: number | null;
   subtotal: number;
   delivery_fee: number;
+  tax?: number | null;
   discount: number;
   total: number;
   currency: string;
@@ -1723,6 +1724,7 @@ export type OrderCreatePayload = {
   /** Required when payment_method is "split". */
   payments?: OrderPaymentSplit[] | null;
   delivery_fee?: number | null;
+  tax?: number | null;
   discount?: number | null;
   currency?: string;
   notes?: string | null;
@@ -1915,6 +1917,7 @@ export type ShopSupplier = {
   phone: string | null;
   notes: string | null;
   balance?: number | null;
+  credit_limit?: number | null;
   /** ISO date (YYYY-MM-DD) the owed balance must be paid by. */
   balance_due_date?: string | null;
   address?: string | null;
@@ -1936,6 +1939,28 @@ export type ShopSuppliersListResponse = {
 export type ShopSupplierMutationResponse = {
   message: string;
   data: ShopSupplier;
+};
+
+export type ShopSupplierPayment = {
+  id: string;
+  supplier_id: string;
+  amount: number;
+  reference?: string | null;
+  notes?: string | null;
+  paid_at: string;
+  created_at?: string | null;
+};
+
+export type ShopSupplierPaymentsResponse = {
+  data: ShopSupplierPayment[];
+};
+
+export type ShopSupplierRecordPaymentResponse = {
+  message: string;
+  data: {
+    supplier: ShopSupplier;
+    payment: ShopSupplierPayment;
+  };
 };
 
 /** merge: add/update rows from the file; replace: the file becomes the full list. */

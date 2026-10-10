@@ -35,6 +35,9 @@ import type {
   ContactImportMode,
   ShopSupplier,
   ShopSupplierMutationResponse,
+  ShopSupplierPayment,
+  ShopSupplierPaymentsResponse,
+  ShopSupplierRecordPaymentResponse,
   SupplierImportResponse,
 } from "@/lib/types";
 
@@ -48,6 +51,7 @@ type SupplierForm = {
   postal_code: string;
   fax: string;
   balance: string;
+  credit_limit: string;
   balance_due_date: string;
   notes: string;
 };
@@ -76,11 +80,20 @@ const EMPTY_FORM: SupplierForm = {
   postal_code: "",
   fax: "",
   balance: "0",
+  credit_limit: "0",
   balance_due_date: "",
   notes: "",
 };
 
 type BalanceTone = "ok" | "wait" | "fail" | "credit";
+
+function parseCreditLimit(value: string): number | null {
+  const cleaned = value.trim().replace(/,/g, "");
+  if (!cleaned) return null;
+  const num = Number(cleaned);
+  if (!Number.isFinite(num) || num < 0) return null;
+  return Math.round(num * 100) / 100;
+}
 
 function todayIso(): string {
   const now = new Date();
@@ -96,6 +109,21 @@ function formatDueDate(iso: string): string {
     month: "short",
     year: "numeric",
   });
+}
+
+function formatPaymentDateTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-KE", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
 }
 
 /** Days from today until the due date (negative when overdue). */
@@ -117,11 +145,15 @@ function dueStatus(supplier: ShopSupplier): { label: string; tone: BalanceTone }
 
 function balanceBadge(supplier: ShopSupplier): { label: string; tone: BalanceTone } {
   const bal = Number(supplier.balance || 0);
+  const creditLimit = Number(supplier.credit_limit || 0);
+  if (bal > 0) {
+    const due = dueStatus(supplier);
+    if (due) return { label: `Owes ${formatKsh(bal)} · ${due.label}`, tone: due.tone === "ok" ? "credit" : due.tone };
+    return { label: `Owes ${formatKsh(bal)}`, tone: "credit" };
+  }
   if (bal < 0) return { label: `Advance ${formatKsh(Math.abs(bal))}`, tone: "ok" };
-  if (bal === 0) return { label: "Supplier", tone: "ok" };
-  const due = dueStatus(supplier);
-  if (due) return { label: `Owes ${formatKsh(bal)} · ${due.label}`, tone: due.tone === "ok" ? "credit" : due.tone };
-  return { label: `Owes ${formatKsh(bal)}`, tone: "credit" };
+  if (creditLimit > 0) return { label: `Limit ${formatKsh(creditLimit)}`, tone: "ok" };
+  return { label: "CASH ONLY", tone: "wait" };
 }
 
 function formFromSupplier(supplier: ShopSupplier): SupplierForm {
@@ -135,6 +167,7 @@ function formFromSupplier(supplier: ShopSupplier): SupplierForm {
     postal_code: supplier.postal_code ?? supplier.postalcode ?? "",
     fax: supplier.fax ?? "",
     balance: supplier.balance != null ? String(supplier.balance) : "0",
+    credit_limit: supplier.credit_limit != null ? String(supplier.credit_limit) : "0",
     balance_due_date: supplier.balance_due_date ?? "",
     notes: supplier.notes ?? "",
   };
@@ -169,6 +202,14 @@ export function TransChapSuppliersList() {
   const [createForm, setCreateForm] = useState<SupplierForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [limitValues, setLimitValues] = useState<Record<string, string>>({});
+  const [savingLimitId, setSavingLimitId] = useState<string | null>(null);
+  const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
+  const [paymentValues, setPaymentValues] = useState<
+    Record<string, { amount: string; reference: string; notes: string }>
+  >({});
+  const [recordingPaymentId, setRecordingPaymentId] = useState<string | null>(null);
+  const [supplierPayments, setSupplierPayments] = useState<Record<string, ShopSupplierPayment[]>>({});
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importMode, setImportMode] = useState<ContactImportMode>("merge");
   const [importing, setImporting] = useState(false);
@@ -250,10 +291,25 @@ export function TransChapSuppliersList() {
     setView("import");
   }
 
+  const loadSupplierPayments = useCallback(async (supplierId: string) => {
+    try {
+      const res = await apiFetch<ShopSupplierPaymentsResponse>(
+        apiRoutes.supplierPayments(supplierId),
+      );
+      setSupplierPayments((prev) => ({ ...prev, [supplierId]: res.data }));
+    } catch {
+      // Non-critical background fetch
+    }
+  }, []);
+
   function toggle(supplier: ShopSupplier) {
     const open = openId === supplier.id;
     setOpenId(open ? null : supplier.id);
-    if (!open) setEditForm(formFromSupplier(supplier));
+    setEditingSupplierId(null);
+    if (!open) {
+      setEditForm(formFromSupplier(supplier));
+      void loadSupplierPayments(supplier.id);
+    }
   }
 
   function payloadFromForm(form: SupplierForm) {
@@ -263,6 +319,8 @@ export function TransChapSuppliersList() {
     if (!phone) throw new Error("Enter a phone number.");
     const balanceRaw = form.balance.trim().replace(/,/g, "");
     const balanceNum = balanceRaw ? Number(balanceRaw) : 0;
+    const creditLimitRaw = (form.credit_limit || "").trim().replace(/,/g, "");
+    const creditLimitNum = creditLimitRaw ? Number(creditLimitRaw) : 0;
     return {
       name,
       phone,
@@ -273,6 +331,7 @@ export function TransChapSuppliersList() {
       postal_code: form.postal_code.trim() || null,
       fax: form.fax.trim() || null,
       balance: Number.isFinite(balanceNum) ? balanceNum : 0,
+      credit_limit: Number.isFinite(creditLimitNum) ? creditLimitNum : 0,
       balance_due_date: form.balance_due_date || null,
       notes: form.notes.trim() || null,
     };
@@ -332,11 +391,89 @@ export function TransChapSuppliersList() {
           .sort((a, b) => a.name.localeCompare(b.name)),
       );
       setEditForm(formFromSupplier(res.data));
+      setEditingSupplierId(null);
       await toastSuccess("Supplier updated");
     } catch (err) {
       await showError("Could not update supplier", extractErrorMessage(err));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSaveLimit(supplier: ShopSupplier, override?: number) {
+    const raw = limitValues[supplier.id] ?? "";
+    const limit = override ?? parseCreditLimit(raw);
+    if (limit == null) {
+      await showError("Check credit limit", "Enter a credit limit of 0 or more.");
+      return;
+    }
+    const bal = Number(supplier.balance || 0);
+    if (limit > 0 && bal > limit) {
+      await showError(
+        "Limit too low",
+        `${supplier.name} already owes ${formatKsh(bal)}. Set a limit of at least that, or 0 for no cap.`,
+      );
+      return;
+    }
+
+    setSavingLimitId(supplier.id);
+    try {
+      const res = await apiFetch<ShopSupplierMutationResponse>(
+        apiRoutes.supplierUpdate(supplier.id),
+        { method: "POST", body: JSON.stringify({ credit_limit: limit }) },
+      );
+      setSuppliers((prev) =>
+        prev.map((row) => (row.id === supplier.id ? res.data : row)),
+      );
+      setLimitValues((prev) => ({ ...prev, [supplier.id]: "" }));
+      await toastSuccess(
+        limit > 0 ? `Credit limit set to ${formatKsh(limit)}` : "Credit limit removed",
+      );
+    } catch (err) {
+      await showError("Could not update credit limit", extractErrorMessage(err));
+    } finally {
+      setSavingLimitId(null);
+    }
+  }
+
+  async function handleRecordPayment(supplier: ShopSupplier) {
+    const cur = paymentValues[supplier.id] ?? { amount: "", reference: "", notes: "" };
+    const raw = cur.amount.trim().replace(/,/g, "");
+    const amt = Number(raw);
+    if (!raw || !Number.isFinite(amt) || amt <= 0) {
+      await showError("Invalid amount", "Please enter a valid amount greater than zero.");
+      return;
+    }
+
+    setRecordingPaymentId(supplier.id);
+    try {
+      const res = await apiFetch<ShopSupplierRecordPaymentResponse>(
+        apiRoutes.supplierPayments(supplier.id),
+        {
+          method: "POST",
+          body: JSON.stringify({
+            amount: amt,
+            reference: cur.reference.trim() || null,
+            notes: cur.notes.trim() || null,
+          }),
+        },
+      );
+      setSuppliers((prev) =>
+        prev.map((row) => (row.id === supplier.id ? res.data.supplier : row)),
+      );
+      setSupplierPayments((prev) => ({
+        ...prev,
+        [supplier.id]: [res.data.payment, ...(prev[supplier.id] ?? [])],
+      }));
+      setPaymentValues((prev) => ({
+        ...prev,
+        [supplier.id]: { amount: "", reference: "", notes: "" },
+      }));
+      await toastSuccess(`Payment of ${formatKsh(amt)} sent to ${supplier.name} recorded!`);
+    } catch (err) {
+      await showError("Could not record payment", extractErrorMessage(err));
+    } finally {
+      setRecordingPaymentId(null);
     }
   }
 
@@ -914,6 +1051,423 @@ export function TransChapSuppliersList() {
     );
   }
 
+  function renderSupplierDetail(supplier: ShopSupplier, panelId: string) {
+    if (editingSupplierId === supplier.id) {
+      return (
+        <div className="trans-chap-form__block trans-chap-customer-detail">
+          {renderEditForm(supplier, panelId, true)}
+          <button
+            type="button"
+            className="trans-chap-btn trans-chap-btn--ghost trans-chap-customer-actions__wide"
+            onClick={() => setEditingSupplierId(null)}
+          >
+            Cancel editing
+          </button>
+        </div>
+      );
+    }
+
+    const bal = Number(supplier.balance || 0);
+    const owes = bal > 0;
+    const creditLimit = Number(supplier.credit_limit || 0);
+    const hasCredit = creditLimit > 0;
+    const availableCredit = creditLimit - bal;
+    const creditPct = hasCredit
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            Math.round((availableCredit / creditLimit) * 100),
+          ),
+        )
+      : 0;
+    const cleanPhone = (supplier.phone ?? "").replace(/\D/g, "");
+
+    return (
+      <div className="trans-chap-form__block trans-chap-customer-detail">
+        <section
+          className={`trans-chap-customer-balance${owes ? " is-owes" : " is-clear"}`}
+        >
+          <div className="trans-chap-customer-balance__top">
+            <div>
+              <span className="trans-chap-customer-balance__label">
+                {owes ? "Balance owed" : "Balance"}
+              </span>
+              <strong className="trans-chap-customer-balance__amount">
+                {owes
+                  ? formatKsh(bal)
+                  : bal < 0
+                  ? `Advance ${formatKsh(Math.abs(bal))}`
+                  : "All paid up"}
+              </strong>
+            </div>
+            {supplier.balance_due_date && owes ? (
+              <span className="trans-chap-customer-balance__due">
+                <i className="fa-regular fa-calendar" aria-hidden />
+                Due {formatDueDate(supplier.balance_due_date)}
+              </span>
+            ) : null}
+          </div>
+
+          {hasCredit ? (
+            <div className="trans-chap-customer-balance__limit">
+              <div className="trans-chap-customer-credit-card__meter">
+                <div
+                  className={`trans-chap-customer-credit-card__meter-bar${
+                    availableCredit <= 0
+                      ? " is-exceeded"
+                      : creditPct <= 25
+                      ? " is-low"
+                      : ""
+                  }`}
+                  style={{ width: `${creditPct}%` }}
+                />
+              </div>
+              <p>
+                <strong>{formatKsh(availableCredit)}</strong> of{" "}
+                {formatKsh(creditLimit)} credit available
+              </p>
+            </div>
+          ) : (
+            <p className="trans-chap-customer-balance__note">
+              {owes
+                ? "No credit limit set — this tab has no cap."
+                : "Cash only — no credit limit set."}
+            </p>
+          )}
+        </section>
+
+        <div className="trans-chap-customer-actions">
+          {supplier.phone ? (
+            <>
+              {cleanPhone ? (
+                <a
+                  href={`https://wa.me/${cleanPhone}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="trans-chap-btn trans-chap-btn--ghost"
+                >
+                  <i className="fa-brands fa-whatsapp" aria-hidden />
+                  <span>WhatsApp</span>
+                </a>
+              ) : null}
+              <a
+                href={`tel:${supplier.phone}`}
+                className="trans-chap-btn trans-chap-btn--ghost"
+              >
+                <i className="fa-solid fa-phone" aria-hidden />
+                <span>Call</span>
+              </a>
+            </>
+          ) : (
+            <p className="trans-chap-mpesa-gate trans-chap-customer-actions__wide">
+              No phone on file — add one to sell on credit, send M-PESA prompts or WhatsApp reminders.
+            </p>
+          )}
+
+          {!owes ? (
+            <button
+              type="button"
+              className="trans-chap-btn trans-chap-btn--ghost trans-chap-customer-actions__wide trans-chap-customer-actions__danger"
+              disabled={removingId === supplier.id}
+              onClick={() => void removeSupplier(supplier)}
+            >
+              <i className="fa-solid fa-trash-can" aria-hidden />
+              <span>{removingId === supplier.id ? "Removing…" : "Remove supplier"}</span>
+            </button>
+          ) : null}
+        </div>
+
+        <form
+          className="trans-chap-customer-manual"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleRecordPayment(supplier);
+          }}
+        >
+          <div className="trans-chap-customer-manual__head">
+            <span className="trans-chap-customer-section-label">Record amount sent</span>
+            <p>
+              {bal > 0
+                ? `Record payment sent to pay down the ${formatKsh(bal)} balance owed.`
+                : "Record payment or advance deposit sent to this supplier."}
+            </p>
+          </div>
+          <div className="trans-chap-customer-manual__fields">
+            <label htmlFor={`${panelId}-payment-amount`}>
+              <span>Amount (KES)</span>
+              <input
+                id={`${panelId}-payment-amount`}
+                type="text"
+                inputMode="decimal"
+                required
+                className="auth-split__input"
+                placeholder={bal > 0 ? formatKsh(bal) : "e.g. 5,000"}
+                value={paymentValues[supplier.id]?.amount ?? ""}
+                onChange={(event) =>
+                  setPaymentValues((prev) => ({
+                    ...prev,
+                    [supplier.id]: {
+                      amount: event.target.value,
+                      reference: prev[supplier.id]?.reference ?? "",
+                      notes: prev[supplier.id]?.notes ?? "",
+                    },
+                  }))
+                }
+              />
+            </label>
+            <label htmlFor={`${panelId}-payment-ref`}>
+              <span>M-PESA / Ref (optional)</span>
+              <input
+                id={`${panelId}-payment-ref`}
+                type="text"
+                autoComplete="off"
+                className="auth-split__input"
+                placeholder="e.g. QGH7ABC123"
+                value={paymentValues[supplier.id]?.reference ?? ""}
+                onChange={(event) =>
+                  setPaymentValues((prev) => ({
+                    ...prev,
+                    [supplier.id]: {
+                      amount: prev[supplier.id]?.amount ?? "",
+                      reference: event.target.value,
+                      notes: prev[supplier.id]?.notes ?? "",
+                    },
+                  }))
+                }
+              />
+            </label>
+          </div>
+          <div className="trans-chap-customer-limit__row">
+            <label htmlFor={`${panelId}-payment-notes`} className="sr-only">
+              Notes (optional)
+            </label>
+            <input
+              id={`${panelId}-payment-notes`}
+              type="text"
+              className="auth-split__input"
+              placeholder="Notes / description (optional, e.g. milk shipment)"
+              value={paymentValues[supplier.id]?.notes ?? ""}
+              onChange={(event) =>
+                setPaymentValues((prev) => ({
+                  ...prev,
+                  [supplier.id]: {
+                    amount: prev[supplier.id]?.amount ?? "",
+                    reference: prev[supplier.id]?.reference ?? "",
+                    notes: event.target.value,
+                  },
+                }))
+              }
+            />
+          </div>
+          <button
+            type="submit"
+            className="trans-chap-btn trans-chap-btn--secondary"
+            disabled={
+              recordingPaymentId === supplier.id ||
+              !(paymentValues[supplier.id]?.amount ?? "").trim()
+            }
+          >
+            {recordingPaymentId === supplier.id ? "Recording payment…" : "Record amount sent"}
+          </button>
+        </form>
+
+        {supplierPayments[supplier.id]?.length ? (
+          <div className="trans-chap-customer-tab">
+            <span className="trans-chap-customer-section-label">Recent amounts sent</span>
+            <ul className="trans-chap-customer-tab__sales">
+              {supplierPayments[supplier.id].map((payment) => (
+                <li key={payment.id} className="trans-chap-customer-tab__sale">
+                  <div className="trans-chap-customer-tab__sale-head">
+                    <div>
+                      <strong>{formatKsh(payment.amount)} sent</strong>
+                      <span>
+                        {formatPaymentDateTime(payment.paid_at)}
+                        {payment.reference ? ` • Ref: ${payment.reference}` : ""}
+                      </span>
+                      {payment.notes ? <span>{payment.notes}</span> : null}
+                    </div>
+                    <div className="trans-chap-customer-tab__sale-amt">
+                      <span className="trans-chap-customer-tab__pill is-paid">Sent</span>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <form
+          className="trans-chap-customer-manual trans-chap-customer-limit"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSaveLimit(supplier);
+          }}
+        >
+          <div className="trans-chap-customer-manual__head">
+            <span className="trans-chap-customer-section-label">Credit limit</span>
+            <p>
+              {hasCredit
+                ? `Currently ${formatKsh(creditLimit)}. Set 0 for no cap.`
+                : "No limit set. Cap how much this customer can take on credit."}
+            </p>
+          </div>
+          <div className="trans-chap-customer-limit__row">
+            <label htmlFor={`${panelId}-credit-limit`} className="sr-only">
+              New credit limit (KES)
+            </label>
+            <input
+              id={`${panelId}-credit-limit`}
+              type="text"
+              inputMode="decimal"
+              className="auth-split__input"
+              placeholder={
+                hasCredit
+                  ? formatKsh(creditLimit)
+                  : owes
+                  ? `At least ${formatKsh(bal)}`
+                  : "e.g. 1000"
+              }
+              value={limitValues[supplier.id] ?? ""}
+              onChange={(event) =>
+                setLimitValues((prev) => ({
+                  ...prev,
+                  [supplier.id]: event.target.value,
+                }))
+              }
+            />
+            <button
+              type="submit"
+              className="trans-chap-btn trans-chap-btn--secondary"
+              disabled={
+                savingLimitId === supplier.id ||
+                !(limitValues[supplier.id] ?? "").trim()
+              }
+            >
+              {savingLimitId === supplier.id ? "Saving…" : "Save"}
+            </button>
+          </div>
+          {hasCredit ? (
+            <button
+              type="button"
+              className="trans-chap-customer-limit__clear"
+              disabled={savingLimitId === supplier.id}
+              onClick={() => void handleSaveLimit(supplier, 0)}
+            >
+              Remove limit
+            </button>
+          ) : null}
+        </form>
+
+        <span className="trans-chap-customer-section-label">Details</span>
+        <div className="trans-chap-customer-contact">
+          <div className="trans-chap-customer-contact__item">
+            <span className="trans-chap-customer-contact__label">Contact</span>
+            {supplier.phone ? (
+              <div className="trans-chap-customer-contact__val">
+                <a
+                  href={`tel:${supplier.phone}`}
+                  className="trans-chap-customer-contact__link"
+                  title="Call supplier"
+                >
+                  <i className="fa-solid fa-phone" aria-hidden />
+                  <span>{supplier.phone}</span>
+                </a>
+                {cleanPhone ? (
+                  <a
+                    href={`https://wa.me/${cleanPhone}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="trans-chap-customer-contact__icon-btn"
+                    title="Chat on WhatsApp"
+                  >
+                    <i className="fa-brands fa-whatsapp" aria-hidden />
+                  </a>
+                ) : null}
+                <button
+                  type="button"
+                  className="trans-chap-customer-contact__icon-btn"
+                  title="Copy phone number"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(supplier.phone ?? "");
+                    void toastSuccess("Phone copied!");
+                  }}
+                >
+                  <i className="fa-solid fa-copy" aria-hidden />
+                </button>
+              </div>
+            ) : (
+              <div className="trans-chap-customer-contact__val">No phone on file</div>
+            )}
+          </div>
+
+          {supplier.address || supplier.city ? (
+            <div className="trans-chap-customer-contact__item">
+              <span className="trans-chap-customer-contact__label">Location</span>
+              <div className="trans-chap-customer-contact__val">
+                <i className="fa-solid fa-location-dot" aria-hidden />
+                <span>{[supplier.address, supplier.city].filter(Boolean).join(", ")}</span>
+              </div>
+            </div>
+          ) : null}
+
+          {supplier.pin_number ? (
+            <div className="trans-chap-customer-contact__item">
+              <span className="trans-chap-customer-contact__label">KRA PIN</span>
+              <div className="trans-chap-customer-contact__val">
+                <span>{supplier.pin_number}</span>
+              </div>
+            </div>
+          ) : null}
+
+          {supplier.email ? (
+            <div className="trans-chap-customer-contact__item">
+              <span className="trans-chap-customer-contact__label">Email</span>
+              <div className="trans-chap-customer-contact__val">
+                <a
+                  href={`mailto:${supplier.email}`}
+                  className="trans-chap-customer-contact__link"
+                >
+                  <i className="fa-solid fa-envelope" aria-hidden />
+                  <span>{supplier.email}</span>
+                </a>
+              </div>
+            </div>
+          ) : null}
+
+          {supplier.balance_due_date && !owes ? (
+            <div className="trans-chap-customer-contact__item">
+              <span className="trans-chap-customer-contact__label">Date to pay</span>
+              <div className="trans-chap-customer-contact__val">
+                <i className="fa-regular fa-calendar-check" aria-hidden />
+                <span>{formatDueDate(supplier.balance_due_date)}</span>
+              </div>
+            </div>
+          ) : null}
+
+          {supplier.notes ? (
+            <div className="trans-chap-customer-contact__notes">
+              <span className="trans-chap-customer-contact__label">Notes</span>
+              <p>{supplier.notes}</p>
+            </div>
+          ) : null}
+        </div>
+
+        <button
+          type="button"
+          className="trans-chap-btn trans-chap-btn--ghost trans-chap-customer-actions__wide"
+          onClick={() => {
+            setEditForm(formFromSupplier(supplier));
+            setEditingSupplierId(supplier.id);
+          }}
+        >
+          <i className="fa-solid fa-pen-to-square" aria-hidden />
+          <span>Edit supplier details</span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className={`trans-chap-sales${layoutView === "list" ? " trans-chap-sales--list" : ""}`}>
       <div className="trans-chap-sales__filters">
@@ -1050,7 +1604,7 @@ export function TransChapSuppliersList() {
                               aria-controls={`${panelId}-edit`}
                               onClick={() => toggle(supplier)}
                             >
-                              {open ? "Close" : "Edit"}
+                              {open ? "Close" : "View"}
                             </button>
                           </div>
                         </td>
@@ -1058,7 +1612,7 @@ export function TransChapSuppliersList() {
                       {open ? (
                         <tr className="trans-chap-stock-table__detail">
                           <td colSpan={7} id={`${panelId}-edit`}>
-                            {renderEditForm(supplier, panelId, true)}
+                            {renderSupplierDetail(supplier, panelId)}
                           </td>
                         </tr>
                       ) : null}
@@ -1075,27 +1629,21 @@ export function TransChapSuppliersList() {
             const open = openId === supplier.id;
             const panelId = `${listId}-${supplier.id}`;
             const badge = balanceBadge(supplier);
-
-            const subtitle = [
-              supplier.phone,
-              supplier.city ? supplier.city : null,
-              supplier.pin_number ? `PIN: ${supplier.pin_number}` : null,
-            ]
-              .filter(Boolean)
-              .join(" · ");
+            const owes = Number(supplier.balance || 0) > 0;
 
             return (
               <MotionItem key={supplier.id} as="div">
                 <TransChapPanel
                   id={panelId}
                   open={open}
-                  tone="sale"
+                  imageUrl={null}
+                  tone={owes ? "credit" : "sale"}
                   title={supplier.name}
-                  subtitle={subtitle}
+                  subtitle={supplier.phone ?? "No phone"}
                   badge={badge}
                   onToggle={() => toggle(supplier)}
                 >
-                  {renderEditForm(supplier, panelId, open)}
+                  {renderSupplierDetail(supplier, panelId)}
                 </TransChapPanel>
               </MotionItem>
             );

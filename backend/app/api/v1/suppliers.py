@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Literal, NoReturn
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.session import require_user, validate_csrf
 from app.database import get_db
 from app.dependencies import get_request_session
-from app.models import ShopSupplier
+from app.models import ShopSupplier, ShopSupplierPayment
 from app.services.platform_instagram import require_merchant_account_id
 from app.services.supplier_import_service import (
     generate_supplier_template,
@@ -35,6 +35,7 @@ class SupplierCreateRequest(BaseModel):
     phone: str = Field(min_length=7, max_length=32)
     notes: str | None = Field(default=None, max_length=2000)
     balance: float | None = Field(default=0.0)
+    credit_limit: float | None = Field(default=0.0, ge=0, le=99_999_999.99)
     balance_due_date: date | None = None
     address: str | None = Field(default=None, max_length=255)
     postal_code: str | None = Field(default=None, max_length=64)
@@ -50,6 +51,7 @@ class SupplierUpdateRequest(BaseModel):
     phone: str | None = Field(default=None, min_length=7, max_length=32)
     notes: str | None = Field(default=None, max_length=2000)
     balance: float | None = None
+    credit_limit: float | None = Field(default=None, ge=0, le=99_999_999.99)
     balance_due_date: date | None = None
     address: str | None = Field(default=None, max_length=255)
     postal_code: str | None = Field(default=None, max_length=64)
@@ -66,6 +68,7 @@ class SupplierOut(BaseModel):
     phone: str | None = None
     notes: str | None = None
     balance: float | None = None
+    credit_limit: float = 0.0
     balance_due_date: str | None = None
     address: str | None = None
     postal_code: str | None = None
@@ -78,19 +81,51 @@ class SupplierOut(BaseModel):
     updated_at: str | None = None
 
 
+class SupplierPaymentCreateRequest(BaseModel):
+    amount: float = Field(gt=0, le=99_999_999.99)
+    reference: str | None = Field(default=None, max_length=100)
+    notes: str | None = Field(default=None, max_length=2000)
+    paid_at: datetime | None = None
+
+
+class SupplierPaymentOut(BaseModel):
+    id: str
+    supplier_id: str
+    amount: float
+    reference: str | None = None
+    notes: str | None = None
+    paid_at: str | None = None
+    created_at: str | None = None
+
+
 def _iso(dt) -> str | None:
     aware = as_utc(dt)
     return aware.isoformat() if aware else None
 
 
+def _payment_out(payment: ShopSupplierPayment) -> SupplierPaymentOut:
+    return SupplierPaymentOut(
+        id=payment.id,
+        supplier_id=payment.supplier_id,
+        amount=float(payment.amount),
+        reference=payment.reference,
+        notes=payment.notes,
+        paid_at=_iso(payment.paid_at),
+        created_at=_iso(payment.created_at),
+    )
+
+
+
 def _supplier_out(supplier: ShopSupplier) -> SupplierOut:
     bal = float(supplier.balance) if supplier.balance is not None else 0.0
+    limit = float(supplier.credit_limit) if getattr(supplier, "credit_limit", None) is not None else 0.0
     return SupplierOut(
         id=supplier.id,
         name=supplier.name,
         phone=supplier.phone,
         notes=supplier.notes,
         balance=bal,
+        credit_limit=limit,
         balance_due_date=(
             supplier.balance_due_date.isoformat() if supplier.balance_due_date else None
         ),
@@ -166,6 +201,7 @@ def create_supplier(
             phone=payload.phone,
             notes=payload.notes,
             balance=payload.balance,
+            credit_limit=payload.credit_limit,
             balance_due_date=payload.balance_due_date,
             address=payload.address,
             postal_code=p_code,
@@ -282,6 +318,7 @@ def update_supplier(
             phone=data.get("phone"),
             notes=data.get("notes"),
             balance=data.get("balance"),
+            credit_limit=data.get("credit_limit"),
             balance_due_date=data.get("balance_due_date"),
             clear_balance_due_date=(
                 "balance_due_date" in data and data.get("balance_due_date") is None
@@ -315,3 +352,54 @@ def delete_supplier(
     except SupplierServiceError as exc:
         _raise_service_error(exc)
     return {"message": "Supplier removed."}
+
+
+@router.get("/{supplier_id}/payments")
+def list_supplier_payments(
+    supplier_id: str,
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    user = require_user(db, session)
+    assert_merchant_section_access(user, "supplier")
+    account_id = require_merchant_account_id(user)
+    try:
+        payments = SupplierService(db).list_payments(account_id, supplier_id, limit=limit)
+    except SupplierServiceError as exc:
+        _raise_service_error(exc)
+    return {"data": [_payment_out(p) for p in payments]}
+
+
+@router.post("/{supplier_id}/payments")
+def record_supplier_payment(
+    supplier_id: str,
+    payload: SupplierPaymentCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    validate_csrf(request, session)
+    user = require_user(db, session)
+    assert_merchant_section_access(user, "supplier")
+    account_id = require_merchant_account_id(user)
+    try:
+        supplier, payment = SupplierService(db).record_payment(
+            account_id,
+            supplier_id,
+            amount=payload.amount,
+            reference=payload.reference,
+            notes=payload.notes,
+            paid_at=payload.paid_at,
+            created_by=user.id,
+        )
+    except SupplierServiceError as exc:
+        _raise_service_error(exc)
+    return {
+        "message": f"Payment of KES {payload.amount:,.2f} recorded.",
+        "data": {
+            "supplier": _supplier_out(supplier),
+            "payment": _payment_out(payment),
+        },
+    }
+

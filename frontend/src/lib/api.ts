@@ -1,4 +1,5 @@
 import { apiRoutes } from "./config";
+import { isNavigationLoading, trackNavigationPromise } from "./navigation-loading";
 import { shouldSuppressUnauthorizedEvents } from "./sessionGuardState";
 
 export class ApiError extends Error {
@@ -161,7 +162,7 @@ async function apiFetchOnce<T>(
   return payload as T;
 }
 
-export async function apiFetch<T>(
+async function apiFetchInternal<T>(
   url: string,
   init: RequestInit = {},
 ): Promise<T> {
@@ -189,4 +190,15 @@ export async function apiFetch<T>(
     await ensureCsrfCookie();
     return apiFetchOnce<T>(url, init);
   }
+}
+
+export function apiFetch<T>(
+  url: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const p = apiFetchInternal<T>(url, init);
+  if (typeof window !== "undefined" && isNavigationLoading()) {
+    trackNavigationPromise(p);
+  }
+  return p;
 }

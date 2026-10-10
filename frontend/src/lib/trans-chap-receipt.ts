@@ -34,6 +34,7 @@ export type TransChapReceipt = {
   productName: string;
   items: TransChapReceiptLine[];
   amount: number;
+  tax?: number | null;
   currency: string;
   payMode: TransChapPayMode;
   paymentStatus: TransChapPaymentStatus;
@@ -254,6 +255,7 @@ export function receiptFromOrder(
       ? items
       : [{ name: productName, quantity: 1, unitPrice: order.total, lineTotal: order.total }],
     amount: order.total,
+    tax: order.tax ?? null,
     currency: order.currency || "KES",
     payMode,
     paymentStatus: paymentStatusFromOrder(order, push),

@@ -39,8 +39,15 @@ import {
   orderHasSuccessfulMpesa,
   orderPaymentLabel,
 } from "@/lib/orders";
-import { paymentStatusFromOrder, receiptFromOrder } from "@/lib/trans-chap-receipt";
+import {
+  paymentStatusFromOrder,
+  receiptFromOrder,
+  saveTransChapReceipt,
+  transChapReceiptHref,
+} from "@/lib/trans-chap-receipt";
 import { TransChapReceiptPrint } from "@/components/trans-chap/TransChapReceiptSlip";
+import { thermalPrinter, useThermalPrinter } from "@/lib/thermal-printer";
+import { PosPrinterModal } from "@/components/pos/PosPrinterModal";
 import { findInventoryByBarcode } from "@/lib/barcode";
 import { packUnits } from "@/lib/sell-units";
 import { formatCategoryLabel } from "@/lib/product-categories";
@@ -525,6 +532,9 @@ export function PosWorkspace({
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [autoPrintReceipt, setAutoPrintReceipt] = useState(true);
+  const [showPrinterModal, setShowPrinterModal] = useState(false);
+  const printer = useThermalPrinter();
+  const [includeTax, setIncludeTax] = useState(true);
   const [quickAddQty, setQuickAddQty] = useState(1);
   const [heldSessions, setHeldSessions] = useState<PosHeldSession[]>([]);
   const [heldHydrated, setHeldHydrated] = useState(false);
@@ -558,8 +568,29 @@ export function PosWorkspace({
   }, [loadOperationsSettings]);
 
   const AUTO_PRINT_STORAGE_KEY = "pos:auto_print_receipt";
+  const INCLUDE_TAX_STORAGE_KEY = "pos:include_tax_price";
   const QUICK_ADD_QTY_STORAGE_KEY = "pos:quick_add_qty";
   const HELD_SESSIONS_STORAGE_KEY = `pos:held_sessions:${salesProfile}`;
+  const CART_COLLAPSED_STORAGE_KEY = "pos:cart_collapsed";
+
+  const [isCartCollapsed, setIsCartCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(CART_COLLAPSED_STORAGE_KEY);
+      if (saved === "1") setIsCartCollapsed(true);
+    } catch {}
+  }, []);
+
+  const toggleCartCollapsed = useCallback(() => {
+    setIsCartCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(CART_COLLAPSED_STORAGE_KEY, next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  }, []);
 
   const heldQtyByItemId = useMemo(() => {
     const map = new Map<string, number>();
@@ -650,6 +681,16 @@ export function PosWorkspace({
 
   useEffect(() => {
     try {
+      const raw = window.localStorage.getItem(INCLUDE_TAX_STORAGE_KEY);
+      if (raw === null) return;
+      setIncludeTax(raw === "1");
+    } catch {
+      // Ignore storage access failures and keep sensible default.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
       const raw = window.localStorage.getItem(QUICK_ADD_QTY_STORAGE_KEY);
       if (raw === null) return;
       const parsed = Math.max(1, Math.floor(Number(raw) || 1));
@@ -686,6 +727,15 @@ export function PosWorkspace({
     setAutoPrintReceipt(next);
     try {
       window.localStorage.setItem(AUTO_PRINT_STORAGE_KEY, next ? "1" : "0");
+    } catch {
+      // Ignore storage access failures; setting still applies this session.
+    }
+  }
+
+  function handleIncludeTaxChange(next: boolean) {
+    setIncludeTax(next);
+    try {
+      window.localStorage.setItem(INCLUDE_TAX_STORAGE_KEY, next ? "1" : "0");
     } catch {
       // Ignore storage access failures; setting still applies this session.
     }
@@ -1456,7 +1506,9 @@ export function PosWorkspace({
   );
   const deliveryFeeNum = Number(deliveryFee) || 0;
   const discountNum = Number(discount) || 0;
-  const total = Math.max(0, subtotal + deliveryFeeNum - discountNum);
+  const baseTotal = Math.max(0, subtotal + deliveryFeeNum - discountNum);
+  const taxAmount = includeTax ? roundMoney(baseTotal * 0.16) : 0;
+  const total = roundMoney(baseTotal + taxAmount);
 
   const isSplit = paymentMethod === "split";
   const splitMethodOptions: SplitMethod[] = isTransChapSale
@@ -1836,11 +1888,41 @@ export function PosWorkspace({
   useEffect(() => {
     if (!completeInPlace || !receiptOrder || !printAfterSaleRef.current) return;
     printAfterSaleRef.current = false;
-    const timer = window.setTimeout(() => {
-      window.print();
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [completeInPlace, receiptOrder]);
+
+    const receipt = receiptFromOrder(receiptOrder, receiptShopName);
+
+    // If thermal printer is connected, print automatically to it
+    if (thermalPrinter.getState().isConnected) {
+      void thermalPrinter.printReceipt(receipt).then((res) => {
+        if (res.success) {
+          void toastSuccess(
+            `Receipt printed to ${thermalPrinter.getState().name || "thermal printer"}`,
+          );
+        } else {
+          void showError(
+            "Print failed",
+            res.error || "Could not print to thermal printer.",
+          );
+          // Fallback to displaying normal in-built print page if printing failed
+          if (isTransChapSale) {
+            saveTransChapReceipt(receipt);
+            router.push(transChapReceiptHref(receiptOrder.id));
+          } else {
+            router.push(`/orders/${receiptOrder.id}?print=1`);
+          }
+        }
+      });
+      return;
+    }
+
+    // If no printer is connected, show/display the normal in-built print page
+    if (isTransChapSale) {
+      saveTransChapReceipt(receipt);
+      router.push(transChapReceiptHref(receiptOrder.id));
+    } else {
+      router.push(`/orders/${receiptOrder.id}?print=1`);
+    }
+  }, [completeInPlace, isTransChapSale, receiptOrder, receiptShopName, router]);
 
   const pendingMpesaId = pendingMpesa?.order.id ?? null;
   const pendingMpesaPaid = pendingMpesa
@@ -2034,6 +2116,7 @@ export function PosWorkspace({
             : undefined,
         date_to_pay: usesCredit ? creditDueDate.trim() || null : null,
         delivery_fee: orderFulfillment === "delivery" ? deliveryFeeNum : 0,
+        tax: taxAmount,
         discount: discountNum,
         notes: notes.trim() || null,
         items: cart.map((c) => ({
@@ -2236,7 +2319,11 @@ export function PosWorkspace({
           </div>
         </div>
       ) : null}
-      <div className={`pos-grid pos-grid--mobile-${mobileScreen}`}>
+      <div
+        className={`pos-grid pos-grid--mobile-${mobileScreen}${
+          isCartCollapsed ? " is-cart-collapsed" : ""
+        }`}
+      >
         {/* Mobile top navigation when viewing current order */}
         {mobileScreen === "order" ? (
           <div className="pos-mobile-order-nav">
@@ -2925,11 +3012,7 @@ export function PosWorkspace({
                             </div>
                           </div>
                           <div className="pos-line__total">
-                            {isTransChapSale &&
-                            ((line.sellUnit === "Bulk" &&
-                              line.bulkFactor &&
-                              line.bulkFactor > 1) ||
-                              fractionalUnits.length > 0) ? (
+                            {isTransChapSale ? (
                               <input
                                 type="text"
                                 inputMode="decimal"
@@ -2945,14 +3028,14 @@ export function PosWorkspace({
                                 }
                                 onBlur={() => finishLinePriceInput(lineKey)}
                                 aria-label={
-                                  fractionalUnits.length > 0
-                                    ? `Unit price for ${line.name}`
-                                    : `Bulk price for ${line.name}`
+                                  line.sellUnit === "Bulk"
+                                    ? `Bulk price for ${line.name}`
+                                    : `Selling price for ${line.name}`
                                 }
                                 title={
-                                  fractionalUnits.length > 0
-                                    ? "Unit price"
-                                    : "Bulk price"
+                                  line.sellUnit === "Bulk"
+                                    ? "Bulk price"
+                                    : "Selling price"
                                 }
                               />
                             ) : null}
@@ -3019,41 +3102,121 @@ export function PosWorkspace({
         </div>
 
         {/* ── Cart (right) — order meta only ─────────────────────── */}
-        <aside className="pos-cart pos-cart--meta" aria-label="Current order">
-          <header className="pos-cart__head">
-            <h2>
-              <i className="fa-solid fa-receipt" aria-hidden="true" />
-              Current order
-              <span className="pos-cart__count">
-                {itemCount === 0 ? "empty" : `${itemCount}`}
-              </span>
-            </h2>
-            <div className="pos-cart__actions">
-              {cart.length > 0 ? (
-                <button
-                  type="button"
-                  className="pos-cart__hold"
-                  onClick={() => void holdCurrentSale()}
-                  title="Hold this sale and start a new one"
-                  disabled={submitting || Boolean(pendingMpesa)}
+        <aside
+          className={`pos-cart pos-cart--meta${
+            isCartCollapsed ? " pos-cart--collapsed" : ""
+          }`}
+          aria-label="Current order"
+        >
+          {isCartCollapsed ? (
+            <div
+              className="pos-cart__collapsed-bar"
+              onClick={toggleCartCollapsed}
+              title="Expand order details (Click to open)"
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggleCartCollapsed();
+                }
+              }}
+            >
+              <button
+                type="button"
+                className="pos-cart__expand-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleCartCollapsed();
+                }}
+                aria-label="Expand order details"
+                title="Expand order details"
+              >
+                <i
+                  className="fa-solid fa-angles-left pos-cart__expand-icon-desktop"
+                  aria-hidden="true"
+                />
+                <i
+                  className="fa-solid fa-angles-down pos-cart__expand-icon-mobile"
+                  aria-hidden="true"
+                />
+              </button>
+
+              <div className="pos-cart__collapsed-meta">
+                <div className="pos-cart__collapsed-icon">
+                  <i className="fa-solid fa-receipt" aria-hidden="true" />
+                </div>
+                <span className="pos-cart__count">
+                  {itemCount === 0 ? "0" : `${itemCount}`}
+                </span>
+              </div>
+
+              <div className="pos-cart__collapsed-label">
+                <span>Current order</span>
+              </div>
+
+              {total > 0 ? (
+                <div
+                  className="pos-cart__collapsed-amount"
+                  title={formatMoney(total)}
                 >
-                  <i className="fa-solid fa-pause" aria-hidden="true" />
-                  Hold
-                </button>
-              ) : null}
-              {cart.length > 0 ? (
-                <button
-                  type="button"
-                  className="pos-cart__reset"
-                  onClick={clearCart}
-                  title="Reset order"
-                  disabled={submitting}
-                >
-                  <i className="fa-solid fa-rotate-left" aria-hidden="true" />
-                </button>
+                  <span>{formatMoney(total)}</span>
+                </div>
               ) : null}
             </div>
-          </header>
+          ) : (
+            <>
+              <header className="pos-cart__head">
+                <h2>
+                  <i className="fa-solid fa-receipt" aria-hidden="true" />
+                  Current order
+                  <span className="pos-cart__count">
+                    {itemCount === 0 ? "empty" : `${itemCount}`}
+                  </span>
+                </h2>
+                <div className="pos-cart__actions">
+                  {cart.length > 0 ? (
+                    <button
+                      type="button"
+                      className="pos-cart__hold"
+                      onClick={() => void holdCurrentSale()}
+                      title="Hold this sale and start a new one"
+                      disabled={submitting || Boolean(pendingMpesa)}
+                    >
+                      <i className="fa-solid fa-pause" aria-hidden="true" />
+                      Hold
+                    </button>
+                  ) : null}
+                  {cart.length > 0 ? (
+                    <button
+                      type="button"
+                      className="pos-cart__reset"
+                      onClick={clearCart}
+                      title="Reset order"
+                      disabled={submitting}
+                    >
+                      <i className="fa-solid fa-rotate-left" aria-hidden="true" />
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="pos-cart__collapse-btn"
+                    onClick={toggleCartCollapsed}
+                    title="Collapse order details"
+                    aria-label="Collapse order details"
+                    aria-expanded={!isCartCollapsed}
+                  >
+                    <i
+                      className="fa-solid fa-angles-right pos-cart__collapse-icon-desktop"
+                      aria-hidden="true"
+                    />
+                    <i
+                      className="fa-solid fa-angles-up pos-cart__collapse-icon-mobile"
+                      aria-hidden="true"
+                    />
+                  </button>
+                </div>
+              </header>
 
           {heldSessions.length > 0 ? (
             <div className="pos-held" aria-label="Held sales">
@@ -3433,6 +3596,12 @@ export function PosWorkspace({
                   <dd>− {formatMoney(discountNum)}</dd>
                 </div>
               ) : null}
+              {includeTax && taxAmount > 0 ? (
+                <div>
+                  <dt>Tax (16%)</dt>
+                  <dd>+ {formatMoney(taxAmount)}</dd>
+                </div>
+              ) : null}
               <div className="pos-totals__grand">
                 <dt>Total</dt>
                 <dd>{formatMoney(total)}</dd>
@@ -3466,12 +3635,38 @@ export function PosWorkspace({
             <label className="pos-autoprint-toggle">
               <input
                 type="checkbox"
-                checked={autoPrintReceipt}
-                onChange={(e) => handleAutoPrintChange(e.target.checked)}
+                checked={includeTax}
+                onChange={(e) => handleIncludeTaxChange(e.target.checked)}
               />
-              <span>Auto-print receipt after sale</span>
+              <span>Include tax price</span>
             </label>
+            <div className="pos-cart-print-bar">
+              <label className="pos-autoprint-toggle">
+                <input
+                  type="checkbox"
+                  checked={autoPrintReceipt}
+                  onChange={(e) => handleAutoPrintChange(e.target.checked)}
+                />
+                <span>Auto-print receipt after sale</span>
+              </label>
+              <button
+                type="button"
+                className={`pos-printer-badge ${printer.isConnected ? "is-connected" : "is-disconnected"}`}
+                onClick={() => setShowPrinterModal(true)}
+                title={
+                  printer.isConnected
+                    ? `Connected to ${printer.name || "Thermal Printer"} (Direct ESC/POS)`
+                    : "No thermal printer connected (Will open in-built receipt page)"
+                }
+              >
+                <span className={`pos-printer-dot ${printer.isConnected ? "is-connected" : "is-disconnected"}`} />
+                <i className="fa-solid fa-print" aria-hidden="true" />
+                <span>{printer.isConnected ? printer.name || "Printer" : "Connect printer"}</span>
+              </button>
+            </div>
           </footer>
+            </>
+          )}
         </aside>
 
         {/* Mobile floating bottom bar when in catalog mode */}
@@ -3495,6 +3690,7 @@ export function PosWorkspace({
                 className="pos-mobile-cart-bar__action"
                 onClick={() => {
                   setMobileScreen("order");
+                  setIsCartCollapsed(false);
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
               >
@@ -3609,6 +3805,14 @@ export function PosWorkspace({
                   </td>
                 </tr>
               ) : null}
+              {receiptOrder.tax && receiptOrder.tax > 0 ? (
+                <tr>
+                  <td colSpan={3}>Tax (16%)</td>
+                  <td>
+                    +{formatMoney(receiptOrder.tax, receiptOrder.currency)}
+                  </td>
+                </tr>
+              ) : null}
               <tr className="orders-receipt-print__grand">
                 <td colSpan={3}>Total</td>
                 <td>{formatMoney(receiptOrder.total, receiptOrder.currency)}</td>
@@ -3630,6 +3834,10 @@ export function PosWorkspace({
           prices={sellingPrices}
           onConfirm={handleConfirmModifiers}
         />
+      ) : null}
+
+      {showPrinterModal ? (
+        <PosPrinterModal onClose={() => setShowPrinterModal(false)} />
       ) : null}
     </section>
   );

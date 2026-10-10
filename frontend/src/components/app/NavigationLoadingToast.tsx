@@ -1,38 +1,21 @@
 "use client";
 
-import { useEffect } from "react";
-import { finishNavigationLoading } from "@/lib/alerts";
-import {
-  subscribeNavigationComplete,
-  subscribeNavigationStart,
-} from "@/lib/navigation-loading";
-
-const FALLBACK_DISMISS_MS = 1500;
+import { useEffect, useRef } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { notifyRouteChange } from "@/lib/navigation-loading";
 
 export function NavigationLoadingToast() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const isFirstMount = useRef(true);
+
   useEffect(() => {
-    let fallback: number | null = null;
-
-    const clearFallback = () => {
-      if (fallback) {
-        window.clearTimeout(fallback);
-        fallback = null;
-      }
-    };
-
-    const unsubStart = subscribeNavigationStart(() => {
-      clearFallback();
-      fallback = window.setTimeout(() => finishNavigationLoading(), FALLBACK_DISMISS_MS);
-    });
-
-    const unsubComplete = subscribeNavigationComplete(clearFallback);
-
-    return () => {
-      unsubStart();
-      unsubComplete();
-      clearFallback();
-    };
-  }, []);
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      return;
+    }
+    notifyRouteChange(pathname);
+  }, [pathname, searchParams]);
 
   return null;
 }

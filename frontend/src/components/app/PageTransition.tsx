@@ -6,7 +6,6 @@
 
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { finishNavigationLoading } from "@/lib/alerts";
 import { pageVariants } from "@/lib/motion";
 
 export function PageTransition({ children }: { children: React.ReactNode }) {
@@ -32,11 +31,6 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
         initial="hidden"
         animate="visible"
         exit="exiting"
-        onAnimationComplete={(definition) => {
-          if (definition === "visible") {
-            finishNavigationLoading();
-          }
-        }}
         // Hint the compositor — we're animating transform/opacity/filter.
         style={{ willChange: "transform, opacity, filter" }}
       >

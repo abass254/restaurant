@@ -428,6 +428,15 @@ export function TransChapStocksList() {
               {selecting ? "Done" : "Select"}
             </button>
           ) : null}
+          <Link
+            href="/trans-chap/stocks/quotation"
+            className="trans-chap-sales__chip trans-chap-sales__chip--quotation"
+            title="Create quotation and send via WhatsApp"
+            id="stocks-quotation-chip"
+          >
+            <i className="fa-brands fa-whatsapp" style={{ marginRight: "0.35rem", color: "#25D366" }} aria-hidden />
+            Quotation
+          </Link>
         </div>
         {!restaurant ? (
           <div className="trans-chap-sales__chips" role="group" aria-label="Stock type">
@@ -652,6 +661,14 @@ export function TransChapStocksList() {
                       <td className="trans-chap-stock-table__actions">
                         <div className="trans-chap-stock-table__actions-inner">
                           <Link
+                            href={`/trans-chap/stocks/quotation?items=${encodeURIComponent(item.id)}`}
+                            className="trans-chap-panel__link"
+                            style={{ color: "#16a34a", fontWeight: 750 }}
+                            title={`Create quote for ${name}`}
+                          >
+                            Quote
+                          </Link>
+                          <Link
                             href={`/trans-chap/stocks/edit?id=${encodeURIComponent(item.id)}`}
                             className="trans-chap-panel__link"
                           >
@@ -787,6 +804,14 @@ export function TransChapStocksList() {
                 action={
                   <>
                     <Link
+                      href={`/trans-chap/stocks/quotation?items=${encodeURIComponent(item.id)}`}
+                      className="trans-chap-panel__link"
+                      style={{ color: "#16a34a", fontWeight: 750 }}
+                      title={`Create quote for ${name}`}
+                    >
+                      Quote
+                    </Link>
+                    <Link
                       href={`/trans-chap/stocks/edit?id=${encodeURIComponent(item.id)}`}
                       className="trans-chap-panel__link"
                     >
@@ -877,6 +902,19 @@ export function TransChapStocksList() {
           >
             Out of stock
           </button>
+          <Link
+            href={
+              selectedIds.size
+                ? `/trans-chap/stocks/quotation?items=${Array.from(selectedIds).join(",")}`
+                : "/trans-chap/stocks/quotation"
+            }
+            className="trans-chap-bulk-bar__quote-btn"
+            id="stocks-bulk-quote-btn"
+            title="Create quotation with selected items"
+          >
+            <i className="fa-brands fa-whatsapp" style={{ marginRight: "0.35rem" }} aria-hidden />
+            Quote{selectedIds.size ? ` (${selectedIds.size})` : ""}
+          </Link>
           <button
             type="button"
             className="trans-chap-bulk-bar__disable"
@@ -940,6 +978,11 @@ export function TransChapStocksList() {
                       onClick: () => setImportModalOpen(true),
                     },
                     {
+                      href: "/trans-chap/stocks/quotation",
+                      label: "Supplies quotation",
+                      icon: "fa-file-invoice",
+                    },
+                    {
                       href: "/trans-chap/stocks/opening",
                       label: "Opening stock",
                       icon: "fa-boxes-stacked",
@@ -966,6 +1009,11 @@ export function TransChapStocksList() {
                     label: "Import Excel / CSV",
                     icon: "fa-file-import",
                     onClick: () => setImportModalOpen(true),
+                  },
+                  {
+                    href: "/trans-chap/stocks/quotation",
+                    label: "WhatsApp quotation",
+                    icon: "fa-file-invoice",
                   },
                   {
                     href: "/trans-chap/stocks/opening",

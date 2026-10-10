@@ -231,6 +231,7 @@ class OrderCreate(BaseModel):
 
     delivery_fee: float | None = Field(default=0, ge=0, le=99_999_999.99)
     discount: float | None = Field(default=0, ge=0, le=99_999_999.99)
+    tax: float | None = Field(default=0, ge=0, le=99_999_999.99)
     currency: str = Field(default="KES", min_length=2, max_length=8)
 
     notes: str | None = Field(default=None, max_length=4000)
@@ -1198,7 +1199,8 @@ def create_order(
     )
     delivery_fee = _money(payload.delivery_fee)
     discount = _money(payload.discount)
-    total = (subtotal + delivery_fee - discount).quantize(Decimal("0.01"))
+    tax = _money(payload.tax)
+    total = (subtotal + delivery_fee + tax - discount).quantize(Decimal("0.01"))
     if total < 0:
         total = Decimal("0.00")
 
@@ -1232,6 +1234,7 @@ def create_order(
         delivery_notes=(payload.delivery_notes or "").strip() or None,
         subtotal=subtotal,
         delivery_fee=delivery_fee,
+        tax=tax,
         discount=discount,
         total=total,
         currency=payload.currency.upper(),

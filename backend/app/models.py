@@ -480,6 +480,37 @@ class ShopCustomer(Base):
     account: Mapped[Account] = relationship()
 
 
+class ShopSupplierPayment(Base):
+    """Payment recorded as sent to a vendor / supplier."""
+
+    __tablename__ = "shop_supplier_payments"
+    __table_args__ = (
+        Index("ix_shop_supplier_payments_account_supplier", "account_id", "supplier_id"),
+        Index("ix_shop_supplier_payments_paid_at", "paid_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    account_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("accounts.id"))
+    supplier_id: Mapped[str] = mapped_column(
+        String(PK_LEN), ForeignKey("shop_suppliers.id", ondelete="CASCADE")
+    )
+    amount: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
+    reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    paid_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    account: Mapped[Account] = relationship()
+    supplier: Mapped[ShopSupplier] = relationship()
+
+
+
 class ShopSupplier(Base):
     """Vendor / wholesaler contact for a shop."""
 
@@ -500,6 +531,7 @@ class ShopSupplier(Base):
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     balance: Mapped[Any] = mapped_column(Numeric(14, 2), default=0, server_default="0", nullable=True)
+    credit_limit: Mapped[Any] = mapped_column(Numeric(12, 2), default=0, server_default="0", nullable=True)
     balance_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     postal_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -1555,6 +1587,7 @@ class Order(Base):
 
     subtotal: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
     delivery_fee: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
+    tax: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
     discount: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
     total: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
     currency: Mapped[str] = mapped_column(String(8), default="KES")

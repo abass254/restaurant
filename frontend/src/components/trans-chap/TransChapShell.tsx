@@ -197,6 +197,12 @@ function headerMeta(
   if (pathname.startsWith("/trans-chap/menus")) {
     return { title: "Menu", backHref: "/trans-chap" };
   }
+  if (pathname.startsWith("/trans-chap/stocks/quotation")) {
+    return {
+      title: restaurant ? "Supplies quotation" : "Price quotation",
+      backHref: "/trans-chap/stocks",
+    };
+  }
   if (pathname.startsWith("/trans-chap/stocks/opening")) {
     return { title: "Opening stock", backHref: "/trans-chap/stocks" };
   }

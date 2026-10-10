@@ -1,7 +1,10 @@
 import Swal from "sweetalert2";
 import type { SweetAlertOptions } from "sweetalert2";
 import { ApiError } from "@/lib/api";
-import { notifyNavigationComplete } from "@/lib/navigation-loading";
+import {
+  notifyNavigationComplete,
+  subscribeNavigationComplete,
+} from "@/lib/navigation-loading";
 import { toWhatsAppMsisdn } from "@/lib/whatsapp-phone";
 
 const dukaiSwal = Swal.mixin({
@@ -714,4 +717,8 @@ export function dismissLoadingToast() {
 export function finishNavigationLoading() {
   closeLoadingToastOnly();
   notifyNavigationComplete();
+}
+
+if (typeof window !== "undefined") {
+  subscribeNavigationComplete(closeLoadingToastOnly);
 }

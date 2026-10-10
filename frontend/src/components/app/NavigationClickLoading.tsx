@@ -41,8 +41,8 @@ function hrefWillNavigate(href: string, current: URL) {
   );
 }
 
-function beginNavigationLoading() {
-  notifyNavigationStart();
+function beginNavigationLoading(href?: string) {
+  notifyNavigationStart(href);
   void toastLoading("Loading…");
 }
 
@@ -61,7 +61,8 @@ export function NavigationClickLoading() {
       const marked = target.closest("[data-nav-loading]");
       if (marked instanceof HTMLElement) {
         if (marked.getAttribute("aria-disabled") === "true") return;
-        beginNavigationLoading();
+        const markHref = marked.getAttribute("href") || marked.getAttribute("data-nav-loading") || undefined;
+        beginNavigationLoading(markHref);
         return;
       }
 
@@ -75,7 +76,7 @@ export function NavigationClickLoading() {
       const href = anchor.getAttribute("href");
       if (!href || !hrefWillNavigate(href, new URL(window.location.href))) return;
 
-      beginNavigationLoading();
+      beginNavigationLoading(href);
     }
 
     document.addEventListener("click", onClick, true);

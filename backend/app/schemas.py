@@ -689,6 +689,7 @@ class OrderOut(BaseModel):
 
     subtotal: float
     delivery_fee: float
+    tax: float = 0
     discount: float
     total: float
     currency: str
@@ -769,6 +770,7 @@ class OrderOut(BaseModel):
             pickup_lng=getattr(order, "pickup_lng", None),
             subtotal=float(order.subtotal or 0),
             delivery_fee=float(order.delivery_fee or 0),
+            tax=float(getattr(order, "tax", 0) or 0),
             discount=float(order.discount or 0),
             total=float(order.total or 0),
             currency=order.currency,

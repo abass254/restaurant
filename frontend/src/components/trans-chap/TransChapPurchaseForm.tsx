@@ -292,6 +292,26 @@ export function TransChapPurchaseForm() {
   const [adjustSellingPrice, setAdjustSellingPrice] = useState(true);
   const [draftReady, setDraftReady] = useState(false);
 
+  const PURCHASE_CART_COLLAPSED_KEY = "purchase:cart_collapsed";
+  const [isCartCollapsed, setIsCartCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(PURCHASE_CART_COLLAPSED_KEY);
+      if (saved === "1") setIsCartCollapsed(true);
+    } catch {}
+  }, []);
+
+  const toggleCartCollapsed = useCallback(() => {
+    setIsCartCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(PURCHASE_CART_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  }, []);
+
   const inventoryRef = useRef<InventoryItem[]>([]);
   const pulseTimer = useRef<number | null>(null);
   const scannerBuffer = useRef("");
@@ -992,7 +1012,7 @@ export function TransChapPurchaseForm() {
         <div
           className={`pos-grid pos-grid--mobile-${
             mobileScreen === "supplier" ? "order" : "catalog"
-          }`}
+          }${isCartCollapsed ? " is-cart-collapsed" : ""}`}
         >
           {mobileScreen === "supplier" ? (
             <div className="pos-mobile-order-nav">
@@ -1723,26 +1743,108 @@ export function TransChapPurchaseForm() {
           </section>
           </div>
 
-          <aside className="pos-cart pos-cart--meta" aria-label="Supplier details">
-            <header className="pos-cart__head">
-              <h2>
-                <i className="fa-solid fa-truck-field" aria-hidden="true" />
-                Supplier
-                <span className="pos-cart__count">
-                  {itemCount === 0 ? "empty" : `${itemCount}`}
-                </span>
-              </h2>
-              {basket.length > 0 ? (
+          <aside
+            className={`pos-cart pos-cart--meta${
+              isCartCollapsed ? " pos-cart--collapsed" : ""
+            }`}
+            aria-label="Supplier details"
+          >
+            {isCartCollapsed ? (
+              <div
+                className="pos-cart__collapsed-bar"
+                onClick={toggleCartCollapsed}
+                title="Expand supplier & payment details (Click to open)"
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    toggleCartCollapsed();
+                  }
+                }}
+              >
                 <button
                   type="button"
-                  className="pos-cart__reset"
-                  onClick={clearBasket}
-                  title="Clear purchase"
+                  className="pos-cart__expand-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleCartCollapsed();
+                  }}
+                  aria-label="Expand supplier details"
+                  title="Expand supplier details"
                 >
-                  <i className="fa-solid fa-rotate-left" aria-hidden="true" />
+                  <i
+                    className="fa-solid fa-angles-left pos-cart__expand-icon-desktop"
+                    aria-hidden="true"
+                  />
+                  <i
+                    className="fa-solid fa-angles-down pos-cart__expand-icon-mobile"
+                    aria-hidden="true"
+                  />
                 </button>
-              ) : null}
-            </header>
+
+                <div className="pos-cart__collapsed-meta">
+                  <div className="pos-cart__collapsed-icon">
+                    <i className="fa-solid fa-truck-field" aria-hidden="true" />
+                  </div>
+                  <span className="pos-cart__count">
+                    {itemCount === 0 ? "0" : `${itemCount}`}
+                  </span>
+                </div>
+
+                <div className="pos-cart__collapsed-label">
+                  <span>Supplier</span>
+                </div>
+
+                {purchaseTotal > 0 ? (
+                  <div
+                    className="pos-cart__collapsed-amount"
+                    title={formatMoney(purchaseTotal)}
+                  >
+                    <span>{formatMoney(purchaseTotal)}</span>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <>
+                <header className="pos-cart__head">
+                  <h2>
+                    <i className="fa-solid fa-truck-field" aria-hidden="true" />
+                    Supplier
+                    <span className="pos-cart__count">
+                      {itemCount === 0 ? "empty" : `${itemCount}`}
+                    </span>
+                  </h2>
+                  <div className="pos-cart__actions">
+                    {basket.length > 0 ? (
+                      <button
+                        type="button"
+                        className="pos-cart__reset"
+                        onClick={clearBasket}
+                        title="Clear purchase"
+                      >
+                        <i className="fa-solid fa-rotate-left" aria-hidden="true" />
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="pos-cart__collapse-btn"
+                      onClick={toggleCartCollapsed}
+                      title="Collapse supplier & payment details"
+                      aria-label="Collapse supplier & payment details"
+                      aria-expanded={!isCartCollapsed}
+                    >
+                      <i
+                        className="fa-solid fa-angles-right pos-cart__collapse-icon-desktop"
+                        aria-hidden="true"
+                      />
+                      <i
+                        className="fa-solid fa-angles-up pos-cart__collapse-icon-mobile"
+                        aria-hidden="true"
+                      />
+                    </button>
+                  </div>
+                </header>
 
             <div className="pos-cart__body">
               <div className="pos-cart__row">
@@ -1895,6 +1997,8 @@ export function TransChapPurchaseForm() {
                 )}
               </button>
             </footer>
+              </>
+            )}
           </aside>
 
           {mobileScreen === "catalog" && basket.length > 0 ? (
@@ -1919,6 +2023,7 @@ export function TransChapPurchaseForm() {
                   className="pos-mobile-cart-bar__action"
                   onClick={() => {
                     setMobileScreen("supplier");
+                    setIsCartCollapsed(false);
                     window.scrollTo({ top: 0, behavior: "smooth" });
                   }}
                 >

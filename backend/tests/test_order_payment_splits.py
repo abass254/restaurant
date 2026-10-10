@@ -34,9 +34,34 @@ def _order(**overrides):
             {"method": "cash", "amount": 500},
             {"method": "mpesa", "amount": 300},
         ],
+        source="walkin",
+        fulfillment_type="pickup",
+        status="placed",
+        customer_phone=None,
+        customer_email=None,
+        delivery_address=None,
+        delivery_notes=None,
+        subtotal=Decimal("800.00"),
+        delivery_fee=Decimal("0.00"),
+        discount=Decimal("0.00"),
+        tax=Decimal("0.00"),
+        placed_by_user_id=None,
+        placed_at=None,
+        prepared_at=None,
+        ready_at=None,
+        dispatched_at=None,
+        completed_at=None,
+        cancelled_at=None,
+        merchant_delivery_confirmed_at=None,
+        customer_delivery_confirmed_at=None,
+        delivery_disputed_at=None,
+        notes=None,
+        created_at=None,
+        updated_at=None,
         total=Decimal("800.00"),
         currency="KES",
         paid_at=None,
+        mpesa_transaction_id=None,
         mpesa_transactions=[],
         customer_name=None,
         items=[],
@@ -131,3 +156,23 @@ def test_order_create_accepts_split_payments() -> None:
             payments=[{"method": "cash", "amount": 0}],
             items=[{"product_name": "Item", "unit_price": 800, "quantity": 1}],
         )
+
+
+def test_order_create_accepts_tax() -> None:
+    payload = OrderCreate(
+        source="walkin",
+        fulfillment_type="pickup",
+        payment_method="cash",
+        tax=128.00,
+        items=[{"product_name": "Item", "unit_price": 800, "quantity": 1}],
+    )
+    assert payload.tax == 128.00
+
+
+def test_order_out_serializes_tax() -> None:
+    from app.schemas import OrderOut
+
+    order = _order(tax=Decimal("128.00"))
+    out = OrderOut.from_model(order, include_history=False, include_workflow=False)
+    assert out.tax == 128.00
+

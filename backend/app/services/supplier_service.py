@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from app.models import ShopSupplier
+from app.models import ShopSupplier, ShopSupplierPayment
 from app.services.rider_service import normalize_phone
 from app.support.datetime_utils import utc_now
 
@@ -110,6 +110,7 @@ class SupplierService:
         phone: str,
         notes: str | None = None,
         balance: Any = 0,
+        credit_limit: Any = 0,
         balance_due_date: date | None = None,
         address: str | None = None,
         postal_code: str | None = None,
@@ -135,6 +136,7 @@ class SupplierService:
             phone=clean_phone,
             notes=(notes or "").strip() or None,
             balance=balance if balance is not None else 0,
+            credit_limit=credit_limit if credit_limit is not None else 0,
             balance_due_date=balance_due_date,
             address=(address or "").strip() or None,
             postal_code=(postal_code or "").strip() or None,
@@ -258,6 +260,7 @@ class SupplierService:
         phone: str | None = None,
         notes: str | None = None,
         balance: Any = None,
+        credit_limit: Any = None,
         balance_due_date: date | None = None,
         clear_balance_due_date: bool = False,
         address: str | None = None,
@@ -289,6 +292,8 @@ class SupplierService:
             supplier.notes = notes.strip() or None
         if balance is not None:
             supplier.balance = balance
+        if credit_limit is not None:
+            supplier.credit_limit = credit_limit
         if clear_balance_due_date:
             supplier.balance_due_date = None
         elif balance_due_date is not None:
@@ -315,3 +320,60 @@ class SupplierService:
         supplier = self.get_supplier(account_id, supplier_id)
         self.db.delete(supplier)
         self.db.commit()
+
+    def record_payment(
+        self,
+        account_id: str,
+        supplier_id: str,
+        *,
+        amount: float,
+        reference: str | None = None,
+        notes: str | None = None,
+        paid_at: datetime | None = None,
+        created_by: str | None = None,
+    ) -> tuple[ShopSupplier, ShopSupplierPayment]:
+        if amount is None or amount <= 0:
+            raise SupplierServiceError("Payment amount must be greater than zero.")
+        supplier = self.get_supplier(account_id, supplier_id)
+        current_bal = float(supplier.balance or 0.0)
+        supplier.balance = round(current_bal - float(amount), 2)
+        supplier.updated_at = utc_now()
+
+        now = utc_now()
+        payment = ShopSupplierPayment(
+            account_id=account_id,
+            supplier_id=supplier_id,
+            amount=round(float(amount), 2),
+            reference=(reference or "").strip() or None,
+            notes=(notes or "").strip() or None,
+            paid_at=paid_at or now,
+            created_by=created_by,
+            created_at=now,
+            updated_at=now,
+        )
+        self.db.add(payment)
+        self.db.commit()
+        self.db.refresh(payment)
+        self.db.refresh(supplier)
+        return supplier, payment
+
+    def list_payments(
+        self,
+        account_id: str,
+        supplier_id: str,
+        *,
+        limit: int = 50,
+    ) -> list[ShopSupplierPayment]:
+        # ensure supplier exists and belongs to account
+        self.get_supplier(account_id, supplier_id)
+        return (
+            self.db.query(ShopSupplierPayment)
+            .filter(
+                ShopSupplierPayment.account_id == account_id,
+                ShopSupplierPayment.supplier_id == supplier_id,
+            )
+            .order_by(ShopSupplierPayment.paid_at.desc(), ShopSupplierPayment.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+

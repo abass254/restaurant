@@ -1,0 +1,824 @@
+/* ==========================================================================
+   Trans Chap Stock Quotation & WhatsApp Share Styles
+   ========================================================================== */
+
+.trans-chap-quotation {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0.5rem 0.75rem 4rem;
+  color: var(--app-text, #1e293b);
+}
+
+/* Header Banner */
+.tc-quote-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.15rem 1.35rem;
+  background: linear-gradient(135deg, rgba(37, 211, 102, 0.08) 0%, rgba(18, 140, 126, 0.04) 100%);
+  border: 1px solid rgba(37, 211, 102, 0.25);
+  border-radius: 16px;
+  backdrop-filter: blur(8px);
+}
+
+.tc-quote-banner__info {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.tc-quote-banner__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #25d366;
+  color: #ffffff;
+  font-size: 1.4rem;
+  box-shadow: 0 4px 14px rgba(37, 211, 102, 0.35);
+}
+
+.tc-quote-banner__title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--app-text, #0f172a);
+}
+
+.tc-quote-banner__desc {
+  margin: 0.15rem 0 0;
+  font-size: 0.82rem;
+  color: var(--app-text-muted, #64748b);
+}
+
+.tc-quote-banner__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.tc-quote-ref-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  background: var(--app-surface, #ffffff);
+  border: 1px solid var(--app-border, #e2e8f0);
+  border-radius: 8px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--app-text, #334155);
+}
+
+/* Two-column layout */
+.tc-quote-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .tc-quote-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Cards */
+.tc-quote-card {
+  background: var(--app-surface, #ffffff);
+  border: 1px solid var(--app-border, #e2e8f0);
+  border-radius: 16px;
+  padding: 1.15rem 1.25rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.tc-quote-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--app-border, #f1f5f9);
+}
+
+.tc-quote-card__title {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--app-text, #0f172a);
+}
+
+.tc-quote-card__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(37, 211, 102, 0.12);
+  color: #15803d;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+/* Recipient Fields */
+.tc-quote-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+}
+
+@media (max-width: 600px) {
+  .tc-quote-form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tc-quote-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.tc-quote-field label {
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--app-text-muted, #64748b);
+}
+
+.tc-quote-field input,
+.tc-quote-field select,
+.tc-quote-field textarea {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--app-border, #cbd5e1);
+  border-radius: 10px;
+  background: var(--app-surface, #ffffff);
+  color: var(--app-text, #1e293b);
+  font: inherit;
+  font-size: 0.88rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tc-quote-field input:focus,
+.tc-quote-field select:focus,
+.tc-quote-field textarea:focus {
+  outline: none;
+  border-color: #25d366;
+  box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.2);
+}
+
+/* Phone input group with country dial */
+.tc-quote-phone-group {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.tc-quote-phone-group select {
+  width: auto;
+  max-width: 110px;
+  flex-shrink: 0;
+  font-weight: 700;
+  font-size: 0.82rem;
+  padding: 0.6rem 0.45rem;
+}
+
+.tc-quote-phone-group input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Presets for validity */
+.tc-quote-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+
+.tc-quote-preset-chip {
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--app-border, #e2e8f0);
+  background: var(--app-bg, #f8fafc);
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--app-text-muted, #475569);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tc-quote-preset-chip:hover {
+  border-color: #25d366;
+  color: #15803d;
+  background: rgba(37, 211, 102, 0.08);
+}
+
+/* Basket / Selected Items Table */
+.tc-quote-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.tc-quote-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--app-border, #e2e8f0);
+  border-radius: 12px;
+  background: var(--app-bg, #f8fafc);
+  transition: transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.tc-quote-item-row:hover {
+  background: var(--app-surface, #ffffff);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.tc-quote-item-left {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.tc-quote-item-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #e2e8f0;
+}
+
+.tc-quote-item-details {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.tc-quote-item-name {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 750;
+  color: var(--app-text, #0f172a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tc-quote-item-sub {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.74rem;
+  color: var(--app-text-muted, #64748b);
+}
+
+.tc-quote-stock-pill {
+  font-weight: 700;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(100, 116, 139, 0.12);
+  color: #475569;
+}
+
+.tc-quote-stock-pill.is-low {
+  background: rgba(234, 179, 8, 0.15);
+  color: #a16207;
+}
+
+.tc-quote-stock-pill.is-out {
+  background: rgba(239, 68, 68, 0.15);
+  color: #dc2626;
+}
+
+.tc-quote-item-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+/* Stepper */
+.tc-quote-stepper {
+  display: inline-flex;
+  align-items: center;
+  background: var(--app-surface, #ffffff);
+  border: 1px solid var(--app-border, #cbd5e1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tc-quote-stepper button {
+  width: 28px;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--app-text, #334155);
+  cursor: pointer;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s;
+}
+
+.tc-quote-stepper button:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.tc-quote-stepper input {
+  width: 36px;
+  height: 30px;
+  border: 0;
+  border-left: 1px solid var(--app-border, #e2e8f0);
+  border-right: 1px solid var(--app-border, #e2e8f0);
+  text-align: center;
+  font-weight: 800;
+  font-size: 0.82rem;
+  background: transparent;
+  color: var(--app-text, #0f172a);
+}
+
+/* Price editor in row */
+.tc-quote-price-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  background: var(--app-surface, #ffffff);
+  border: 1px solid var(--app-border, #cbd5e1);
+  border-radius: 8px;
+  padding: 0 0.4rem;
+  height: 30px;
+}
+
+.tc-quote-price-input span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--app-text-muted, #64748b);
+}
+
+.tc-quote-price-input input {
+  width: 70px;
+  border: 0;
+  background: transparent;
+  font-weight: 750;
+  font-size: 0.82rem;
+  color: var(--app-text, #0f172a);
+  text-align: right;
+  padding: 0;
+}
+
+.tc-quote-item-total {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--app-text, #0f172a);
+  min-width: 75px;
+  text-align: right;
+}
+
+.tc-quote-item-remove {
+  background: transparent;
+  border: 0;
+  color: var(--app-text-muted, #94a3b8);
+  cursor: pointer;
+  padding: 0.35rem;
+  font-size: 0.85rem;
+  border-radius: 6px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.tc-quote-item-remove:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* Empty State */
+.tc-quote-empty-state {
+  text-align: center;
+  padding: 2.25rem 1rem;
+  border: 2px dashed var(--app-border, #e2e8f0);
+  border-radius: 12px;
+  color: var(--app-text-muted, #64748b);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tc-quote-empty-state i {
+  font-size: 2rem;
+  color: var(--app-text-muted, #cbd5e1);
+  margin-bottom: 0.25rem;
+}
+
+/* Financial Totals Card */
+.tc-quote-totals-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  background: var(--app-bg, #f8fafc);
+  border: 1px solid var(--app-border, #e2e8f0);
+}
+
+.tc-quote-totals-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--app-text-muted, #475569);
+}
+
+.tc-quote-totals-row--grand {
+  padding-top: 0.5rem;
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--app-border, #cbd5e1);
+  font-size: 1.15rem;
+  font-weight: 850;
+  color: var(--app-text, #0f172a);
+}
+
+.tc-quote-totals-row--grand strong {
+  color: #15803d;
+}
+
+/* Catalog Picker Section */
+.tc-quote-catalog-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.tc-quote-catalog-search i {
+  position: absolute;
+  left: 0.85rem;
+  color: var(--app-text-muted, #94a3b8);
+  pointer-events: none;
+}
+
+.tc-quote-catalog-search input {
+  width: 100%;
+  padding: 0.65rem 0.85rem 0.65rem 2.35rem;
+  border-radius: 10px;
+  border: 1px solid var(--app-border, #cbd5e1);
+  background: var(--app-surface, #ffffff);
+  color: var(--app-text, #1e293b);
+  font: inherit;
+  font-size: 0.86rem;
+}
+
+.tc-quote-catalog-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.65rem;
+  max-height: 380px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.tc-quote-catalog-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--app-border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--app-surface, #ffffff);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tc-quote-catalog-card:hover {
+  border-color: #25d366;
+  box-shadow: 0 4px 12px rgba(37, 211, 102, 0.12);
+  transform: translateY(-1px);
+}
+
+.tc-quote-catalog-card.is-in-basket {
+  border-color: #25d366;
+  background: rgba(37, 211, 102, 0.04);
+}
+
+.tc-quote-catalog-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.tc-quote-catalog-name {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 750;
+  color: var(--app-text, #1e293b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tc-quote-catalog-meta {
+  font-size: 0.72rem;
+  color: var(--app-text-muted, #64748b);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.tc-quote-catalog-price {
+  font-weight: 750;
+  color: #15803d;
+}
+
+.tc-quote-catalog-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 0;
+  background: rgba(37, 211, 102, 0.15);
+  color: #15803d;
+  font-weight: 800;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.tc-quote-catalog-card:hover .tc-quote-catalog-btn {
+  background: #25d366;
+  color: #ffffff;
+}
+
+/* WhatsApp Live Preview Side */
+.tc-wa-preview-wrap {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.tc-wa-phone-mockup {
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12);
+  border: 1px solid #1f2c34;
+  background: #0b141a;
+  display: flex;
+  flex-direction: column;
+}
+
+.tc-wa-phone-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0.95rem;
+  background: #202c33;
+  color: #e9edef;
+  border-bottom: 1px solid #2a3942;
+}
+
+.tc-wa-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.tc-wa-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #25d366;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+.tc-wa-contact-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.tc-wa-contact-name {
+  font-size: 0.86rem;
+  font-weight: 750;
+  color: #e9edef;
+}
+
+.tc-wa-contact-status {
+  font-size: 0.72rem;
+  color: #8696a0;
+}
+
+/* Chat bubble area */
+.tc-wa-chat-body {
+  padding: 1rem;
+  background-color: #0b141a;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 16px 16px;
+  min-height: 240px;
+  max-height: 480px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.tc-wa-bubble {
+  align-self: flex-end;
+  max-width: 95%;
+  background: #005c4b;
+  color: #e9edef;
+  border-radius: 10px 10px 2px 10px;
+  padding: 0.75rem 0.85rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  position: relative;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.tc-wa-bubble pre {
+  margin: 0;
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #e9edef;
+  font-size: 0.81rem;
+}
+
+.tc-wa-bubble-time {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+  font-size: 0.68rem;
+  color: rgba(233, 237, 239, 0.6);
+}
+
+.tc-wa-bubble-time i {
+  color: #53bdeb;
+}
+
+/* Actions Bar */
+.tc-wa-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.tc-wa-btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.85rem 1.25rem;
+  border-radius: 12px;
+  border: 0;
+  background: #25d366;
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 850;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(37, 211, 102, 0.35);
+  transition: all 0.15s ease;
+}
+
+.tc-wa-btn-primary:hover:not(:disabled) {
+  background: #20bd5a;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 22px rgba(37, 211, 102, 0.45);
+}
+
+.tc-wa-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.tc-wa-btn-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.tc-wa-btn-sub {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid var(--app-border, #cbd5e1);
+  background: var(--app-surface, #ffffff);
+  color: var(--app-text, #334155);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tc-wa-btn-sub:hover:not(:disabled) {
+  background: var(--app-bg, #f1f5f9);
+  border-color: #94a3b8;
+}
+
+.tc-wa-btn-sub:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Chip in stocks page */
+.trans-chap-sales__chip--quotation {
+  background: rgba(37, 211, 102, 0.12) !important;
+  color: #15803d !important;
+  border-color: rgba(37, 211, 102, 0.35) !important;
+  font-weight: 750 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  text-decoration: none !important;
+}
+
+.trans-chap-sales__chip--quotation:hover {
+  background: rgba(37, 211, 102, 0.22) !important;
+  border-color: #25d366 !important;
+}
+
+/* Bulk bottom bar quote button */
+.trans-chap-bulk-bar__quote-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 0.85rem;
+  border-radius: 12px;
+  background: #25d366;
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.trans-chap-bulk-bar__quote-btn:hover {
+  background: #20bd5a;
+}
+
+/* Print Slip Styles */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .tc-quote-print-area,
+  .tc-quote-print-area * {
+    visibility: visible;
+  }
+
+  .tc-quote-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 20px;
+    background: #ffffff;
+    color: #000000;
+  }
+}

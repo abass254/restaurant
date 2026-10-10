@@ -38,8 +38,6 @@ from app.services.inventory_stock_service import (
     restore_stock,
 )
 from app.services.order_creation import StorePausedError, build_catalog_order
-from app.services.order_stock_service import adjust_line_quantity
-from app.support.store_type import is_restaurant_account
 from app.services.order_notification_service import OrderNotificationService
 from app.services.support_ticket_service import SupportTicketService
 from app.support.dm_order_intent import parse_suggestion_pick
@@ -1508,9 +1506,7 @@ class DmAgentTools:
         inv_id = str(line.inventory_item_id or "").strip()
 
         try:
-            if is_restaurant_account(self.db, merchant_id):
-                adjust_line_quantity(self.db, order, line, delta)
-            elif delta > 0 and inv_id:
+            if delta > 0 and inv_id:
                 deduct_stock(
                     self.db,
                     [(inv_id, delta)],
