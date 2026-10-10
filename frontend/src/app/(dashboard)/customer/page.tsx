@@ -82,7 +82,7 @@ function formFromCustomer(customer: ShopCustomer): CustomerForm {
   const loc = customer.physical_location || customer.address || "";
   return {
     name: customer.name,
-    phone: customer.phone,
+    phone: customer.phone ?? "",
     email: customer.email ?? "",
     address: loc,
     physical_location: loc,

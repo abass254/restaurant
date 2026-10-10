@@ -309,6 +309,17 @@ export function TransChapInventoryImportModal({
                     core inventory
                   </span>
                 ) : null}
+                {result.summary.converted ? (
+                  <span className="trans-chap-import__stat--converted">
+                    <strong>{result.summary.converted}</strong> converted from
+                    packs to pieces
+                  </span>
+                ) : null}
+                {result.summary.warnings ? (
+                  <span className="trans-chap-import__stat--warning">
+                    <strong>{result.summary.warnings}</strong> need pack size
+                  </span>
+                ) : null}
                 {result.summary.skipped ? (
                   <span>
                     <strong>{result.summary.skipped}</strong> skipped
@@ -338,7 +349,9 @@ export function TransChapInventoryImportModal({
               {result.rows.length > 0 ? (
                 <details
                   className="trans-chap-import__columns"
-                  open={result.rows.some((r) => r.status === "error")}
+                  open={result.rows.some(
+                    (r) => r.status === "error" || r.warning,
+                  )}
                 >
                   <summary>
                     Import row log ({result.rows.length} row
@@ -348,7 +361,9 @@ export function TransChapInventoryImportModal({
                     {result.rows.map((row) => (
                       <div
                         key={`${row.row}-${row.sku || row.name || ""}`}
-                        className={`trans-chap-import__row-item trans-chap-import__row-item--${row.status}`}
+                        className={`trans-chap-import__row-item trans-chap-import__row-item--${row.status}${
+                          row.warning ? " trans-chap-import__row-item--warning" : ""
+                        }`}
                       >
                         <span className="trans-chap-import__row-num">
                           #{row.row}
@@ -358,6 +373,11 @@ export function TransChapInventoryImportModal({
                           {row.sku ? <code>[{row.sku}]</code> : null}
                           <small>{row.message}</small>
                         </div>
+                        {row.warning ? (
+                          <span className="trans-chap-import__tag trans-chap-import__tag--warning">
+                            check
+                          </span>
+                        ) : null}
                         <span
                           className={`trans-chap-import__tag trans-chap-import__tag--${row.status}`}
                         >

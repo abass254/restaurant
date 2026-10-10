@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Literal, NoReturn
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
@@ -34,6 +35,7 @@ class SupplierCreateRequest(BaseModel):
     phone: str = Field(min_length=7, max_length=32)
     notes: str | None = Field(default=None, max_length=2000)
     balance: float | None = Field(default=0.0)
+    balance_due_date: date | None = None
     address: str | None = Field(default=None, max_length=255)
     postal_code: str | None = Field(default=None, max_length=64)
     postalcode: str | None = Field(default=None, max_length=64)
@@ -48,6 +50,7 @@ class SupplierUpdateRequest(BaseModel):
     phone: str | None = Field(default=None, min_length=7, max_length=32)
     notes: str | None = Field(default=None, max_length=2000)
     balance: float | None = None
+    balance_due_date: date | None = None
     address: str | None = Field(default=None, max_length=255)
     postal_code: str | None = Field(default=None, max_length=64)
     postalcode: str | None = Field(default=None, max_length=64)
@@ -60,9 +63,10 @@ class SupplierUpdateRequest(BaseModel):
 class SupplierOut(BaseModel):
     id: str
     name: str
-    phone: str
+    phone: str | None = None
     notes: str | None = None
     balance: float | None = None
+    balance_due_date: str | None = None
     address: str | None = None
     postal_code: str | None = None
     postalcode: str | None = None
@@ -87,6 +91,9 @@ def _supplier_out(supplier: ShopSupplier) -> SupplierOut:
         phone=supplier.phone,
         notes=supplier.notes,
         balance=bal,
+        balance_due_date=(
+            supplier.balance_due_date.isoformat() if supplier.balance_due_date else None
+        ),
         address=supplier.address,
         postal_code=supplier.postal_code,
         postalcode=supplier.postal_code,
@@ -159,6 +166,7 @@ def create_supplier(
             phone=payload.phone,
             notes=payload.notes,
             balance=payload.balance,
+            balance_due_date=payload.balance_due_date,
             address=payload.address,
             postal_code=p_code,
             city=payload.city,
@@ -175,6 +183,10 @@ def create_supplier(
 async def import_suppliers_file(
     request: Request,
     file: UploadFile = File(..., description="Supplier list (.xlsx or .csv)"),
+    mode: Literal["merge", "replace"] = Query(
+        default="merge",
+        description="merge: add/update from file; replace: file becomes the full supplier list",
+    ),
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
 ):
@@ -201,6 +213,7 @@ async def import_suppliers_file(
             content=content,
             account_id=account_id,
             filename=file.filename or "suppliers.xlsx",
+            mode=mode,
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
@@ -210,8 +223,11 @@ async def import_suppliers_file(
         "summary": {
             "created": result.created,
             "updated": result.updated,
+            "merged": result.merged,
             "skipped": result.skipped,
             "errors": result.errors,
+            "removed": result.removed,
+            "kept": result.kept,
         },
         "detected_columns": result.detected_columns,
         "rows": [
@@ -223,8 +239,8 @@ async def import_suppliers_file(
                 "message": row.message,
             }
             for row in result.rows
-            if row.status in {"error", "skipped"}
-        ][:50],
+            if row.status not in {"created", "updated"}
+        ][:300],
     }
 
 
@@ -266,6 +282,10 @@ def update_supplier(
             phone=data.get("phone"),
             notes=data.get("notes"),
             balance=data.get("balance"),
+            balance_due_date=data.get("balance_due_date"),
+            clear_balance_due_date=(
+                "balance_due_date" in data and data.get("balance_due_date") is None
+            ),
             address=data.get("address"),
             postal_code=p_code,
             city=data.get("city"),

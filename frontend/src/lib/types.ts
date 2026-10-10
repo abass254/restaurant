@@ -1275,6 +1275,7 @@ export type InventoryImportRowResult = {
   sku: string | null;
   status: "created" | "updated" | "skipped" | "error";
   message: string | null;
+  warning?: boolean;
 };
 
 export type InventoryImportResponse = {
@@ -1285,6 +1286,8 @@ export type InventoryImportResponse = {
     matched_existing?: number;
     skipped: number;
     errors: number;
+    converted?: number;
+    warnings?: number;
   };
   detected_columns: Record<string, string>;
   rows: InventoryImportRowResult[];
@@ -1842,9 +1845,13 @@ export type PublicOrderDeliveryDetailsResponse = {
 export type ShopCustomer = {
   id: string;
   name: string;
-  phone: string;
+  /** Null for customers imported without a number; M-PESA / WhatsApp / credit sales stay off. */
+  phone: string | null;
   email: string | null;
   address: string | null;
+  postal_code?: string | null;
+  city?: string | null;
+  fax?: string | null;
   notes: string | null;
   credit_limit: number;
   outstanding_balance: number;
@@ -1905,9 +1912,11 @@ export type ShopCustomerMutationResponse = {
 export type ShopSupplier = {
   id: string;
   name: string;
-  phone: string;
+  phone: string | null;
   notes: string | null;
   balance?: number | null;
+  /** ISO date (YYYY-MM-DD) the owed balance must be paid by. */
+  balance_due_date?: string | null;
   address?: string | null;
   postal_code?: string | null;
   postalcode?: string | null;
@@ -1929,45 +1938,36 @@ export type ShopSupplierMutationResponse = {
   data: ShopSupplier;
 };
 
-export type SupplierImportRowResult = {
+/** merge: add/update rows from the file; replace: the file becomes the full list. */
+export type ContactImportMode = "merge" | "replace";
+
+export type ContactImportRowResult = {
   row: number;
   name: string | null;
   phone: string | null;
-  status: "created" | "updated" | "skipped" | "error";
+  status: "created" | "updated" | "merged" | "skipped" | "error" | "removed" | "kept";
   message: string | null;
 };
 
-export type SupplierImportResponse = {
+export type ContactImportResponse = {
   message: string;
   summary: {
     created: number;
     updated: number;
+    merged: number;
     skipped: number;
     errors: number;
+    removed: number;
+    kept: number;
   };
   detected_columns: Record<string, string>;
-  rows: SupplierImportRowResult[];
+  rows: ContactImportRowResult[];
 };
 
-export type CustomerImportRowResult = {
-  row: number;
-  name: string | null;
-  phone: string | null;
-  status: "created" | "updated" | "skipped" | "error";
-  message: string | null;
-};
-
-export type CustomerImportResponse = {
-  message: string;
-  summary: {
-    created: number;
-    updated: number;
-    skipped: number;
-    errors: number;
-  };
-  detected_columns: Record<string, string>;
-  rows: CustomerImportRowResult[];
-};
+export type SupplierImportRowResult = ContactImportRowResult;
+export type SupplierImportResponse = ContactImportResponse;
+export type CustomerImportRowResult = ContactImportRowResult;
+export type CustomerImportResponse = ContactImportResponse;
 
 export type CreditCollection = {
   id: string;

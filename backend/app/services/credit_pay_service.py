@@ -124,7 +124,9 @@ class CreditPayService:
         if kes < min_kes:
             raise CreditPayError(f"M-PESA's minimum is KES {min_kes}.")
 
-        phone_number = (phone or customer.phone or "").strip() or customer.phone
+        phone_number = (phone or customer.phone or "").strip()
+        if not phone_number:
+            raise CreditPayError("Enter the M-PESA phone number to pay from.")
         try:
             txn = mpesa_service.stk_push(
                 self.db,

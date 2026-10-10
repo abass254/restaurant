@@ -1430,14 +1430,15 @@ export function PosWorkspace({
   );
 
   function applyCustomer(customerId: string) {
-    setSelectedCustomerId(customerId);
     if (!customerId) {
+      setSelectedCustomerId("");
       setCustomerName("");
       setCustomerPhone("");
       return;
     }
     const customer = customers.find((row) => row.id === customerId);
-    if (!customer) return;
+    if (!customer?.phone) return;
+    setSelectedCustomerId(customerId);
     setCustomerName(customer.name);
     setCustomerPhone(customer.phone);
     if (customer.address) {
@@ -1740,8 +1741,8 @@ export function PosWorkspace({
                   : "Walk-in (optional)"}
               </option>
               {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name} · {customer.phone}
+                <option key={customer.id} value={customer.id} disabled={!customer.phone}>
+                  {customer.name} · {customer.phone ?? "no phone — add one to sell"}
                 </option>
               ))}
             </select>

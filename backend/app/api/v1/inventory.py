@@ -289,6 +289,8 @@ async def import_inventory_file(
             "matched_existing": result.matched_existing,
             "skipped": result.skipped,
             "errors": result.errors,
+            "converted": result.converted,
+            "warnings": result.warnings,
         },
         "detected_columns": result.detected_columns,
         "rows": [
@@ -298,8 +300,13 @@ async def import_inventory_file(
                 "sku": row.sku,
                 "status": row.status,
                 "message": row.message,
+                "warning": row.warning,
             }
-            for row in result.rows
+            # Errors and pack-size warnings first so they survive the 100-row cap.
+            for row in sorted(
+                result.rows,
+                key=lambda r: 0 if r.status == "error" or r.warning else 1,
+            )
         ][:100],
     }
 

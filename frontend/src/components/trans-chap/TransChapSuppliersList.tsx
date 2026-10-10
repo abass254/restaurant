@@ -2,6 +2,7 @@
 
 import {
   FormEvent,
+  Fragment,
   useCallback,
   useEffect,
   useId,
@@ -11,6 +12,10 @@ import {
   type ChangeEvent,
 } from "react";
 import { MotionItem, MotionList } from "@/components/app/MotionList";
+import {
+  ContactImportModePicker,
+  ContactImportResults,
+} from "@/components/trans-chap/TransChapContactImport";
 import { TransChapFab } from "@/components/trans-chap/TransChapFab";
 import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
@@ -25,7 +30,9 @@ import {
 import { apiRoutes } from "@/lib/config";
 import { fetchShopSuppliers } from "@/lib/trans-chap-suppliers";
 import { formatKsh } from "@/lib/trans-chap-receipt";
+import { useTransChapIsPhone } from "@/lib/trans-chap-list-view";
 import type {
+  ContactImportMode,
   ShopSupplier,
   ShopSupplierMutationResponse,
   SupplierImportResponse,
@@ -41,6 +48,7 @@ type SupplierForm = {
   postal_code: string;
   fax: string;
   balance: string;
+  balance_due_date: string;
   notes: string;
 };
 
@@ -68,13 +76,58 @@ const EMPTY_FORM: SupplierForm = {
   postal_code: "",
   fax: "",
   balance: "0",
+  balance_due_date: "",
   notes: "",
 };
+
+type BalanceTone = "ok" | "wait" | "fail" | "credit";
+
+function todayIso(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function formatDueDate(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-KE", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/** Days from today until the due date (negative when overdue). */
+function daysUntil(iso: string): number {
+  const [y, m, d] = iso.split("-").map(Number);
+  const [ty, tm, td] = todayIso().split("-").map(Number);
+  return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(ty, tm - 1, td)) / 86_400_000);
+}
+
+function dueStatus(supplier: ShopSupplier): { label: string; tone: BalanceTone } | null {
+  const due = supplier.balance_due_date;
+  if (!due || Number(supplier.balance || 0) <= 0) return null;
+  const days = daysUntil(due);
+  if (days < 0) return { label: `Overdue ${-days}d`, tone: "fail" };
+  if (days === 0) return { label: "Due today", tone: "fail" };
+  if (days <= 7) return { label: `Due in ${days}d`, tone: "wait" };
+  return { label: `Due in ${days}d`, tone: "ok" };
+}
+
+function balanceBadge(supplier: ShopSupplier): { label: string; tone: BalanceTone } {
+  const bal = Number(supplier.balance || 0);
+  if (bal < 0) return { label: `Advance ${formatKsh(Math.abs(bal))}`, tone: "ok" };
+  if (bal === 0) return { label: "Supplier", tone: "ok" };
+  const due = dueStatus(supplier);
+  if (due) return { label: `Owes ${formatKsh(bal)} · ${due.label}`, tone: due.tone === "ok" ? "credit" : due.tone };
+  return { label: `Owes ${formatKsh(bal)}`, tone: "credit" };
+}
 
 function formFromSupplier(supplier: ShopSupplier): SupplierForm {
   return {
     name: supplier.name,
-    phone: supplier.phone,
+    phone: supplier.phone ?? "",
     pin_number: supplier.pin_number ?? "",
     email: supplier.email ?? "",
     city: supplier.city ?? "",
@@ -82,6 +135,7 @@ function formFromSupplier(supplier: ShopSupplier): SupplierForm {
     postal_code: supplier.postal_code ?? supplier.postalcode ?? "",
     fax: supplier.fax ?? "",
     balance: supplier.balance != null ? String(supplier.balance) : "0",
+    balance_due_date: supplier.balance_due_date ?? "",
     notes: supplier.notes ?? "",
   };
 }
@@ -90,7 +144,8 @@ export function TransChapSuppliersList() {
   const listId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<View>("list");
-  const [layoutView, setLayoutView] = useState<SupplierLayoutView>("grid");
+  const [storedLayoutView, setLayoutView] = useState<SupplierLayoutView>("grid");
+  const layoutView: SupplierLayoutView = useTransChapIsPhone() ? "grid" : storedLayoutView;
 
   useEffect(() => {
     setLayoutView(readSuppliersView());
@@ -115,6 +170,7 @@ export function TransChapSuppliersList() {
   const [saving, setSaving] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [importMode, setImportMode] = useState<ContactImportMode>("merge");
   const [importing, setImporting] = useState(false);
   const [downloadingFormat, setDownloadingFormat] = useState<"xlsx" | "csv" | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
@@ -187,6 +243,7 @@ export function TransChapSuppliersList() {
 
   function openImport() {
     setImportFile(null);
+    setImportMode("merge");
     setImportError(null);
     setImportResult(null);
     setOpenId(null);
@@ -216,6 +273,7 @@ export function TransChapSuppliersList() {
       postal_code: form.postal_code.trim() || null,
       fax: form.fax.trim() || null,
       balance: Number.isFinite(balanceNum) ? balanceNum : 0,
+      balance_due_date: form.balance_due_date || null,
       notes: form.notes.trim() || null,
     };
   }
@@ -311,17 +369,27 @@ export function TransChapSuppliersList() {
 
   async function handleImport() {
     if (!importFile) return;
+    if (
+      importMode === "replace" &&
+      !(await confirmAction(
+        "Replace your supplier list?",
+        "Suppliers not in this file will be removed. Suppliers with a balance or purchase history are kept. This can't be undone.",
+        "Yes, replace list",
+      ))
+    ) {
+      return;
+    }
     setImporting(true);
     setImportError(null);
     try {
       const form = new FormData();
       form.append("file", importFile);
-      const res = await apiFetch<SupplierImportResponse>(apiRoutes.suppliersImport, {
+      const res = await apiFetch<SupplierImportResponse>(apiRoutes.suppliersImport(importMode), {
         method: "POST",
         body: form,
       });
       setImportResult(res);
-      if (res.summary.created > 0 || res.summary.updated > 0) {
+      if (res.summary.created > 0 || res.summary.updated > 0 || res.summary.removed > 0) {
         await reload();
         await toastSuccess(res.message);
       } else if (res.summary.errors > 0) {
@@ -474,6 +542,20 @@ export function TransChapSuppliersList() {
             </div>
           </div>
           <div className="auth-split__field">
+            <label htmlFor="trans-chap-supplier-due">Pay balance by (optional)</label>
+            <div className="trans-chap-input">
+              <input
+                id="trans-chap-supplier-due"
+                type="date"
+                className="auth-split__input"
+                value={createForm.balance_due_date}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, balance_due_date: e.target.value }))
+                }
+              />
+            </div>
+          </div>
+          <div className="auth-split__field">
             <label htmlFor="trans-chap-supplier-notes">Notes (optional)</label>
             <div className="trans-chap-input">
               <input
@@ -496,14 +578,12 @@ export function TransChapSuppliersList() {
   }
 
   if (view === "import") {
-    const detectedEntries = importResult
-      ? Object.entries(importResult.detected_columns)
-      : [];
     return (
       <div className="auth-split__form trans-chap-form">
         <p className="trans-chap-form__lead">
-          Upload an <strong>Excel (.xlsx)</strong> or <strong>CSV (.csv)</strong> file with supplier details.
-          Existing suppliers matching by phone or PIN are automatically updated without duplicates.
+          Upload an <strong>Excel (.xlsx)</strong> or <strong>CSV (.csv)</strong> file with{" "}
+          <code>Name</code> (or <code>Business Name</code>) and <code>Phone</code>. Suppliers are
+          matched by phone or PIN, and rows with the same phone are merged into one supplier.
         </p>
         <div className="trans-chap-form__fields">
           <button
@@ -561,6 +641,13 @@ export function TransChapSuppliersList() {
             </p>
           </div>
 
+          <ContactImportModePicker
+            noun={{ singular: "supplier", plural: "suppliers" }}
+            mode={importMode}
+            disabled={importing || !!importResult}
+            onChange={setImportMode}
+          />
+
           <input
             ref={fileInputRef}
             type="file"
@@ -596,54 +683,10 @@ export function TransChapSuppliersList() {
           ) : null}
 
           {importResult ? (
-            <div className="trans-chap-import__results">
-              <div className="trans-chap-import__summary">
-                <span>
-                  <strong>{importResult.summary.created}</strong> added
-                </span>
-                <span>
-                  <strong>{importResult.summary.updated}</strong> updated
-                </span>
-                {importResult.summary.skipped ? (
-                  <span>
-                    <strong>{importResult.summary.skipped}</strong> skipped
-                  </span>
-                ) : null}
-                {importResult.summary.errors ? (
-                  <span className="trans-chap-import__stat--error">
-                    <strong>{importResult.summary.errors}</strong> failed
-                  </span>
-                ) : null}
-              </div>
-
-              {detectedEntries.length > 0 ? (
-                <details className="trans-chap-import__columns">
-                  <summary>Columns detected ({detectedEntries.length})</summary>
-                  <ul>
-                    {detectedEntries.map(([field, header]) => (
-                      <li key={field}>
-                        <code>{header}</code>
-                        <span> → {field.replace(/_/g, " ")}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              ) : null}
-
-              {importResult.rows.some((row) => row.status === "error") ? (
-                <ul className="trans-chap-import__errors">
-                  {importResult.rows
-                    .filter((row) => row.status === "error")
-                    .slice(0, 8)
-                    .map((row) => (
-                      <li key={row.row}>
-                        Row {row.row}
-                        {row.name ? `: ${row.name}` : ""} — {row.message}
-                      </li>
-                    ))}
-                </ul>
-              ) : null}
-            </div>
+            <ContactImportResults
+              result={importResult}
+              noun={{ singular: "supplier", plural: "suppliers" }}
+            />
           ) : null}
         </div>
         <div className="trans-chap-form__actions">
@@ -653,7 +696,11 @@ export function TransChapSuppliersList() {
             disabled={!importFile || importing || !!importResult}
             onClick={() => void handleImport()}
           >
-            {importing ? "Importing…" : "Import suppliers"}
+            {importing
+              ? "Importing…"
+              : importMode === "replace"
+                ? "Replace supplier list"
+                : "Import suppliers"}
           </button>
           {importResult ? (
             <button
@@ -670,6 +717,200 @@ export function TransChapSuppliersList() {
           ) : null}
         </div>
       </div>
+    );
+  }
+
+  function renderEditForm(supplier: ShopSupplier, panelId: string, open: boolean) {
+    return (
+      <form
+        className="trans-chap-form__block"
+        onSubmit={(event) => void handleEdit(event, supplier)}
+      >
+        <p className="trans-chap-form__block-title">Details</p>
+        <div className="auth-split__field">
+          <label htmlFor={`${panelId}-name`}>Supplier Name</label>
+          <div className="trans-chap-input">
+            <input
+              id={`${panelId}-name`}
+              required
+              className="auth-split__input"
+              value={open ? editForm.name : supplier.name}
+              onChange={(e) =>
+                setEditForm((f) => ({ ...f, name: e.target.value }))
+              }
+            />
+          </div>
+        </div>
+        <div className="auth-split__field">
+          <label htmlFor={`${panelId}-phone`}>Phone number</label>
+          <div className="trans-chap-input">
+            <input
+              id={`${panelId}-phone`}
+              required
+              type="tel"
+              className="auth-split__input"
+              value={open ? editForm.phone : (supplier.phone ?? "")}
+              onChange={(e) =>
+                setEditForm((f) => ({ ...f, phone: e.target.value }))
+              }
+            />
+          </div>
+        </div>
+        <div className="auth-split__field">
+          <label htmlFor={`${panelId}-pin`}>Tax / KRA PIN</label>
+          <div className="trans-chap-input">
+            <input
+              id={`${panelId}-pin`}
+              className="auth-split__input"
+              placeholder="e.g. P051234567Z"
+              value={open ? editForm.pin_number : supplier.pin_number ?? ""}
+              onChange={(e) =>
+                setEditForm((f) => ({ ...f, pin_number: e.target.value }))
+              }
+            />
+          </div>
+        </div>
+        <div className="auth-split__field">
+          <label htmlFor={`${panelId}-email`}>Email</label>
+          <div className="trans-chap-input">
+            <input
+              id={`${panelId}-email`}
+              type="email"
+              className="auth-split__input"
+              placeholder="orders@supplier.com"
+              value={open ? editForm.email : supplier.email ?? ""}
+              onChange={(e) =>
+                setEditForm((f) => ({ ...f, email: e.target.value }))
+              }
+            />
+          </div>
+        </div>
+        <div className="auth-split__field">
+          <label htmlFor={`${panelId}-city`}>City / Town</label>
+          <div className="trans-chap-input">
+            <input
+              id={`${panelId}-city`}
+              className="auth-split__input"
+              placeholder="e.g. Nairobi"
+              value={open ? editForm.city : supplier.city ?? ""}
+              onChange={(e) =>
+                setEditForm((f) => ({ ...f, city: e.target.value }))
+              }
+            />
+          </div>
+        </div>
+        <div className="auth-split__field">
+          <label htmlFor={`${panelId}-address`}>Physical Address</label>
+          <div className="trans-chap-input">
+            <input
+              id={`${panelId}-address`}
+              className="auth-split__input"
+              placeholder="e.g. Industrial Area, Enterprise Rd"
+              value={open ? editForm.address : supplier.address ?? ""}
+              onChange={(e) =>
+                setEditForm((f) => ({ ...f, address: e.target.value }))
+              }
+            />
+          </div>
+        </div>
+        <div className="auth-split__field">
+          <label htmlFor={`${panelId}-postal`}>Postal Code</label>
+          <div className="trans-chap-input">
+            <input
+              id={`${panelId}-postal`}
+              className="auth-split__input"
+              placeholder="e.g. 00100"
+              value={
+                open
+                  ? editForm.postal_code
+                  : supplier.postal_code ?? supplier.postalcode ?? ""
+              }
+              onChange={(e) =>
+                setEditForm((f) => ({ ...f, postal_code: e.target.value }))
+              }
+            />
+          </div>
+        </div>
+        <div className="auth-split__field">
+          <label htmlFor={`${panelId}-fax`}>Fax</label>
+          <div className="trans-chap-input">
+            <input
+              id={`${panelId}-fax`}
+              type="tel"
+              className="auth-split__input"
+              placeholder="Fax number"
+              value={open ? editForm.fax : supplier.fax ?? ""}
+              onChange={(e) =>
+                setEditForm((f) => ({ ...f, fax: e.target.value }))
+              }
+            />
+          </div>
+        </div>
+        <div className="auth-split__field">
+          <label htmlFor={`${panelId}-balance`}>Current Balance (KES)</label>
+          <div className="trans-chap-input">
+            <input
+              id={`${panelId}-balance`}
+              type="text"
+              inputMode="decimal"
+              className="auth-split__input"
+              placeholder="0.00"
+              value={
+                open
+                  ? editForm.balance
+                  : supplier.balance != null
+                  ? String(supplier.balance)
+                  : "0"
+              }
+              onChange={(e) =>
+              setEditForm((f) => ({ ...f, balance: e.target.value }))
+            }
+          />
+        </div>
+      </div>
+      <div className="auth-split__field">
+        <label htmlFor={`${panelId}-due`}>Pay balance by</label>
+        <div className="trans-chap-input">
+          <input
+            id={`${panelId}-due`}
+            type="date"
+            className="auth-split__input"
+            value={open ? editForm.balance_due_date : supplier.balance_due_date ?? ""}
+            onChange={(e) =>
+              setEditForm((f) => ({ ...f, balance_due_date: e.target.value }))
+            }
+          />
+        </div>
+      </div>
+        <div className="auth-split__field">
+          <label htmlFor={`${panelId}-notes`}>Notes</label>
+          <div className="trans-chap-input">
+            <input
+              id={`${panelId}-notes`}
+              className="auth-split__input"
+              value={open ? editForm.notes : supplier.notes ?? ""}
+              onChange={(e) =>
+                setEditForm((f) => ({ ...f, notes: e.target.value }))
+              }
+            />
+          </div>
+        </div>
+        <button
+          type="submit"
+          className="auth-split__btn"
+          disabled={saving}
+        >
+          {saving && openId === supplier.id ? "Saving…" : "Save changes"}
+        </button>
+        <button
+          type="button"
+          className="trans-chap-form__secondary"
+          disabled={removingId === supplier.id}
+          onClick={() => void removeSupplier(supplier)}
+        >
+          {removingId === supplier.id ? "Removing…" : "Remove supplier"}
+        </button>
+      </form>
     );
   }
 
@@ -714,7 +955,7 @@ export function TransChapSuppliersList() {
         <div className="trans-chap-sales__chips" role="toolbar" aria-label="Supplier actions">
           <button
             type="button"
-            className="trans-chap-chip"
+            className="trans-chap-chip trans-chap-chip--primary"
             onClick={openCreate}
           >
             <i className="fa-solid fa-plus" aria-hidden />
@@ -743,18 +984,97 @@ export function TransChapSuppliersList() {
         </TransChapStatus>
       ) : filtered.length === 0 ? (
         <p className="trans-chap-sales__empty">No suppliers match this search.</p>
+      ) : layoutView === "list" ? (
+        <div className="trans-chap-sales__list">
+          <div className="trans-chap-stock-table-wrap trans-chap-stock-table-wrap--cards">
+            <table className="trans-chap-stock-table trans-chap-stock-table--cards trans-chap-stock-table--supplier">
+              <thead>
+                <tr>
+                  <th scope="col">Supplier</th>
+                  <th scope="col">Phone</th>
+                  <th scope="col">City</th>
+                  <th scope="col">PIN</th>
+                  <th scope="col">Balance owed</th>
+                  <th scope="col">Pay by</th>
+                  <th className="trans-chap-stock-table__actions" scope="col">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((supplier) => {
+                  const open = openId === supplier.id;
+                  const panelId = `${listId}-${supplier.id}`;
+                  const bal = Number(supplier.balance || 0);
+                  const due = dueStatus(supplier);
+                  return (
+                    <Fragment key={supplier.id}>
+                      <tr className={open ? "is-picked" : ""}>
+                        <td className="trans-chap-stock-table__product">{supplier.name}</td>
+                        <td className="trans-chap-stock-table__mono">{supplier.phone || "—"}</td>
+                        <td className="trans-chap-stock-table__wrap">{supplier.city || "—"}</td>
+                        <td className="trans-chap-stock-table__mono">
+                          {supplier.pin_number || "—"}
+                        </td>
+                        <td className="trans-chap-stock-table__strong">
+                          {bal > 0 ? (
+                            formatKsh(bal)
+                          ) : bal < 0 ? (
+                            <span className="trans-chap-stock-table__muted">
+                              Advance {formatKsh(Math.abs(bal))}
+                            </span>
+                          ) : (
+                            <span className="trans-chap-stock-table__muted">—</span>
+                          )}
+                        </td>
+                        <td>
+                          {supplier.balance_due_date && bal > 0 ? (
+                            <div className="trans-chap-stock-table__due">
+                              <span>{formatDueDate(supplier.balance_due_date)}</span>
+                              {due ? (
+                                <em className={`trans-chap-panel__badge is-${due.tone}`}>
+                                  {due.label}
+                                </em>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span className="trans-chap-stock-table__muted">—</span>
+                          )}
+                        </td>
+                        <td className="trans-chap-stock-table__actions">
+                          <div className="trans-chap-stock-table__actions-inner">
+                            <button
+                              type="button"
+                              className="trans-chap-panel__link"
+                              aria-expanded={open}
+                              aria-controls={`${panelId}-edit`}
+                              onClick={() => toggle(supplier)}
+                            >
+                              {open ? "Close" : "Edit"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {open ? (
+                        <tr className="trans-chap-stock-table__detail">
+                          <td colSpan={7} id={`${panelId}-edit`}>
+                            {renderEditForm(supplier, panelId, true)}
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
         <MotionList className="trans-chap-sales__list" as="div">
           {filtered.map((supplier) => {
             const open = openId === supplier.id;
             const panelId = `${listId}-${supplier.id}`;
-            const bal = Number(supplier.balance || 0);
-            const badge =
-              bal > 0
-                ? { label: `Owes ${formatKsh(bal)}`, tone: "credit" as const }
-                : bal < 0
-                ? { label: `Advance ${formatKsh(Math.abs(bal))}`, tone: "ok" as const }
-                : { label: "Supplier", tone: "ok" as const };
+            const badge = balanceBadge(supplier);
 
             const subtitle = [
               supplier.phone,
@@ -775,181 +1095,7 @@ export function TransChapSuppliersList() {
                   badge={badge}
                   onToggle={() => toggle(supplier)}
                 >
-                  <form
-                    className="trans-chap-form__block"
-                    onSubmit={(event) => void handleEdit(event, supplier)}
-                  >
-                    <p className="trans-chap-form__block-title">Details</p>
-                    <div className="auth-split__field">
-                      <label htmlFor={`${panelId}-name`}>Supplier Name</label>
-                      <div className="trans-chap-input">
-                        <input
-                          id={`${panelId}-name`}
-                          required
-                          className="auth-split__input"
-                          value={open ? editForm.name : supplier.name}
-                          onChange={(e) =>
-                            setEditForm((f) => ({ ...f, name: e.target.value }))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="auth-split__field">
-                      <label htmlFor={`${panelId}-phone`}>Phone number</label>
-                      <div className="trans-chap-input">
-                        <input
-                          id={`${panelId}-phone`}
-                          required
-                          type="tel"
-                          className="auth-split__input"
-                          value={open ? editForm.phone : supplier.phone}
-                          onChange={(e) =>
-                            setEditForm((f) => ({ ...f, phone: e.target.value }))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="auth-split__field">
-                      <label htmlFor={`${panelId}-pin`}>Tax / KRA PIN</label>
-                      <div className="trans-chap-input">
-                        <input
-                          id={`${panelId}-pin`}
-                          className="auth-split__input"
-                          placeholder="e.g. P051234567Z"
-                          value={open ? editForm.pin_number : supplier.pin_number ?? ""}
-                          onChange={(e) =>
-                            setEditForm((f) => ({ ...f, pin_number: e.target.value }))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="auth-split__field">
-                      <label htmlFor={`${panelId}-email`}>Email</label>
-                      <div className="trans-chap-input">
-                        <input
-                          id={`${panelId}-email`}
-                          type="email"
-                          className="auth-split__input"
-                          placeholder="orders@supplier.com"
-                          value={open ? editForm.email : supplier.email ?? ""}
-                          onChange={(e) =>
-                            setEditForm((f) => ({ ...f, email: e.target.value }))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="auth-split__field">
-                      <label htmlFor={`${panelId}-city`}>City / Town</label>
-                      <div className="trans-chap-input">
-                        <input
-                          id={`${panelId}-city`}
-                          className="auth-split__input"
-                          placeholder="e.g. Nairobi"
-                          value={open ? editForm.city : supplier.city ?? ""}
-                          onChange={(e) =>
-                            setEditForm((f) => ({ ...f, city: e.target.value }))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="auth-split__field">
-                      <label htmlFor={`${panelId}-address`}>Physical Address</label>
-                      <div className="trans-chap-input">
-                        <input
-                          id={`${panelId}-address`}
-                          className="auth-split__input"
-                          placeholder="e.g. Industrial Area, Enterprise Rd"
-                          value={open ? editForm.address : supplier.address ?? ""}
-                          onChange={(e) =>
-                            setEditForm((f) => ({ ...f, address: e.target.value }))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="auth-split__field">
-                      <label htmlFor={`${panelId}-postal`}>Postal Code</label>
-                      <div className="trans-chap-input">
-                        <input
-                          id={`${panelId}-postal`}
-                          className="auth-split__input"
-                          placeholder="e.g. 00100"
-                          value={
-                            open
-                              ? editForm.postal_code
-                              : supplier.postal_code ?? supplier.postalcode ?? ""
-                          }
-                          onChange={(e) =>
-                            setEditForm((f) => ({ ...f, postal_code: e.target.value }))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="auth-split__field">
-                      <label htmlFor={`${panelId}-fax`}>Fax</label>
-                      <div className="trans-chap-input">
-                        <input
-                          id={`${panelId}-fax`}
-                          type="tel"
-                          className="auth-split__input"
-                          placeholder="Fax number"
-                          value={open ? editForm.fax : supplier.fax ?? ""}
-                          onChange={(e) =>
-                            setEditForm((f) => ({ ...f, fax: e.target.value }))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="auth-split__field">
-                      <label htmlFor={`${panelId}-balance`}>Current Balance (KES)</label>
-                      <div className="trans-chap-input">
-                        <input
-                          id={`${panelId}-balance`}
-                          type="text"
-                          inputMode="decimal"
-                          className="auth-split__input"
-                          placeholder="0.00"
-                          value={
-                            open
-                              ? editForm.balance
-                              : supplier.balance != null
-                              ? String(supplier.balance)
-                              : "0"
-                          }
-                          onChange={(e) =>
-                            setEditForm((f) => ({ ...f, balance: e.target.value }))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="auth-split__field">
-                      <label htmlFor={`${panelId}-notes`}>Notes</label>
-                      <div className="trans-chap-input">
-                        <input
-                          id={`${panelId}-notes`}
-                          className="auth-split__input"
-                          value={open ? editForm.notes : supplier.notes ?? ""}
-                          onChange={(e) =>
-                            setEditForm((f) => ({ ...f, notes: e.target.value }))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <button
-                      type="submit"
-                      className="auth-split__btn"
-                      disabled={saving}
-                    >
-                      {saving && openId === supplier.id ? "Saving…" : "Save changes"}
-                    </button>
-                    <button
-                      type="button"
-                      className="trans-chap-form__secondary"
-                      disabled={removingId === supplier.id}
-                      onClick={() => void removeSupplier(supplier)}
-                    >
-                      {removingId === supplier.id ? "Removing…" : "Remove supplier"}
-                    </button>
-                  </form>
+                  {renderEditForm(supplier, panelId, open)}
                 </TransChapPanel>
               </MotionItem>
             );

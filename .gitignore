@@ -46,3 +46,5 @@ rider-app.tar.gz
 **/.git.nested-backup/
 /storage/framework/views/*.php
 
+/dukai_*
+/new_data_*

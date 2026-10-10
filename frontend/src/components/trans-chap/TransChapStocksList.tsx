@@ -12,6 +12,11 @@ import { apiFetch } from "@/lib/api";
 import { confirmAction, showError, showInternalError, toastSuccess, internalErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { formatKsh } from "@/lib/trans-chap-receipt";
+import {
+  baseUnitName,
+  formatGroupedQty,
+  groupedQtyBreakdown,
+} from "@/lib/sell-units";
 import { useTransChapIsPhone } from "@/lib/trans-chap-list-view";
 import {
   inventoryCoverUrl,
@@ -95,7 +100,7 @@ function isOutOfStock(item: InventoryItem): boolean {
 function stockQtyLabel(item: InventoryItem): string | undefined {
   if (isHotelMenuItem(item)) return undefined;
   if (item.stock_quantity == null) return "Qty —";
-  return `Qty ${item.stock_quantity}`;
+  return `Qty ${formatGroupedQty(item)}`;
 }
 
 
@@ -598,9 +603,14 @@ export function TransChapStocksList() {
                           </label>
                         ) : (
                           <span className="trans-chap-stock-table__mono">
-                            {item.stock_quantity == null ? "—" : item.stock_quantity}
+                            {formatGroupedQty(item)}
                           </span>
                         )}
+                        {!hotel && canAdjustQty && groupedQtyBreakdown(item) ? (
+                          <small className="trans-chap-stock-table__muted trans-chap-stock-table__qty-hint">
+                            {groupedQtyBreakdown(item)} · qty in {baseUnitName(item)}
+                          </small>
+                        ) : null}
                       </td>
                       <td>{buy}</td>
                       <td>{sell}</td>
@@ -811,7 +821,7 @@ export function TransChapStocksList() {
                     <div>
                       <dt>On hand</dt>
                       <dd>
-                        {item.stock_quantity == null ? "Not tracked" : item.stock_quantity}
+                        {item.stock_quantity == null ? "Not tracked" : formatGroupedQty(item)}
                       </dd>
                     </div>
                   )}

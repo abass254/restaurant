@@ -221,13 +221,15 @@ export function TransChapCreditList() {
             const open = openId === customer.id;
             const panelId = `${listId}-${customer.id}`;
             const collecting = savingId === customer.id || waiting?.customerId === customer.id;
-            const waUrl = buildDebtReminderWhatsAppUrl({
-              customerName: customer.name,
-              shopName,
-              amount: customer.outstanding_balance,
-              phone: customer.phone,
-              payBillUrl: customer.pay_bill_url,
-            });
+            const waUrl = customer.phone
+              ? buildDebtReminderWhatsAppUrl({
+                  customerName: customer.name,
+                  shopName,
+                  amount: customer.outstanding_balance,
+                  phone: customer.phone,
+                  payBillUrl: customer.pay_bill_url,
+                })
+              : null;
             return (
               <MotionItem key={customer.id} as="div">
                 <TransChapPanel
@@ -235,7 +237,7 @@ export function TransChapCreditList() {
                   open={open}
                   tone="credit"
                   title={customer.name}
-                  subtitle={customer.phone}
+                  subtitle={customer.phone ?? "No phone"}
                   badge={{ label: formatKsh(customer.outstanding_balance), tone: "credit" }}
                   onToggle={() => toggle(customer)}
                 >
@@ -249,7 +251,7 @@ export function TransChapCreditList() {
                     </div>
                     <div>
                       <dt>Phone</dt>
-                      <dd>{customer.phone}</dd>
+                      <dd>{customer.phone ?? "Not set"}</dd>
                     </div>
                     {customer.date_to_pay ? (
                       <div>
@@ -293,6 +295,11 @@ export function TransChapCreditList() {
                     <p className="trans-chap-mpesa-gate">
                       Set your M-PESA details in Settings before collecting via STK Push.{" "}
                       <Link href="/trans-chap/settings">Set M-PESA details</Link>
+                    </p>
+                  ) : !customer.phone ? (
+                    <p className="trans-chap-mpesa-gate">
+                      Add a phone number for {customer.name} before sending an M-PESA prompt or WhatsApp reminder.{" "}
+                      <Link href="/trans-chap/customers">Open customers</Link>
                     </p>
                   ) : waitingThis && waiting?.customerId === customer.id ? (
                     <p className="trans-chap-form__lead">

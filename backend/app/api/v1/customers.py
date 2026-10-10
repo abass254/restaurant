@@ -57,6 +57,9 @@ class CustomerCreateRequest(BaseModel):
     phone: str = Field(min_length=7, max_length=32)
     email: EmailStr | None = None
     address: str | None = Field(default=None, max_length=500)
+    postal_code: str | None = Field(default=None, max_length=64)
+    city: str | None = Field(default=None, max_length=120)
+    fax: str | None = Field(default=None, max_length=64)
     physical_location: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=2000)
     credit_limit: float = Field(default=1000.0, ge=0, le=99_999_999.99)
@@ -72,6 +75,9 @@ class CustomerUpdateRequest(BaseModel):
     phone: str | None = Field(default=None, min_length=7, max_length=32)
     email: EmailStr | None = None
     address: str | None = Field(default=None, max_length=500)
+    postal_code: str | None = Field(default=None, max_length=64)
+    city: str | None = Field(default=None, max_length=120)
+    fax: str | None = Field(default=None, max_length=64)
     physical_location: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=2000)
     credit_limit: float | None = Field(default=None, ge=0, le=99_999_999.99)
@@ -90,9 +96,12 @@ class ManualCreditCollectRequest(BaseModel):
 class CustomerOut(BaseModel):
     id: str
     name: str
-    phone: str
+    phone: str | None = None
     email: str | None = None
     address: str | None = None
+    postal_code: str | None = None
+    city: str | None = None
+    fax: str | None = None
     physical_location: str | None = None
     date_to_pay: str | None = None
     notes: str | None = None
@@ -130,6 +139,9 @@ def _customer_out(customer: ShopCustomer) -> CustomerOut:
         phone=customer.phone,
         email=customer.email,
         address=customer.address or loc,
+        postal_code=customer.postal_code,
+        city=customer.city,
+        fax=customer.fax,
         physical_location=loc,
         date_to_pay=due_str,
         notes=customer.notes,
@@ -152,6 +164,15 @@ def _tab_payment_out(txn: MpesaTransaction) -> dict[str, object]:
         "paid_at": _iso(txn.credit_collected_at),
         "manual": bool(payload.get("manual_credit_collection")),
     }
+
+
+def _require_phone(customer: ShopCustomer, action: str) -> str:
+    if not customer.phone:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Add a phone number for {customer.name} before {action}.",
+        )
+    return customer.phone
 
 
 def _raise_service_error(exc: CustomerServiceError) -> NoReturn:
@@ -256,6 +277,9 @@ def create_customer(
             phone=payload.phone,
             email=str(payload.email) if payload.email else None,
             address=payload.address or loc,
+            postal_code=payload.postal_code,
+            city=payload.city,
+            fax=payload.fax,
             physical_location=loc,
             date_to_pay=payload.date_to_pay,
             notes=payload.notes,
@@ -288,6 +312,10 @@ def download_customer_template(
 async def import_customers_file(
     request: Request,
     file: UploadFile = File(..., description="Customer list (.xlsx or .csv)"),
+    mode: Literal["merge", "replace"] = Query(
+        default="merge",
+        description="merge: add/update from file; replace: file becomes the full customer list",
+    ),
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
 ):
@@ -314,6 +342,7 @@ async def import_customers_file(
             content=content,
             account_id=account_id,
             filename=file.filename or "customers.xlsx",
+            mode=mode,
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
@@ -323,8 +352,11 @@ async def import_customers_file(
         "summary": {
             "created": result.created,
             "updated": result.updated,
+            "merged": result.merged,
             "skipped": result.skipped,
             "errors": result.errors,
+            "removed": result.removed,
+            "kept": result.kept,
         },
         "detected_columns": result.detected_columns,
         "rows": [
@@ -336,8 +368,8 @@ async def import_customers_file(
                 "message": row.message,
             }
             for row in result.rows
-            if row.status in {"error", "skipped"}
-        ][:50],
+            if row.status not in {"created", "updated"}
+        ][:300],
     }
 
 
@@ -389,6 +421,8 @@ def get_customer_tab(
         .order_by(Order.created_at.desc(), Order.id.desc())
         .limit(TAB_SALES_LIMIT)
         .all()
+        if customer.phone
+        else []
     )
 
     remaining = Decimal(str(customer.outstanding_balance or 0)).quantize(Decimal("0.01"))
@@ -480,6 +514,9 @@ def update_customer(
                 else None
             ),
             address=data.get("address") if "address" in data else loc,
+            postal_code=(data.get("postal_code") or "") if "postal_code" in data else None,
+            city=(data.get("city") or "") if "city" in data else None,
+            fax=(data.get("fax") or "") if "fax" in data else None,
             physical_location=loc,
             date_to_pay=data.get("date_to_pay") if "date_to_pay" in data else None,
             notes=data.get("notes") if "notes" in data else None,
@@ -532,6 +569,7 @@ def collect_customer_credit(
         customer = CustomerService(db).get_customer(account_id, customer_id)
     except CustomerServiceError as exc:
         _raise_service_error(exc)
+    phone = _require_phone(customer, "sending an M-PESA prompt")
 
     amount = Decimal(str(payload.amount)).quantize(Decimal("0.01"))
     outstanding = Decimal(str(customer.outstanding_balance or 0)).quantize(Decimal("0.01"))
@@ -563,7 +601,7 @@ def collect_customer_credit(
     try:
         txn = stk_push(
             db,
-            phone_number=customer.phone,
+            phone_number=phone,
             amount=kes,
             account_reference=f"TAB{customer.id[:8]}",
             transaction_desc=f"Tab {customer.name}"[:13],
@@ -672,7 +710,7 @@ def manually_collect_customer_credit(
     collected_amount = int(round(float(applied)))
     txn = MpesaTransaction(
         initiated_by_user_id=user.id,
-        phone_number=customer.phone,
+        phone_number=customer.phone or "",
         amount=collected_amount,
         account_reference=f"TAB{customer.id[:8]}",
         transaction_desc=f"Manual tab payment {customer.name}"[:200],
@@ -767,6 +805,7 @@ def send_customer_whatsapp_reminder(
         customer = CustomerService(db).get_customer(account_id, customer_id)
     except CustomerServiceError as exc:
         _raise_service_error(exc)
+    phone = _require_phone(customer, "sending a WhatsApp reminder")
 
     if customer.outstanding_balance <= 0:
         raise HTTPException(
@@ -794,7 +833,7 @@ def send_customer_whatsapp_reminder(
             detail="WhatsApp agent is not configured. Set OPENWA_AGENT_TOKEN.",
         )
 
-    result = agent.send_text(to=customer.phone, text=text)
+    result = agent.send_text(to=phone, text=text)
     if not result.ok:
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,

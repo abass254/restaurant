@@ -2,11 +2,12 @@
 
 /*
  * Dashboard densifies rem via `html:has(.fb-app) { font-size: 12px }`.
- * POS embeds `.fb-app`, which was shrinking the whole Trans Chap shell
- * (nav, header, lists) vs Stocks/Sales. Keep Trans Chap at 16px rem.
+ * POS embeds `.fb-app`, and MotionModal portals a `.fb-app` wrapper onto
+ * <body> even while closed, which shrinks the whole Trans Chap shell.
+ * Keep Trans Chap at 16px rem.
  */
-html:has(.trans-chap-root .fb-app),
-html:has(.trans-chap-app .fb-app) {
+html:has(.trans-chap-root):has(.fb-app),
+html:has(.trans-chap-app):has(.fb-app) {
     font-size: 16px;
 }
 
@@ -3425,8 +3426,13 @@ html[data-trans-chap-machine="tablet"] .trans-chap-purchase-new__panel--products
     gap: 0.5rem;
 }
 
+.trans-chap-import__mode-options--two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 @media (max-width: 540px) {
-    .trans-chap-import__mode-options {
+    .trans-chap-import__mode-options,
+    .trans-chap-import__mode-options--two {
         grid-template-columns: 1fr;
     }
 }
@@ -3570,6 +3576,23 @@ html[data-trans-chap-machine="tablet"] .trans-chap-purchase-new__panel--products
 .trans-chap-import__tag--error {
     background: #fee2e2;
     color: #b91c1c;
+}
+
+.trans-chap-import__tag--warning {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.trans-chap-import__stat--converted {
+    color: #7c3aed;
+}
+
+.trans-chap-import__stat--warning {
+    color: #b45309;
+}
+
+.trans-chap-import__row-item--warning small {
+    color: #b45309;
 }
 
 .trans-chap-form__hint a {
@@ -7103,6 +7126,59 @@ html[data-theme="dark"] .trans-chap-receipt {
     color: #fff;
 }
 
+.trans-chap-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-shrink: 0;
+    min-height: 36px;
+    padding: 0.35rem 0.95rem;
+    border: 1px solid var(--app-border);
+    border-radius: 999px;
+    background: var(--app-surface);
+    color: var(--app-text);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.trans-chap-chip i {
+    font-size: 0.85em;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-chip:hover {
+    border-color: var(--app-primary);
+    color: var(--app-primary);
+}
+
+.trans-chap-chip:hover i {
+    color: inherit;
+}
+
+.trans-chap-chip:focus-visible {
+    outline: 2px solid var(--app-primary);
+    outline-offset: 2px;
+}
+
+.trans-chap-chip--primary {
+    border-color: var(--app-primary);
+    background: var(--app-primary);
+    color: #fff;
+}
+
+.trans-chap-chip--primary i,
+.trans-chap-chip--primary:hover {
+    color: #fff;
+}
+
+.trans-chap-chip--primary:hover {
+    filter: brightness(1.08);
+}
+
 .trans-chap-sales__select {
     appearance: none;
     padding-right: 1.9rem;
@@ -7332,6 +7408,13 @@ html[data-theme="dark"] .trans-chap-receipt {
     font-weight: 600;
 }
 
+.trans-chap-stock-table__qty-hint {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.72rem;
+    white-space: nowrap;
+}
+
 .trans-chap-stock-table__actions-inner {
     display: flex;
     align-items: center;
@@ -7390,6 +7473,23 @@ html[data-theme="dark"] .trans-chap-receipt {
 
 .trans-chap-stock-table--purchase {
     --panel-head: var(--trans-chap-purchase);
+}
+
+.trans-chap-stock-table__due {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.5rem;
+    white-space: nowrap;
+}
+
+.trans-chap-stock-table--cards tbody tr.trans-chap-stock-table__detail td {
+    padding: 1rem 1.25rem;
+    box-shadow: inset 4px 0 0 var(--panel-head);
+}
+
+.trans-chap-stock-table__detail .trans-chap-form__block {
+    max-width: 40rem;
 }
 
 .trans-chap-stock-table--cards th {

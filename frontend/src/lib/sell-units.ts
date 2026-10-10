@@ -123,6 +123,37 @@ export function canSellInUnit(item: InventoryItem, unit: SellUnit): boolean {
   return item.stock_quantity >= unit.factor;
 }
 
+function formatQtyNumber(value: number): string {
+  return String(Math.round(value * 1000) / 1000);
+}
+
+/** Stock split into the largest pack + loose base units, e.g. "3 Tray + 2 Piece". */
+export function groupedQtyBreakdown(item: InventoryItem): string | null {
+  const qty = item.stock_quantity;
+  if (qty == null || !Number.isFinite(qty) || qty <= 0) return null;
+  const packs = packUnits(item);
+  if (!packs.length) return null;
+  const largest = packs.reduce((best, pack) =>
+    pack.factor > best.factor ? pack : best,
+  );
+  const bulk = Math.floor(qty / largest.factor);
+  if (bulk < 1) return null;
+  const loose = Math.round((qty - bulk * largest.factor) * 1000) / 1000;
+  const base = baseUnitName(item);
+  const parts = [`${bulk} ${largest.name}`];
+  if (loose > 0) parts.push(`${formatQtyNumber(loose)} ${base}`);
+  return parts.join(" + ");
+}
+
+/** "3 Tray + 2 Piece (92 Piece)" when the item has packs, else the plain quantity. */
+export function formatGroupedQty(item: InventoryItem): string {
+  const qty = item.stock_quantity;
+  if (qty == null) return "—";
+  const grouped = groupedQtyBreakdown(item);
+  if (!grouped) return formatQtyNumber(qty);
+  return `${grouped} (${formatQtyNumber(qty)} ${baseUnitName(item)})`;
+}
+
 export function toSellUnitsPayload(packs: SellUnit[]): SellUnit[] {
   return packs
     .map((pack) => {

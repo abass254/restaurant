@@ -10,18 +10,34 @@ from decimal import Decimal
 from io import BytesIO
 from typing import Any, Literal
 
-from openpyxl import Workbook, load_workbook
+from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from sqlalchemy.orm import Session
 
+from app.models import MpesaTransaction, ShopCustomer
+from app.services.contact_import_utils import (
+    ImportMode,
+    clean_money_text,
+    contact_key,
+    is_no_limit,
+    is_repeated_header,
+    is_total_row,
+    join_notes,
+    load_import_workbook,
+    phone_problem,
+)
 from app.services.customer_service import CustomerService, CustomerServiceError
 from app.services.rider_service import normalize_phone
 
 MAX_IMPORT_BYTES = 5 * 1024 * 1024
 MAX_IMPORT_ROWS = 2_000
 
-RowStatus = Literal["created", "updated", "skipped", "error"]
+RowStatus = Literal["created", "updated", "merged", "skipped", "error", "removed", "kept"]
+
+OPTIONAL_COLUMNS_HINT = (
+    "Credit Limit, Opening Balance, Total Sale Due, Address, Postal Code, City, Email, Fax, Notes"
+)
 
 COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "name": (
@@ -59,9 +75,39 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "opening",
         "tab balance",
     ),
+    "amount_due": (
+        "total sale due",
+        "total sales due",
+        "sale due",
+        "sales due",
+        "total due",
+        "amount due",
+        "balance due",
+        "due",
+    ),
     "notes": ("notes", "note", "remarks", "comment"),
     "email": ("email", "e-mail", "email address"),
-    "address": ("address", "location", "physical address", "physical location"),
+    "address": (
+        "address",
+        "location",
+        "physical address",
+        "physical location",
+        "street",
+        "street address",
+    ),
+    "postal_code": (
+        "postalcode",
+        "postal code",
+        "postal_code",
+        "postcode",
+        "zip",
+        "zip code",
+        "p.o. box",
+        "p.o box",
+        "po box",
+    ),
+    "city": ("city", "town", "county"),
+    "fax": ("fax", "fax number"),
 }
 
 
@@ -75,6 +121,9 @@ class ParsedRow:
     notes: str | None = None
     email: str | None = None
     address: str | None = None
+    postal_code: str | None = None
+    city: str | None = None
+    fax: str | None = None
 
 
 @dataclass
@@ -92,8 +141,11 @@ class ImportResult:
     rows: list[RowResult] = field(default_factory=list)
     created: int = 0
     updated: int = 0
+    merged: int = 0
     skipped: int = 0
     errors: int = 0
+    removed: int = 0
+    kept: int = 0
 
     def summary_message(self) -> str:
         parts = []
@@ -101,10 +153,16 @@ class ImportResult:
             parts.append(f"{self.created} added")
         if self.updated:
             parts.append(f"{self.updated} updated")
+        if self.merged:
+            parts.append(f"{self.merged} duplicates merged")
         if self.skipped:
             parts.append(f"{self.skipped} skipped")
         if self.errors:
             parts.append(f"{self.errors} failed")
+        if self.removed:
+            parts.append(f"{self.removed} old customers removed")
+        if self.kept:
+            parts.append(f"{self.kept} old customers kept")
         return ", ".join(parts) or "No rows processed"
 
 
@@ -137,7 +195,7 @@ def _cell_float(value: Any) -> float | None:
         return None
     if isinstance(value, (int, float)):
         return float(value)
-    text = str(value).strip().replace(",", "")
+    text = clean_money_text(str(value))
     if not text:
         return None
     try:
@@ -189,62 +247,47 @@ def _parse_row(
             return None
         return raw[idx]
 
+    if is_total_row(raw) or is_repeated_header(raw, column_map, COLUMN_ALIASES):
+        return
+
     name = _cell_str(col("name"))
     phone = _cell_str(col("phone"))
 
     if not name and not phone:
-        # Check for footer / summary row
-        joined = " ".join(str(c).strip().lower() for c in raw if c is not None)
-        if "total" in joined:
-            return
         return
 
-    if not name or not phone:
+    def reject(status: RowStatus, message: str) -> None:
         early_errors.append(
-            RowResult(
-                row=row_offset,
-                name=name,
-                phone=phone,
-                status="skipped",
-                message="Name and phone are required.",
-            ),
+            RowResult(row=row_offset, name=name, phone=phone, status=status, message=message),
         )
-        return
 
-    if name.strip().lower() in {"total", "total:"} or phone.strip().lower() in {
-        "total",
-        "total:",
-    }:
+    if not name:
+        reject("skipped", "No customer name.")
         return
+    notes = _cell_str(col("notes"))
+    if phone and phone_problem(phone, normalize_phone(phone)):
+        notes = join_notes(notes, f"Original phone '{phone}' is not usable - check and update")
+        phone = None
 
-    credit_raw = col("credit_limit")
-    opening_raw = col("opening_balance")
-    credit_limit = _cell_float(credit_raw) if credit_raw not in (None, "") else 0.0
-    opening_balance = (
-        _cell_float(opening_raw) if opening_raw not in (None, "") else 0.0
-    )
-    if credit_limit is None:
-        early_errors.append(
-            RowResult(
-                row=row_offset,
-                name=name,
-                phone=phone,
-                status="error",
-                message="Credit limit must be a valid amount.",
-            ),
-        )
-        return
-    if opening_balance is None:
-        early_errors.append(
-            RowResult(
-                row=row_offset,
-                name=name,
-                phone=phone,
-                status="error",
-                message="Opening balance must be a valid amount.",
-            ),
-        )
-        return
+    def amount(field: str, label: str) -> float | None:
+        nonlocal notes
+        raw_value = col(field)
+        if raw_value is None or (isinstance(raw_value, str) and not raw_value.strip()):
+            return None
+        if field == "credit_limit" and is_no_limit(raw_value):
+            return 0.0
+        value = _cell_float(raw_value)
+        if value is None:
+            notes = join_notes(notes, f"Original {label.lower()} '{raw_value}' is not a valid amount - check and update")
+        return value
+
+    credit_limit = amount("credit_limit", "Credit limit")
+    opening = amount("opening_balance", "Opening balance")
+    due = amount("amount_due", "Amount due")
+
+    opening_balance: float | None = None
+    if opening is not None or due is not None:
+        opening_balance = max((opening or 0.0) + (due or 0.0), 0.0)
 
     parsed_rows.append(
         ParsedRow(
@@ -253,9 +296,12 @@ def _parse_row(
             phone=phone,
             credit_limit=credit_limit,
             opening_balance=opening_balance,
-            notes=_cell_str(col("notes")),
+            notes=notes,
             email=_cell_str(col("email")),
             address=_cell_str(col("address")),
+            postal_code=_cell_str(col("postal_code")),
+            city=_cell_str(col("city")),
+            fax=_cell_str(col("fax")),
         ),
     )
 
@@ -266,10 +312,7 @@ def _parse_workbook(content: bytes) -> tuple[dict[str, str], list[ParsedRow], li
             f"File is too large (max {MAX_IMPORT_BYTES // (1024 * 1024)} MB)."
         )
 
-    try:
-        workbook = load_workbook(filename=BytesIO(content), read_only=True, data_only=True)
-    except Exception as exc:
-        raise ValueError("Could not read the Excel file. Upload a valid .xlsx file.") from exc
+    workbook = load_import_workbook(content)
 
     sheet = workbook.active
     if sheet is None:
@@ -296,7 +339,7 @@ def _parse_workbook(content: bytes) -> tuple[dict[str, str], list[ParsedRow], li
         workbook.close()
         raise ValueError(
             "Could not find required columns: Name, Phone. "
-            "Include Name, Phone, and optionally Credit Limit and Opening Balance."
+            f"Include Name, Phone, and optionally {OPTIONAL_COLUMNS_HINT}."
         )
 
     detected = {
@@ -379,7 +422,7 @@ def _parse_csv(content: bytes) -> tuple[dict[str, str], list[ParsedRow], list[Ro
     if header_row_index is None:
         raise ValueError(
             "Could not find required columns: Name, Phone. "
-            "Include Name, Phone, and optionally Credit Limit and Opening Balance."
+            f"Include Name, Phone, and optionally {OPTIONAL_COLUMNS_HINT}."
         )
 
     detected = {
@@ -426,13 +469,103 @@ def parse_customers_file(
         raise ValueError("Upload a valid Excel (.xlsx) or CSV (.csv) file.")
 
 
+def _merge_duplicate_phones(rows: list[ParsedRow]) -> tuple[list[ParsedRow], list[RowResult]]:
+    """Fold rows sharing a phone (or, without one, a name) into the first, adding up what they owe."""
+    first_by_phone: dict[str, ParsedRow] = {}
+    unique: list[ParsedRow] = []
+    merged: list[RowResult] = []
+    for row in rows:
+        key = contact_key(row.phone, row.name)
+        first = first_by_phone.get(key)
+        if first is None:
+            first_by_phone[key] = row
+            unique.append(row)
+            continue
+        if row.opening_balance is not None:
+            first.opening_balance = (first.opening_balance or 0.0) + row.opening_balance
+        if row.credit_limit is not None:
+            first.credit_limit = max(first.credit_limit or 0.0, row.credit_limit)
+        for attr in ("email", "address", "postal_code", "city", "fax"):
+            if not getattr(first, attr) and getattr(row, attr):
+                setattr(first, attr, getattr(row, attr))
+        if row.notes and row.notes != first.notes:
+            first.notes = f"{first.notes}; {row.notes}" if first.notes else row.notes
+        merged.append(
+            RowResult(
+                row=row.row_number,
+                name=row.name,
+                phone=row.phone,
+                status="merged",
+                message=(
+                    f"Same {'phone' if row.phone else 'name, no phone,'} as row "
+                    f"{first.row_number} ({first.name}) — combined into one customer."
+                ),
+            ),
+        )
+    return unique, merged
+
+
+def _remove_customers_not_in_file(
+    db: Session,
+    account_id: str,
+    file_phones: set[str],
+    imported_ids: set[str],
+    result: ImportResult,
+) -> None:
+    stale = [
+        customer
+        for customer in db.query(ShopCustomer).filter(ShopCustomer.account_id == account_id)
+        if customer.id not in imported_ids and customer.phone not in file_phones
+    ]
+    if not stale:
+        return
+    with_history = {
+        customer_id
+        for (customer_id,) in db.query(MpesaTransaction.shop_customer_id)
+        .filter(MpesaTransaction.shop_customer_id.in_([c.id for c in stale]))
+        .distinct()
+    }
+    for customer in stale:
+        owed = Decimal(str(customer.outstanding_balance or 0))
+        reason = None
+        if owed > 0:
+            reason = f"Not in file but still owes KSh {owed:,.2f} — kept."
+        elif customer.id in with_history:
+            reason = "Not in file but has M-PESA credit history — kept."
+        if reason:
+            result.kept += 1
+            result.rows.append(
+                RowResult(row=0, name=customer.name, phone=customer.phone, status="kept", message=reason),
+            )
+            continue
+        db.delete(customer)
+        result.removed += 1
+        result.rows.append(
+            RowResult(
+                row=0,
+                name=customer.name,
+                phone=customer.phone,
+                status="removed",
+                message="Not in file — removed.",
+            ),
+        )
+
+
 def import_customers_from_excel(
     db: Session,
     *,
     content: bytes,
     account_id: str,
     filename: str = "customers.xlsx",
+    mode: ImportMode = "merge",
 ) -> ImportResult:
+    """Import customers.
+
+    ``merge`` adds new customers and updates matching phones, leaving everyone
+    else alone. ``replace`` makes the file the customer list: matched customers
+    are fully overwritten and customers missing from the file are removed
+    (unless they still owe money or have credit history).
+    """
     detected, parsed_rows, early_results = parse_customers_file(content, filename=filename)
     result = ImportResult(detected_columns=detected)
     result.rows.extend(early_results)
@@ -443,42 +576,38 @@ def import_customers_from_excel(
         elif early.status == "error":
             result.errors += 1
 
+    file_phones = {
+        normalize_phone(phone)
+        for phone in [r.phone for r in parsed_rows] + [r.phone for r in early_results]
+        if phone and normalize_phone(phone)
+    }
+    parsed_rows, merged_results = _merge_duplicate_phones(parsed_rows)
+    result.rows.extend(merged_results)
+    result.merged = len(merged_results)
+
+    overwrite = mode == "replace"
     service = CustomerService(db)
-    seen_phones: dict[str, str] = {}
+    imported_ids: set[str] = set()
 
     try:
         for row in parsed_rows:
             try:
-                normalized = normalize_phone(row.phone or "")
-                if normalized and normalized in seen_phones:
-                    result.errors += 1
-                    result.rows.append(
-                        RowResult(
-                            row=row.row_number,
-                            name=row.name,
-                            phone=row.phone,
-                            status="error",
-                            message="Duplicate phone in this file.",
-                        ),
-                    )
-                    continue
-
                 customer, status = service.upsert_import_customer(
                     account_id,
                     name=row.name or "",
-                    phone=row.phone or "",
+                    phone=row.phone,
                     email=row.email,
                     address=row.address,
+                    postal_code=row.postal_code,
+                    city=row.city,
+                    fax=row.fax,
                     notes=row.notes,
-                    credit_limit=row.credit_limit if row.credit_limit is not None else 0,
-                    outstanding_balance=(
-                        row.opening_balance if row.opening_balance is not None else 0
-                    ),
+                    credit_limit=row.credit_limit,
+                    outstanding_balance=row.opening_balance,
+                    overwrite=overwrite,
                     commit=False,
                 )
                 db.flush()
-                if customer.phone:
-                    seen_phones[customer.phone] = customer.id
             except CustomerServiceError as exc:
                 result.errors += 1
                 result.rows.append(
@@ -492,14 +621,19 @@ def import_customers_from_excel(
                 )
                 continue
 
+            imported_ids.add(customer.id)
+            owed = Decimal(str(customer.outstanding_balance or 0))
+            limit = Decimal(str(customer.credit_limit or 0))
             if status == "created":
                 result.created += 1
                 message = "Customer added."
-                if Decimal(str(customer.outstanding_balance or 0)) > 0:
+                if owed > 0:
                     message = "Customer added with opening balance."
             else:
                 result.updated += 1
                 message = "Matched existing customer — updated details."
+            if limit > 0 and owed > limit:
+                message += " Balance is above the credit limit, so no new credit until it is paid down."
 
             result.rows.append(
                 RowResult(
@@ -511,11 +645,27 @@ def import_customers_from_excel(
                 ),
             )
 
+        if mode == "replace":
+            if result.created + result.updated == 0:
+                result.rows.append(
+                    RowResult(
+                        row=0,
+                        name=None,
+                        phone=None,
+                        status="skipped",
+                        message="No rows could be imported, so your existing customers were left untouched.",
+                    ),
+                )
+            else:
+                _remove_customers_not_in_file(db, account_id, file_phones, imported_ids, result)
+
         db.commit()
     except Exception as exc:
         db.rollback()
         result.created = 0
         result.updated = 0
+        result.removed = 0
+        result.kept = 0
         result.errors = len(parsed_rows) + result.errors
         result.rows = [
             RowResult(
@@ -530,50 +680,68 @@ def import_customers_from_excel(
     return result
 
 
+TEMPLATE_HEADERS = [
+    "Customer Name",
+    "Phone",
+    "Credit Limit",
+    "Opening Balance",
+    "Address",
+    "Postal Code",
+    "City",
+    "Email",
+    "Fax",
+    "Notes",
+]
+
+TEMPLATE_MONEY_COLUMNS = (3, 4)
+
+TEMPLATE_SAMPLE_ROWS: list[list[Any]] = [
+    [
+        "Alice Wanjiku",
+        "0712345678",
+        5000.00,
+        0.00,
+        "Kibera Olympic Stage, House 12",
+        "P.O. Box 10100",
+        "Nairobi",
+        "alice.wanjiku@gmail.com",
+        "",
+        "Regular customer, pays weekly",
+    ],
+    [
+        "Brian Otieno",
+        "0723456789",
+        2000.00,
+        750.00,
+        "South B, Sanaa Court Apt 3B",
+        "",
+        "Nairobi",
+        "",
+        "",
+        "Opening debt carried over from ledger",
+    ],
+    [
+        "Mama Njeri Shop",
+        "0734567890",
+        10000.00,
+        0.00,
+        "Ngara Market Stall 44",
+        "P.O. Box 80100",
+        "Mombasa",
+        "njeri.retail@yahoo.com",
+        "041223344",
+        "Buys wholesale items on 30-day credit",
+    ],
+]
+
+
 def _generate_excel_template() -> tuple[bytes, str, str]:
     wb = Workbook()
     ws = wb.active
     ws.title = "Customers"
 
-    headers = [
-        "Customer Name",
-        "Phone",
-        "Credit Limit",
-        "Opening Balance",
-        "Physical Address",
-        "Email",
-        "Notes",
-    ]
-
-    sample_rows = [
-        [
-            "Alice Wanjiku",
-            "0712345678",
-            5000.00,
-            0.00,
-            "Kibera Olympic Stage, House 12",
-            "alice.wanjiku@gmail.com",
-            "Regular customer, pays weekly",
-        ],
-        [
-            "Brian Otieno",
-            "0723456789",
-            2000.00,
-            750.00,
-            "South B, Sanaa Court Apt 3B",
-            "",
-            "Opening debt carried over from ledger",
-        ],
-        [
-            "Mama Njeri Shop",
-            "0734567890",
-            10000.00,
-            0.00,
-            "Ngara Market Stall 44",
-            "njeri.retail@yahoo.com",
-            "Buys wholesale items on 30-day credit",
-        ],
-    ]
+    headers = TEMPLATE_HEADERS
+    sample_rows = TEMPLATE_SAMPLE_ROWS
 
     ws.append(headers)
 
@@ -603,7 +771,7 @@ def _generate_excel_template() -> tuple[bytes, str, str]:
             cell = ws.cell(row=r_idx, column=c_idx)
             cell.font = data_font
             cell.border = thin_border
-            if c_idx in (3, 4):  # Credit Limit & Opening Balance
+            if c_idx in TEMPLATE_MONEY_COLUMNS:
                 cell.number_format = "#,##0.00"
                 cell.alignment = Alignment(horizontal="right")
 
@@ -619,14 +787,18 @@ def _generate_excel_template() -> tuple[bytes, str, str]:
         ["", ""],
         ["Field", "Required?", "Description & Format"],
         ["Customer Name", "Yes", "Full name or business name of your client."],
-        ["Phone", "Yes", "Kenyan phone number (e.g. 0712345678, +254712345678). Used for matching."],
+        ["Phone", "Recommended", "Kenyan phone number (e.g. 0712345678, +254712345678). Used for matching. Leave blank if unknown — M-PESA prompts, WhatsApp reminders and credit sales stay off for that customer until a phone is added."],
         ["Credit Limit", "No", "Maximum credit limit allowed in KES (default: 0.00)."],
         ["Opening Balance", "No", "Existing outstanding balance owed by customer in KES (default: 0.00)."],
-        ["Physical Address", "No", "Street name, estate, estate landmark or stall number."],
+        ["Address", "No", "Street name, estate, landmark or stall number."],
+        ["Postal Code", "No", "P.O. Box or postal code."],
+        ["City", "No", "Town or city (e.g. Nairobi, Mombasa)."],
         ["Email", "No", "Email address for digital receipts and statements."],
+        ["Fax", "No", "Fax number if applicable."],
         ["Notes", "No", "General remarks, guarantor info, or special agreements."],
         ["", ""],
-        ["Deduplication Note:", "", "Customers with existing phone numbers in your account are automatically updated without creating duplicate entries."],
+        ["Deduplication Note:", "", "Customers with existing phone numbers in your account are automatically updated without creating duplicate entries. Rows sharing a phone number are merged and their balances added together. Rows without a phone are matched by name."],
+        ["Replace Mode:", "", "Choose 'Replace list' when importing to make this file your full customer list. Customers not in the file are removed unless they still owe money."],
     ]
     for row in instructions:
         guide_ws.append(row)
@@ -647,49 +819,17 @@ def _generate_excel_template() -> tuple[bytes, str, str]:
 
 
 def _generate_csv_template() -> tuple[bytes, str, str]:
-    headers = [
-        "Customer Name",
-        "Phone",
-        "Credit Limit",
-        "Opening Balance",
-        "Physical Address",
-        "Email",
-        "Notes",
-    ]
-
     sample_rows = [
         [
-            "Alice Wanjiku",
-            "0712345678",
-            "5000.00",
-            "0.00",
-            "Kibera Olympic Stage, House 12",
-            "alice.wanjiku@gmail.com",
-            "Regular customer, pays weekly",
-        ],
-        [
-            "Brian Otieno",
-            "0723456789",
-            "2000.00",
-            "750.00",
-            "South B, Sanaa Court Apt 3B",
-            "",
-            "Opening debt carried over from ledger",
-        ],
-        [
-            "Mama Njeri Shop",
-            "0734567890",
-            "10000.00",
-            "0.00",
-            "Ngara Market Stall 44",
-            "njeri.retail@yahoo.com",
-            "Buys wholesale items on 30-day credit",
-        ],
+            f"{value:.2f}" if c_idx in TEMPLATE_MONEY_COLUMNS else value
+            for c_idx, value in enumerate(row, start=1)
+        ]
+        for row in TEMPLATE_SAMPLE_ROWS
     ]
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(headers)
+    writer.writerow(TEMPLATE_HEADERS)
     writer.writerows(sample_rows)
 
     data = output.getvalue().encode("utf-8-sig")

@@ -122,6 +122,7 @@ export function TransChapTransactForm() {
     if (!nameNeedle && phoneDigits.length < 3) return [];
     return customers
       .filter((row) => {
+        if (!row.phone) return false;
         if (nameNeedle && row.name.toLowerCase().includes(nameNeedle)) return true;
         const rowDigits = row.phone.replace(/\D/g, "");
         return phoneDigits.length >= 3 && rowDigits.includes(phoneDigits);
@@ -254,7 +255,7 @@ export function TransChapTransactForm() {
 
   function pickCustomer(row: ShopCustomer) {
     setCustomerName(row.name);
-    setPhone(row.phone);
+    setPhone(row.phone ?? "");
   }
 
   async function continueCustomer(event: FormEvent) {
@@ -276,7 +277,7 @@ export function TransChapTransactForm() {
         return [customer, ...prev];
       });
       setCustomerName(customer.name);
-      setPhone(customer.phone);
+      setPhone(customer.phone ?? phone);
       setStage("pay");
     } catch {
       await showInternalError();

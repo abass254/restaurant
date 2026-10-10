@@ -21,10 +21,17 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.products import _slugify
 from app.models import InventoryItem, Product, User, _new_uuid
+from app.services.sell_units import (
+    detect_pack,
+    infer_pack_factor,
+    merge_pack_into_attributes,
+    unit_kind,
+)
 from app.support.merchant_permissions import active_account_id
 
 MAX_IMPORT_BYTES = 5 * 1024 * 1024
 MAX_IMPORT_ROWS = 2_000
+BASE_PIECE_UNIT = "Pcs"
 
 RowStatus = Literal["created", "updated", "skipped", "error"]
 
@@ -47,6 +54,8 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "code",
         "item code",
         "item_code",
+        "item id",
+        "item_id",
         "sku (leave blank to auto generate sku)",
     ),
     "barcode": ("barcode", "barcodes", "ean", "upc", "ean13"),
@@ -89,11 +98,17 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "customer price",
         "lst price",
         "selling price",
+        "sellingprice",
+        "single price",
+        "single_price",
         "price",
     ),
     "buying_price": (
         "cost",
         "buying price",
+        "buyingprice",
+        "single buying price",
+        "single_buying_price",
         "standard price",
         "cost price",
         "purchase price",
@@ -117,6 +132,23 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "forecasted quantity",
         "opening stock",
         "ordered quantities",
+        "itemsbalance",
+        "items balance",
+    ),
+    # One-row-per-item layout: the row is the single unit, plus one bulk pack.
+    "bulk_unit": ("bulk unit", "bulk_unit"),
+    "bulk_qty": ("qty per bulk", "qty_per_bulk", "quantity per bulk"),
+    "bulk_buying_price": ("bulk buying price", "bulk_buying_price", "bulk cost"),
+    "bulk_selling_price": ("bulk price", "bulk_price", "bulk selling price"),
+    "pack_size": (
+        "pcs per pack",
+        "pieces per pack",
+        "units per pack",
+        "qty per pack",
+        "pack size",
+        "pcs per ctn",
+        "pcs per carton",
+        "units per carton",
     ),
     "low_stock_threshold": (
         "low stock threshold",
@@ -293,6 +325,20 @@ class ParsedRow:
     manage_stock: bool | None = None
     product_attributes: dict[str, Any] = field(default_factory=dict)
     inventory_attributes: dict[str, Any] = field(default_factory=dict)
+    # Set when the row is in a pack unit (CTN, Dozen…) and was converted to pieces.
+    pack_name: str | None = None
+    pack_factor: int | None = None
+    pack_quantity: Decimal | None = None
+    pack_selling_price: float | None = None
+    pack_buying_price: float | None = None
+    pack_warning: str | None = None
+    # Base unit of the sibling piece row when this pack row was merged into it.
+    pack_of: str | None = None
+    pack_size_given: bool = False
+    # Packs declared on the same row (bulk_unit / qty_per_bulk / bulk_price).
+    extra_packs: list[dict[str, Any]] = field(default_factory=list)
+    # File has bulk columns, so it is authoritative for this item's packs.
+    replace_packs: bool = False
 
 
 @dataclass
@@ -302,6 +348,7 @@ class RowResult:
     sku: str | None
     status: RowStatus
     message: str | None = None
+    warning: bool = False
 
 
 @dataclass
@@ -313,6 +360,8 @@ class ImportResult:
     skipped: int = 0
     errors: int = 0
     matched_existing: int = 0
+    converted: int = 0
+    warnings: int = 0
 
     def summary_message(self) -> str:
         parts = []
@@ -322,6 +371,10 @@ class ImportResult:
             parts.append(f"{self.updated} updated")
         if self.matched_existing:
             parts.append(f"{self.matched_existing} matched core inventory")
+        if self.converted:
+            parts.append(f"{self.converted} converted from packs to pieces")
+        if self.warnings:
+            parts.append(f"{self.warnings} need pack size")
         if self.skipped:
             parts.append(f"{self.skipped} skipped")
         if self.errors:
@@ -374,6 +427,11 @@ def _cell_quantity(value: Any) -> Decimal | None:
         return Decimal(str(value)).quantize(Decimal("0.001"))
     except (InvalidOperation, TypeError, ValueError):
         return None
+
+
+def _format_qty(value: Decimal) -> str:
+    text = format(value.normalize(), "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
 
 
 def _cell_bool01(value: Any) -> bool | None:
@@ -618,6 +676,62 @@ def _merge_attrs(
     return merged or None
 
 
+def _pack_size_warning(label: str) -> str:
+    return (
+        f"Couldn't detect pieces per {label} from name; add a "
+        "'Pcs per pack' column or edit the item."
+    )
+
+
+def _row_group_key(row: ParsedRow) -> str:
+    codes = sorted(_row_code_keys(row))
+    if codes:
+        return f"code:{codes[0]}"
+    return f"name:{_normalize_name(row.name)}"
+
+
+def _link_pack_rows(rows: list[ParsedRow]) -> None:
+    """Merge CTN/Dozen rows into the PC row of the same product.
+
+    Exports often list one product twice (same code), once per unit. The piece
+    row owns stock and piece prices; the pack row only contributes a sell unit,
+    with its size inferred from the price ratio when the name doesn't say.
+    """
+    groups: dict[str, list[ParsedRow]] = {}
+    for row in rows:
+        groups.setdefault(_row_group_key(row), []).append(row)
+
+    for group in groups.values():
+        base_rows = [r for r in group if r.pack_name is None]
+        piece_row = next(
+            (r for r in base_rows if unit_kind(r.unit) == "piece"),
+            base_rows[0] if base_rows else None,
+        )
+        if piece_row is None:
+            continue
+        for row in group:
+            if row is piece_row or row.pack_name is None:
+                continue
+            # An explicit "Pcs per Pack" wins; otherwise the price ratio beats
+            # name parsing ("MAGGI 20*39*4GM" is 20 per carton, not 39).
+            inferred = infer_pack_factor(
+                row.pack_buying_price, piece_row.buying_price
+            ) or infer_pack_factor(row.pack_selling_price, piece_row.selling_price)
+            factor = (
+                row.pack_factor
+                if row.pack_size_given
+                else inferred or row.pack_factor
+            )
+            row.pack_of = piece_row.unit
+            row.pack_factor = factor
+            row.pack_warning = None if factor else _pack_size_warning(row.pack_name)
+            row.unit = piece_row.unit
+            row.stock_quantity = None
+            row.low_stock_threshold = None
+            row.selling_price = None
+            row.buying_price = None
+
+
 def _parse_row(
     raw: tuple[Any, ...] | list[Any],
     column_map: dict[str, int],
@@ -714,6 +828,60 @@ def _parse_row(
             location = opening_loc
 
     packaging = _cell_str(col("unit"))
+    selling_price = _cell_float(col("selling_price"))
+    low_stock_threshold = _cell_quantity(col("low_stock_threshold"))
+
+    pack_name: str | None = None
+    pack_factor: int | None = None
+    pack_quantity: Decimal | None = None
+    pack_selling_price: float | None = None
+    pack_buying_price: float | None = None
+    pack_warning: str | None = None
+    # "Pcs per Pack" = 1, or a one-row-per-item file (bulk columns), marks the
+    # row as the base unit: never convert it.
+    pack = (
+        detect_pack(packaging, name, col("pack_size"))
+        if product_type != "service"
+        and _cell_float(col("pack_size")) != 1
+        and "bulk_qty" not in column_map
+        else None
+    )
+    if pack is not None:
+        label, factor = pack
+        pack_name = label
+        pack_quantity = stock_qty
+        pack_selling_price = selling_price
+        pack_buying_price = buying_price
+        if factor is None:
+            pack_warning = _pack_size_warning(label)
+        else:
+            pack_factor = factor
+            packaging = BASE_PIECE_UNIT
+            if stock_qty is not None:
+                stock_qty = stock_qty * factor
+            if low_stock_threshold is not None:
+                low_stock_threshold = low_stock_threshold * factor
+            selling_price = (
+                round(selling_price / factor, 2) if selling_price is not None else None
+            )
+            buying_price = (
+                round(buying_price / factor, 2) if buying_price is not None else None
+            )
+
+    extra_packs: list[dict[str, Any]] = []
+    bulk_qty = _cell_float(col("bulk_qty"))
+    if bulk_qty is not None and bulk_qty >= 2 and float(bulk_qty).is_integer():
+        bulk: dict[str, Any] = {
+            "name": _cell_str(col("bulk_unit")) or "Bulk",
+            "factor": int(bulk_qty),
+        }
+        bulk_buy = _cell_float(col("bulk_buying_price"))
+        bulk_sell = _cell_float(col("bulk_selling_price"))
+        if bulk_buy is not None:
+            bulk["buying_price"] = bulk_buy
+        if bulk_sell is not None:
+            bulk["selling_price"] = bulk_sell
+        extra_packs.append(bulk)
 
     parsed_rows.append(
         ParsedRow(
@@ -726,10 +894,10 @@ def _parse_row(
             unit=packaging,
             description=_cell_str(col("description")),
             product_type=product_type,
-            selling_price=_cell_float(col("selling_price")),
+            selling_price=selling_price,
             buying_price=buying_price,
             stock_quantity=stock_qty,
-            low_stock_threshold=_cell_quantity(col("low_stock_threshold")),
+            low_stock_threshold=low_stock_threshold,
             supplier=_cell_str(col("supplier")),
             location=location,
             image_url=_cell_str(col("image_url")),
@@ -738,6 +906,15 @@ def _parse_row(
             manage_stock=manage_stock,
             product_attributes=product_attrs,
             inventory_attributes=inventory_attrs,
+            pack_name=pack_name,
+            pack_factor=pack_factor,
+            pack_quantity=pack_quantity,
+            pack_selling_price=pack_selling_price,
+            pack_buying_price=pack_buying_price,
+            pack_warning=pack_warning,
+            pack_size_given=(_cell_float(col("pack_size")) or 0) >= 2,
+            extra_packs=extra_packs,
+            replace_packs="bulk_qty" in column_map and product_type != "service",
         ),
     )
 
@@ -872,6 +1049,14 @@ def _parse_csv(content: bytes) -> tuple[dict[str, str], list[ParsedRow], list[Ro
 def parse_import_file(
     content: bytes, filename: str = "import.xlsx"
 ) -> tuple[dict[str, str], list[ParsedRow], list[RowResult]]:
+    detected, rows, early = _parse_file(content, filename)
+    _link_pack_rows(rows)
+    return detected, rows, early
+
+
+def _parse_file(
+    content: bytes, filename: str
+) -> tuple[dict[str, str], list[ParsedRow], list[RowResult]]:
     lower = (filename or "").lower()
     if lower.endswith(".csv"):
         return _parse_csv(content)
@@ -924,7 +1109,7 @@ def _update_product_from_row(
         product.category = row.category
     if row.brand and (not product.brand or allow_overwrite):
         product.brand = row.brand
-    if row.unit and (not product.unit or allow_overwrite):
+    if row.unit and (not product.unit or (allow_overwrite and not row.pack_factor)):
         product.unit = row.unit
     if row.description and (not product.description or allow_overwrite):
         product.description = row.description
@@ -966,10 +1151,28 @@ def _upsert_inventory(
             created_at=now,
         )
 
-    if row.selling_price is not None:
+    # Pack rows derive piece prices; keep a piece price the shop already set.
+    if row.selling_price is not None and (
+        not row.pack_factor or item.selling_price is None
+    ):
         item.selling_price = row.selling_price
-    if row.buying_price is not None:
+    if row.buying_price is not None and (
+        not row.pack_factor or item.buying_price is None
+    ):
         item.buying_price = row.buying_price
+    if row.pack_name and row.pack_factor:
+        pack: dict[str, Any] = {"name": row.pack_name, "factor": row.pack_factor}
+        if row.pack_selling_price is not None:
+            pack["selling_price"] = row.pack_selling_price
+        if row.pack_buying_price is not None:
+            pack["buying_price"] = row.pack_buying_price
+        item.attributes = merge_pack_into_attributes(item.attributes, pack) or None
+    if row.replace_packs:
+        attrs = dict(item.attributes or {})
+        attrs.pop("sell_units", None)
+        item.attributes = attrs or None
+    for extra in row.extra_packs:
+        item.attributes = merge_pack_into_attributes(item.attributes, extra) or None
     if product.is_service():
         item.stock_quantity = None
         item.low_stock_threshold = None
@@ -1039,6 +1242,25 @@ def import_inventory_from_excel(
 
     try:
         for row in parsed_rows:
+            if row.pack_of and not row.pack_factor:
+                result.warnings += 1
+                result.skipped += 1
+                result.rows.append(
+                    RowResult(
+                        row=row.row_number,
+                        name=row.name,
+                        sku=row.sku,
+                        status="skipped",
+                        message=(
+                            f"Same product as the {row.pack_of} row, but pieces per "
+                            f"{row.pack_name} couldn't be worked out from the name or "
+                            "prices. Add a 'Pcs per pack' column to add this pack."
+                        ),
+                        warning=True,
+                    ),
+                )
+                continue
+
             product, matched_by = _lookup_product(
                 row, by_code=by_code, by_name=by_name
             )
@@ -1110,6 +1332,25 @@ def import_inventory_from_excel(
                     message = f"Updated existing inventory item{stock_note}."
                 result.updated += 1
 
+            if row.pack_of and row.pack_factor:
+                message = (
+                    f"{message} Added {row.pack_name} x{row.pack_factor} as a pack of "
+                    f"{row.pack_of}; stock is taken from the {row.pack_of} row."
+                )
+            elif row.pack_name and row.pack_factor:
+                result.converted += 1
+                base_unit = (product.unit or BASE_PIECE_UNIT).strip() or BASE_PIECE_UNIT
+                conversion = f"Converted {row.pack_name} x{row.pack_factor}"
+                if row.pack_quantity is not None and row.stock_quantity is not None:
+                    conversion += (
+                        f": {_format_qty(row.pack_quantity)} {row.pack_name} → "
+                        f"{_format_qty(row.stock_quantity)} {base_unit}"
+                    )
+                message = f"{message} {conversion}."
+            if row.pack_warning:
+                result.warnings += 1
+                message = f"{message} {row.pack_warning}"
+
             result.rows.append(
                 RowResult(
                     row=row.row_number,
@@ -1117,6 +1358,7 @@ def import_inventory_from_excel(
                     sku=row.sku,
                     status=status,
                     message=message,
+                    warning=bool(row.pack_warning),
                 ),
             )
 
@@ -1127,6 +1369,8 @@ def import_inventory_from_excel(
         any_success = False
         result.created = 0
         result.updated = 0
+        result.converted = 0
+        result.warnings = 0
         result.errors = len(parsed_rows)
         result.rows = [
             RowResult(
@@ -1152,6 +1396,86 @@ def import_inventory_from_excel(
     return result
 
 
+_TEMPLATE_HEADERS = (
+    "Name",
+    "SKU",
+    "Barcode",
+    "Category",
+    "Unit",
+    "Pcs per Pack",
+    "Buying Price",
+    "Selling Price",
+    "Quantity",
+    "Low Stock Threshold",
+    "Product Type",
+    "Description",
+    "Supplier",
+)
+
+_TEMPLATE_ROWS: tuple[tuple[Any, ...], ...] = (
+    (
+        "Fresh Milk 500ml",
+        "MLK-001",
+        "6161101234567",
+        "Dairy",
+        "Pcs",
+        None,
+        55.00,
+        65.00,
+        40,
+        10,
+        "product",
+        "Pasteurized fresh whole milk 500ml pouch",
+        "Brookside Dairy",
+    ),
+    (
+        "White Sugar 1kg",
+        "SGR-001",
+        "6161102345678",
+        "Groceries",
+        "Kg",
+        None,
+        130.00,
+        155.00,
+        50,
+        15,
+        "product",
+        "Premium white refined sugar 1kg bag",
+        "Mumias Sugar",
+    ),
+    (
+        "Coca Cola 500ml 24s",
+        "COK-024",
+        "5449000000996",
+        "Beverages",
+        "CTN",
+        24,
+        1100.00,
+        1320.00,
+        5,
+        1,
+        "product",
+        "Carton of 24 x 500ml bottles - stock is saved as 120 Pcs",
+        "Coca-Cola Beverages Africa",
+    ),
+    (
+        "Bic Pens Blue",
+        "BIC-012",
+        "3086123456789",
+        "Stationery",
+        "Dozen",
+        None,
+        180.00,
+        240.00,
+        10,
+        2,
+        "product",
+        "Sold per dozen or per piece - stock is saved as 120 Pcs",
+        "Bic Kenya",
+    ),
+)
+
+
 def _generate_excel_template() -> tuple[bytes, str, str]:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -1161,65 +1485,8 @@ def _generate_excel_template() -> tuple[bytes, str, str]:
     ws = wb.active
     ws.title = "Inventory Template"
 
-    headers = [
-        "Name",
-        "SKU",
-        "Barcode",
-        "Category",
-        "Unit",
-        "Buying Price",
-        "Selling Price",
-        "Quantity",
-        "Low Stock Threshold",
-        "Product Type",
-        "Description",
-        "Supplier",
-    ]
-
-    sample_rows = [
-        [
-            "Fresh Milk 500ml",
-            "MLK-001",
-            "6161101234567",
-            "Dairy",
-            "Pcs",
-            55.00,
-            65.00,
-            40,
-            10,
-            "product",
-            "Pasteurized fresh whole milk 500ml pouch",
-            "Brookside Dairy",
-        ],
-        [
-            "White Sugar 1kg",
-            "SGR-001",
-            "6161102345678",
-            "Groceries",
-            "Kg",
-            130.00,
-            155.00,
-            50,
-            15,
-            "product",
-            "Premium white refined sugar 1kg bag",
-            "Mumias Sugar",
-        ],
-        [
-            "Royco Beef Cubes 40s",
-            "ROY-001",
-            "6161103456789",
-            "Spices & Seasoning",
-            "Box",
-            180.00,
-            220.00,
-            25,
-            5,
-            "product",
-            "Flavor cubes box of 40 tablets",
-            "Unilever Kenya",
-        ],
-    ]
+    headers = list(_TEMPLATE_HEADERS)
+    sample_rows = [list(row) for row in _TEMPLATE_ROWS]
 
     ws.append(headers)
 
@@ -1249,10 +1516,10 @@ def _generate_excel_template() -> tuple[bytes, str, str]:
             cell = ws.cell(row=r_idx, column=c_idx)
             cell.font = data_font
             cell.border = thin_border
-            if c_idx in (6, 7):  # Buying & Selling Price
+            if c_idx in (7, 8):  # Buying & Selling Price
                 cell.number_format = "#,##0.00"
                 cell.alignment = Alignment(horizontal="right")
-            elif c_idx in (8, 9):  # Quantity & Threshold
+            elif c_idx in (6, 9, 10):  # Pcs per Pack, Quantity & Threshold
                 cell.number_format = "#,##0"
                 cell.alignment = Alignment(horizontal="right")
 
@@ -1281,6 +1548,9 @@ def _generate_excel_template() -> tuple[bytes, str, str]:
         ("SKU (Recommended)", "Unique internal code or SKU. Used to identify existing items and prevent duplicates."),
         ("Barcode (Recommended)", "EAN-13, UPC, or numeric barcode. Scannable at checkout/POS."),
         ("Prices & Numbers", "Enter numbers without currency symbols (e.g. 65.00, not 'KSh 65')."),
+        ("Unit: CTN / Dozen / PCS", "Rows can be in pieces (Pcs) or packs (CTN, Box, Crate, Tray, Pkt, Dozen). Pack rows are converted to pieces: Quantity and Low Stock Threshold are multiplied by the pieces per pack, prices are treated as the price per pack, and the pack is added as a sell unit so you can still sell by the carton or by the piece."),
+        ("Pcs per Pack", "Pieces in one pack (e.g. 24 for a carton of 24). Enter 1 for the base unit row (no conversion). Optional: if blank, DukAI reads it from the name ('Coke 500ml 24s', '24x500ml', 'Eggs Tray of 30', 'Biscuits (12)'). Dozen is always 12. Rows where it can't be found are imported unconverted and flagged in the import log."),
+        ("Same product in several units", "List the product once per unit with the same SKU: the base unit row (Pcs per Pack = 1) carries the Quantity; pack rows (CTN, Outer, Bale…) carry their Pcs per Pack and prices with Quantity left blank."),
         ("Existing Core Inventory", "If an item already exists in core inventory (matched by SKU, Barcode, or Name), DukAI updates the existing item without creating duplicates."),
         ("Stock Modes", "During import, you can choose to Replace stock, Add to existing stock, or Keep current stock."),
         ("File Support", "Supports both Excel (.xlsx) and CSV (.csv) formats."),
@@ -1309,64 +1579,13 @@ def _generate_csv_template() -> tuple[bytes, str, str]:
     import csv
     import io
 
-    headers = [
-        "Name",
-        "SKU",
-        "Barcode",
-        "Category",
-        "Unit",
-        "Buying Price",
-        "Selling Price",
-        "Quantity",
-        "Low Stock Threshold",
-        "Product Type",
-        "Description",
-        "Supplier",
-    ]
-
+    headers = list(_TEMPLATE_HEADERS)
     sample_rows = [
         [
-            "Fresh Milk 500ml",
-            "MLK-001",
-            "6161101234567",
-            "Dairy",
-            "Pcs",
-            "55.00",
-            "65.00",
-            "40",
-            "10",
-            "product",
-            "Pasteurized fresh whole milk 500ml pouch",
-            "Brookside Dairy",
-        ],
-        [
-            "White Sugar 1kg",
-            "SGR-001",
-            "6161102345678",
-            "Groceries",
-            "Kg",
-            "130.00",
-            "155.00",
-            "50",
-            "15",
-            "product",
-            "Premium white refined sugar 1kg bag",
-            "Mumias Sugar",
-        ],
-        [
-            "Royco Beef Cubes 40s",
-            "ROY-001",
-            "6161103456789",
-            "Spices & Seasoning",
-            "Box",
-            "180.00",
-            "220.00",
-            "25",
-            "5",
-            "product",
-            "Flavor cubes box of 40 tablets",
-            "Unilever Kenya",
-        ],
+            "" if value is None else f"{value:.2f}" if isinstance(value, float) else str(value)
+            for value in row
+        ]
+        for row in _TEMPLATE_ROWS
     ]
 
     output = io.StringIO()

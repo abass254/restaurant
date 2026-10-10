@@ -80,10 +80,8 @@ def test_parse_workbook_skips_incomplete_rows() -> None:
         ]
     )
     _detected, rows, early = _parse_workbook(content)
-    assert len(rows) == 1
-    assert rows[0].name == "Ok"
-    assert len(early) == 2
-    assert all(item.status == "skipped" for item in early)
+    assert [(r.name, r.phone) for r in rows] == [("Only Name", None), ("Ok", "0700000011")]
+    assert [(item.phone, item.status) for item in early] == [("0700000099", "skipped")]
 
 
 def test_parse_csv_and_template_generation() -> None:

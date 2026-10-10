@@ -10,20 +10,41 @@ from decimal import Decimal
 from io import BytesIO
 from typing import Any, Literal
 
-from openpyxl import Workbook, load_workbook
+from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from sqlalchemy.orm import Session
 
+from app.models import PurchaseOrder, ShopSupplier, StockMovement
+from app.services.contact_import_utils import (
+    ImportMode,
+    clean_money_text,
+    contact_key,
+    is_repeated_header,
+    is_total_row,
+    join_notes,
+    load_import_workbook,
+    phone_problem,
+)
 from app.services.rider_service import normalize_phone
 from app.services.supplier_service import SupplierService, SupplierServiceError
 
 MAX_IMPORT_BYTES = 5 * 1024 * 1024
 MAX_IMPORT_ROWS = 2_000
 
-RowStatus = Literal["created", "updated", "skipped", "error"]
+RowStatus = Literal["created", "updated", "merged", "skipped", "error", "removed", "kept"]
+
+REQUIRED_COLUMNS_ERROR = (
+    "Could not find required columns: Name (or Business Name), Phone. "
+    "Include Name, Phone, and optionally Balance, Address, Postal Code, City, Email, Fax, PIN Number, Notes."
+)
 
 COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+    "business_name": (
+        "business name",
+        "business",
+        "trading name",
+    ),
     "name": (
         "name",
         "supplier name",
@@ -134,8 +155,11 @@ class ImportResult:
     rows: list[RowResult] = field(default_factory=list)
     created: int = 0
     updated: int = 0
+    merged: int = 0
     skipped: int = 0
     errors: int = 0
+    removed: int = 0
+    kept: int = 0
 
     def summary_message(self) -> str:
         parts = []
@@ -143,10 +167,16 @@ class ImportResult:
             parts.append(f"{self.created} added")
         if self.updated:
             parts.append(f"{self.updated} updated")
+        if self.merged:
+            parts.append(f"{self.merged} duplicates merged")
         if self.skipped:
             parts.append(f"{self.skipped} skipped")
         if self.errors:
             parts.append(f"{self.errors} failed")
+        if self.removed:
+            parts.append(f"{self.removed} old suppliers removed")
+        if self.kept:
+            parts.append(f"{self.kept} old suppliers kept")
         return ", ".join(parts) or "No rows processed"
 
 
@@ -179,7 +209,7 @@ def _cell_decimal(value: Any) -> Decimal | None:
         return None
     if isinstance(value, (int, float)):
         return Decimal(str(value))
-    text = str(value).strip().replace(",", "")
+    text = clean_money_text(str(value))
     if not text:
         return None
     try:
@@ -215,6 +245,10 @@ def _build_column_map(headers: list[str]) -> dict[str, int]:
     return mapping
 
 
+def _has_required_columns(mapping: dict[str, int]) -> bool:
+    return "phone" in mapping and ("name" in mapping or "business_name" in mapping)
+
+
 def _parse_row(
     raw: tuple[Any, ...] | list[Any],
     column_map: dict[str, int],
@@ -231,47 +265,46 @@ def _parse_row(
             return None
         return raw[idx]
 
-    name = _cell_str(col("name"))
+    if is_total_row(raw) or is_repeated_header(raw, column_map, COLUMN_ALIASES):
+        return
+
+    name = _cell_str(col("business_name")) or _cell_str(col("name"))
     phone = _cell_str(col("phone"))
 
     if not name and not phone:
-        # Check for footer / summary row
-        joined = " ".join(str(c).strip().lower() for c in raw if c is not None)
-        if "total" in joined:
-            return
         return
 
-    if not name or not phone:
+    def reject(status: RowStatus, message: str) -> None:
         early_errors.append(
-            RowResult(
-                row=row_offset,
-                name=name,
-                phone=phone,
-                status="skipped",
-                message="Name and phone are required.",
-            ),
+            RowResult(row=row_offset, name=name, phone=phone, status=status, message=message),
         )
-        return
 
-    if name.strip().lower() in {"total", "total:"} or phone.strip().lower() in {
-        "total",
-        "total:",
-    }:
+    if not name:
+        reject("skipped", "No supplier name.")
         return
+    notes = _cell_str(col("notes"))
+    if phone and phone_problem(phone, normalize_phone(phone)):
+        notes = join_notes(notes, f"Original phone '{phone}' is not usable - check and update")
+        phone = None
+
+    balance_raw = col("balance")
+    balance = _cell_decimal(balance_raw)
+    if balance is None and balance_raw is not None and str(balance_raw).strip():
+        notes = join_notes(notes, f"Original balance '{balance_raw}' is not a valid amount - check and update")
 
     parsed_rows.append(
         ParsedRow(
             row_number=row_offset,
             name=name,
             phone=phone,
-            balance=_cell_decimal(col("balance")),
+            balance=balance,
             address=_cell_str(col("address")),
             postal_code=_cell_str(col("postal_code")),
             city=_cell_str(col("city")),
             email=_cell_str(col("email")),
             fax=_cell_str(col("fax")),
             pin_number=_cell_str(col("pin_number")),
-            notes=_cell_str(col("notes")),
+            notes=notes,
         ),
     )
 
@@ -282,10 +315,7 @@ def _parse_workbook(content: bytes) -> tuple[dict[str, str], list[ParsedRow], li
             f"File is too large (max {MAX_IMPORT_BYTES // (1024 * 1024)} MB)."
         )
 
-    try:
-        workbook = load_workbook(filename=BytesIO(content), read_only=True, data_only=True)
-    except Exception as exc:
-        raise ValueError("Could not read the Excel file. Upload a valid .xlsx file.") from exc
+    workbook = load_import_workbook(content)
 
     sheet = workbook.active
     if sheet is None:
@@ -303,7 +333,7 @@ def _parse_workbook(content: bytes) -> tuple[dict[str, str], list[ParsedRow], li
     for idx, raw in enumerate(all_rows[:5]):
         candidate = [str(h).strip() if h is not None else "" for h in (raw or ())]
         mapping = _build_column_map(candidate)
-        if "name" in mapping and "phone" in mapping:
+        if _has_required_columns(mapping):
             header_row_index = idx
             column_map = mapping
             headers = candidate
@@ -311,10 +341,7 @@ def _parse_workbook(content: bytes) -> tuple[dict[str, str], list[ParsedRow], li
 
     if header_row_index is None:
         workbook.close()
-        raise ValueError(
-            "Could not find required columns: Name, Phone. "
-            "Include Name, Phone, and optionally Balance, Address, Postal Code, City, Email, Fax, PIN Number, Notes."
-        )
+        raise ValueError(REQUIRED_COLUMNS_ERROR)
 
     detected = {
         field: headers[idx]
@@ -387,17 +414,14 @@ def _parse_csv(content: bytes) -> tuple[dict[str, str], list[ParsedRow], list[Ro
     for idx, raw in enumerate(all_rows[:5]):
         candidate = [str(h).strip() for h in raw]
         mapping = _build_column_map(candidate)
-        if "name" in mapping and "phone" in mapping:
+        if _has_required_columns(mapping):
             header_row_index = idx
             column_map = mapping
             headers = candidate
             break
 
     if header_row_index is None:
-        raise ValueError(
-            "Could not find required columns: Name, Phone. "
-            "Include Name, Phone, and optionally Balance, Address, Postal Code, City, Email, Fax, PIN Number, Notes."
-        )
+        raise ValueError(REQUIRED_COLUMNS_ERROR)
 
     detected = {
         field: headers[idx]
@@ -443,13 +467,106 @@ def parse_suppliers_file(
         raise ValueError("Upload a valid Excel (.xlsx) or CSV (.csv) file.")
 
 
+def _merge_duplicate_phones(rows: list[ParsedRow]) -> tuple[list[ParsedRow], list[RowResult]]:
+    """Fold rows sharing a phone (or, without one, a name) into the first, adding up balances."""
+    first_by_phone: dict[str, ParsedRow] = {}
+    unique: list[ParsedRow] = []
+    merged: list[RowResult] = []
+    for row in rows:
+        key = contact_key(row.phone, row.name)
+        first = first_by_phone.get(key)
+        if first is None:
+            first_by_phone[key] = row
+            unique.append(row)
+            continue
+        if row.balance is not None:
+            first.balance = Decimal(str(first.balance or 0)) + Decimal(str(row.balance))
+        for attr in ("address", "postal_code", "city", "email", "fax", "pin_number"):
+            if not getattr(first, attr) and getattr(row, attr):
+                setattr(first, attr, getattr(row, attr))
+        if row.notes and row.notes != first.notes:
+            first.notes = f"{first.notes}; {row.notes}" if first.notes else row.notes
+        if row.name and row.name.strip().lower() != (first.name or "").strip().lower():
+            also = f"Also listed as: {row.name}"
+            first.notes = f"{first.notes}; {also}" if first.notes else also
+        merged.append(
+            RowResult(
+                row=row.row_number,
+                name=row.name,
+                phone=row.phone,
+                status="merged",
+                message=(
+                    f"Same {'phone' if row.phone else 'name, no phone,'} as row "
+                    f"{first.row_number} ({first.name}) — combined into one supplier."
+                ),
+            ),
+        )
+    return unique, merged
+
+
+def _remove_suppliers_not_in_file(
+    db: Session,
+    account_id: str,
+    file_phones: set[str],
+    imported_ids: set[str],
+    result: ImportResult,
+) -> None:
+    stale = [
+        supplier
+        for supplier in db.query(ShopSupplier).filter(ShopSupplier.account_id == account_id)
+        if supplier.id not in imported_ids and supplier.phone not in file_phones
+    ]
+    if not stale:
+        return
+    stale_ids = [s.id for s in stale]
+    with_history = {
+        supplier_id
+        for model in (PurchaseOrder, StockMovement)
+        for (supplier_id,) in db.query(model.supplier_id)
+        .filter(model.supplier_id.in_(stale_ids))
+        .distinct()
+    }
+    for supplier in stale:
+        balance = Decimal(str(supplier.balance or 0))
+        reason = None
+        if balance != 0:
+            reason = f"Not in file but has a balance of KSh {balance:,.2f} — kept."
+        elif supplier.id in with_history:
+            reason = "Not in file but has purchase or stock history — kept."
+        if reason:
+            result.kept += 1
+            result.rows.append(
+                RowResult(row=0, name=supplier.name, phone=supplier.phone, status="kept", message=reason),
+            )
+            continue
+        db.delete(supplier)
+        result.removed += 1
+        result.rows.append(
+            RowResult(
+                row=0,
+                name=supplier.name,
+                phone=supplier.phone,
+                status="removed",
+                message="Not in file — removed.",
+            ),
+        )
+
+
 def import_suppliers_from_excel(
     db: Session,
     *,
     content: bytes,
     account_id: str,
     filename: str = "suppliers.xlsx",
+    mode: ImportMode = "merge",
 ) -> ImportResult:
+    """Import suppliers.
+
+    ``merge`` adds new suppliers and updates matching ones, leaving the rest
+    alone. ``replace`` makes the file the supplier list: matched suppliers are
+    fully overwritten and suppliers missing from the file are removed (unless
+    they carry a balance or purchase/stock history).
+    """
     detected, parsed_rows, early_results = parse_suppliers_file(content, filename=filename)
     result = ImportResult(detected_columns=detected)
     result.rows.extend(early_results)
@@ -460,30 +577,26 @@ def import_suppliers_from_excel(
         elif early.status == "error":
             result.errors += 1
 
+    file_phones = {
+        normalize_phone(phone)
+        for phone in [r.phone for r in parsed_rows] + [r.phone for r in early_results]
+        if phone and normalize_phone(phone)
+    }
+    parsed_rows, merged_results = _merge_duplicate_phones(parsed_rows)
+    result.rows.extend(merged_results)
+    result.merged = len(merged_results)
+
+    overwrite = mode == "replace"
     service = SupplierService(db)
-    seen_phones: dict[str, str] = {}
+    imported_ids: set[str] = set()
 
     try:
         for row in parsed_rows:
             try:
-                normalized = normalize_phone(row.phone or "")
-                if normalized and normalized in seen_phones:
-                    result.errors += 1
-                    result.rows.append(
-                        RowResult(
-                            row=row.row_number,
-                            name=row.name,
-                            phone=row.phone,
-                            status="error",
-                            message="Duplicate phone in this file.",
-                        ),
-                    )
-                    continue
-
                 supplier, status = service.upsert_import_supplier(
                     account_id,
                     name=row.name or "",
-                    phone=row.phone or "",
+                    phone=row.phone,
                     notes=row.notes,
                     balance=row.balance,
                     address=row.address,
@@ -492,11 +605,10 @@ def import_suppliers_from_excel(
                     email=row.email,
                     fax=row.fax,
                     pin_number=row.pin_number,
+                    overwrite=overwrite,
                     commit=False,
                 )
                 db.flush()
-                if supplier.phone:
-                    seen_phones[supplier.phone] = supplier.id
             except SupplierServiceError as exc:
                 result.errors += 1
                 result.rows.append(
@@ -510,6 +622,7 @@ def import_suppliers_from_excel(
                 )
                 continue
 
+            imported_ids.add(supplier.id)
             if status == "created":
                 result.created += 1
                 message = "Supplier added."
@@ -527,11 +640,27 @@ def import_suppliers_from_excel(
                 ),
             )
 
+        if mode == "replace":
+            if result.created + result.updated == 0:
+                result.rows.append(
+                    RowResult(
+                        row=0,
+                        name=None,
+                        phone=None,
+                        status="skipped",
+                        message="No rows could be imported, so your existing suppliers were left untouched.",
+                    ),
+                )
+            else:
+                _remove_suppliers_not_in_file(db, account_id, file_phones, imported_ids, result)
+
         db.commit()
     except Exception as exc:
         db.rollback()
         result.created = 0
         result.updated = 0
+        result.removed = 0
+        result.kept = 0
         result.errors = len(parsed_rows) + result.errors
         result.rows = [
             RowResult(
@@ -647,7 +776,7 @@ def _generate_excel_template() -> tuple[bytes, str, str]:
         ["", ""],
         ["Field", "Required?", "Description & Format"],
         ["Supplier Name", "Yes", "Company name or vendor contact name."],
-        ["Phone", "Yes", "Kenyan phone number (e.g. 0712345678, +254712345678). Used for matching."],
+        ["Phone", "Recommended", "Kenyan phone number (e.g. 0712345678, +254712345678). Used for matching. Leave blank if unknown."],
         ["Balance", "No", "Current balance owed to supplier (defaults to 0.00)."],
         ["Address", "No", "Physical street address or business premises."],
         ["Postal Code", "No", "P.O. Box or postal code."],
@@ -657,7 +786,8 @@ def _generate_excel_template() -> tuple[bytes, str, str]:
         ["PIN Number", "No", "KRA PIN / Tax identification number (e.g. P051234567A)."],
         ["Notes", "No", "Payment terms, bank details, or delivery schedules."],
         ["", ""],
-        ["Deduplication Note:", "", "Suppliers with existing phone numbers or PIN numbers in your account are automatically updated without creating duplicate entries."],
+        ["Deduplication Note:", "", "Suppliers with existing phone numbers or PIN numbers in your account are automatically updated without creating duplicate entries. Rows sharing a phone number are merged into one supplier. Rows without a phone are matched by PIN, then by name."],
+        ["Replace Mode:", "", "Choose 'Replace list' when importing to make this file your full supplier list. Suppliers not in the file are removed unless they have a balance or purchase history."],
     ]
     for row in instructions:
         guide_ws.append(row)

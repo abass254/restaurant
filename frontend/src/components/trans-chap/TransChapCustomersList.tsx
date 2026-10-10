@@ -12,6 +12,10 @@ import {
 } from "react";
 import Link from "next/link";
 import { MotionItem, MotionList } from "@/components/app/MotionList";
+import {
+  ContactImportModePicker,
+  ContactImportResults,
+} from "@/components/trans-chap/TransChapContactImport";
 import { TransChapCustomerTab } from "@/components/trans-chap/TransChapCustomerTab";
 import { TransChapFab } from "@/components/trans-chap/TransChapFab";
 import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
@@ -32,6 +36,7 @@ import { formatNairobiDate } from "@/lib/nairobi-time";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import { checkKenyanPhone } from "@/lib/phone-checker";
 import type {
+  ContactImportMode,
   ManualCreditCollectRequest,
   ManualCreditCollectResponse,
   CustomerImportResponse,
@@ -118,6 +123,7 @@ export function TransChapCustomersList() {
   const [saving, setSaving] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [importMode, setImportMode] = useState<ContactImportMode>("merge");
   const [importing, setImporting] = useState(false);
   const [downloadingFormat, setDownloadingFormat] = useState<"xlsx" | "csv" | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
@@ -272,6 +278,7 @@ export function TransChapCustomersList() {
 
   function openImport() {
     setImportFile(null);
+    setImportMode("merge");
     setImportError(null);
     setImportResult(null);
     setOpenId(null);
@@ -369,17 +376,27 @@ export function TransChapCustomersList() {
 
   async function handleImport() {
     if (!importFile) return;
+    if (
+      importMode === "replace" &&
+      !(await confirmAction(
+        "Replace your customer list?",
+        "Customers not in this file will be removed. Anyone who still owes money is kept. This can't be undone.",
+        "Yes, replace list",
+      ))
+    ) {
+      return;
+    }
     setImporting(true);
     setImportError(null);
     try {
       const form = new FormData();
       form.append("file", importFile);
-      const res = await apiFetch<CustomerImportResponse>(apiRoutes.customersImport, {
+      const res = await apiFetch<CustomerImportResponse>(apiRoutes.customersImport(importMode), {
         method: "POST",
         body: form,
       });
       setImportResult(res);
-      if (res.summary.created > 0 || res.summary.updated > 0) {
+      if (res.summary.created > 0 || res.summary.updated > 0 || res.summary.removed > 0) {
         await reload();
         await toastSuccess(res.message);
       } else if (res.summary.errors > 0) {
@@ -537,15 +554,14 @@ export function TransChapCustomersList() {
   }
 
   if (view === "import") {
-    const detectedEntries = importResult
-      ? Object.entries(importResult.detected_columns)
-      : [];
     return (
       <div className="auth-split__form trans-chap-form">
         <p className="trans-chap-form__lead">
           Upload an <strong>Excel (.xlsx)</strong> or <strong>CSV (.csv)</strong> file with{" "}
-          <code>Name</code>, <code>Phone</code>, <code>Credit Limit</code>, and <code>Opening Balance</code>.
-          Existing customers matching by phone are automatically updated without duplicates.
+          <code>Name</code> and <code>Phone</code>. Optional: <code>Credit Limit</code>,{" "}
+          <code>Opening Balance</code> or <code>Total Sale Due</code>, <code>Address</code>,{" "}
+          <code>Postal Code</code>, <code>City</code>, <code>Email</code>, <code>Fax</code>,{" "}
+          <code>Notes</code>. Rows with the same phone are merged into one customer.
         </p>
         <div className="trans-chap-form__fields">
           <button
@@ -599,9 +615,16 @@ export function TransChapCustomersList() {
               </div>
             </div>
             <p style={{ margin: 0, fontSize: "0.78rem", opacity: 0.75 }}>
-              Supported columns: <code>NAME</code>, <code>PHONE</code>, <code>CREDIT LIMIT</code>, <code>OPENING BALANCE</code>, <code>PHYSICAL LOCATION</code>, <code>NOTES</code>
+              Supported columns: <code>CUSTOMER NAME</code>, <code>PHONE</code>, <code>CREDIT LIMIT</code>, <code>OPENING BALANCE</code>, <code>ADDRESS</code>, <code>POSTAL CODE</code>, <code>CITY</code>, <code>EMAIL</code>, <code>FAX</code>, <code>NOTES</code>
             </p>
           </div>
+
+          <ContactImportModePicker
+            noun={{ singular: "customer", plural: "customers" }}
+            mode={importMode}
+            disabled={importing || !!importResult}
+            onChange={setImportMode}
+          />
 
           <input
             ref={fileInputRef}
@@ -638,54 +661,10 @@ export function TransChapCustomersList() {
           ) : null}
 
           {importResult ? (
-            <div className="trans-chap-import__results">
-              <div className="trans-chap-import__summary">
-                <span>
-                  <strong>{importResult.summary.created}</strong> added
-                </span>
-                <span>
-                  <strong>{importResult.summary.updated}</strong> updated
-                </span>
-                {importResult.summary.skipped ? (
-                  <span>
-                    <strong>{importResult.summary.skipped}</strong> skipped
-                  </span>
-                ) : null}
-                {importResult.summary.errors ? (
-                  <span className="trans-chap-import__stat--error">
-                    <strong>{importResult.summary.errors}</strong> failed
-                  </span>
-                ) : null}
-              </div>
-
-              {detectedEntries.length > 0 ? (
-                <details className="trans-chap-import__columns">
-                  <summary>Columns detected ({detectedEntries.length})</summary>
-                  <ul>
-                    {detectedEntries.map(([field, header]) => (
-                      <li key={field}>
-                        <code>{header}</code>
-                        <span> → {field.replace(/_/g, " ")}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              ) : null}
-
-              {importResult.rows.some((row) => row.status === "error") ? (
-                <ul className="trans-chap-import__errors">
-                  {importResult.rows
-                    .filter((row) => row.status === "error")
-                    .slice(0, 8)
-                    .map((row) => (
-                      <li key={row.row}>
-                        Row {row.row}
-                        {row.name ? `: ${row.name}` : ""} — {row.message}
-                      </li>
-                    ))}
-                </ul>
-              ) : null}
-            </div>
+            <ContactImportResults
+              result={importResult}
+              noun={{ singular: "customer", plural: "customers" }}
+            />
           ) : null}
         </div>
         <div className="trans-chap-form__actions">
@@ -695,7 +674,11 @@ export function TransChapCustomersList() {
             disabled={!importFile || importing || !!importResult}
             onClick={() => void handleImport()}
           >
-            {importing ? "Importing…" : "Import customers"}
+            {importing
+              ? "Importing…"
+              : importMode === "replace"
+                ? "Replace customer list"
+                : "Import customers"}
           </button>
           {importResult ? (
             <button
@@ -751,7 +734,7 @@ export function TransChapCustomersList() {
         <div className="trans-chap-sales__chips" role="toolbar" aria-label="Customer actions">
           <button
             type="button"
-            className="trans-chap-chip"
+            className="trans-chap-chip trans-chap-chip--primary"
             onClick={openCreate}
           >
             <i className="fa-solid fa-plus" aria-hidden />
@@ -794,7 +777,7 @@ export function TransChapCustomersList() {
             const panelId = `${listId}-${customer.id}`;
             const badge = badgeFor(customer);
             const waUrl =
-              customer.outstanding_balance > 0
+              customer.outstanding_balance > 0 && customer.phone
                 ? buildDebtReminderWhatsAppUrl({
                     customerName: customer.name,
                     shopName,
@@ -816,7 +799,7 @@ export function TransChapCustomersList() {
                   ),
                 )
               : 0;
-            const cleanPhone = customer.phone.replace(/\D/g, "");
+            const cleanPhone = (customer.phone ?? "").replace(/\D/g, "");
 
             return (
               <MotionItem key={customer.id} as="div">
@@ -826,7 +809,7 @@ export function TransChapCustomersList() {
                   imageUrl={null}
                   tone={owes ? "credit" : "sale"}
                   title={customer.name}
-                  subtitle={customer.phone}
+                  subtitle={customer.phone ?? "No phone"}
                   badge={badge}
                   onToggle={() => toggle(customer)}
                 >
@@ -909,7 +892,7 @@ export function TransChapCustomersList() {
                     </section>
 
                     <div className="trans-chap-customer-actions">
-                      {owes ? (
+                      {owes && customer.phone ? (
                         <Link
                           href="/trans-chap/credit"
                           className="trans-chap-btn trans-chap-btn--primary trans-chap-customer-actions__wide"
@@ -945,15 +928,21 @@ export function TransChapCustomersList() {
                         </button>
                       ) : null}
 
-                      <Link
-                        href={`/trans-chap/pos?customer=${customer.id}`}
-                        className={`trans-chap-btn ${
-                          owes ? "trans-chap-btn--ghost" : "trans-chap-btn--primary"
-                        } trans-chap-customer-actions__wide`}
-                      >
-                        <i className="fa-solid fa-cart-shopping" aria-hidden />
-                        <span>Start POS sale</span>
-                      </Link>
+                      {customer.phone ? (
+                        <Link
+                          href={`/trans-chap/pos?customer=${customer.id}`}
+                          className={`trans-chap-btn ${
+                            owes ? "trans-chap-btn--ghost" : "trans-chap-btn--primary"
+                          } trans-chap-customer-actions__wide`}
+                        >
+                          <i className="fa-solid fa-cart-shopping" aria-hidden />
+                          <span>Start POS sale</span>
+                        </Link>
+                      ) : (
+                        <p className="trans-chap-mpesa-gate trans-chap-customer-actions__wide">
+                          No phone on file — add one to sell on credit, send M-PESA prompts or WhatsApp reminders.
+                        </p>
+                      )}
 
                       {!owes ? (
                         <button
@@ -1100,6 +1089,7 @@ export function TransChapCustomersList() {
                     <div className="trans-chap-customer-contact">
                       <div className="trans-chap-customer-contact__item">
                         <span className="trans-chap-customer-contact__label">Contact</span>
+                        {customer.phone ? (
                         <div className="trans-chap-customer-contact__val">
                           <a
                             href={`tel:${customer.phone}`}
@@ -1125,13 +1115,16 @@ export function TransChapCustomersList() {
                             className="trans-chap-customer-contact__icon-btn"
                             title="Copy phone number"
                             onClick={() => {
-                              void navigator.clipboard.writeText(customer.phone);
+                              void navigator.clipboard.writeText(customer.phone ?? "");
                               void toastSuccess("Phone copied!");
                             }}
                           >
                             <i className="fa-solid fa-copy" aria-hidden />
                           </button>
                         </div>
+                        ) : (
+                          <div className="trans-chap-customer-contact__val">No phone on file</div>
+                        )}
                       </div>
 
                       {customer.physical_location || customer.address ? (

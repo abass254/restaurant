@@ -15,4 +15,4 @@ if [[ ! -x .venv/bin/python ]] || ! .venv/bin/python -c "import sys" >/dev/null 
   .venv/bin/pip install -r requirements.txt
 fi
 
-exec .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port "${APP_PORT:-7001}" --reload
+exec .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port "${APP_PORT:-7001}" --reload --reload-dir app

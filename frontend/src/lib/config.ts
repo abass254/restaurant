@@ -225,7 +225,8 @@ export const apiRoutes = {
   customers: `${apiUrl}/api/v1/customers`,
   customersOwing: `${apiUrl}/api/v1/customers?owing=1`,
   customerCreditSettings: `${apiUrl}/api/v1/customers/credit-settings`,
-  customersImport: `${apiUrl}/api/v1/customers/import`,
+  customersImport: (mode: "merge" | "replace" = "merge") =>
+    `${apiUrl}/api/v1/customers/import?mode=${mode}`,
   customerTemplate: (format: "xlsx" | "csv" = "xlsx") =>
     `${apiUrl}/api/v1/customers/template?format=${format}`,
   customer: (id: string) => `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}`,
@@ -243,7 +244,8 @@ export const apiRoutes = {
     `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/send-whatsapp-reminder`,
   customerVerifyWhatsApp: `${apiUrl}/api/v1/customers/verify-whatsapp`,
   suppliers: `${apiUrl}/api/v1/suppliers`,
-  suppliersImport: `${apiUrl}/api/v1/suppliers/import`,
+  suppliersImport: (mode: "merge" | "replace" = "merge") =>
+    `${apiUrl}/api/v1/suppliers/import?mode=${mode}`,
   supplierTemplate: (format: "xlsx" | "csv" = "xlsx") =>
     `${apiUrl}/api/v1/suppliers/template?format=${format}`,
   supplier: (id: string) => `${apiUrl}/api/v1/suppliers/${encodeURIComponent(id)}`,

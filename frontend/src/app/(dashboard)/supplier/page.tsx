@@ -45,7 +45,7 @@ function supplierInitials(name: string): string {
 function formFromSupplier(supplier: ShopSupplier): SupplierForm {
   return {
     name: supplier.name,
-    phone: supplier.phone,
+    phone: supplier.phone ?? "",
     notes: supplier.notes ?? "",
   };
 }

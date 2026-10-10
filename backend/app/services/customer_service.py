@@ -117,6 +117,18 @@ class CustomerService:
             q = q.filter(ShopCustomer.id != exclude_id)
         return q.first()
 
+    def _find_phoneless_by_name(self, account_id: str, name: str) -> ShopCustomer | None:
+        return (
+            self.db.query(ShopCustomer)
+            .filter(
+                ShopCustomer.account_id == account_id,
+                ShopCustomer.phone.is_(None),
+                func.lower(ShopCustomer.name) == name.strip().lower(),
+            )
+            .order_by(ShopCustomer.created_at.asc(), ShopCustomer.id.asc())
+            .first()
+        )
+
     def create_customer(
         self,
         account_id: str,
@@ -125,11 +137,15 @@ class CustomerService:
         phone: str,
         email: str | None = None,
         address: str | None = None,
+        postal_code: str | None = None,
+        city: str | None = None,
+        fax: str | None = None,
         physical_location: str | None = None,
         date_to_pay: date | str | None = None,
         notes: str | None = None,
         credit_limit: object | None = DEFAULT_CREDIT_LIMIT,
         outstanding_balance: object | None = 0,
+        allow_over_limit: bool = False,
         commit: bool = True,
     ) -> ShopCustomer:
         clean_name = (name or "").strip()
@@ -144,7 +160,7 @@ class CustomerService:
 
         limit = _money(credit_limit)
         opening = _money(outstanding_balance, field="Opening balance")
-        if limit > 0 and opening > limit:
+        if not allow_over_limit and limit > 0 and opening > limit:
             raise CustomerServiceError(
                 "Opening balance cannot be higher than the credit limit."
             )
@@ -158,6 +174,9 @@ class CustomerService:
             phone=clean_phone,
             email=clean_email,
             address=(address or "").strip() or clean_location,
+            postal_code=(postal_code or "").strip() or None,
+            city=(city or "").strip() or None,
+            fax=(fax or "").strip() or None,
             physical_location=clean_location,
             date_to_pay=due_date,
             notes=(notes or "").strip() or None,
@@ -177,51 +196,97 @@ class CustomerService:
         account_id: str,
         *,
         name: str,
-        phone: str,
+        phone: str | None,
         email: str | None = None,
         address: str | None = None,
+        postal_code: str | None = None,
+        city: str | None = None,
+        fax: str | None = None,
         notes: str | None = None,
         credit_limit: object | None = 0,
         outstanding_balance: object | None = 0,
+        overwrite: bool = False,
         commit: bool = True,
     ) -> tuple[ShopCustomer, ImportUpsertStatus]:
-        """Create or update by phone for Excel import (sets opening outstanding)."""
-        clean_phone = normalize_phone(phone)
-        if not clean_phone:
-            raise CustomerServiceError("Customer phone is required.")
-        existing = self._find_duplicate_phone(account_id, clean_phone)
-        if existing is None:
-            customer = self.create_customer(
-                account_id,
-                name=name,
-                phone=clean_phone,
-                email=email,
-                address=address,
-                notes=notes,
-                credit_limit=credit_limit,
-                outstanding_balance=outstanding_balance,
-                commit=commit,
-            )
-            return customer, "created"
+        """Create or update for Excel import (sets opening outstanding).
 
+        Matches by phone, or by name among phoneless customers when the row has
+        no phone. ``None`` values keep what the customer already has unless
+        ``overwrite`` is set, in which case the file replaces every imported field.
+        Opening balances above the credit limit are kept as-is (carried-over debt);
+        available credit is simply zero until it is paid down.
+        """
         clean_name = (name or "").strip()
         if not clean_name:
             raise CustomerServiceError("Customer name is required.")
+        clean_phone = normalize_phone(phone or "") or None
+        if clean_phone:
+            existing = self._find_duplicate_phone(account_id, clean_phone)
+        else:
+            existing = self._find_phoneless_by_name(account_id, clean_name)
+        if existing is None:
+            if clean_phone:
+                customer = self.create_customer(
+                    account_id,
+                    name=clean_name,
+                    phone=clean_phone,
+                    email=email,
+                    address=address,
+                    postal_code=postal_code,
+                    city=city,
+                    fax=fax,
+                    notes=notes,
+                    credit_limit=credit_limit or 0,
+                    outstanding_balance=outstanding_balance or 0,
+                    allow_over_limit=True,
+                    commit=commit,
+                )
+                return customer, "created"
+            limit = _money(credit_limit)
+            opening = _money(outstanding_balance, field="Opening balance")
+            now = utc_now()
+            customer = ShopCustomer(
+                account_id=account_id,
+                name=clean_name,
+                phone=None,
+                email=(email or "").strip().lower() or None,
+                address=(address or "").strip() or None,
+                postal_code=(postal_code or "").strip() or None,
+                city=(city or "").strip() or None,
+                fax=(fax or "").strip() or None,
+                notes=(notes or "").strip() or None,
+                credit_limit=limit,
+                outstanding_balance=opening,
+                created_at=now,
+                updated_at=now,
+            )
+            self.db.add(customer)
+            if commit:
+                self.db.commit()
+                self.db.refresh(customer)
+            return customer, "created"
+
+        if credit_limit is None and not overwrite:
+            credit_limit = existing.credit_limit
+        if outstanding_balance is None and not overwrite:
+            outstanding_balance = existing.outstanding_balance
         limit = _money(credit_limit)
         opening = _money(outstanding_balance, field="Opening balance")
-        if limit > 0 and opening > limit:
-            raise CustomerServiceError(
-                "Opening balance cannot be higher than the credit limit."
-            )
 
         existing.name = clean_name
         existing.phone = clean_phone
-        if email is not None:
-            existing.email = email.strip().lower() or None
-        if address is not None:
-            existing.address = address.strip() or None
-        if notes is not None:
-            existing.notes = notes.strip() or None
+        if email is not None or overwrite:
+            existing.email = (email or "").strip().lower() or None
+        if address is not None or overwrite:
+            existing.address = (address or "").strip() or None
+        if postal_code is not None or overwrite:
+            existing.postal_code = (postal_code or "").strip() or None
+        if city is not None or overwrite:
+            existing.city = (city or "").strip() or None
+        if fax is not None or overwrite:
+            existing.fax = (fax or "").strip() or None
+        if notes is not None or overwrite:
+            existing.notes = (notes or "").strip() or None
         existing.credit_limit = limit
         existing.outstanding_balance = opening
         existing.updated_at = utc_now()
@@ -239,6 +304,9 @@ class CustomerService:
         phone: str | None = None,
         email: str | None = None,
         address: str | None = None,
+        postal_code: str | None = None,
+        city: str | None = None,
+        fax: str | None = None,
         physical_location: str | None = None,
         date_to_pay: date | str | None = None,
         notes: str | None = None,
@@ -270,6 +338,12 @@ class CustomerService:
             customer.address = None
         elif address is not None:
             customer.address = address.strip() or None
+        if postal_code is not None:
+            customer.postal_code = postal_code.strip() or None
+        if city is not None:
+            customer.city = city.strip() or None
+        if fax is not None:
+            customer.fax = fax.strip() or None
         if clear_physical_location:
             customer.physical_location = None
         elif physical_location is not None:

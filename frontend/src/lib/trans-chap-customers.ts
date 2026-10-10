@@ -17,7 +17,7 @@ export function findCustomerByPhone(
 ): ShopCustomer | undefined {
   const key = customerPhoneKey(phone);
   if (!key) return undefined;
-  return customers.find((row) => customerPhoneKey(row.phone) === key);
+  return customers.find((row) => row.phone && customerPhoneKey(row.phone) === key);
 }
 
 export async function fetchShopCustomers(): Promise<ShopCustomer[]> {
