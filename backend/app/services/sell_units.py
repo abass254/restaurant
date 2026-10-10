@@ -105,3 +105,69 @@ def resolve_sell_unit(item: Any, sell_unit: str | None) -> dict[str, Any]:
 def normalize_sell_units_payload(raw: Any) -> list[dict[str, Any]]:
     """Validate and clean a sell_units list for storage on inventory attributes."""
     return pack_units_from_attributes({"sell_units": raw if isinstance(raw, list) else []})
+
+
+def buy_units_from_attributes(attributes: Any) -> list[dict[str, Any]]:
+    """Restaurant purchase units (``attributes.buy_units``), e.g. 50kg bag or 500g pack.
+
+    Unlike sell packs, the factor may be fractional (0.5 kg pack) as long as it
+    is positive and not 1.
+    """
+    raw = _as_dict(attributes).get("buy_units")
+    if not isinstance(raw, list):
+        return []
+    units: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name") or "").strip()[:64]
+        key = _normalize_name(name)
+        if not name or key in seen:
+            continue
+        try:
+            factor = round(float(entry.get("factor")), 4)
+        except (TypeError, ValueError):
+            continue
+        if factor <= 0 or factor == 1 or factor > 1_000_000:
+            continue
+        seen.add(key)
+        unit: dict[str, Any] = {"name": name, "factor": factor}
+        try:
+            price = float(entry.get("buying_price"))
+        except (TypeError, ValueError):
+            price = None
+        if price is not None and price >= 0:
+            unit["buying_price"] = round(price, 2)
+        units.append(unit)
+    return units
+
+
+def normalize_buy_units_payload(raw: Any) -> list[dict[str, Any]]:
+    return buy_units_from_attributes({"buy_units": raw if isinstance(raw, list) else []})
+
+
+def buy_units_for_item(item: Any) -> list[dict[str, Any]]:
+    """Units a restaurant supply can be bought in: base unit, buy units, then sell packs."""
+    base_name = base_unit_name(item)
+    base_buy = (
+        float(item.buying_price)
+        if getattr(item, "buying_price", None) is not None
+        else None
+    )
+    units: list[dict[str, Any]] = [{"name": base_name, "factor": 1, "buying_price": base_buy}]
+    seen = {_normalize_name(base_name)}
+    attributes = getattr(item, "attributes", None)
+    candidates = buy_units_from_attributes(attributes) + [
+        {key: pack[key] for key in ("name", "factor", "buying_price") if key in pack}
+        for pack in pack_units_from_attributes(attributes)
+    ]
+    for unit in candidates:
+        key = _normalize_name(unit["name"])
+        if key in seen:
+            continue
+        seen.add(key)
+        if unit.get("buying_price") is None and base_buy is not None:
+            unit["buying_price"] = round(base_buy * float(unit["factor"]), 2)
+        units.append(unit)
+    return units

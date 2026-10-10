@@ -9,6 +9,7 @@ import { showError, showInternalError, toastSuccess, promptEmail, promptMpesaRec
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { isStoreAdmin } from "@/lib/merchant-permissions";
+import { isRestaurantStore } from "@/lib/onboarding";
 import { promptAndUndoWalkinSale, walkinUndoAction } from "@/lib/trans-chap-orders";
 import {
   isTransChapReceiptClosed,
@@ -324,12 +325,15 @@ export function TransChapReceiptView() {
     if (!receipt?.orderId) return;
     setUndoing(true);
     try {
-      const updated = await promptAndUndoWalkinSale({
-        id: receipt.orderId,
-        status: receipt.orderStatus ?? "",
-        allowed_next_statuses: receipt.allowedNextStatuses,
-        payment_method: receipt.payMode,
-      });
+      const updated = await promptAndUndoWalkinSale(
+        {
+          id: receipt.orderId,
+          status: receipt.orderStatus ?? "",
+          allowed_next_statuses: receipt.allowedNextStatuses,
+          payment_method: receipt.payMode,
+        },
+        { restaurant: isRestaurantStore(user.active_account ?? user.account) },
+      );
       if (!updated) return;
       applyReceipt(receiptFromOrder(updated, receipt.shopName));
       await toastSuccess(updated.status === "refunded" ? "Sale refunded" : "Sale voided");

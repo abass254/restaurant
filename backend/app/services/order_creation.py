@@ -18,7 +18,9 @@ from sqlalchemy.orm import Session
 from app.models import Account, InventoryItem, Order, OrderItem, OrderStatusHistory
 from app.services.catalog.catalog_types import CatalogItem, platform_inventory_item_id
 from app.services.inventory_stock_service import InsufficientStockError, deduct_stock
+from app.services.order_stock_service import consume_for_order, restaurant_line_usage
 from app.support.order_status import PAYMENT_MPESA, PLACED
+from app.support.store_type import is_restaurant_account
 from app.support.store_status import is_accepting_orders
 
 # Mirror of the autopilot cap so a single line can't request an absurd qty.
@@ -152,28 +154,31 @@ def build_instagram_order(
     db.add(order)
     db.flush()
 
+    restaurant = is_restaurant_account(db, account_id)
     running = Decimal("0.00")
     stock_lines: list[tuple[str, int]] = []
+    order_items: list[OrderItem] = []
     for item, raw_qty in line_items:
         quantity = max(1, min(int(raw_qty or 1), MAX_QUANTITY))
         unit_price = Decimal(str(item.selling_price or 0)).quantize(Decimal("0.01"))
         line_total = (unit_price * quantity).quantize(Decimal("0.01"))
         running += line_total
         stock_lines.append((str(item.id), quantity))
-        db.add(
-            OrderItem(
-                order_id=order.id,
-                inventory_item_id=item.id,
-                product_id=item.product_id,
-                product_name=(item.product.name if item.product else "Product"),
-                product_sku=(item.product.sku if item.product else None),
-                quantity=quantity,
-                unit_price=unit_price,
-                line_total=line_total,
-                created_at=now,
-                updated_at=now,
-            ),
+        order_item = OrderItem(
+            order_id=order.id,
+            inventory_item_id=item.id,
+            product_id=item.product_id,
+            product_name=(item.product.name if item.product else "Product"),
+            product_sku=(item.product.sku if item.product else None),
+            quantity=quantity,
+            unit_price=unit_price,
+            line_total=line_total,
+            stock_usage=restaurant_line_usage(db, account_id, item) if restaurant else None,
+            created_at=now,
+            updated_at=now,
         )
+        db.add(order_item)
+        order_items.append(order_item)
 
     order.subtotal = running
     order.total = running
@@ -187,7 +192,10 @@ def build_instagram_order(
         ),
     )
     try:
-        if deduct_stock(db, stock_lines, account_id=str(order.account_id)):
+        if restaurant:
+            db.flush()
+            consume_for_order(db, order, order_items)
+        elif deduct_stock(db, stock_lines, account_id=str(order.account_id)):
             order.stock_deducted = True
     except InsufficientStockError:
         db.rollback()
@@ -267,29 +275,35 @@ def build_catalog_order(
     db.add(order)
     db.flush()
 
+    restaurant = is_restaurant_account(db, account_id)
     running = Decimal("0.00")
     stock_lines: list[tuple[str, int]] = []
+    order_items: list[OrderItem] = []
     for item, raw_qty in line_items:
         quantity = max(1, min(int(raw_qty or 1), MAX_QUANTITY))
         unit_price = Decimal(str(item.price or 0)).quantize(Decimal("0.01"))
         line_total = (unit_price * quantity).quantize(Decimal("0.01"))
         running += line_total
         inv_id = item.inventory_item_id or platform_inventory_item_id(item.ref)
-        db.add(
-            OrderItem(
-                order_id=order.id,
-                inventory_item_id=inv_id,
-                product_id=item.platform_product_id,
-                product_name=item.name,
-                product_sku=item.external_sku,
-                quantity=quantity,
-                unit_price=unit_price,
-                line_total=line_total,
-                notes=item.ref,
-                created_at=now,
-                updated_at=now,
-            ),
+        usage = None
+        if restaurant and inv_id:
+            usage = restaurant_line_usage(db, account_id, db.get(InventoryItem, str(inv_id)))
+        order_item = OrderItem(
+            order_id=order.id,
+            inventory_item_id=inv_id,
+            product_id=item.platform_product_id,
+            product_name=item.name,
+            product_sku=item.external_sku,
+            quantity=quantity,
+            unit_price=unit_price,
+            line_total=line_total,
+            stock_usage=usage,
+            notes=item.ref,
+            created_at=now,
+            updated_at=now,
         )
+        db.add(order_item)
+        order_items.append(order_item)
         if inv_id:
             stock_lines.append((str(inv_id), quantity))
 
@@ -305,7 +319,10 @@ def build_catalog_order(
         ),
     )
     try:
-        if stock_lines and deduct_stock(db, stock_lines, account_id=str(order.account_id)):
+        if restaurant:
+            db.flush()
+            consume_for_order(db, order, order_items)
+        elif stock_lines and deduct_stock(db, stock_lines, account_id=str(order.account_id)):
             order.stock_deducted = True
     except InsufficientStockError:
         db.rollback()

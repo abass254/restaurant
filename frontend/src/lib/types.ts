@@ -627,6 +627,8 @@ export type SettingsResponse = {
   allow_price_adjustment?: boolean;
   adjust_selling_price_on_purchase?: boolean;
   force_mpesa_prompt?: boolean;
+  block_sale_on_low_ingredients?: boolean;
+  kitchen_issuing_enabled?: boolean;
   inventory_integration?: InventoryIntegrationConfig | null;
 };
 
@@ -635,6 +637,8 @@ export type SettingsOperationsResponse = {
   allow_price_adjustment: boolean;
   adjust_selling_price_on_purchase: boolean;
   force_mpesa_prompt: boolean;
+  block_sale_on_low_ingredients?: boolean;
+  kitchen_issuing_enabled?: boolean;
 };
 
 export type ChannelPlatform =
@@ -1113,7 +1117,54 @@ export type MpesaStkPushResponse = {
   outcome?: "paid" | "failed" | "pending" | "resent";
 };
 
-export type ProductType = "retail" | "meal" | "addon" | "service" | "product";
+export type ProductType = "retail" | "meal" | "combo" | "addon" | "service" | "product";
+
+export type ModifierOption = {
+  id: string;
+  group_id: string;
+  name: string;
+  price_delta: number;
+  product_id?: string | null;
+  product_name?: string | null;
+  product_unit?: string | null;
+  /** Amount of the linked supply one pick uses, in the supply's unit. */
+  stock_qty?: number;
+  is_default: boolean;
+  sort_order: number;
+  is_active: boolean;
+};
+
+/** Shop-owned question asked at the till, e.g. "Choose your drink" (pick 1). */
+export type ModifierGroup = {
+  id: string;
+  name: string;
+  min_select: number;
+  max_select: number;
+  /** Choices are part of the dish price (e.g. the drink in a meal), so they are free. */
+  included?: boolean;
+  sort_order: number;
+  options: ModifierOption[];
+  item_count?: number | null;
+};
+
+/** How much of a supply one portion of a dish uses (this shop's recipe). */
+export type RecipeLine = {
+  id: string;
+  ingredient_product_id: string;
+  name?: string | null;
+  unit?: string | null;
+  quantity: number;
+};
+
+/** A dish included in a combo meal, with that dish's own option groups. */
+export type ComboComponent = {
+  id: string;
+  component_product_id: string;
+  name?: string | null;
+  quantity: number;
+  sort_order: number;
+  modifier_groups: ModifierGroup[];
+};
 
 export type MealAddon = {
   id: string;
@@ -1172,6 +1223,9 @@ export type CatalogProduct = {
   shops_carrying_count?: number;
   total_quantity?: number | null;
   addons?: MealAddon[] | null;
+  modifier_groups?: ModifierGroup[] | null;
+  combo_components?: ComboComponent[] | null;
+  recipe?: RecipeLine[] | null;
   is_active?: boolean;
   created_at: string | null;
   updated_at: string | null;
@@ -1228,6 +1282,7 @@ export type InventoryImportResponse = {
   summary: {
     created: number;
     updated: number;
+    matched_existing?: number;
     skipped: number;
     errors: number;
   };
@@ -1426,6 +1481,8 @@ export type OrderItemModifier = {
   group?: string | null;
   option_id?: string | null;
   quantity?: number;
+  /** "component" marks a dish included in a meal (not an extra). */
+  kind?: string | null;
 };
 
 export type OrderItem = {
@@ -1681,6 +1738,8 @@ export type OrderCreatePayload = {
     unit_factor?: number | null;
     notes?: string | null;
     modifiers?: OrderItemModifier[] | null;
+    /** Option-group picks; the server validates and prices them. */
+    modifier_option_ids?: string[] | null;
   }[];
 };
 
@@ -1848,6 +1907,14 @@ export type ShopSupplier = {
   name: string;
   phone: string;
   notes: string | null;
+  balance?: number | null;
+  address?: string | null;
+  postal_code?: string | null;
+  postalcode?: string | null;
+  city?: string | null;
+  email?: string | null;
+  fax?: string | null;
+  pin_number?: string | null;
   created_at: string | null;
   updated_at: string | null;
 };

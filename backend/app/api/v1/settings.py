@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from decimal import Decimal
 
@@ -70,6 +71,70 @@ class OperationsSettingsUpdate(BaseModel):
     allow_price_adjustment: bool | None = None
     adjust_selling_price_on_purchase: bool | None = None
     force_mpesa_prompt: bool | None = None
+    block_sale_on_low_ingredients: bool | None = None
+
+
+DEFAULT_MENU_SECTIONS: list[dict[str, str]] = [
+    {"id": "mains", "label": "Mains"},
+    {"id": "bites", "label": "Bites & snacks"},
+    {"id": "hot_drinks", "label": "Hot drinks"},
+    {"id": "cold_drinks", "label": "Cold drinks"},
+]
+
+_SECTION_ID_INVALID = re.compile(r"[^a-z0-9]+")
+
+
+class MenuSectionIn(BaseModel):
+    id: str | None = Field(default=None, max_length=48)
+    label: str = Field(min_length=1, max_length=40)
+
+
+class MenuSectionsUpdate(BaseModel):
+    sections: list[MenuSectionIn] = Field(min_length=1, max_length=24)
+
+
+def _section_id(value: str) -> str:
+    return _SECTION_ID_INVALID.sub("_", value.strip().lower()).strip("_")[:48]
+
+
+def menu_sections_for(account: Account | None) -> list[dict[str, str]]:
+    raw = account.menu_sections if account is not None else None
+    if not isinstance(raw, list):
+        return [dict(s) for s in DEFAULT_MENU_SECTIONS]
+    sections = [
+        {"id": str(s["id"]), "label": str(s["label"])}
+        for s in raw
+        if isinstance(s, dict) and s.get("id") and s.get("label")
+    ]
+    return sections or [dict(s) for s in DEFAULT_MENU_SECTIONS]
+
+
+def _normalize_menu_sections(sections: list[MenuSectionIn]) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    seen_ids: set[str] = set()
+    seen_labels: set[str] = set()
+    for section in sections:
+        label = " ".join(section.label.split())
+        if not label:
+            continue
+        if label.lower() in seen_labels:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f'"{label}" is listed twice.',
+            )
+        base = _section_id(section.id or "") or _section_id(label) or "section"
+        section_id, n = base, 2
+        while section_id in seen_ids:
+            section_id, n = f"{base}_{n}", n + 1
+        seen_ids.add(section_id)
+        seen_labels.add(label.lower())
+        out.append({"id": section_id, "label": label})
+    if not out:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Add at least one menu section.",
+        )
+    return out
 
 
 class BusinessLocationUpdate(BaseModel):
@@ -266,6 +331,10 @@ def show_operations_settings(
         "allow_price_adjustment": account.allow_price_adjustment,
         "adjust_selling_price_on_purchase": account.adjust_selling_price_on_purchase,
         "force_mpesa_prompt": account.force_mpesa_prompt,
+        "block_sale_on_low_ingredients": bool(
+            getattr(account, "block_sale_on_low_ingredients", False)
+        ),
+        "kitchen_issuing_enabled": bool(getattr(account, "kitchen_issuing_enabled", False)),
     }
 
 
@@ -301,7 +370,42 @@ def update_operations_settings(
         "allow_price_adjustment": account.allow_price_adjustment,
         "adjust_selling_price_on_purchase": account.adjust_selling_price_on_purchase,
         "force_mpesa_prompt": account.force_mpesa_prompt,
+        "block_sale_on_low_ingredients": bool(
+            getattr(account, "block_sale_on_low_ingredients", False)
+        ),
+        "kitchen_issuing_enabled": bool(getattr(account, "kitchen_issuing_enabled", False)),
     }
+
+
+@router.get("/menu-sections")
+def show_menu_sections(
+    services: ServiceContainer = Depends(get_services),
+    session: dict = Depends(get_request_session),
+):
+    user = require_user(services.db, session)
+    assert_merchant_section_any_access(user, "settings", "inventory", "pos", "dashboard")
+    account = services.db.get(Account, require_merchant_account_id(user))
+    return {"sections": menu_sections_for(account)}
+
+
+@router.put("/menu-sections")
+def update_menu_sections(
+    payload: MenuSectionsUpdate,
+    request: Request,
+    services: ServiceContainer = Depends(get_services),
+    session: dict = Depends(get_request_session),
+):
+    validate_csrf(request, session)
+    user = require_user(services.db, session)
+    assert_merchant_section_access(user, "settings")
+    account = services.db.get(Account, require_merchant_account_id(user))
+    if account is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Business account not found.")
+
+    account.menu_sections = _normalize_menu_sections(payload.sections)
+    services.db.commit()
+    services.db.refresh(account)
+    return {"message": "Menu sections saved.", "sections": menu_sections_for(account)}
 
 
 @router.put("/opening-amount")

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useState } from "react";
+import Link from "next/link";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { TransChapFab } from "@/components/trans-chap/TransChapFab";
 import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
@@ -59,6 +60,65 @@ function purchaseRoleTag(row: TransChapPurchase): string | undefined {
   return undefined;
 }
 
+export type PurchaseBatch = {
+  id: string;
+  supplier: string | null;
+  paidAt: string;
+  items: TransChapPurchase[];
+  totalAmount: number;
+  totalQuantity: number;
+  voidedAmount: number;
+  isAllVoided: boolean;
+  isPartialVoided: boolean;
+};
+
+export function groupPurchasesIntoBatches(purchases: TransChapPurchase[]): PurchaseBatch[] {
+  const sorted = [...purchases].sort(
+    (a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime(),
+  );
+  const batches: PurchaseBatch[] = [];
+
+  for (const purchase of sorted) {
+    const purchaseTime = new Date(purchase.paidAt).getTime();
+    const purchaseSupplier = (purchase.supplier || "").trim().toLowerCase();
+
+    const existing = batches.find((b) => {
+      const batchTime = new Date(b.paidAt).getTime();
+      const timeDiff = Math.abs(batchTime - purchaseTime);
+      const batchSupplier = (b.supplier || "").trim().toLowerCase();
+      return batchSupplier === purchaseSupplier && timeDiff <= 120_000;
+    });
+
+    if (existing) {
+      existing.items.push(purchase);
+      if (!purchase.voidedAt) {
+        existing.totalAmount += purchase.total;
+        existing.totalQuantity += purchase.quantity;
+      } else {
+        existing.voidedAmount += purchase.total;
+      }
+      existing.isAllVoided = existing.items.every((i) => Boolean(i.voidedAt));
+      existing.isPartialVoided =
+        !existing.isAllVoided && existing.items.some((i) => Boolean(i.voidedAt));
+    } else {
+      const voided = Boolean(purchase.voidedAt);
+      batches.push({
+        id: `batch-${purchase.id}`,
+        supplier: purchase.supplier,
+        paidAt: purchase.paidAt,
+        items: [purchase],
+        totalAmount: voided ? 0 : purchase.total,
+        totalQuantity: voided ? 0 : purchase.quantity,
+        voidedAmount: voided ? purchase.total : 0,
+        isAllVoided: voided,
+        isPartialVoided: false,
+      });
+    }
+  }
+
+  return batches;
+}
+
 export function TransChapPurchasesList() {
   const user = useAuthUser();
   const restaurant = isRestaurantStore(user.active_account ?? user.account);
@@ -67,6 +127,7 @@ export function TransChapPurchasesList() {
 
   const listId = useId();
   const [view, setView] = useTransChapListView("trans-chap-purchases-view");
+  const [groupMode, setGroupMode] = useState<"batches" | "items">("batches");
   const [purchases, setPurchases] = useState<TransChapPurchase[]>([]);
   const [query, setQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
@@ -211,14 +272,17 @@ export function TransChapPurchasesList() {
     return searched.filter((row) => (row.category || "").toLowerCase() === wanted);
   }, [searched, selectedCategory]);
 
+  const batches = useMemo(() => groupPurchasesIntoBatches(filtered), [filtered]);
+
   const totals = useMemo(() => {
     const received = filtered.filter((row) => !row.voidedAt);
     return {
       count: received.length,
+      batchCount: batches.filter((b) => !b.isAllVoided).length,
       amount: received.reduce((sum, row) => sum + row.total, 0),
       voided: filtered.length - received.length,
     };
-  }, [filtered]);
+  }, [batches, filtered]);
 
   const voidable = useMemo(() => filtered.filter((row) => !row.voidedAt), [filtered]);
   const selectedRows = voidable.filter((row) => selectedIds.has(row.id));
@@ -316,6 +380,65 @@ export function TransChapPurchasesList() {
     );
   }
 
+  async function voidBatch(batch: PurchaseBatch) {
+    const voidableItems = batch.items.filter((item) => !item.voidedAt);
+    if (!voidableItems.length || bulkVoiding) return;
+    setBulkVoiding(true);
+    try {
+      const result = await promptAndVoidTransChapPurchases(voidableItems);
+      if (!result) return;
+      mergeUpdated(result.updated);
+      if (result.failures.length) {
+        await showError(
+          result.updated.length
+            ? `Voided ${result.updated.length}, ${result.failures.length} failed`
+            : "Could not void batch",
+          summarizeFailures(result.failures),
+        );
+        return;
+      }
+      await toastSuccess(
+        result.updated.length === 1
+          ? "Purchase voided"
+          : `${result.updated.length} items voided in batch`,
+      );
+    } finally {
+      setBulkVoiding(false);
+    }
+  }
+
+  function toggleSelectedBatch(batch: PurchaseBatch) {
+    const activeItemIds = batch.items.filter((i) => !i.voidedAt).map((i) => i.id);
+    const allPicked = activeItemIds.length > 0 && activeItemIds.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allPicked) {
+        activeItemIds.forEach((id) => next.delete(id));
+      } else {
+        activeItemIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }
+
+  function renderBatchCheck(batch: PurchaseBatch) {
+    if (batch.isAllVoided) return null;
+    const activeItemIds = batch.items.filter((i) => !i.voidedAt).map((i) => i.id);
+    const picked = activeItemIds.length > 0 && activeItemIds.every((id) => selectedIds.has(id));
+    return (
+      <button
+        type="button"
+        role="checkbox"
+        className={`trans-chap-panel__check${picked ? " is-on" : ""}`}
+        aria-checked={picked}
+        aria-label={`${picked ? "Unselect" : "Select"} batch`}
+        onClick={() => toggleSelectedBatch(batch)}
+      >
+        {picked ? <i className="fa-solid fa-check" aria-hidden /> : null}
+      </button>
+    );
+  }
+
   return (
     <div className={`trans-chap-sales${view === "list" ? " trans-chap-sales--list" : ""}`}>
       {draftSummary ? (
@@ -328,6 +451,45 @@ export function TransChapPurchasesList() {
             ? `You have a purchase draft (${draftSummary.itemCount} qty).`
             : `You have a purchase draft (${draftSummary.lineCount} items · ${draftSummary.itemCount} qty).`}
         </TransChapStatus>
+      ) : null}
+      {restaurant ? (
+        <div
+          className="rs-row rs-row--between"
+          style={{
+            marginBottom: "0.6rem",
+            padding: "0.5rem 0.75rem",
+            background: "var(--app-surface)",
+            borderRadius: 14,
+            border: "1px solid var(--app-border-light)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <span style={{ fontSize: "0.84rem", fontWeight: 750, color: "var(--app-text)" }}>
+              <i
+                className="fa-solid fa-boxes-stacked"
+                style={{ color: "var(--app-primary)", marginRight: 6 }}
+                aria-hidden
+              />
+              Store Inventory
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: "0.45rem" }}>
+            <Link
+              href="/trans-chap/purchases/issue?new=1"
+              className="rs-btn rs-btn--primary"
+              style={{ fontSize: "0.75rem", padding: "0.28rem 0.75rem", fontWeight: 700 }}
+            >
+              <i className="fa-solid fa-dolly" aria-hidden /> Release to Kitchen
+            </Link>
+            <Link
+              href="/trans-chap/stocks"
+              className="rs-btn"
+              style={{ fontSize: "0.75rem", padding: "0.28rem 0.75rem" }}
+            >
+              View Inventory
+            </Link>
+          </div>
+        </div>
       ) : null}
       <div className="trans-chap-sales__filters">
         <div className="trans-chap-sales__search-row">
@@ -356,7 +518,58 @@ export function TransChapPurchasesList() {
             <i className="fa-solid fa-sliders" aria-hidden />
             {activeFilterCount ? <em>{activeFilterCount}</em> : null}
           </button>
-          <TransChapViewToggle view={view} onChange={setView} label="Purchases layout" />
+          <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+            <div
+              role="radiogroup"
+              aria-label="Purchases grouping"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                background: "var(--app-surface)",
+                padding: "2px",
+                borderRadius: 10,
+                border: "1px solid var(--app-border-light)",
+              }}
+            >
+              <button
+                type="button"
+                role="radio"
+                aria-checked={groupMode === "batches"}
+                style={{
+                  border: 0,
+                  padding: "0.22rem 0.55rem",
+                  fontSize: "0.74rem",
+                  fontWeight: 750,
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  background: groupMode === "batches" ? "var(--app-primary)" : "transparent",
+                  color: groupMode === "batches" ? "#ffffff" : "var(--app-text-secondary)",
+                }}
+                onClick={() => setGroupMode("batches")}
+              >
+                Batches
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={groupMode === "items"}
+                style={{
+                  border: 0,
+                  padding: "0.22rem 0.55rem",
+                  fontSize: "0.74rem",
+                  fontWeight: 750,
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  background: groupMode === "items" ? "var(--app-primary)" : "transparent",
+                  color: groupMode === "items" ? "#ffffff" : "var(--app-text-secondary)",
+                }}
+                onClick={() => setGroupMode("items")}
+              >
+                Items
+              </button>
+            </div>
+            <TransChapViewToggle view={view} onChange={setView} label="Purchases layout" />
+          </div>
           {canVoid && purchases.some((row) => !row.voidedAt) ? (
             <button
               type="button"
@@ -453,7 +666,9 @@ export function TransChapPurchasesList() {
         <p className="trans-chap-sales__totals" aria-live="polite">
           <strong>{formatKsh(totals.amount)}</strong>
           <span>
-            {totals.count} purchase{totals.count === 1 ? "" : "s"}
+            {groupMode === "batches"
+              ? `${totals.batchCount} batch${totals.batchCount === 1 ? "" : "es"} (${totals.count} item${totals.count === 1 ? "" : "s"})`
+              : `${totals.count} purchase${totals.count === 1 ? "" : "s"}`}
             {totals.voided ? ` · ${totals.voided} voided` : ""}
             {filtersOn ? " · filtered" : ""}
           </span>
@@ -499,79 +714,303 @@ export function TransChapPurchasesList() {
             ) : null}
           </p>
         ) : view === "list" ? (
-          <div className="trans-chap-stock-table-wrap trans-chap-stock-table-wrap--cards">
-            <table className="trans-chap-stock-table trans-chap-stock-table--cards trans-chap-stock-table--purchase">
-              <thead>
-                <tr>
-                  {selecting ? <th className="trans-chap-stock-table__check" scope="col"> </th> : null}
-                  <th scope="col">Product</th>
-                  <th scope="col">Category</th>
-                  <th scope="col">Qty</th>
-                  <th scope="col">Unit cost</th>
-                  <th scope="col">Total</th>
-                  <th scope="col">Supplier</th>
-                  <th scope="col">Time</th>
-                  <th scope="col">Status</th>
-                  {canVoid ? (
-                    <th className="trans-chap-stock-table__actions" scope="col">
-                      Actions
-                    </th>
-                  ) : null}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => {
-                  const voided = Boolean(row.voidedAt);
-                  const picked = selectedIds.has(row.id);
-                  return (
-                    <tr
-                      key={row.id}
-                      className={`${voided ? "is-inactive" : ""}${picked ? " is-picked" : ""}`}
-                    >
-                      {selecting ? (
-                        <td className="trans-chap-stock-table__check">{renderCheck(row)}</td>
-                      ) : null}
-                      <td className="trans-chap-stock-table__product">
-                        <div className="trans-chap-stock-table__product-inner">
-                          <span>{row.productName}</span>
-                          {purchaseRoleTag(row) ? (
-                            <em className="trans-chap-panel__tag">{purchaseRoleTag(row)}</em>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td>{row.category ? formatCategoryLabel(row.category) : "—"}</td>
-                      <td className="trans-chap-stock-table__mono">{row.quantity}</td>
-                      <td>{formatKsh(row.unitCost)}</td>
-                      <td className="trans-chap-stock-table__strong">{formatKsh(row.total)}</td>
-                      <td className="trans-chap-stock-table__wrap">{row.supplier?.trim() || "—"}</td>
-                      <td className="trans-chap-stock-table__mono">
-                        {formatNairobiStamp24(row.paidAt) || "—"}
-                      </td>
-                      <td>
-                        {voided ? (
-                          <em
-                            className="trans-chap-panel__badge is-fail"
-                            title={row.voidReason || undefined}
-                          >
-                            Voided
-                          </em>
-                        ) : (
-                          <span className="trans-chap-stock-table__muted">Received</span>
-                        )}
-                      </td>
-                      {canVoid ? (
-                        <td className="trans-chap-stock-table__actions">
-                          <div className="trans-chap-stock-table__actions-inner">
-                            {selecting ? null : renderVoidButton(row)}
+          groupMode === "batches" ? (
+            <div className="trans-chap-stock-table-wrap trans-chap-stock-table-wrap--cards">
+              <table className="trans-chap-stock-table trans-chap-stock-table--cards trans-chap-stock-table--purchase">
+                <thead>
+                  <tr>
+                    {selecting ? <th className="trans-chap-stock-table__check" scope="col"> </th> : null}
+                    <th scope="col">Batch / Supplier</th>
+                    <th scope="col">Items bought</th>
+                    <th scope="col" className="trans-chap-stock-table__mono">Count</th>
+                    <th scope="col">Total</th>
+                    <th scope="col">Time</th>
+                    <th scope="col">Status</th>
+                    {canVoid ? (
+                      <th className="trans-chap-stock-table__actions" scope="col">
+                        Actions
+                      </th>
+                    ) : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {batches.map((batch) => {
+                    const batchVoided = batch.isAllVoided;
+                    const activeItemIds = batch.items.filter((i) => !i.voidedAt).map((i) => i.id);
+                    const picked = activeItemIds.length > 0 && activeItemIds.every((id) => selectedIds.has(id));
+                    const itemsSummary = batch.items.map((i) => `${i.productName} (${i.quantity})`).join(", ");
+                    const displayTotal = batchVoided ? batch.voidedAmount : batch.totalAmount;
+                    return (
+                      <tr
+                        key={batch.id}
+                        className={`${batchVoided ? "is-inactive" : ""}${picked ? " is-picked" : ""}`}
+                      >
+                        {selecting ? (
+                          <td className="trans-chap-stock-table__check">{renderBatchCheck(batch)}</td>
+                        ) : null}
+                        <td className="trans-chap-stock-table__product">
+                          <div className="trans-chap-stock-table__product-inner">
+                            <span style={{ fontWeight: 750 }}>
+                              {batch.supplier?.trim() || "Supplies Purchase"}
+                            </span>
+                            <em className="trans-chap-panel__tag">{batch.items.length} items</em>
                           </div>
                         </td>
-                      ) : null}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        <td className="trans-chap-stock-table__wrap" style={{ maxWidth: 220, fontSize: "0.8rem" }}>
+                          {itemsSummary}
+                        </td>
+                        <td className="trans-chap-stock-table__mono">{batch.items.length}</td>
+                        <td className="trans-chap-stock-table__strong">{formatKsh(displayTotal)}</td>
+                        <td className="trans-chap-stock-table__mono">
+                          {formatNairobiStamp24(batch.paidAt) || "—"}
+                        </td>
+                        <td>
+                          {batchVoided ? (
+                            <em className="trans-chap-panel__badge is-fail">Voided</em>
+                          ) : batch.isPartialVoided ? (
+                            <em className="trans-chap-panel__badge is-warn">Partial void</em>
+                          ) : (
+                            <span className="trans-chap-stock-table__muted">Received</span>
+                          )}
+                        </td>
+                        {canVoid ? (
+                          <td className="trans-chap-stock-table__actions">
+                            <div className="trans-chap-stock-table__actions-inner">
+                              {!batchVoided && !selecting ? (
+                                <button
+                                  type="button"
+                                  className="trans-chap-panel__link trans-chap-panel__void"
+                                  disabled={bulkVoiding}
+                                  onClick={() => void voidBatch(batch)}
+                                >
+                                  Void batch
+                                </button>
+                              ) : null}
+                            </div>
+                          </td>
+                        ) : null}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="trans-chap-stock-table-wrap trans-chap-stock-table-wrap--cards">
+              <table className="trans-chap-stock-table trans-chap-stock-table--cards trans-chap-stock-table--purchase">
+                <thead>
+                  <tr>
+                    {selecting ? <th className="trans-chap-stock-table__check" scope="col"> </th> : null}
+                    <th scope="col">Product</th>
+                    <th scope="col">Category</th>
+                    <th scope="col">Qty</th>
+                    <th scope="col">Unit cost</th>
+                    <th scope="col">Total</th>
+                    <th scope="col">Supplier</th>
+                    <th scope="col">Time</th>
+                    <th scope="col">Status</th>
+                    {canVoid ? (
+                      <th className="trans-chap-stock-table__actions" scope="col">
+                        Actions
+                      </th>
+                    ) : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((row) => {
+                    const voided = Boolean(row.voidedAt);
+                    const picked = selectedIds.has(row.id);
+                    return (
+                      <tr
+                        key={row.id}
+                        className={`${voided ? "is-inactive" : ""}${picked ? " is-picked" : ""}`}
+                      >
+                        {selecting ? (
+                          <td className="trans-chap-stock-table__check">{renderCheck(row)}</td>
+                        ) : null}
+                        <td className="trans-chap-stock-table__product">
+                          <div className="trans-chap-stock-table__product-inner">
+                            <span>{row.productName}</span>
+                            {purchaseRoleTag(row) ? (
+                              <em className="trans-chap-panel__tag">{purchaseRoleTag(row)}</em>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td>{row.category ? formatCategoryLabel(row.category) : "—"}</td>
+                        <td className="trans-chap-stock-table__mono">{row.quantity}</td>
+                        <td>{formatKsh(row.unitCost)}</td>
+                        <td className="trans-chap-stock-table__strong">{formatKsh(row.total)}</td>
+                        <td className="trans-chap-stock-table__wrap">{row.supplier?.trim() || "—"}</td>
+                        <td className="trans-chap-stock-table__mono">
+                          {formatNairobiStamp24(row.paidAt) || "—"}
+                        </td>
+                        <td>
+                          {voided ? (
+                            <em
+                              className="trans-chap-panel__badge is-fail"
+                              title={row.voidReason || undefined}
+                            >
+                              Voided
+                            </em>
+                          ) : (
+                            <span className="trans-chap-stock-table__muted">Received</span>
+                          )}
+                        </td>
+                        {canVoid ? (
+                          <td className="trans-chap-stock-table__actions">
+                            <div className="trans-chap-stock-table__actions-inner">
+                              {selecting ? null : renderVoidButton(row)}
+                            </div>
+                          </td>
+                        ) : null}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : groupMode === "batches" ? (
+          <MotionList as="div" className="trans-chap-sales__stagger">
+            {batches.map((batch) => {
+              const open = !selecting && openId === batch.id;
+              const panelId = `${listId}-${batch.id}`;
+              const batchVoided = batch.isAllVoided;
+              const displayTotal = batchVoided ? batch.voidedAmount : batch.totalAmount;
+              const itemsPreview =
+                batch.items.map((i) => `${i.productName} (${i.quantity})`).slice(0, 3).join(", ") +
+                (batch.items.length > 3 ? ` +${batch.items.length - 3} more` : "");
+              const supplierTitle = batch.supplier?.trim() || "Supplies Purchase";
+              const badge = batchVoided
+                ? { label: "Voided", tone: "fail" as const }
+                : batch.isPartialVoided
+                  ? { label: "Partial void", tone: "wait" as const }
+                  : undefined;
+              const activeItemIds = batch.items.filter((i) => !i.voidedAt).map((i) => i.id);
+              const picked = activeItemIds.length > 0 && activeItemIds.every((id) => selectedIds.has(id));
+
+              return (
+                <MotionItem key={batch.id} as="div">
+                  <TransChapPanel
+                    id={panelId}
+                    open={open}
+                    tone="purchase"
+                    title={supplierTitle}
+                    tag={`${batch.items.length} ${batch.items.length === 1 ? "item" : "items"}`}
+                    qty={itemsPreview}
+                    price={formatKsh(displayTotal)}
+                    badge={badge}
+                    inactive={selecting && batchVoided}
+                    picking={selecting}
+                    picked={picked}
+                    onToggle={() => {
+                      if (!selecting) setOpenId(open ? null : batch.id);
+                      else if (!batchVoided) toggleSelectedBatch(batch);
+                    }}
+                    headAction={selecting ? renderBatchCheck(batch) : undefined}
+                    action={
+                      canVoid && !batchVoided ? (
+                        <button
+                          type="button"
+                          className="trans-chap-panel__link trans-chap-panel__void"
+                          disabled={bulkVoiding}
+                          onClick={() => void voidBatch(batch)}
+                        >
+                          Void batch
+                        </button>
+                      ) : null
+                    }
+                  >
+                    <p className="trans-chap-panel__lead">
+                      {batchVoided
+                        ? "This purchase batch was voided. Stock was taken back out."
+                        : `Purchase batch with ${batch.items.length} ${batch.items.length === 1 ? "item" : "items"}. Stock was received in store.`}
+                    </p>
+                    <ul className="trans-chap-panel__lines">
+                      {batch.items.map((row) => (
+                        <li
+                          key={row.id}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            padding: "0.35rem 0",
+                            borderBottom: "1px dashed var(--app-border-light)",
+                          }}
+                        >
+                          <div>
+                            <span style={{ fontWeight: 700, color: "var(--app-text)" }}>
+                              {row.productName}
+                            </span>
+                            <span
+                              style={{
+                                marginLeft: 6,
+                                fontSize: "0.78rem",
+                                color: "var(--app-text-secondary)",
+                              }}
+                            >
+                              Qty {row.quantity} × {formatKsh(row.unitCost)}
+                            </span>
+                            {row.voidedAt ? (
+                              <em
+                                className="trans-chap-panel__badge is-fail"
+                                style={{ marginLeft: 6, fontSize: "0.68rem" }}
+                              >
+                                Voided
+                              </em>
+                            ) : null}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                            <strong style={{ fontSize: "0.86rem", color: "var(--app-text)" }}>
+                              {formatKsh(row.total)}
+                            </strong>
+                            {canVoid && !row.voidedAt && !selecting ? (
+                              <button
+                                type="button"
+                                className="trans-chap-panel__link trans-chap-panel__void"
+                                style={{
+                                  fontSize: "0.72rem",
+                                  padding: "2px 6px",
+                                  borderRadius: 6,
+                                }}
+                                disabled={voidingId === row.id || bulkVoiding}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void voidPurchase(row);
+                                }}
+                              >
+                                {voidingId === row.id ? "…" : "Void item"}
+                              </button>
+                            ) : null}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                    <dl className="trans-chap-panel__facts" style={{ marginTop: "0.75rem" }}>
+                      <div>
+                        <dt>Supplier</dt>
+                        <dd>{batch.supplier?.trim() || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>Total items</dt>
+                        <dd>
+                          {batch.items.length} items ({batch.totalQuantity} units)
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Purchase date & time</dt>
+                        <dd>{formatNairobiStamp24(batch.paidAt) || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>Batch total</dt>
+                        <dd>{formatKsh(displayTotal)}</dd>
+                      </div>
+                    </dl>
+                  </TransChapPanel>
+                </MotionItem>
+              );
+            })}
+          </MotionList>
         ) : (
           <MotionList as="div" className="trans-chap-sales__stagger">
           {filtered.map((row) => {

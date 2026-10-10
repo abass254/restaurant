@@ -213,7 +213,7 @@ export function TransChapSaleCatalog({
           <TransChapStatus
             actionHref={
               restaurant
-                ? "/trans-chap/stocks/menu"
+                ? "/trans-chap/menus"
                 : inventory.length === 0
                   ? "/trans-chap/purchases/new"
                   : undefined
@@ -268,7 +268,14 @@ export function TransChapSaleCatalog({
                       <strong>
                         {name}
                         {restaurant && hotel ? (
-                          <em className="trans-chap-panel__tag">Hotel</em>
+                          <>
+                            <em className="trans-chap-panel__tag">Hotel</em>
+                            {typeof (item.attributes as Record<string, unknown> | null)?.prep_time_minutes === "number" ? (
+                              <em className="trans-chap-panel__tag" style={{ marginLeft: "0.25rem" }}>
+                                ⏱️ {String((item.attributes as Record<string, unknown>).prep_time_minutes)}m
+                              </em>
+                            ) : null}
+                          </>
                         ) : null}
                       </strong>
                       <span>

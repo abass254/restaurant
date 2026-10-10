@@ -37,6 +37,8 @@ def test_operations_settings_are_readable_from_pos(monkeypatch) -> None:
         "allow_price_adjustment": False,
         "adjust_selling_price_on_purchase": True,
         "force_mpesa_prompt": False,
+        "block_sale_on_low_ingredients": False,
+        "kitchen_issuing_enabled": False,
     }
     assert accessed_sections == [("settings", "pos", "dashboard")]
     db.get.assert_called_once()

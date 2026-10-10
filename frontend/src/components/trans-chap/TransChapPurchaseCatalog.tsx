@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TransChapBarcodeCamera } from "@/components/trans-chap/TransChapBarcodeCamera";
 import { TransChapProductThumb } from "@/components/trans-chap/TransChapProductThumb";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
@@ -126,6 +126,67 @@ export function TransChapPurchaseCatalog({
       );
     });
   }, [catalog, inventoryByProductId, query]);
+
+  const PAGE_SIZE = 24;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [query]);
+
+  const visibleShop = useMemo(() => {
+    return filteredShop.slice(0, visibleCount);
+  }, [filteredShop, visibleCount]);
+
+  const remainingCatalogQuota = Math.max(0, visibleCount - filteredShop.length);
+
+  const visibleCatalog = useMemo(() => {
+    if (remainingCatalogQuota <= 0) return [];
+    return filteredCatalog.slice(0, remainingCatalogQuota);
+  }, [filteredCatalog, remainingCatalogQuota]);
+
+  const totalAvailable = filteredShop.length + filteredCatalog.length;
+  const totalRendered = visibleShop.length + visibleCatalog.length;
+  const hasMore = totalRendered < totalAvailable;
+
+  const sentinelRef = useRef<HTMLLIElement | null>(null);
+
+  useEffect(() => {
+    if (!hasMore) return;
+    const target = sentinelRef.current;
+    if (!target) return;
+    if (typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, totalAvailable));
+        }
+      },
+      { rootMargin: "400px" },
+    );
+
+    observer.observe(target);
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasMore, totalAvailable]);
+
+  useEffect(() => {
+    if (!hasMore) return;
+    const handleScroll = () => {
+      if (
+        window.innerHeight + window.scrollY >=
+        document.documentElement.scrollHeight - 500
+      ) {
+        setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, totalAvailable));
+      }
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, [hasMore, totalAvailable]);
 
   const draftName = query.trim();
   const exactExisting =
@@ -343,7 +404,7 @@ export function TransChapPurchaseCatalog({
               </div>
             </li>
           ))}
-          {filteredShop.map((item) => {
+          {visibleShop.map((item) => {
             const name = inventoryProductName(item);
             const line = lineByInventoryId.get(item.id);
             const shownRole = line?.role ?? inventoryRole(item);
@@ -404,7 +465,7 @@ export function TransChapPurchaseCatalog({
               </li>
             );
           })}
-          {filteredCatalog.map((product) => {
+          {visibleCatalog.map((product) => {
             const line = lineByCatalogId.get(product.id);
             const name = product.name.trim() || "Product";
             return (
@@ -458,6 +519,38 @@ export function TransChapPurchaseCatalog({
               </li>
             );
           })}
+          {hasMore && (
+            <li
+              ref={sentinelRef}
+              style={{
+                gridColumn: "1 / -1",
+                listStyle: "none",
+                padding: "1rem 0.5rem",
+                textAlign: "center",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  setVisibleCount((prev) =>
+                    Math.min(prev + PAGE_SIZE, totalAvailable),
+                  )
+                }
+                style={{
+                  background: "var(--app-surface)",
+                  border: "1px solid var(--app-border-light)",
+                  borderRadius: "999px",
+                  padding: "0.5rem 1.25rem",
+                  fontSize: "0.85rem",
+                  fontWeight: 650,
+                  color: "var(--app-text-secondary)",
+                  cursor: "pointer",
+                }}
+              >
+                Showing {totalRendered} of {totalAvailable} · Scroll for more
+              </button>
+            </li>
+          )}
         </ul>
       );
     }

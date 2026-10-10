@@ -92,6 +92,7 @@ export const apiRoutes = {
   settingsOpeningAmount: `${apiUrl}/api/v1/settings/opening-amount`,
   settingsOpeningStock: `${apiUrl}/api/v1/settings/opening-stock`,
   settingsOperations: `${apiUrl}/api/v1/settings/operations`,
+  settingsMenuSections: `${apiUrl}/api/v1/settings/menu-sections`,
   settingsLogo: `${apiUrl}/api/v1/settings/logo`,
   autoRepliesSettings: `${apiUrl}/api/v1/settings/auto-replies`,
   settingsInventoryIntegration: `${apiUrl}/api/v1/settings/inventory-integration`,
@@ -150,8 +151,21 @@ export const apiRoutes = {
   mpesaTransactions: `${apiUrl}/api/v1/mpesa/transactions`,
   products: `${apiUrl}/api/v1/products`,
   product: (id: string) => `${apiUrl}/api/v1/products/${id}`,
+  productAddons: (id: string) => `${apiUrl}/api/v1/products/${encodeURIComponent(id)}/addons`,
+  productModifierGroups: (id: string) =>
+    `${apiUrl}/api/v1/products/${encodeURIComponent(id)}/modifier-groups`,
+  productRecipe: (id: string) => `${apiUrl}/api/v1/products/${encodeURIComponent(id)}/recipe`,
+  productComboComponents: (id: string) =>
+    `${apiUrl}/api/v1/products/${encodeURIComponent(id)}/combo-components`,
+  menuModifierGroups: `${apiUrl}/api/v1/menu/modifier-groups`,
+  menuModifierGroup: (id: string) =>
+    `${apiUrl}/api/v1/menu/modifier-groups/${encodeURIComponent(id)}`,
   inventory: `${apiUrl}/api/v1/inventory`,
   inventoryImport: `${apiUrl}/api/v1/inventory/import`,
+  inventoryImportWithMode: (stockMode: "replace" | "add" | "keep" = "replace") =>
+    `${apiUrl}/api/v1/inventory/import?stock_mode=${encodeURIComponent(stockMode)}`,
+  inventoryTemplate: (format: "xlsx" | "csv" = "xlsx") =>
+    `${apiUrl}/api/v1/inventory/template?format=${encodeURIComponent(format)}`,
   inventoryByCode: (code: string) =>
     `${apiUrl}/api/v1/inventory/by-code?code=${encodeURIComponent(code)}`,
   inventoryStockMovements: `${apiUrl}/api/v1/inventory/stock-movements`,
@@ -212,6 +226,8 @@ export const apiRoutes = {
   customersOwing: `${apiUrl}/api/v1/customers?owing=1`,
   customerCreditSettings: `${apiUrl}/api/v1/customers/credit-settings`,
   customersImport: `${apiUrl}/api/v1/customers/import`,
+  customerTemplate: (format: "xlsx" | "csv" = "xlsx") =>
+    `${apiUrl}/api/v1/customers/template?format=${format}`,
   customer: (id: string) => `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}`,
   customerTab: (id: string) =>
     `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/tab`,
@@ -228,9 +244,39 @@ export const apiRoutes = {
   customerVerifyWhatsApp: `${apiUrl}/api/v1/customers/verify-whatsapp`,
   suppliers: `${apiUrl}/api/v1/suppliers`,
   suppliersImport: `${apiUrl}/api/v1/suppliers/import`,
+  supplierTemplate: (format: "xlsx" | "csv" = "xlsx") =>
+    `${apiUrl}/api/v1/suppliers/template?format=${format}`,
   supplier: (id: string) => `${apiUrl}/api/v1/suppliers/${encodeURIComponent(id)}`,
   supplierUpdate: (id: string) =>
     `${apiUrl}/api/v1/suppliers/${encodeURIComponent(id)}/update`,
+  purchaseOrders: `${apiUrl}/api/v1/purchase-orders`,
+  purchaseOrderSupplyItems: `${apiUrl}/api/v1/purchase-orders/supply-items`,
+  purchaseOrder: (id: string) => `${apiUrl}/api/v1/purchase-orders/${encodeURIComponent(id)}`,
+  purchaseOrderAction: (id: string, action: "update" | "order" | "receive" | "payments" | "cancel") =>
+    `${apiUrl}/api/v1/purchase-orders/${encodeURIComponent(id)}/${action}`,
+  purchaseOrderReceiptVoid: (movementId: string) =>
+    `${apiUrl}/api/v1/purchase-orders/receipts/${encodeURIComponent(movementId)}/void`,
+  restaurantMenuCosting: `${apiUrl}/api/v1/restaurant-stock/menu-costing`,
+  restaurantStockCard: (itemId: string) =>
+    `${apiUrl}/api/v1/restaurant-stock/items/${encodeURIComponent(itemId)}/movements`,
+  restaurantStockTakes: `${apiUrl}/api/v1/restaurant-stock/stock-takes`,
+  restaurantStockTake: (id: string) =>
+    `${apiUrl}/api/v1/restaurant-stock/stock-takes/${encodeURIComponent(id)}`,
+  restaurantStockTakeAction: (id: string, action: "counts" | "complete" | "cancel") =>
+    `${apiUrl}/api/v1/restaurant-stock/stock-takes/${encodeURIComponent(id)}/${action}`,
+  restaurantUsageReport: `${apiUrl}/api/v1/restaurant-stock/reports/usage`,
+  restaurantProfitReport: `${apiUrl}/api/v1/restaurant-stock/reports/profit`,
+  restaurantKitchenDayReport: `${apiUrl}/api/v1/restaurant-stock/reports/kitchen-day`,
+  kitchenIssues: `${apiUrl}/api/v1/kitchen-issues`,
+  kitchenStock: `${apiUrl}/api/v1/kitchen-issues/stock`,
+  kitchenSuggest: `${apiUrl}/api/v1/kitchen-issues/suggest`,
+  kitchenReturn: `${apiUrl}/api/v1/kitchen-issues/return`,
+  kitchenUsed: `${apiUrl}/api/v1/kitchen-issues/used`,
+  kitchenEnable: `${apiUrl}/api/v1/kitchen-issues/enable`,
+  kitchenDisable: `${apiUrl}/api/v1/kitchen-issues/disable`,
+  kitchenIssue: (id: string) => `${apiUrl}/api/v1/kitchen-issues/${encodeURIComponent(id)}`,
+  kitchenIssueAction: (id: string, action: "issue" | "cancel") =>
+    `${apiUrl}/api/v1/kitchen-issues/${encodeURIComponent(id)}/${action}`,
   riders: `${apiUrl}/api/v1/riders`,
   riderSuspend: (id: string) => `${apiUrl}/api/v1/riders/${id}/suspend`,
   riderSetEmail: (id: string) => `${apiUrl}/api/v1/riders/${id}/email`,

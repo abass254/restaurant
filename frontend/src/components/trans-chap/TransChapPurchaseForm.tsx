@@ -753,7 +753,9 @@ export function TransChapPurchaseForm() {
         );
         return;
       }
-      if (adjustSellingPrice && line.sellingPriceInput.trim()) {
+      const lineShowSell =
+        adjustSellingPrice && !restaurant && line.role !== "raw_material";
+      if (lineShowSell && line.sellingPriceInput.trim()) {
         const sell = Number(line.sellingPriceInput);
         if (!Number.isFinite(sell) || sell < 0) {
           await showError(
@@ -768,6 +770,8 @@ export function TransChapPurchaseForm() {
     const lossItems = basket.filter(
       (line) =>
         adjustSellingPrice &&
+        !restaurant &&
+        line.role !== "raw_material" &&
         line.sellingPriceInput.trim() &&
         line.sellingPrice > 0 &&
         line.unitCost > 0 &&
@@ -814,8 +818,10 @@ export function TransChapPurchaseForm() {
       for (const line of basket) {
         const cost = Number(line.unitCostInput);
         const sellRaw = Number(line.sellingPriceInput);
+        const lineShowSell =
+          adjustSellingPrice && !restaurant && line.role !== "raw_material";
         const sellingPrice =
-          adjustSellingPrice &&
+          lineShowSell &&
           line.sellingPriceInput.trim() &&
           Number.isFinite(sellRaw) &&
           sellRaw >= 0
@@ -1481,189 +1487,231 @@ export function TransChapPurchaseForm() {
                               : { opacity: 0, scale: 0.96, x: 8 }
                           }
                           transition={springSoft}
-                          className="pos-line pos-line--priced"
+                          className="pos-line pos-line--purchase"
                         >
-                          <div className="pos-line__thumb" aria-hidden="true">
-                            {line.imageUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={resolveAssetUrl(line.imageUrl)}
-                                alt=""
-                              />
-                            ) : (
-                              <span>{nameInitial(line.productName)}</span>
-                            )}
-                          </div>
-                          <div className="pos-line__main">
-                            <strong title={line.productName}>
-                              {line.productName}
-                              {line.unitFactor > 1 && line.sellUnit
-                                ? ` (${line.sellUnit})`
-                                : ""}
-                            </strong>
-                            {roleOptions.length > 1 ? (
-                              <div
-                                className="pos-purchase-role"
-                                role="group"
-                                aria-label={`Buy as for ${line.productName}`}
+                          <div className="pos-line__purchase-top">
+                            <div className="pos-line__thumb" aria-hidden="true">
+                              {line.imageUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={resolveAssetUrl(line.imageUrl)}
+                                  alt=""
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = "none";
+                                    const fallback = e.currentTarget.parentElement?.querySelector(
+                                      ".pos-line__thumb-fallback",
+                                    );
+                                    if (fallback) (fallback as HTMLElement).style.display = "flex";
+                                  }}
+                                />
+                              ) : null}
+                              <span
+                                className="pos-line__thumb-fallback"
+                                style={{ display: line.imageUrl ? "none" : "flex" }}
                               >
-                                {roleOptions.map((option) => (
-                                  <button
-                                    key={option.id}
-                                    type="button"
-                                    className={
-                                      line.role === option.id
-                                        ? "is-active"
-                                        : undefined
-                                    }
-                                    aria-pressed={line.role === option.id}
-                                    onClick={() =>
-                                      updateLine(line.key, {
-                                        role: option.id,
-                                      })
-                                    }
-                                  >
-                                    {option.label}
-                                  </button>
-                                ))}
+                                {nameInitial(line.productName)}
+                              </span>
+                            </div>
+
+                            <div className="pos-line__purchase-main">
+                              <div className="pos-line__purchase-title-row">
+                                <strong
+                                  className="pos-line__purchase-title"
+                                  title={line.productName}
+                                >
+                                  {line.productName}
+                                </strong>
+                                {line.unitFactor > 1 && line.sellUnit ? (
+                                  <span className="pos-line__bulk-tag">
+                                    {line.sellUnit} ({line.unitFactor})
+                                  </span>
+                                ) : null}
                               </div>
-                            ) : null}
-                          </div>
-                          <div
-                            className={`pos-line__prices${
-                              adjustSellingPrice ? " has-sell" : ""
-                            }`}
-                          >
-                            <label className="pos-line__price-edit">
-                              <span className="pos-line__price-label">Buy</span>
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                required
-                                placeholder="0"
-                                value={line.unitCostInput}
-                                onChange={(e) =>
-                                  updateLine(line.key, {
-                                    unitCostInput: e.target.value,
-                                    unitCost: Number(e.target.value) || 0,
-                                  })
-                                }
-                                aria-label={`Buying price for ${line.productName}`}
-                              />
-                            </label>
-                            {adjustSellingPrice ? (
-                              <label
-                                className={`pos-line__price-edit${
-                                  line.sellingPrice > 0 &&
-                                  line.unitCost > 0 &&
-                                  (line.sellingPrice * (line.unitFactor || 1)) < line.unitCost
-                                    ? " has-error"
-                                    : ""
-                                }`}
+                              {roleOptions.length > 1 ? (
+                                <div
+                                  className="pos-purchase-role"
+                                  role="group"
+                                  aria-label={`Buy as for ${line.productName}`}
+                                >
+                                  {roleOptions.map((option) => (
+                                    <button
+                                      key={option.id}
+                                      type="button"
+                                      className={
+                                        line.role === option.id
+                                          ? "is-active"
+                                          : undefined
+                                      }
+                                      aria-pressed={line.role === option.id}
+                                      onClick={() =>
+                                        updateLine(line.key, {
+                                          role: option.id,
+                                        })
+                                      }
+                                    >
+                                      {option.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+
+                            <div className="pos-line__purchase-end">
+                              <strong className="pos-line__purchase-total">
+                                {lineTotal > 0 ? formatMoney(lineTotal) : "—"}
+                              </strong>
+                              <button
+                                type="button"
+                                className="pos-line__remove"
+                                aria-label={`Remove ${line.productName}`}
+                                onClick={() => removeLine(line.key)}
                               >
-                                <span className="pos-line__price-label">
-                                  Sell
-                                </span>
+                                <i
+                                  className="fa-solid fa-trash"
+                                  aria-hidden="true"
+                                />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="pos-line__purchase-bottom">
+                            <div className="pos-line__prices">
+                              <label className="pos-line__price-edit">
+                                <span className="pos-line__price-label">Buy</span>
                                 <input
                                   type="text"
                                   inputMode="decimal"
+                                  required
                                   placeholder="0"
-                                  value={line.sellingPriceInput}
+                                  value={line.unitCostInput}
                                   onChange={(e) =>
                                     updateLine(line.key, {
-                                      sellingPriceInput: e.target.value,
-                                      sellingPrice:
-                                        Number(e.target.value) || 0,
+                                      unitCostInput: e.target.value,
+                                      unitCost: Number(e.target.value) || 0,
                                     })
                                   }
-                                  aria-label={`Selling price for ${line.productName}`}
+                                  aria-label={`Buying price for ${line.productName}`}
                                 />
-                                {line.sellingPrice > 0 &&
-                                line.unitCost > 0 &&
-                                (line.sellingPrice * (line.unitFactor || 1)) < line.unitCost ? (
-                                  <i
-                                    className="fa-solid fa-triangle-exclamation pos-line__price-alert"
-                                    title="Selling price results in a loss based on bulk quantity"
-                                  />
-                                ) : null}
                               </label>
-                            ) : null}
-                          </div>
-                          <div className="pos-line__qty-group">
-                            <div className="pos-line__auto-pack" style={{ display: "flex", alignItems: "center" }}>
-                              <button
-                                type="button"
-                                className={`pos-line__unit-chip${line.unitFactor === 1 ? " is-active" : ""}`}
-                                onClick={() => updateLine(line.key, { unitFactor: 1, sellUnit: null })}
+                              {adjustSellingPrice &&
+                              !restaurant &&
+                              line.role !== "raw_material" ? (
+                                <label
+                                  className={`pos-line__price-edit${
+                                    line.sellingPrice > 0 &&
+                                    line.unitCost > 0 &&
+                                    (line.sellingPrice * (line.unitFactor || 1)) < line.unitCost
+                                      ? " has-error"
+                                      : ""
+                                  }`}
+                                >
+                                  <span className="pos-line__price-label">
+                                    Sell
+                                  </span>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="0"
+                                    value={line.sellingPriceInput}
+                                    onChange={(e) =>
+                                      updateLine(line.key, {
+                                        sellingPriceInput: e.target.value,
+                                        sellingPrice:
+                                          Number(e.target.value) || 0,
+                                      })
+                                    }
+                                    aria-label={`Selling price for ${line.productName}`}
+                                  />
+                                  {line.sellingPrice > 0 &&
+                                  line.unitCost > 0 &&
+                                  (line.sellingPrice * (line.unitFactor || 1)) < line.unitCost ? (
+                                    <i
+                                      className="fa-solid fa-triangle-exclamation pos-line__price-alert"
+                                      title="Selling price results in a loss based on bulk quantity"
+                                    />
+                                  ) : null}
+                                </label>
+                              ) : null}
+                            </div>
+
+                            <div className="pos-line__qty-group">
+                              <div
+                                className="pos-line__auto-pack"
+                                style={{ display: "flex", alignItems: "center" }}
                               >
-                                Single
-                              </button>
-                              <button
-                                type="button"
-                                className={`pos-line__unit-chip${line.unitFactor > 1 ? " is-active" : ""}`}
-                                onClick={() => updateLine(line.key, { unitFactor: line.unitFactor > 1 ? line.unitFactor : (line.autoPackFactor || 12), sellUnit: "Bulk" })}
-                              >
-                                Bulk
-                              </button>
-                              {line.unitFactor > 1 && (
+                                <button
+                                  type="button"
+                                  className={`pos-line__unit-chip${line.unitFactor === 1 ? " is-active" : ""}`}
+                                  onClick={() =>
+                                    updateLine(line.key, { unitFactor: 1, sellUnit: null })
+                                  }
+                                >
+                                  Single
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`pos-line__unit-chip${line.unitFactor > 1 ? " is-active" : ""}`}
+                                  onClick={() =>
+                                    updateLine(line.key, {
+                                      unitFactor:
+                                        line.unitFactor > 1
+                                          ? line.unitFactor
+                                          : line.autoPackFactor || 12,
+                                      sellUnit: "Bulk",
+                                    })
+                                  }
+                                >
+                                  Bulk
+                                </button>
+                                {line.unitFactor > 1 && (
+                                  <input
+                                    type="number"
+                                    min={2}
+                                    className="pos-line__pack-input"
+                                    value={line.unitFactor}
+                                    onChange={(e) =>
+                                      updateLine(line.key, {
+                                        unitFactor: Number(e.target.value) || 1,
+                                      })
+                                    }
+                                    placeholder="Qty"
+                                    title="Units per bulk"
+                                  />
+                                )}
+                              </div>
+
+                              <div className="pos-line__qty">
+                                <button
+                                  type="button"
+                                  aria-label="Decrease quantity"
+                                  onClick={() => changeQuantity(line.key, -1)}
+                                >
+                                  <i
+                                    className="fa-solid fa-minus"
+                                    aria-hidden="true"
+                                  />
+                                </button>
                                 <input
                                   type="number"
-                                  min={2}
-                                  className="pos-line__pack-input"
-                                  value={line.unitFactor}
-                                  onChange={(e) => updateLine(line.key, { unitFactor: Number(e.target.value) || 1 })}
-                                  placeholder="Qty"
-                                  title="Units per bulk"
+                                  min={0}
+                                  value={line.quantity}
+                                  onChange={(e) =>
+                                    setQty(line.key, Number(e.target.value) || 0)
+                                  }
+                                  aria-label={`Quantity of ${line.productName}`}
                                 />
-                              )}
+                                <button
+                                  type="button"
+                                  aria-label="Increase quantity"
+                                  onClick={() => changeQuantity(line.key, 1)}
+                                >
+                                  <i
+                                    className="fa-solid fa-plus"
+                                    aria-hidden="true"
+                                  />
+                                </button>
+                              </div>
                             </div>
-                            <div className="pos-line__qty">
-                              <button
-                                type="button"
-                                aria-label="Decrease quantity"
-                                onClick={() => changeQuantity(line.key, -1)}
-                              >
-                                <i
-                                  className="fa-solid fa-minus"
-                                  aria-hidden="true"
-                                />
-                              </button>
-                              <input
-                                type="number"
-                                min={0}
-                                value={line.quantity}
-                                onChange={(e) =>
-                                  setQty(line.key, Number(e.target.value) || 0)
-                                }
-                                aria-label={`Quantity of ${line.productName}`}
-                              />
-                              <button
-                                type="button"
-                                aria-label="Increase quantity"
-                                onClick={() => changeQuantity(line.key, 1)}
-                              >
-                                <i
-                                  className="fa-solid fa-plus"
-                                  aria-hidden="true"
-                                />
-                              </button>
-                            </div>
-                          </div>
-                          <div className="pos-line__total">
-                            <strong>
-                              {lineTotal > 0 ? formatMoney(lineTotal) : "—"}
-                            </strong>
-                            <button
-                              type="button"
-                              className="pos-line__remove"
-                              aria-label={`Remove ${line.productName}`}
-                              onClick={() => removeLine(line.key)}
-                            >
-                              <i
-                                className="fa-solid fa-trash"
-                                aria-hidden="true"
-                              />
-                            </button>
                           </div>
                         </motion.li>
                       );

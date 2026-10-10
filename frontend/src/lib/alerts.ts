@@ -329,6 +329,33 @@ export async function promptVoidReason(
   return String(result.value).trim();
 }
 
+/** Restaurant voids: was the food made (write off) or can supplies go back to stock? */
+export async function promptStockFate(count = 1): Promise<"return" | "waste" | null> {
+  const result = await fireDialog({
+    icon: "question",
+    title: count === 1 ? "What happened to the food?" : `What happened to the food for ${count} sales?`,
+    text: "If it was already cooked or served it can't go back on the shelf.",
+    input: "radio",
+    inputOptions: {
+      return: "Not made — return supplies to stock",
+      waste: "Already made — record as wastage",
+    },
+    inputValue: "return",
+    showCancelButton: true,
+    confirmButtonText: "Continue",
+    preConfirm: (value) => {
+      if (!value) {
+        dukaiSwal.showValidationMessage("Choose what happened to the food.");
+        return false;
+      }
+      return value;
+    },
+  });
+  if (!result.isConfirmed || !result.value) return null;
+  const choice = String(result.value);
+  return choice === "return" || choice === "waste" ? choice : null;
+}
+
 export async function promptRejectReason(
   title = "Reject this order?",
   text = "Tell the customer why this order is being rejected.",

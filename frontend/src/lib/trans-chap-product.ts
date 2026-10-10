@@ -6,9 +6,14 @@ import type {
   CatalogProduct,
   CatalogProductMutationResponse,
   CatalogProductsResponse,
+  ComboComponent,
   InventoryItem,
   InventoryItemMutationResponse,
   InventoryRole,
+  MealAddon,
+  ModifierGroup,
+  ModifierOption,
+  RecipeLine,
   ProductImageUploadResponse,
   StockMovementsResponse,
 } from "@/lib/types";
@@ -33,7 +38,256 @@ export function isMenuCatalogCategory(category: string | null | undefined): bool
 }
 
 export function isHotelMenuItem(item: InventoryItem): boolean {
-  return isMenuCatalogCategory(item.product?.category);
+  const type = item.product?.product_type;
+  return (
+    type === "meal" ||
+    type === "combo" ||
+    type === "addon" ||
+    isMenuCatalogCategory(item.product?.category)
+  );
+}
+
+/** Stock bought in (sold as-is or used in cooking), as opposed to dishes made in the kitchen. */
+export function isSupplyItem(item: InventoryItem): boolean {
+  const type = item.product?.product_type;
+  return type !== "meal" && type !== "combo" && type !== "addon" && type !== "service";
+}
+
+export function isMenuComboItem(item: InventoryItem): boolean {
+  return item.product?.product_type === "combo";
+}
+
+/** "Required · pick 1", "Optional · up to 3", "Pick 2–4". */
+export function modifierRuleLabel(group: Pick<ModifierGroup, "min_select" | "max_select">): string {
+  const low = group.min_select || 0;
+  const high = Math.max(group.max_select || 1, low);
+  if (low === 0) return high === 1 ? "Optional · pick 1" : `Optional · up to ${high}`;
+  if (low === high) return `Required · pick ${low}`;
+  return `Pick ${low}–${high}`;
+}
+
+/** Every option group the till asks for an item, including the dishes inside a meal. */
+export function itemModifierGroups(item: InventoryItem): { label: string | null; group: ModifierGroup }[] {
+  const product = item.product;
+  if (!product) return [];
+  const own = (product.modifier_groups ?? []).map((group) => ({ label: null, group }));
+  const nested = (product.combo_components ?? []).flatMap((component) =>
+    component.modifier_groups.map((group) => ({ label: component.name || "Item", group })),
+  );
+  return [...own, ...nested].filter((entry) => entry.group.options.some((o) => o.is_active));
+}
+
+export type ModifierGroupInput = {
+  name: string;
+  min_select: number;
+  max_select: number;
+  included: boolean;
+  options: {
+    id?: string;
+    name: string;
+    price_delta: number;
+    product_id?: string | null;
+    is_default: boolean;
+  }[];
+};
+
+/** Selling price of each of the shop's items, keyed by catalogue id. */
+export function sellingPricesByProduct(items: Iterable<InventoryItem>): Map<string, number> {
+  const prices = new Map<string, number>();
+  for (const item of items) {
+    if (item.selling_price != null) prices.set(item.product_id, Number(item.selling_price));
+  }
+  return prices;
+}
+
+/** Price of one pick, as the server charges it: included groups are free, supplies charge their selling price. */
+export function modifierOptionPrice(
+  option: ModifierOption,
+  group: Pick<ModifierGroup, "included">,
+  prices: Map<string, number>,
+): number {
+  if (group.included) return 0;
+  const supplyPrice = option.product_id ? prices.get(option.product_id) : undefined;
+  return supplyPrice ?? (Number(option.price_delta) || 0);
+}
+
+export async function fetchModifierGroups(): Promise<ModifierGroup[]> {
+  const res = await apiFetch<{ data: ModifierGroup[] }>(apiRoutes.menuModifierGroups);
+  return res.data;
+}
+
+export async function saveModifierGroup(
+  groupId: string | null,
+  input: ModifierGroupInput,
+): Promise<ModifierGroup> {
+  const res = await apiFetch<{ data: ModifierGroup }>(
+    groupId ? apiRoutes.menuModifierGroup(groupId) : apiRoutes.menuModifierGroups,
+    { method: groupId ? "PATCH" : "POST", body: JSON.stringify(input) },
+  );
+  return res.data;
+}
+
+export async function deleteModifierGroup(groupId: string): Promise<void> {
+  await apiFetch(apiRoutes.menuModifierGroup(groupId), { method: "DELETE" });
+}
+
+export async function saveItemModifierGroups(
+  productId: string,
+  groupIds: string[],
+): Promise<ModifierGroup[]> {
+  const res = await apiFetch<{ data: ModifierGroup[] }>(apiRoutes.productModifierGroups(productId), {
+    method: "PUT",
+    body: JSON.stringify({ group_ids: groupIds }),
+  });
+  return res.data;
+}
+
+export async function saveRecipe(
+  dishProductId: string,
+  lines: { product_id: string; quantity: number }[],
+): Promise<RecipeLine[]> {
+  const res = await apiFetch<{ data: RecipeLine[] }>(apiRoutes.productRecipe(dishProductId), {
+    method: "PUT",
+    body: JSON.stringify({ lines }),
+  });
+  return res.data;
+}
+
+/**
+ * Ingredient cost of one portion from the supplies' buying prices.
+ * ``priced`` is false when some ingredient has no buying price yet.
+ */
+export function recipeCost(
+  lines: { productId: string; quantity: number }[],
+  supplyByProductId: Map<string, InventoryItem>,
+): { cost: number; priced: boolean } {
+  let cost = 0;
+  let priced = true;
+  for (const line of lines) {
+    const unitCost = supplyByProductId.get(line.productId)?.buying_price;
+    if (unitCost == null) priced = false;
+    else cost += unitCost * line.quantity;
+  }
+  return { cost, priced };
+}
+
+export async function saveComboComponents(
+  comboProductId: string,
+  components: { product_id: string; quantity: number }[],
+): Promise<ComboComponent[]> {
+  const res = await apiFetch<{ data: ComboComponent[] }>(
+    apiRoutes.productComboComponents(comboProductId),
+    { method: "PUT", body: JSON.stringify({ components }) },
+  );
+  return res.data;
+}
+
+export function isMenuAddonItem(item: InventoryItem): boolean {
+  return item.product?.product_type === "addon";
+}
+
+export type MenuSectionDef = { id: string; label: string };
+
+export const DEFAULT_MENU_SECTIONS: MenuSectionDef[] = [
+  { id: "mains", label: "Mains" },
+  { id: "bites", label: "Bites & snacks" },
+  { id: "hot_drinks", label: "Hot drinks" },
+  { id: "cold_drinks", label: "Cold drinks" },
+];
+
+/** The dish's section id, falling back to the first section when it was removed in Settings. */
+export function menuSection(item: InventoryItem, sections: MenuSectionDef[]): string {
+  const raw = item.product?.attributes?.menu_section;
+  if (typeof raw === "string" && sections.some((s) => s.id === raw)) return raw;
+  return sections[0]?.id ?? "mains";
+}
+
+export async function fetchMenuSections(): Promise<MenuSectionDef[]> {
+  const res = await apiFetch<{ sections: MenuSectionDef[] }>(apiRoutes.settingsMenuSections);
+  return res.sections.length ? res.sections : DEFAULT_MENU_SECTIONS;
+}
+
+export async function saveMenuSections(
+  sections: { id?: string; label: string }[],
+): Promise<MenuSectionDef[]> {
+  const res = await apiFetch<{ sections: MenuSectionDef[] }>(apiRoutes.settingsMenuSections, {
+    method: "PUT",
+    body: JSON.stringify({ sections }),
+  });
+  return res.sections;
+}
+
+export type MenuProductType = "meal" | "combo" | "addon";
+
+/** Save a hotel dish, meal or add-on to the catalogue and price it for this shop. */
+export async function createMenuItem(input: {
+  name: string;
+  price: number;
+  productType: MenuProductType;
+  section?: string;
+}): Promise<InventoryItem> {
+  const created = await apiFetch<CatalogProductMutationResponse>(apiRoutes.products, {
+    method: "POST",
+    body: JSON.stringify({
+      name: input.name.trim(),
+      product_type: input.productType,
+      category: "food_beverage",
+      ...(input.section ? { attributes: { menu_section: input.section } } : {}),
+    }),
+  });
+  return addInventoryFromCatalogProduct(created.data.id, {
+    selling_price: input.price,
+    stock_quantity: null,
+    inventory_role: "for_sale",
+  });
+}
+
+export async function updateMenuItem(
+  item: InventoryItem,
+  input: { name: string; price: number; productType: MenuProductType; section?: string },
+): Promise<InventoryItem> {
+  const product = item.product;
+  if (product) {
+    const attributes = input.section
+      ? { ...(product.attributes ?? {}), menu_section: input.section }
+      : product.attributes;
+    const nameChanged = product.name.trim() !== input.name.trim();
+    const typeChanged = product.product_type !== input.productType;
+    const sectionChanged = input.section != null && product.attributes?.menu_section !== input.section;
+    if (nameChanged || typeChanged || sectionChanged) {
+      await apiFetch<CatalogProductMutationResponse>(apiRoutes.product(product.id), {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: input.name.trim(),
+          product_type: input.productType,
+          attributes,
+        }),
+      });
+    }
+  }
+  return updateInventoryItem(item.id, {
+    selling_price: input.price,
+    stock_quantity: null,
+    inventory_role: "for_sale",
+  });
+}
+
+export type MealAddonLine = {
+  addon_id: string;
+  additional_price: number | null;
+  is_required?: boolean;
+  max_quantity?: number;
+};
+
+export async function saveMealAddons(
+  mealProductId: string,
+  addons: MealAddonLine[],
+): Promise<MealAddon[]> {
+  const res = await apiFetch<{ data: MealAddon[] }>(apiRoutes.productAddons(mealProductId), {
+    method: "PUT",
+    body: JSON.stringify({ addons }),
+  });
+  return res.data;
 }
 
 export function inventoryRole(item: InventoryItem | null | undefined): InventoryRole {

@@ -5,9 +5,9 @@ from __future__ import annotations
 import re
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import NoReturn
+from typing import Literal, NoReturn
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session, selectinload
 
@@ -15,7 +15,10 @@ from app.core.session import require_user, validate_csrf
 from app.database import get_db
 from app.dependencies import get_request_session
 from app.models import Account, MpesaTransaction, Order, ShopCustomer
-from app.services.customer_import_service import import_customers_from_excel
+from app.services.customer_import_service import (
+    generate_customer_template,
+    import_customers_from_excel,
+)
 from app.services.credit_pay_service import CreditPayService
 from app.services.openwa_service import OpenWaAgentService
 from app.services.customer_service import (
@@ -263,24 +266,42 @@ def create_customer(
     return {"message": "Customer saved.", "data": _customer_out(customer)}
 
 
-@router.post("/import")
-async def import_customers_excel(
-    request: Request,
-    file: UploadFile = File(..., description="Customer list (.xlsx)"),
+@router.get("/template")
+def download_customer_template(
+    format: Literal["xlsx", "csv"] = Query(default="xlsx"),
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
 ):
-    """Bulk-import customers with credit limits and opening balances."""
+    """Download a ready-to-use Excel or CSV template for importing customers."""
+    user = require_user(db, session)
+    assert_merchant_section_any_access(user, *TILL_CUSTOMER_SECTIONS)
+
+    content, filename, media_type = generate_customer_template(format=format)
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/import")
+async def import_customers_file(
+    request: Request,
+    file: UploadFile = File(..., description="Customer list (.xlsx or .csv)"),
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Bulk-import customers from Excel (.xlsx) or CSV (.csv) file."""
     validate_csrf(request, session)
     user = require_user(db, session)
     assert_merchant_section_any_access(user, *TILL_CUSTOMER_SECTIONS)
     account_id = require_merchant_account_id(user)
 
     filename = (file.filename or "").lower()
-    if not filename.endswith(".xlsx"):
+    if not (filename.endswith(".xlsx") or filename.endswith(".xls") or filename.endswith(".csv")):
         raise HTTPException(
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Upload an Excel file (.xlsx).",
+            detail="Upload an Excel file (.xlsx) or CSV file (.csv).",
         )
 
     content = await file.read()
@@ -292,6 +313,7 @@ async def import_customers_excel(
             db,
             content=content,
             account_id=account_id,
+            filename=file.filename or "customers.xlsx",
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc

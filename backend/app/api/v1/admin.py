@@ -76,7 +76,7 @@ from app.services.image_generation_service import (
     build_prompt_for_product,
     generate_product_image,
 )
-from app.services.inventory_stock_service import restore_stock_for_order
+from app.services.order_stock_service import reverse_for_order
 from app.services.product_media_service import (
     collect_store_media,
     is_image_media,
@@ -914,7 +914,7 @@ def transition_order_admin(
     if target == CANCELLED and not row.cancelled_at:
         row.cancelled_at = now
         if row.stock_deducted:
-            restore_stock_for_order(db, row)
+            reverse_for_order(db, row)
             row.stock_deducted = False
 
     db.add(

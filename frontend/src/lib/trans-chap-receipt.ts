@@ -4,7 +4,12 @@ import {
   orderPaymentPortions,
   orderUsesPayment,
 } from "@/lib/orders";
-import type { Order, OrderMpesaPushResult, OrderPaymentSplit } from "@/lib/types";
+import type {
+  Order,
+  OrderItemModifier,
+  OrderMpesaPushResult,
+  OrderPaymentSplit,
+} from "@/lib/types";
 import { toWhatsAppMsisdn } from "@/lib/whatsapp-phone";
 
 export { toWhatsAppMsisdn };
@@ -19,6 +24,7 @@ export type TransChapReceiptLine = {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
+  modifiers?: OrderItemModifier[] | null;
 };
 
 export type TransChapReceipt = {
@@ -236,6 +242,7 @@ export function receiptFromOrder(
     quantity: line.quantity || 1,
     unitPrice: line.unit_price,
     lineTotal: line.line_total,
+    modifiers: line.modifiers?.length ? line.modifiers : null,
   }));
   const productName = items[0]?.name || "Sale";
   return {

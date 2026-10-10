@@ -84,3 +84,31 @@ def test_parse_workbook_skips_incomplete_rows() -> None:
     assert rows[0].name == "Ok"
     assert len(early) == 2
     assert all(item.status == "skipped" for item in early)
+
+
+def test_parse_csv_and_template_generation() -> None:
+    from app.services.customer_import_service import _parse_csv, generate_customer_template
+
+    csv_data = (
+        "Customer Name,Phone,Credit Limit,Opening Balance,Physical Address,Email,Notes\n"
+        "David Maina,0722334455,3000,500,South C,david@example.com,Good client\n"
+    ).encode("utf-8")
+
+    detected, rows, early = _parse_csv(csv_data)
+    assert early == []
+    assert len(rows) == 1
+    assert rows[0].name == "David Maina"
+    assert rows[0].phone == "0722334455"
+    assert rows[0].credit_limit == 3000.0
+    assert rows[0].opening_balance == 500.0
+    assert rows[0].address == "South C"
+    assert rows[0].email == "david@example.com"
+    assert rows[0].notes == "Good client"
+
+    xlsx_bytes, xlsx_name, _ = generate_customer_template("xlsx")
+    assert xlsx_name.endswith(".xlsx")
+    assert len(xlsx_bytes) > 0
+
+    csv_bytes, csv_name, _ = generate_customer_template("csv")
+    assert csv_name.endswith(".csv")
+    assert b"Customer Name,Phone,Credit Limit" in csv_bytes

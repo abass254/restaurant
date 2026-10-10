@@ -36,18 +36,33 @@ from app.core.upload_tokens import (
 from app.core.uploads import delete_upload, save_upload
 from app.database import get_db
 from app.dependencies import ServiceContainer, get_request_session, get_services
-from app.models import Account, InventoryItem, Product, StockMovement, User
+from app.models import (
+    Account,
+    InventoryItem,
+    MealAddon,
+    Product,
+    ShopSupplier,
+    StockMovement,
+    User,
+)
 from app.schemas import InventoryItemOut, StockMovementOut
-from app.services.inventory_import_service import import_inventory_from_excel
+from app.services.inventory_import_service import (
+    generate_inventory_template,
+    import_inventory_from_excel,
+)
+from app.services.menu_options import menu_options_loaders
 from app.services.inventory_stock_service import (
     InsufficientStockError,
     PurchaseVoidError,
     UntrackedStockError,
     adjust_stock,
     apply_unit_costs,
+    lock_item,
+    record_movement,
     void_purchase,
 )
-from app.services.sell_units import normalize_sell_units_payload
+from app.services.sell_units import normalize_buy_units_payload, normalize_sell_units_payload
+from app.support.store_type import is_restaurant_account
 from app.services.feed_post_link_service import add_post_link
 from app.services.platform_instagram import require_merchant_instagram_account
 from app.services.product_media_service import (
@@ -152,6 +167,7 @@ class InventoryUpdate(BaseModel):
     location: str | None = Field(default=None, max_length=255)
     notes: str | None = Field(default=None, max_length=2000)
     attributes: dict[str, Any] | None = None
+    preferred_supplier_id: str | None = Field(default=None, max_length=64)
 
 
 class StockMovementLineIn(BaseModel):
@@ -175,7 +191,7 @@ class StockMovementVoid(BaseModel):
 @router.get("")
 def list_inventory(
     q: str | None = Query(default=None, max_length=255),
-    type: Literal["product", "service"] | None = Query(default=None),
+    type: Literal["product", "retail", "meal", "combo", "addon", "service"] | None = Query(default=None),
     role: Literal["for_sale", "raw_material", "both"] | None = Query(default=None),
     active: bool | None = Query(default=None),
     db: Session = Depends(get_db),
@@ -186,7 +202,12 @@ def list_inventory(
 
     query = (
         db.query(InventoryItem)
-        .options(joinedload(InventoryItem.product))
+        .options(
+            joinedload(InventoryItem.product)
+            .selectinload(Product.available_addons)
+            .selectinload(MealAddon.addon),
+            *menu_options_loaders(joinedload(InventoryItem.product)),
+        )
         .filter(InventoryItem.account_id == account_id)
         .order_by(
             InventoryItem.updated_at.is_(None),
@@ -222,22 +243,26 @@ def list_inventory(
 
 
 @router.post("/import")
-async def import_inventory_excel(
+async def import_inventory_file(
     request: Request,
-    file: UploadFile = File(..., description="Odoo product export (.xlsx)"),
+    file: UploadFile = File(..., description="Inventory Excel (.xlsx) or CSV (.csv) file"),
+    stock_mode: Literal["replace", "add", "keep"] = Query(
+        default="replace",
+        description="Stock mode for existing core inventory items: replace, add, or keep",
+    ),
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
 ):
-    """Bulk-import products from an Odoo-style Excel export."""
+    """Bulk-import products and stock from an Excel (.xlsx) or CSV (.csv) file."""
     validate_csrf(request, session)
     user = _auth_inventory_user(db, session)
     account_id = _require_shop(user)
 
     filename = (file.filename or "").lower()
-    if not filename.endswith(".xlsx"):
+    if not (filename.endswith(".xlsx") or filename.endswith(".xls") or filename.endswith(".csv")):
         raise HTTPException(
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Upload an Excel file (.xlsx) exported from Odoo.",
+            detail="Upload an Excel file (.xlsx) or CSV file (.csv).",
         )
 
     content = await file.read()
@@ -250,6 +275,8 @@ async def import_inventory_excel(
             content=content,
             account_id=account_id,
             user=user,
+            filename=file.filename or "import.xlsx",
+            stock_mode=stock_mode,
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
@@ -259,11 +286,11 @@ async def import_inventory_excel(
         "summary": {
             "created": result.created,
             "updated": result.updated,
+            "matched_existing": result.matched_existing,
             "skipped": result.skipped,
             "errors": result.errors,
         },
         "detected_columns": result.detected_columns,
-        # Keep the payload light — full row logs for 600+ items stall the UI.
         "rows": [
             {
                 "row": row.row,
@@ -273,9 +300,27 @@ async def import_inventory_excel(
                 "message": row.message,
             }
             for row in result.rows
-            if row.status in {"error", "skipped"}
-        ][:50],
+        ][:100],
     }
+
+
+@router.get("/template")
+def download_inventory_template_endpoint(
+    format: Literal["xlsx", "csv"] = Query(default="xlsx"),
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Download an inventory import template in Excel (.xlsx) or CSV (.csv) format."""
+    _auth_inventory_user(db, session, pos_read_ok=True)
+    content, filename, media_type = generate_inventory_template(format)
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+        },
+    )
 
 
 @router.get("/by-code")
@@ -627,11 +672,57 @@ def update_inventory_item(
                 attrs["sell_units"] = packs
             else:
                 attrs.pop("sell_units", None)
+        if "buy_units" in attrs:
+            buy_units = normalize_buy_units_payload(attrs.get("buy_units"))
+            if buy_units:
+                attrs["buy_units"] = buy_units
+            else:
+                attrs.pop("buy_units", None)
         data["attributes"] = attrs or None
 
     if item.product and item.product.is_service():
         data["stock_quantity"] = None
         data["low_stock_threshold"] = None
+
+    restaurant = is_restaurant_account(db, account_id)
+    if "preferred_supplier_id" in data:
+        supplier_id = (data["preferred_supplier_id"] or "").strip() or None
+        if supplier_id and not restaurant:
+            data.pop("preferred_supplier_id")
+        elif supplier_id and not (
+            db.query(ShopSupplier.id)
+            .filter(ShopSupplier.id == supplier_id, ShopSupplier.account_id == account_id)
+            .first()
+        ):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"errors": {"preferred_supplier_id": ["Supplier not found."]}},
+            )
+        else:
+            data["preferred_supplier_id"] = supplier_id
+
+    # Restaurants: a typed-in quantity change goes through the ledger as an adjustment.
+    new_qty = data.get("stock_quantity") if "stock_quantity" in data else None
+    if (
+        restaurant
+        and new_qty is not None
+        and item.stock_quantity is not None
+        and Decimal(str(new_qty)) != Decimal(str(item.stock_quantity))
+    ):
+        data.pop("stock_quantity")
+        locked = lock_item(db, item.id, account_id=account_id)
+        delta = Decimal(str(new_qty)) - Decimal(str(locked.stock_quantity))
+        record_movement(
+            db,
+            locked,
+            account_id=str(account_id),
+            direction="in" if delta > 0 else "out",
+            quantity=abs(delta),
+            reason="adjustment",
+            allow_negative=True,
+            note="Quantity edited on item",
+            user_id=user.id,
+        )
 
     for key, value in data.items():
         setattr(item, key, value)

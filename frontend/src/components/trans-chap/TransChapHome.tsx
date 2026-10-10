@@ -65,11 +65,29 @@ export function TransChapHome() {
               ) : null}
               {canInventory ? (
                 <Link
+                  href="/trans-chap/purchases/issue?new=1"
+                  className="trans-chap-btn trans-chap-btn--primary"
+                >
+                  <i className="fa-solid fa-dolly" aria-hidden />
+                  <span>Release to Kitchen</span>
+                </Link>
+              ) : null}
+              {canInventory ? (
+                <Link
                   href="/trans-chap/stocks"
                   className="trans-chap-btn trans-chap-btn--secondary"
                 >
+                  <i className="fa-solid fa-boxes-stacked" aria-hidden />
+                  <span>Inventory</span>
+                </Link>
+              ) : null}
+              {canInventory ? (
+                <Link
+                  href="/trans-chap/menus"
+                  className="trans-chap-btn trans-chap-btn--ghost"
+                >
                   <i className="fa-solid fa-utensils" aria-hidden />
-                  <span>Hotel Menu</span>
+                  <span>Menu</span>
                 </Link>
               ) : null}
               {canInventory ? (

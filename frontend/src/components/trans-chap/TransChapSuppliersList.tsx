@@ -24,6 +24,7 @@ import {
 } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { fetchShopSuppliers } from "@/lib/trans-chap-suppliers";
+import { formatKsh } from "@/lib/trans-chap-receipt";
 import type {
   ShopSupplier,
   ShopSupplierMutationResponse,
@@ -33,6 +34,13 @@ import type {
 type SupplierForm = {
   name: string;
   phone: string;
+  pin_number: string;
+  email: string;
+  city: string;
+  address: string;
+  postal_code: string;
+  fax: string;
+  balance: string;
   notes: string;
 };
 
@@ -53,6 +61,13 @@ function readSuppliersView(): SupplierLayoutView {
 const EMPTY_FORM: SupplierForm = {
   name: "",
   phone: "",
+  pin_number: "",
+  email: "",
+  city: "",
+  address: "",
+  postal_code: "",
+  fax: "",
+  balance: "0",
   notes: "",
 };
 
@@ -60,6 +75,13 @@ function formFromSupplier(supplier: ShopSupplier): SupplierForm {
   return {
     name: supplier.name,
     phone: supplier.phone,
+    pin_number: supplier.pin_number ?? "",
+    email: supplier.email ?? "",
+    city: supplier.city ?? "",
+    address: supplier.address ?? "",
+    postal_code: supplier.postal_code ?? supplier.postalcode ?? "",
+    fax: supplier.fax ?? "",
+    balance: supplier.balance != null ? String(supplier.balance) : "0",
     notes: supplier.notes ?? "",
   };
 }
@@ -94,6 +116,7 @@ export function TransChapSuppliersList() {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
+  const [downloadingFormat, setDownloadingFormat] = useState<"xlsx" | "csv" | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<SupplierImportResponse | null>(null);
 
@@ -118,9 +141,43 @@ export function TransChapSuppliersList() {
     const needle = query.trim().toLowerCase();
     if (!needle) return suppliers;
     return suppliers.filter((row) =>
-      [row.name, row.phone, row.notes ?? ""].join(" ").toLowerCase().includes(needle),
+      [
+        row.name,
+        row.phone,
+        row.pin_number ?? "",
+        row.email ?? "",
+        row.city ?? "",
+        row.address ?? "",
+        row.notes ?? "",
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle),
     );
   }, [suppliers, query]);
+
+  async function handleDownloadTemplate(format: "xlsx" | "csv") {
+    setDownloadingFormat(format);
+    try {
+      const url = apiRoutes.supplierTemplate(format);
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error(`Template download failed (${res.status})`);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = blobUrl;
+      anchor.download = `dukai_suppliers_template.${format}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(blobUrl);
+      await toastSuccess(`${format.toUpperCase()} template downloaded.`);
+    } catch (err) {
+      await showError("Download failed", extractErrorMessage(err));
+    } finally {
+      setDownloadingFormat(null);
+    }
+  }
 
   function openCreate() {
     setCreateForm(EMPTY_FORM);
@@ -147,9 +204,18 @@ export function TransChapSuppliersList() {
     const phone = form.phone.trim();
     if (!name) throw new Error("Enter the supplier's name.");
     if (!phone) throw new Error("Enter a phone number.");
+    const balanceRaw = form.balance.trim().replace(/,/g, "");
+    const balanceNum = balanceRaw ? Number(balanceRaw) : 0;
     return {
       name,
       phone,
+      pin_number: form.pin_number.trim() || null,
+      email: form.email.trim() || null,
+      city: form.city.trim() || null,
+      address: form.address.trim() || null,
+      postal_code: form.postal_code.trim() || null,
+      fax: form.fax.trim() || null,
+      balance: Number.isFinite(balanceNum) ? balanceNum : 0,
       notes: form.notes.trim() || null,
     };
   }
@@ -289,21 +355,21 @@ export function TransChapSuppliersList() {
             Suppliers
           </button>
           <div className="auth-split__field">
-            <label htmlFor="trans-chap-supplier-name">Name</label>
+            <label htmlFor="trans-chap-supplier-name">Supplier Name</label>
             <div className="trans-chap-input">
               <input
                 id="trans-chap-supplier-name"
                 required
                 autoComplete="organization"
                 className="auth-split__input"
-                placeholder="Supplier name"
+                placeholder="e.g. Brookside Dairy Ltd"
                 value={createForm.name}
                 onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
               />
             </div>
           </div>
           <div className="auth-split__field">
-            <label htmlFor="trans-chap-supplier-phone">Phone</label>
+            <label htmlFor="trans-chap-supplier-phone">Phone number</label>
             <div className="trans-chap-input">
               <input
                 id="trans-chap-supplier-phone"
@@ -312,9 +378,98 @@ export function TransChapSuppliersList() {
                 autoComplete="tel"
                 inputMode="tel"
                 className="auth-split__input"
-                placeholder="2547…"
+                placeholder="+254 712 345 678"
                 value={createForm.phone}
                 onChange={(e) => setCreateForm((f) => ({ ...f, phone: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="auth-split__field">
+            <label htmlFor="trans-chap-supplier-pin">Tax / KRA PIN (optional)</label>
+            <div className="trans-chap-input">
+              <input
+                id="trans-chap-supplier-pin"
+                className="auth-split__input"
+                placeholder="e.g. P051234567Z"
+                value={createForm.pin_number}
+                onChange={(e) => setCreateForm((f) => ({ ...f, pin_number: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="auth-split__field">
+            <label htmlFor="trans-chap-supplier-email">Email (optional)</label>
+            <div className="trans-chap-input">
+              <input
+                id="trans-chap-supplier-email"
+                type="email"
+                autoComplete="email"
+                className="auth-split__input"
+                placeholder="orders@supplier.com"
+                value={createForm.email}
+                onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="auth-split__field">
+            <label htmlFor="trans-chap-supplier-city">City / Town (optional)</label>
+            <div className="trans-chap-input">
+              <input
+                id="trans-chap-supplier-city"
+                className="auth-split__input"
+                placeholder="e.g. Nairobi"
+                value={createForm.city}
+                onChange={(e) => setCreateForm((f) => ({ ...f, city: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="auth-split__field">
+            <label htmlFor="trans-chap-supplier-address">Physical Address (optional)</label>
+            <div className="trans-chap-input">
+              <input
+                id="trans-chap-supplier-address"
+                className="auth-split__input"
+                placeholder="e.g. Industrial Area, Enterprise Rd"
+                value={createForm.address}
+                onChange={(e) => setCreateForm((f) => ({ ...f, address: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="auth-split__field">
+            <label htmlFor="trans-chap-supplier-postal">Postal Code (optional)</label>
+            <div className="trans-chap-input">
+              <input
+                id="trans-chap-supplier-postal"
+                className="auth-split__input"
+                placeholder="e.g. 00100"
+                value={createForm.postal_code}
+                onChange={(e) => setCreateForm((f) => ({ ...f, postal_code: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="auth-split__field">
+            <label htmlFor="trans-chap-supplier-fax">Fax (optional)</label>
+            <div className="trans-chap-input">
+              <input
+                id="trans-chap-supplier-fax"
+                type="tel"
+                className="auth-split__input"
+                placeholder="Fax number"
+                value={createForm.fax}
+                onChange={(e) => setCreateForm((f) => ({ ...f, fax: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="auth-split__field">
+            <label htmlFor="trans-chap-supplier-balance">Current Balance (KES, optional)</label>
+            <div className="trans-chap-input">
+              <input
+                id="trans-chap-supplier-balance"
+                type="text"
+                inputMode="decimal"
+                className="auth-split__input"
+                placeholder="0.00"
+                value={createForm.balance}
+                onChange={(e) => setCreateForm((f) => ({ ...f, balance: e.target.value }))}
               />
             </div>
           </div>
@@ -324,7 +479,7 @@ export function TransChapSuppliersList() {
               <input
                 id="trans-chap-supplier-notes"
                 className="auth-split__input"
-                placeholder="Anything useful"
+                placeholder="Payment terms, delivery schedules, etc."
                 value={createForm.notes}
                 onChange={(e) => setCreateForm((f) => ({ ...f, notes: e.target.value }))}
               />
@@ -347,8 +502,8 @@ export function TransChapSuppliersList() {
     return (
       <div className="auth-split__form trans-chap-form">
         <p className="trans-chap-form__lead">
-          Upload an <strong>.xlsx</strong> with <code>Name</code>, <code>Phone</code>, and
-          optional <code>Notes</code>. Matching uses phone — existing suppliers are updated.
+          Upload an <strong>Excel (.xlsx)</strong> or <strong>CSV (.csv)</strong> file with supplier details.
+          Existing suppliers matching by phone or PIN are automatically updated without duplicates.
         </p>
         <div className="trans-chap-form__fields">
           <button
@@ -363,10 +518,53 @@ export function TransChapSuppliersList() {
             Suppliers
           </button>
 
+          <div
+            style={{
+              padding: "12px 14px",
+              borderRadius: "10px",
+              background: "rgba(255, 255, 255, 0.05)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+              <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                Download standard import template:
+              </span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  className="trans-chap-btn trans-chap-btn--secondary"
+                  style={{ fontSize: "0.8rem", padding: "6px 12px" }}
+                  disabled={downloadingFormat !== null}
+                  onClick={() => void handleDownloadTemplate("xlsx")}
+                >
+                  <i className="fa-solid fa-file-excel" aria-hidden style={{ marginRight: 6 }} />
+                  {downloadingFormat === "xlsx" ? "Downloading…" : "Excel (.xlsx)"}
+                </button>
+                <button
+                  type="button"
+                  className="trans-chap-btn trans-chap-btn--secondary"
+                  style={{ fontSize: "0.8rem", padding: "6px 12px" }}
+                  disabled={downloadingFormat !== null}
+                  onClick={() => void handleDownloadTemplate("csv")}
+                >
+                  <i className="fa-solid fa-file-csv" aria-hidden style={{ marginRight: 6 }} />
+                  {downloadingFormat === "csv" ? "Downloading…" : "CSV (.csv)"}
+                </button>
+              </div>
+            </div>
+            <p style={{ margin: 0, fontSize: "0.78rem", opacity: 0.75 }}>
+              Supported columns: <code>BALANCE</code>, <code>ADDRESS</code>, <code>POSTALCODE</code>, <code>CITY</code>, <code>EMAIL</code>, <code>PHONE</code>, <code>FAX</code>, <code>PIN_NUMBER</code>, <code>NAME</code>
+            </p>
+          </div>
+
           <input
             ref={fileInputRef}
             type="file"
-            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             className="trans-chap-import__file-input"
             onChange={onImportFileChange}
           />
@@ -387,8 +585,8 @@ export function TransChapSuppliersList() {
               </>
             ) : (
               <>
-                <strong>Choose an Excel file</strong>
-                <span>.xlsx only, up to 5 MB</span>
+                <strong>Choose an Excel or CSV file</strong>
+                <span>.xlsx or .csv up to 5 MB</span>
               </>
             )}
           </button>
@@ -484,7 +682,7 @@ export function TransChapSuppliersList() {
             <input
               type="search"
               value={query}
-              placeholder="Search suppliers…"
+              placeholder="Search suppliers by name, phone, PIN, city…"
               aria-label="Search suppliers"
               onChange={(event) => setQuery(event.target.value)}
             />
@@ -512,6 +710,25 @@ export function TransChapSuppliersList() {
             </button>
           </div>
         </div>
+
+        <div className="trans-chap-sales__chips" role="toolbar" aria-label="Supplier actions">
+          <button
+            type="button"
+            className="trans-chap-chip"
+            onClick={openCreate}
+          >
+            <i className="fa-solid fa-plus" aria-hidden />
+            <span>Add supplier</span>
+          </button>
+          <button
+            type="button"
+            className="trans-chap-chip"
+            onClick={openImport}
+          >
+            <i className="fa-solid fa-file-import" aria-hidden />
+            <span>Import</span>
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -522,15 +739,31 @@ export function TransChapSuppliersList() {
         <TransChapStatus tone="error">{error}</TransChapStatus>
       ) : suppliers.length === 0 ? (
         <TransChapStatus>
-          No suppliers yet. Tap + to add people you buy from, or import from Excel.
+          No suppliers yet. Tap + to add people you buy from, or import from Excel or CSV.
         </TransChapStatus>
       ) : filtered.length === 0 ? (
-        <p className="trans-chap-sales__empty">No names match this search.</p>
+        <p className="trans-chap-sales__empty">No suppliers match this search.</p>
       ) : (
         <MotionList className="trans-chap-sales__list" as="div">
           {filtered.map((supplier) => {
             const open = openId === supplier.id;
             const panelId = `${listId}-${supplier.id}`;
+            const bal = Number(supplier.balance || 0);
+            const badge =
+              bal > 0
+                ? { label: `Owes ${formatKsh(bal)}`, tone: "credit" as const }
+                : bal < 0
+                ? { label: `Advance ${formatKsh(Math.abs(bal))}`, tone: "ok" as const }
+                : { label: "Supplier", tone: "ok" as const };
+
+            const subtitle = [
+              supplier.phone,
+              supplier.city ? supplier.city : null,
+              supplier.pin_number ? `PIN: ${supplier.pin_number}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+
             return (
               <MotionItem key={supplier.id} as="div">
                 <TransChapPanel
@@ -538,8 +771,8 @@ export function TransChapSuppliersList() {
                   open={open}
                   tone="sale"
                   title={supplier.name}
-                  subtitle={supplier.phone}
-                  badge={{ label: "Supplier", tone: "ok" }}
+                  subtitle={subtitle}
+                  badge={badge}
                   onToggle={() => toggle(supplier)}
                 >
                   <form
@@ -548,7 +781,7 @@ export function TransChapSuppliersList() {
                   >
                     <p className="trans-chap-form__block-title">Details</p>
                     <div className="auth-split__field">
-                      <label htmlFor={`${panelId}-name`}>Name</label>
+                      <label htmlFor={`${panelId}-name`}>Supplier Name</label>
                       <div className="trans-chap-input">
                         <input
                           id={`${panelId}-name`}
@@ -562,7 +795,7 @@ export function TransChapSuppliersList() {
                       </div>
                     </div>
                     <div className="auth-split__field">
-                      <label htmlFor={`${panelId}-phone`}>Phone</label>
+                      <label htmlFor={`${panelId}-phone`}>Phone number</label>
                       <div className="trans-chap-input">
                         <input
                           id={`${panelId}-phone`}
@@ -572,6 +805,118 @@ export function TransChapSuppliersList() {
                           value={open ? editForm.phone : supplier.phone}
                           onChange={(e) =>
                             setEditForm((f) => ({ ...f, phone: e.target.value }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="auth-split__field">
+                      <label htmlFor={`${panelId}-pin`}>Tax / KRA PIN</label>
+                      <div className="trans-chap-input">
+                        <input
+                          id={`${panelId}-pin`}
+                          className="auth-split__input"
+                          placeholder="e.g. P051234567Z"
+                          value={open ? editForm.pin_number : supplier.pin_number ?? ""}
+                          onChange={(e) =>
+                            setEditForm((f) => ({ ...f, pin_number: e.target.value }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="auth-split__field">
+                      <label htmlFor={`${panelId}-email`}>Email</label>
+                      <div className="trans-chap-input">
+                        <input
+                          id={`${panelId}-email`}
+                          type="email"
+                          className="auth-split__input"
+                          placeholder="orders@supplier.com"
+                          value={open ? editForm.email : supplier.email ?? ""}
+                          onChange={(e) =>
+                            setEditForm((f) => ({ ...f, email: e.target.value }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="auth-split__field">
+                      <label htmlFor={`${panelId}-city`}>City / Town</label>
+                      <div className="trans-chap-input">
+                        <input
+                          id={`${panelId}-city`}
+                          className="auth-split__input"
+                          placeholder="e.g. Nairobi"
+                          value={open ? editForm.city : supplier.city ?? ""}
+                          onChange={(e) =>
+                            setEditForm((f) => ({ ...f, city: e.target.value }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="auth-split__field">
+                      <label htmlFor={`${panelId}-address`}>Physical Address</label>
+                      <div className="trans-chap-input">
+                        <input
+                          id={`${panelId}-address`}
+                          className="auth-split__input"
+                          placeholder="e.g. Industrial Area, Enterprise Rd"
+                          value={open ? editForm.address : supplier.address ?? ""}
+                          onChange={(e) =>
+                            setEditForm((f) => ({ ...f, address: e.target.value }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="auth-split__field">
+                      <label htmlFor={`${panelId}-postal`}>Postal Code</label>
+                      <div className="trans-chap-input">
+                        <input
+                          id={`${panelId}-postal`}
+                          className="auth-split__input"
+                          placeholder="e.g. 00100"
+                          value={
+                            open
+                              ? editForm.postal_code
+                              : supplier.postal_code ?? supplier.postalcode ?? ""
+                          }
+                          onChange={(e) =>
+                            setEditForm((f) => ({ ...f, postal_code: e.target.value }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="auth-split__field">
+                      <label htmlFor={`${panelId}-fax`}>Fax</label>
+                      <div className="trans-chap-input">
+                        <input
+                          id={`${panelId}-fax`}
+                          type="tel"
+                          className="auth-split__input"
+                          placeholder="Fax number"
+                          value={open ? editForm.fax : supplier.fax ?? ""}
+                          onChange={(e) =>
+                            setEditForm((f) => ({ ...f, fax: e.target.value }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="auth-split__field">
+                      <label htmlFor={`${panelId}-balance`}>Current Balance (KES)</label>
+                      <div className="trans-chap-input">
+                        <input
+                          id={`${panelId}-balance`}
+                          type="text"
+                          inputMode="decimal"
+                          className="auth-split__input"
+                          placeholder="0.00"
+                          value={
+                            open
+                              ? editForm.balance
+                              : supplier.balance != null
+                              ? String(supplier.balance)
+                              : "0"
+                          }
+                          onChange={(e) =>
+                            setEditForm((f) => ({ ...f, balance: e.target.value }))
                           }
                         />
                       </div>
@@ -621,8 +966,8 @@ export function TransChapSuppliersList() {
             onClick: openCreate,
           },
           {
-            label: "Import Excel",
-            icon: "fa-file-excel",
+            label: "Import file",
+            icon: "fa-file-import",
             onClick: openImport,
           },
         ]}

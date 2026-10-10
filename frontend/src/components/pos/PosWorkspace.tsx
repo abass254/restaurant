@@ -49,11 +49,16 @@ import {
   inventoryRole,
   isHotelMenuItem,
   isSaleableRole,
+  itemModifierGroups,
+  sellingPricesByProduct,
 } from "@/lib/trans-chap-product";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
 import { useOptionalAuthUser } from "@/components/app/AuthProvider";
 import { isRestaurantStore } from "@/lib/onboarding";
-import { TransChapModifierModal } from "@/components/pos/TransChapModifierModal";
+import {
+  TransChapModifierModal,
+  type ModifierPickResult,
+} from "@/components/pos/TransChapModifierModal";
 import type {
   InventoryItem,
   InventoryResponse,
@@ -117,12 +122,20 @@ type CartLine = {
   quantity: number;
   image_url: string | null;
   modifiers?: OrderItemModifier[] | null;
+  /** Option-group picks; when set the server prices the line from these. */
+  optionIds?: string[] | null;
   notes?: string | null;
   sellUnit?: string | null;
   unitFactor?: number;
   bulkFactor?: number;
   autoPackFactor?: number;
 };
+
+/** A cart key is a line id, or an inventory id for lines that have none (product-card buttons). */
+function lineKeyMatches(lines: CartLine[], line: CartLine, key: string): boolean {
+  const exact = lines.some((c) => (c.lineId || c.inventoryItemId) === key);
+  return exact ? (line.lineId || line.inventoryItemId) === key : line.inventoryItemId === key;
+}
 
 type PreferredSellUnit = {
   sellUnit: string | null;
@@ -481,6 +494,7 @@ export function PosWorkspace({
   const [modifyingItem, setModifyingItem] = useState<{
     item: InventoryItem;
     cartLineId?: string;
+    initialOptionIds?: string[] | null;
     initialModifiers?: OrderItemModifier[] | null;
     initialNotes?: string | null;
   } | null>(null);
@@ -743,7 +757,15 @@ export function PosWorkspace({
     const initialUnitFactor = preferredSellUnit?.unitFactor ?? 1;
     let blocked = false;
     setCart((prev) => {
-      const existing = prev.find((c) => c.inventoryItemId === item.id);
+      // Customised dish lines stay separate from plain taps of the same dish.
+      const existing = prev.find(
+        (c) =>
+          c.inventoryItemId === item.id &&
+          !c.modifiers?.length &&
+          !c.optionIds?.length &&
+          !c.notes,
+      );
+      const hasOtherLine = prev.some((c) => c.inventoryItemId === item.id);
       const nextQty = (existing?.quantity ?? 0) + addAmount;
       const unitFactor = Math.max(
         0.0001,
@@ -757,7 +779,7 @@ export function PosWorkspace({
       }
       if (existing) {
         return prev.map((c) =>
-          c.inventoryItemId === item.id ? { ...c, quantity: nextQty } : c,
+          c === existing ? { ...c, quantity: nextQty } : c,
         );
       }
       const autoPackFactor =
@@ -767,6 +789,9 @@ export function PosWorkspace({
       return [
         ...prev,
         {
+          ...(hasOtherLine
+            ? { lineId: `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
+            : {}),
           inventoryItemId: item.id,
           product_id: item.product_id,
           name: item.product?.name ?? `#${item.product_id}`,
@@ -880,6 +905,7 @@ export function PosWorkspace({
   }, [addToCart, catalogById, clearScannerBuffer, items]);
 
   const itemsById = catalogById;
+  const sellingPrices = useMemo(() => sellingPricesByProduct(catalogById.values()), [catalogById]);
 
   const availableCategories = useMemo(() => {
     const set = new Set<string>();
@@ -906,31 +932,85 @@ export function PosWorkspace({
     });
   }, [items, selectedCategory]);
 
+  const POS_PAGE_SIZE = 24;
+  const [posVisibleCount, setPosVisibleCount] = useState(POS_PAGE_SIZE);
+
+  useEffect(() => {
+    setPosVisibleCount(POS_PAGE_SIZE);
+  }, [loadedQuery, selectedCategory]);
+
+  const visibleItems = useMemo(() => {
+    return filteredItems.slice(0, posVisibleCount);
+  }, [filteredItems, posVisibleCount]);
+
+  const posHasMore = visibleItems.length < filteredItems.length;
+  const posSentinelRef = useRef<HTMLLIElement | null>(null);
+
+  useEffect(() => {
+    if (!posHasMore) return;
+    const target = posSentinelRef.current;
+    if (!target) return;
+    if (typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setPosVisibleCount((prev) => Math.min(prev + POS_PAGE_SIZE, filteredItems.length));
+        }
+      },
+      { rootMargin: "400px" },
+    );
+
+    observer.observe(target);
+    return () => {
+      observer.disconnect();
+    };
+  }, [posHasMore, filteredItems.length]);
+
+  useEffect(() => {
+    if (!posHasMore) return;
+    const handleScroll = () => {
+      if (
+        window.innerHeight + window.scrollY >=
+        document.documentElement.scrollHeight - 500
+      ) {
+        setPosVisibleCount((prev) => Math.min(prev + POS_PAGE_SIZE, filteredItems.length));
+      }
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, [posHasMore, filteredItems.length]);
+
   const catalogPending =
     loading ||
     searching ||
     search.trim().toLowerCase() !== loadedQuery.trim().toLowerCase();
 
-  const handleConfirmModifiers = (
-    modifiers: OrderItemModifier[],
-    notes: string | null,
-    effectiveUnitPrice: number,
-  ) => {
+  const handleConfirmModifiers = ({
+    optionIds,
+    modifiers,
+    notes,
+    unitPrice,
+    name,
+  }: ModifierPickResult) => {
     if (!modifyingItem) return;
     const { item, cartLineId } = modifyingItem;
     const lineId = cartLineId || `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const hasGroups = itemModifierGroups(item).length > 0;
+    const picked = {
+      name,
+      unit_price: unitPrice,
+      modifiers: modifiers.length > 0 ? modifiers : null,
+      optionIds: hasGroups ? optionIds : null,
+      notes: notes || null,
+    };
 
     setCart((prev) => {
       if (cartLineId) {
         return prev.map((c) =>
-          (c.lineId || c.inventoryItemId) === cartLineId
-            ? {
-              ...c,
-              unit_price: effectiveUnitPrice,
-              modifiers: modifiers.length > 0 ? modifiers : null,
-              notes: notes || null,
-            }
-            : c,
+          (c.lineId || c.inventoryItemId) === cartLineId ? { ...c, lineId: c.lineId || lineId, ...picked } : c,
         );
       }
       return [
@@ -939,14 +1019,11 @@ export function PosWorkspace({
           lineId,
           inventoryItemId: item.id,
           product_id: item.product_id,
-          name: item.product?.name ?? `#${item.product_id}`,
           sku: item.product?.sku ?? null,
           base_price: item.selling_price ?? 0,
-          unit_price: effectiveUnitPrice,
           quantity: quickAddQty || 1,
           image_url: item.product?.image_url ?? null,
-          modifiers: modifiers.length > 0 ? modifiers : null,
-          notes: notes || null,
+          ...picked,
         },
       ];
     });
@@ -954,8 +1031,14 @@ export function PosWorkspace({
     setModifyingItem(null);
   };
 
+  /** Menu items with option groups open the picker; the rest go straight to the order. */
+  function tapMenuItem(item: InventoryItem) {
+    if (itemModifierGroups(item).length > 0) setModifyingItem({ item });
+    else addToCart(item);
+  }
+
   function changeQuantity(key: string, delta: number) {
-    const target = cart.find((c) => (c.lineId || c.inventoryItemId) === key || c.inventoryItemId === key);
+    const target = cart.find((c) => lineKeyMatches(cart, c, key));
     const item = target ? itemsById.get(target.inventoryItemId) : null;
     const stockCap = item ? maxCartQty(item) : null;
     const heldQty = target ? (heldQtyByItemId.get(target.inventoryItemId) ?? 0) : 0;
@@ -970,7 +1053,7 @@ export function PosWorkspace({
     setCart((prev) =>
       prev
         .map((c) => {
-          if ((c.lineId || c.inventoryItemId) !== key && c.inventoryItemId !== key) return c;
+          if (!lineKeyMatches(prev, c, key)) return c;
           let next = c.quantity + delta;
           if (maxLineQty !== null) next = Math.min(next, maxLineQty);
           return { ...c, quantity: next };
@@ -980,7 +1063,7 @@ export function PosWorkspace({
   }
 
   function setQuantity(key: string, value: string) {
-    const target = cart.find((c) => (c.lineId || c.inventoryItemId) === key || c.inventoryItemId === key);
+    const target = cart.find((c) => lineKeyMatches(cart, c, key));
     const item = target ? itemsById.get(target.inventoryItemId) : null;
     const stockCap = item ? maxCartQty(item) : null;
     const heldQty = target ? (heldQtyByItemId.get(target.inventoryItemId) ?? 0) : 0;
@@ -997,7 +1080,7 @@ export function PosWorkspace({
     setCart((prev) =>
       prev
         .map((c) =>
-          (c.lineId || c.inventoryItemId) === key || c.inventoryItemId === key
+          lineKeyMatches(prev, c, key)
             ? { ...c, quantity: next }
             : c,
         )
@@ -1009,7 +1092,7 @@ export function PosWorkspace({
     const next = Math.max(0, Number(value) || 0);
     setCart((prev) =>
       prev.map((c) =>
-        (c.lineId || c.inventoryItemId) === key || c.inventoryItemId === key
+        lineKeyMatches(prev, c, key)
           ? { ...c, unit_price: next, base_price: next / (c.unitFactor || 1) }
           : c,
       ),
@@ -1019,8 +1102,7 @@ export function PosWorkspace({
   function updateLineUnit(key: string, sellUnit: string | null, unitFactor: number) {
     const target = cart.find(
       (line) =>
-        (line.lineId || line.inventoryItemId) === key ||
-        line.inventoryItemId === key,
+        lineKeyMatches(cart, line, key),
     );
     if (!target) return;
     clearLinePriceDraft(key);
@@ -1045,8 +1127,7 @@ export function PosWorkspace({
     setCart((prev) =>
       prev.map((line) => {
         if (
-          (line.lineId || line.inventoryItemId) !== key &&
-          line.inventoryItemId !== key
+          !lineKeyMatches(prev, line, key)
         ) {
           return line;
         }
@@ -1073,8 +1154,7 @@ export function PosWorkspace({
     const factor = Math.min(1_000_000, Math.max(2, Math.floor(parsed)));
     const target = cart.find(
       (line) =>
-        (line.lineId || line.inventoryItemId) === key ||
-        line.inventoryItemId === key,
+        lineKeyMatches(cart, line, key),
     );
     if (!target) return;
     const item = itemsById.get(target.inventoryItemId);
@@ -1097,7 +1177,7 @@ export function PosWorkspace({
     });
     setCart((prev) =>
       prev.map((line) => {
-        if ((line.lineId || line.inventoryItemId) !== key && line.inventoryItemId !== key) {
+        if (!lineKeyMatches(prev, line, key)) {
           return line;
         }
         return {
@@ -1139,8 +1219,7 @@ export function PosWorkspace({
     setCart((prev) =>
       prev.map((line) => {
         if (
-          (line.lineId || line.inventoryItemId) !== key &&
-          line.inventoryItemId !== key
+          !lineKeyMatches(prev, line, key)
         ) {
           return line;
         }
@@ -1196,7 +1275,7 @@ export function PosWorkspace({
   }
 
   function removeLine(key: string) {
-    setCart((prev) => prev.filter((c) => (c.lineId || c.inventoryItemId) !== key && c.inventoryItemId !== key));
+    setCart((prev) => prev.filter((c) => !lineKeyMatches(prev, c, key)));
     setBulkFactorDrafts((prev) => {
       if (!(key in prev)) return prev;
       const next = { ...prev };
@@ -1963,7 +2042,12 @@ export function PosWorkspace({
           sell_unit: c.sellUnit,
           unit_factor:
             c.sellUnit ? c.unitFactor : undefined,
-          modifiers: c.modifiers && c.modifiers.length ? c.modifiers : null,
+          ...(c.optionIds
+            ? {
+                modifier_option_ids: c.optionIds,
+                modifiers: (c.modifiers ?? []).filter((m) => !m.option_id),
+              }
+            : { modifiers: c.modifiers && c.modifiers.length ? c.modifiers : null }),
           notes: c.notes?.trim() || null,
         })),
       };
@@ -2323,7 +2407,7 @@ export function PosWorkspace({
                   exit={reduce ? undefined : { opacity: 0 }}
                   transition={{ duration: motionDuration.micro }}
                 >
-                  {filteredItems.map((item) => {
+                  {visibleItems.map((item) => {
                     const coverUrl =
                       inventoryCoverUrl(item) || item.product?.image_url || null;
                     const itemCartLines = cart.filter(
@@ -2344,6 +2428,8 @@ export function PosWorkspace({
                     const heldQty = heldQtyByItemId.get(item.id) ?? 0;
                     const isPulsing = pulseId === item.id;
                     const isHotelDish = isHotelMenuItem(item);
+                    const hasOptions = isHotelDish && itemModifierGroups(item).length > 0;
+                    const isMeal = item.product?.product_type === "combo";
                     const subtitleParts = [
                       item.product?.category ? formatCategoryLabel(item.product.category) : null,
                       item.product?.brand,
@@ -2391,7 +2477,7 @@ export function PosWorkspace({
                           <button
                             type="button"
                             className="pos-card__main"
-                            onClick={() => (isHotelDish ? setModifyingItem({ item }) : addToCart(item))}
+                            onClick={() => (isHotelDish ? tapMenuItem(item) : addToCart(item))}
                             aria-label={`Add ${quickAddQty > 1 ? `${quickAddQty} of ` : ""}${item.product?.name ?? "item"} to order`}
                             disabled={!canAdd}
                           >
@@ -2424,7 +2510,11 @@ export function PosWorkspace({
                             <div className="pos-card__info">
                               {isHotelDish ? (
                                 <span className="pos-card__dish-tag">
-                                  <i className="fa-solid fa-bowl-food" aria-hidden="true" /> Dish
+                                  <i className={`fa-solid ${isMeal ? "fa-burger" : "fa-bowl-food"}`} aria-hidden="true" />{" "}
+                                  {isMeal ? "Meal" : "Dish"}
+                                  {typeof (item.attributes as Record<string, unknown> | null)?.prep_time_minutes === "number" ? (
+                                    <> &middot; ⏱️ {String((item.attributes as Record<string, unknown>).prep_time_minutes)}m</>
+                                  ) : null}
                                 </span>
                               ) : null}
                               <span className="pos-card__name">
@@ -2517,7 +2607,7 @@ export function PosWorkspace({
                                   disabled={atStockCap}
                                   onClick={() =>
                                     isHotelDish
-                                      ? setModifyingItem({ item })
+                                      ? tapMenuItem(item)
                                       : changeQuantity(item.id, 1)
                                   }
                                 >
@@ -2531,12 +2621,12 @@ export function PosWorkspace({
                               <button
                                 type="button"
                                 className="pos-card__add"
-                                onClick={() => (isHotelDish ? setModifyingItem({ item }) : addToCart(item))}
+                                onClick={() => (isHotelDish ? tapMenuItem(item) : addToCart(item))}
                                 disabled={!canAdd}
                                 aria-label={`Add ${quickAddQty > 1 ? `${quickAddQty} of ` : ""}${item.product?.name ?? "item"} to order`}
                               >
-                                <i className={isHotelDish ? "fa-solid fa-sliders" : "fa-solid fa-plus"} aria-hidden="true" />
-                                <span className="pos-card__add-label">{isHotelDish ? "Options" : "Add"}</span>
+                                <i className={hasOptions ? "fa-solid fa-sliders" : "fa-solid fa-plus"} aria-hidden="true" />
+                                <span className="pos-card__add-label">{hasOptions ? "Options" : "Add"}</span>
                               </button>
                             )}
                           </div>
@@ -2544,6 +2634,38 @@ export function PosWorkspace({
                       </motion.li>
                     );
                   })}
+                  {posHasMore && (
+                    <li
+                      ref={posSentinelRef}
+                      style={{
+                        gridColumn: "1 / -1",
+                        listStyle: "none",
+                        padding: "1rem 0.5rem",
+                        textAlign: "center",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPosVisibleCount((prev) =>
+                            Math.min(prev + POS_PAGE_SIZE, filteredItems.length),
+                          )
+                        }
+                        style={{
+                          background: "var(--app-surface)",
+                          border: "1px solid var(--app-border-light)",
+                          borderRadius: "999px",
+                          padding: "0.5rem 1.25rem",
+                          fontSize: "0.85rem",
+                          fontWeight: 650,
+                          color: "var(--app-text-secondary)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Showing {visibleItems.length} of {filteredItems.length} · Scroll for more
+                      </button>
+                    </li>
+                  )}
                 </motion.ul>
               )}
             </AnimatePresence>
@@ -2655,6 +2777,7 @@ export function PosWorkspace({
                                     setModifyingItem({
                                       item: stockItem,
                                       cartLineId: lineKey,
+                                      initialOptionIds: line.optionIds,
                                       initialModifiers: line.modifiers,
                                       initialNotes: line.notes,
                                     });
@@ -2662,7 +2785,7 @@ export function PosWorkspace({
                                 }}
                               >
                                 <i className="fa-solid fa-sliders" aria-hidden="true" />
-                                {line.modifiers && line.modifiers.length > 0 ? "Edit add-ons" : "+ Add-ons"}
+                                {line.modifiers?.length || line.notes ? "Edit choices" : "Customize"}
                               </button>
                             ) : null}
                             {!showLinePriceEdit && !isTransChapSale ? (
@@ -3446,7 +3569,10 @@ export function PosWorkspace({
                       <div className="receipt-item-mods">
                         {line.modifiers.map((m, mIdx) => (
                           <div key={mIdx} className="receipt-mod-line">
-                            + {m.name} {m.price > 0 ? `(${formatMoney(m.price, receiptOrder.currency)})` : ""}
+                            {m.kind === "component"
+                              ? `${(m.quantity ?? 1) > 1 ? `${m.quantity}× ` : ""}${m.name}`
+                              : `+ ${m.name}`}{" "}
+                            {m.price > 0 ? `(${formatMoney(m.price, receiptOrder.currency)})` : ""}
                           </div>
                         ))}
                       </div>
@@ -3491,15 +3617,19 @@ export function PosWorkspace({
         </section>
       ) : null}
 
-      <TransChapModifierModal
-        isOpen={Boolean(modifyingItem)}
-        onClose={() => setModifyingItem(null)}
-        item={modifyingItem?.item ?? null}
-        initialModifiers={modifyingItem?.initialModifiers}
-        initialNotes={modifyingItem?.initialNotes}
-        currency="KES"
-        onConfirm={handleConfirmModifiers}
-      />
+      {modifyingItem ? (
+        <TransChapModifierModal
+          key={`${modifyingItem.item.id}-${modifyingItem.cartLineId ?? "new"}`}
+          onClose={() => setModifyingItem(null)}
+          item={modifyingItem.item}
+          initialOptionIds={modifyingItem.initialOptionIds}
+          initialModifiers={modifyingItem.initialModifiers}
+          initialNotes={modifyingItem.initialNotes}
+          currency="KES"
+          prices={sellingPrices}
+          onConfirm={handleConfirmModifiers}
+        />
+      ) : null}
     </section>
   );
 }

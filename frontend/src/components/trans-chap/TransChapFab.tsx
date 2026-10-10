@@ -14,11 +14,14 @@ export function TransChapFab({
   label,
   options,
   href,
+  onClick,
 }: {
   label: string;
   options?: TransChapFabOption[];
   /** Direct link — skips the options menu (e.g. staff single purchase entry). */
   href?: string;
+  /** Direct action — skips the options menu. */
+  onClick?: () => void;
 }) {
   const menuId = useId();
   const [open, setOpen] = useState(false);
@@ -39,6 +42,22 @@ export function TransChapFab({
         <Link href={href} className="trans-chap-fab" aria-label={label} title={label}>
           <i className="fa-solid fa-plus" aria-hidden />
         </Link>
+      </div>
+    );
+  }
+
+  if (onClick) {
+    return (
+      <div className="trans-chap-fab-wrap">
+        <button
+          type="button"
+          className="trans-chap-fab"
+          aria-label={label}
+          title={label}
+          onClick={onClick}
+        >
+          <i className="fa-solid fa-plus" aria-hidden />
+        </button>
       </div>
     );
   }

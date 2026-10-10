@@ -24,8 +24,10 @@ const PHONE_HIDDEN_NAV_HREFS = new Set([
   "/trans-chap/pos",
   "/trans-chap/customers",
   "/trans-chap/suppliers",
+  "/trans-chap/reports",
   "/trans-chap/settings",
   "/trans-chap/mpesa",
+  "/trans-chap/kitchen",
 ]);
 
 type NavDef = {
@@ -43,13 +45,39 @@ type NavDef = {
 function getNavItems(restaurant: boolean): NavDef[] {
   return [
     { href: "/trans-chap", label: "Home", title: "Home", icon: "fa-house", exact: true },
-    {
-      href: "/trans-chap/stocks",
-      label: restaurant ? "Hotel Menu" : "Inventory",
-      title: restaurant ? "Hotel Menu" : "Inventory",
-      icon: restaurant ? "fa-utensils" : "fa-boxes-stacked",
-      section: "inventory",
-    },
+    ...(restaurant
+      ? [
+          {
+            href: "/trans-chap/menus",
+            label: "Menu",
+            title: "Menu",
+            icon: "fa-utensils",
+            section: "inventory" as MerchantSection,
+          },
+          {
+            href: "/trans-chap/stocks",
+            label: "Inventory",
+            title: "Store Inventory",
+            icon: "fa-boxes-stacked",
+            section: "inventory" as MerchantSection,
+          },
+          {
+            href: "/trans-chap/kitchen",
+            label: "Kitchen",
+            title: "Kitchen",
+            icon: "fa-fire-burner",
+            section: "inventory" as MerchantSection,
+          },
+        ]
+      : [
+          {
+            href: "/trans-chap/stocks",
+            label: "Inventory",
+            title: "Inventory",
+            icon: "fa-boxes-stacked",
+            section: "inventory" as MerchantSection,
+          },
+        ]),
     {
       href: "/trans-chap/sales",
       label: restaurant ? "Orders" : "Sales",
@@ -148,8 +176,26 @@ function headerMeta(
       backHref: "/trans-chap/purchases",
     };
   }
-  if (pathname.startsWith("/trans-chap/stocks/menu")) {
-    return { title: "Hotel menu", backHref: "/trans-chap/stocks" };
+  if (pathname.startsWith("/trans-chap/purchases/po")) {
+    return { title: "Purchase order", backHref: "/trans-chap/purchases" };
+  }
+  if (pathname.startsWith("/trans-chap/purchases/item")) {
+    return { title: "Stock card", backHref: "/trans-chap/purchases?tab=stock" };
+  }
+  if (pathname.startsWith("/trans-chap/purchases/count")) {
+    return { title: "Stock count", backHref: "/trans-chap/purchases?tab=counts" };
+  }
+  if (pathname.startsWith("/trans-chap/purchases/issue")) {
+    return { title: "Kitchen issue", backHref: "/trans-chap/kitchen" };
+  }
+  if (pathname.startsWith("/trans-chap/purchases/kitchen-day")) {
+    return { title: "Kitchen day", backHref: "/trans-chap/kitchen" };
+  }
+  if (pathname.startsWith("/trans-chap/kitchen")) {
+    return { title: "Kitchen", backHref: "/trans-chap" };
+  }
+  if (pathname.startsWith("/trans-chap/menus")) {
+    return { title: "Menu", backHref: "/trans-chap" };
   }
   if (pathname.startsWith("/trans-chap/stocks/opening")) {
     return { title: "Opening stock", backHref: "/trans-chap/stocks" };
@@ -157,7 +203,7 @@ function headerMeta(
   if (pathname.startsWith("/trans-chap/stocks/edit")) {
     return {
       title: restaurant ? "Edit item" : "Edit product",
-      backHref: "/trans-chap/stocks",
+      backHref: restaurant ? "/trans-chap/menus" : "/trans-chap/stocks",
     };
   }
   if (pathname.startsWith("/trans-chap/stocks/stock-up")) {
@@ -168,7 +214,7 @@ function headerMeta(
   }
   if (pathname.startsWith("/trans-chap/stocks")) {
     return {
-      title: restaurant ? "Hotel menu" : "Inventory",
+      title: restaurant ? "Store Inventory" : "Inventory",
       backHref: "/trans-chap",
     };
   }
@@ -248,7 +294,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
   const isPos =
     pathname.startsWith("/trans-chap/pos") ||
     pathname.startsWith("/trans-chap/purchases/new") ||
-    pathname.startsWith("/trans-chap/stocks/menu");
+    pathname.startsWith("/trans-chap/menus");
   const showNav = !isSignIn && !isNewPost;
   const showHeader = !isSignIn && !isNewPost;
   const instagramConnected = Boolean(user?.instagram_account);
@@ -335,6 +381,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
   }, [isSignIn, pathname, router, user]);
 
   function renderNavLink(item: NavDef): ReactNode {
+    const isPhoneHidden = PHONE_HIDDEN_NAV_HREFS.has(item.href);
     const isActive = item.exact
       ? pathname === item.href
       : pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -342,7 +389,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
       <Link
         key={item.href}
         href={item.href}
-        className={isActive ? "is-active" : ""}
+        className={`${isActive ? "is-active" : ""}${isPhoneHidden ? " is-phone-hidden" : ""}`}
         aria-label={item.label}
         title={item.label}
       >
@@ -425,7 +472,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
           {showNav ? (
             <>
               <nav
-                className="mobile-nav mobile-nav--5"
+                className={`mobile-nav mobile-nav--${Math.min(Math.max(phoneNavColumns, 5), 7)}`}
                 style={
                   {
                     "--mobile-nav-columns": phoneNavColumns,

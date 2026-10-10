@@ -1,17 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { TransChapCameraSettings } from "@/components/trans-chap/TransChapCameraSettings";
 import { TransChapInstallPanel } from "@/components/trans-chap/TransChapInstallPanel";
+import { TransChapMenuSectionsSettings } from "@/components/trans-chap/TransChapMenuSectionsSettings";
 import { TransChapMpesaSettings } from "@/components/trans-chap/TransChapMpesaSettings";
 import { TransChapTeamSettings } from "@/components/trans-chap/TransChapTeamSettings";
 import { apiFetch } from "@/lib/api";
-import { confirmAction, showInternalError, toastSuccess } from "@/lib/alerts";
+import {
+  confirmAction,
+  extractErrorMessage,
+  showError,
+  showInternalError,
+  toastSuccess,
+} from "@/lib/alerts";
 import { apiRoutes, instagramAuthPath, resolveSameOriginUrl } from "@/lib/config";
 import { isShopOwner } from "@/lib/merchant-permissions";
+import { isRestaurantStore } from "@/lib/onboarding";
 import { formatMoney } from "@/lib/orders";
+import { disableKitchenIssuing } from "@/lib/restaurant-supplies";
 import {
   isCameraScanningEnabled,
   queryCameraPermission,
@@ -32,6 +42,7 @@ type SettingsPane =
   | "opening-stock"
   | "download"
   | "camera"
+  | "menu-sections"
   | "team";
 
 function initials(name: string): string {
@@ -77,9 +88,13 @@ export default function TransChapSettingsPage() {
   const [allowQuantityAdjustment, setAllowQuantityAdjustment] = useState(true);
   const [allowPriceAdjustment, setAllowPriceAdjustment] = useState(false);
   const [forceMpesaPrompt, setForceMpesaPrompt] = useState(true);
+  const [blockLowIngredients, setBlockLowIngredients] = useState(false);
+  const [kitchenIssuing, setKitchenIssuing] = useState(false);
   const [operationsSaving, setOperationsSaving] = useState(false);
   const [settingsQuery, setSettingsQuery] = useState("");
 
+  const restaurant = isRestaurantStore(user.active_account ?? user.account);
+  const router = useRouter();
   const shopName =
     user.active_account?.business_name ||
     user.account?.business_name ||
@@ -90,10 +105,12 @@ export default function TransChapSettingsPage() {
     const next = params.get("pane");
     if (next === "camera") {
       setPane("camera");
+    } else if (next === "menu-sections" && restaurant) {
+      setPane("menu-sections");
     } else if (next === "team" && owner) {
       setPane("team");
     }
-  }, [owner]);
+  }, [owner, restaurant]);
 
   useEffect(() => {
     let cancelled = false;
@@ -153,6 +170,8 @@ export default function TransChapSettingsPage() {
         setAllowPriceAdjustment(data.allow_price_adjustment ?? false);
         setAdjustSellingPrice(data.adjust_selling_price_on_purchase ?? true);
         setForceMpesaPrompt(data.force_mpesa_prompt ?? true);
+        setBlockLowIngredients(data.block_sale_on_low_ingredients ?? false);
+        setKitchenIssuing(data.kitchen_issuing_enabled ?? false);
         const ig = data.user.instagram_account;
         setHasInstagram(Boolean(ig));
         if (typeof ig?.auto_replies_enabled === "boolean") {
@@ -198,6 +217,8 @@ export default function TransChapSettingsPage() {
       setAllowQuantityAdjustment(data.allow_item_quantity_adjustment);
       setAllowPriceAdjustment(data.allow_price_adjustment);
       setAdjustSellingPrice(data.adjust_selling_price_on_purchase);
+      setBlockLowIngredients(data.block_sale_on_low_ingredients ?? false);
+      setKitchenIssuing(data.kitchen_issuing_enabled ?? false);
       await toastSuccess(successMessage);
     } catch {
       await showInternalError();
@@ -237,6 +258,36 @@ export default function TransChapSettingsPage() {
         ? "Sale price update allowed at POS"
         : "Sale price update disabled at POS",
     );
+  }
+
+  async function handleBlockLowIngredientsToggle(enabled: boolean) {
+    await updateOperations(
+      { block_sale_on_low_ingredients: enabled },
+      enabled ? "Sales blocked when ingredients run out" : "Sales allowed when ingredients run low",
+    );
+  }
+
+  async function handleKitchenIssuingToggle(enabled: boolean) {
+    if (enabled) {
+      router.push("/trans-chap/purchases?tab=kitchen");
+      return;
+    }
+    const confirmed = await confirmAction(
+      "Turn off store and kitchen?",
+      "Everything left in the kitchen moves back to the store and pending kitchen requests are cancelled.",
+      "Turn off",
+    );
+    if (!confirmed || operationsSaving) return;
+    setOperationsSaving(true);
+    try {
+      await disableKitchenIssuing();
+      setKitchenIssuing(false);
+      await toastSuccess("Store and kitchen turned off");
+    } catch (err) {
+      await showError("Could not turn off", extractErrorMessage(err));
+    } finally {
+      setOperationsSaving(false);
+    }
   }
 
   function groupMatches(...keywords: string[]) {
@@ -556,6 +607,19 @@ export default function TransChapSettingsPage() {
     );
   }
 
+  if (pane === "menu-sections" && restaurant) {
+    return (
+      <div className="ios-settings">
+        <button type="button" className="ios-settings__back" onClick={backToList}>
+          <i className="fa-solid fa-chevron-left" aria-hidden />
+          Settings
+        </button>
+        <h2 className="ios-settings__screen-title">Menu sections</h2>
+        <TransChapMenuSectionsSettings />
+      </div>
+    );
+  }
+
   if (pane === "download") {
     return (
       <div className="ios-settings">
@@ -856,6 +920,90 @@ export default function TransChapSettingsPage() {
             : "Sale prices are fixed during checkout."}
         </p>
       </section>
+      ) : null}
+
+      {restaurant && groupMatches("menu sections categories dishes restaurant hotel") ? (
+        <section className="ios-settings__group" aria-label="Menu">
+          <h3 className="ios-settings__caption">Menu</h3>
+          <div className="ios-settings__card">
+            <button
+              type="button"
+              className="ios-settings__row"
+              onClick={() => setPane("menu-sections")}
+            >
+              <span className="ios-settings__icon ios-settings__icon--inventory" aria-hidden>
+                <i className="fa-solid fa-utensils" />
+              </span>
+              <span className="ios-settings__label">Menu sections</span>
+              <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+            </button>
+          </div>
+          <p className="ios-settings__footer">
+            Choose the sections your dishes are grouped under, e.g. Burgers, Breakfast, Drinks.
+          </p>
+        </section>
+      ) : null}
+
+      {restaurant && groupMatches("supplies kitchen store issue ingredients stock recipe") ? (
+        <section className="ios-settings__group" aria-label="Supplies and kitchen">
+          <h3 className="ios-settings__caption">Supplies and kitchen</h3>
+          <div className="ios-settings__card">
+            <div className="ios-settings__row ios-settings__row--static">
+              <span className="ios-settings__icon ios-settings__icon--inventory" aria-hidden>
+                <i className="fa-solid fa-warehouse" />
+              </span>
+              <span className="ios-settings__label">Store and kitchen</span>
+              <span className="ios-settings__trailing">
+                {owner ? (
+                  <button
+                    type="button"
+                    role="switch"
+                    className={`theme-switch${kitchenIssuing ? " is-on" : ""}`}
+                    aria-checked={kitchenIssuing}
+                    aria-label="Store and kitchen"
+                    disabled={operationsSaving}
+                    onClick={() => void handleKitchenIssuingToggle(!kitchenIssuing)}
+                  >
+                    <span className="theme-switch__thumb" aria-hidden />
+                  </button>
+                ) : (
+                  <span className="ios-settings__value">{kitchenIssuing ? "On" : "Off"}</span>
+                )}
+              </span>
+            </div>
+            <div className="ios-settings__row ios-settings__row--static">
+              <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
+                <i className="fa-solid fa-ban" />
+              </span>
+              <span className="ios-settings__label">Block sales when ingredients run out</span>
+              <span className="ios-settings__trailing">
+                {owner ? (
+                  <button
+                    type="button"
+                    role="switch"
+                    className={`theme-switch${blockLowIngredients ? " is-on" : ""}`}
+                    aria-checked={blockLowIngredients}
+                    aria-label="Block sales when ingredients run out"
+                    disabled={operationsSaving}
+                    onClick={() => void handleBlockLowIngredientsToggle(!blockLowIngredients)}
+                  >
+                    <span className="theme-switch__thumb" aria-hidden />
+                  </button>
+                ) : (
+                  <span className="ios-settings__value">Owner only</span>
+                )}
+              </span>
+            </div>
+          </div>
+          <p className="ios-settings__footer">
+            {kitchenIssuing
+              ? "Supplies are issued from the store to the kitchen each day; sales use up kitchen stock. "
+              : "Sales use up supplies straight from stock. "}
+            {blockLowIngredients
+              ? "Dishes can't be sold once an ingredient runs out."
+              : "Dishes can still be sold when ingredients run low; stock goes negative until counted."}
+          </p>
+        </section>
       ) : null}
 
       {groupMatches("purchases buying selling price adjust pricing") ? (

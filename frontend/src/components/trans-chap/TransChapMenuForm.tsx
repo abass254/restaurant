@@ -1,629 +1,762 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  FormEvent,
+  type RefObject,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { apiFetch } from "@/lib/api";
-import { showInternalError, toastSuccess } from "@/lib/alerts";
+import {
+  confirmAction,
+  extractErrorMessage,
+  showError,
+  toastSuccess,
+} from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { formatKsh } from "@/lib/trans-chap-receipt";
+import { useAuthUser } from "@/components/app/AuthProvider";
+import { TransChapFab } from "@/components/trans-chap/TransChapFab";
+import { TransChapProductThumb } from "@/components/trans-chap/TransChapProductThumb";
 import {
-  addLiteInventoryProduct,
-  findInventoryByName,
-  inventoryRole,
+  MenuOptionsField,
+  TransChapMenuGroupEditor,
+  TransChapMenuGroupsSheet,
+} from "@/components/trans-chap/TransChapMenuGroupEditor";
+import { ComboIncludesField, type ComboPart } from "@/components/trans-chap/TransChapMenuComboEditor";
+import {
+  RecipeField,
+  parseRecipeQty,
+  recipeDraftLines,
+  type RecipeDraft,
+} from "@/components/trans-chap/TransChapMenuRecipeField";
+import Link from "next/link";
+import {
+  DEFAULT_MENU_SECTIONS,
+  createMenuItem,
+  fetchMenuSections,
+  fetchModifierGroups,
+  inventoryProductName,
   isHotelMenuItem,
-  isSaleableRole,
-  updateInventoryItem,
-  updateInventorySellingPrice,
+  isMenuAddonItem,
+  isMenuComboItem,
+  isSupplyItem,
+  menuSection,
+  modifierRuleLabel,
+  saveComboComponents,
+  saveItemModifierGroups,
+  saveRecipe,
+  recipeCost,
+  updateInventoryActive,
+  updateMenuItem,
+  type MenuSectionDef,
 } from "@/lib/trans-chap-product";
-import type { InventoryItem, InventoryResponse } from "@/lib/types";
+import { fetchMenuCosting, type MenuCosting } from "@/lib/restaurant-supplies";
+import type { InventoryItem, InventoryResponse, ModifierGroup } from "@/lib/types";
 
-export type DishCategory = "all" | "mains" | "bites" | "hot_drinks" | "cold_drinks";
+type ItemKind = "meal" | "combo";
 
-interface DishPreset {
+type Editor = {
+  kind: ItemKind;
+  item: InventoryItem | null;
   name: string;
-  category: "mains" | "bites" | "hot_drinks" | "cold_drinks";
-  suggestedPrice: number;
-  icon: string;
-}
-
-const CATEGORY_TABS: { id: DishCategory; label: string; icon: string }[] = [
-  { id: "all", label: "All Popular", icon: "fa-fire" },
-  { id: "mains", label: "Mains & Stews", icon: "fa-bowl-rice" },
-  { id: "bites", label: "Bites & Snacks", icon: "fa-bread-slice" },
-  { id: "hot_drinks", label: "Hot Drinks", icon: "fa-mug-hot" },
-  { id: "cold_drinks", label: "Cold Drinks", icon: "fa-wine-bottle" },
-];
-
-const CATEGORY_LABELS: Record<string, string> = {
-  mains: "Mains & Stews",
-  bites: "Bites & Snacks",
-  hot_drinks: "Hot Drinks",
-  cold_drinks: "Cold Drinks",
+  price: string;
+  section: string;
+  groupIds: string[];
+  parts: ComboPart[];
+  recipe: RecipeDraft[];
 };
 
-const PRESET_DISHES: DishPreset[] = [
-  // Mains & Stews
-  { name: "Chapati", category: "mains", suggestedPrice: 20, icon: "fa-circle-dot" },
-  { name: "Ugali", category: "mains", suggestedPrice: 50, icon: "fa-bowl-rice" },
-  { name: "Rice", category: "mains", suggestedPrice: 70, icon: "fa-bowl-rice" },
-  { name: "Pilau", category: "mains", suggestedPrice: 150, icon: "fa-bowl-food" },
-  { name: "Beef stew", category: "mains", suggestedPrice: 180, icon: "fa-drumstick-bite" },
-  { name: "Chicken", category: "mains", suggestedPrice: 250, icon: "fa-drumstick-bite" },
-  { name: "Fish", category: "mains", suggestedPrice: 250, icon: "fa-fish" },
-  { name: "Beans", category: "mains", suggestedPrice: 70, icon: "fa-seedling" },
-  { name: "Sukuma", category: "mains", suggestedPrice: 50, icon: "fa-leaf" },
-  { name: "Githeri", category: "mains", suggestedPrice: 80, icon: "fa-bowl-food" },
-  { name: "Matoke", category: "mains", suggestedPrice: 120, icon: "fa-bowl-food" },
-  { name: "Mukimo", category: "mains", suggestedPrice: 130, icon: "fa-bowl-food" },
+type GroupEditorState = { group: ModifierGroup | null; attach: boolean };
 
-  // Bites & Snacks
-  { name: "Chips", category: "bites", suggestedPrice: 100, icon: "fa-fire-burner" },
-  { name: "Mandazi", category: "bites", suggestedPrice: 20, icon: "fa-bread-slice" },
-  { name: "Samosa", category: "bites", suggestedPrice: 40, icon: "fa-play" },
-  { name: "Sausage", category: "bites", suggestedPrice: 50, icon: "fa-hotdog" },
-  { name: "Smokies", category: "bites", suggestedPrice: 40, icon: "fa-hotdog" },
-  { name: "Fried Egg", category: "bites", suggestedPrice: 30, icon: "fa-egg" },
-  { name: "Boiled Egg", category: "bites", suggestedPrice: 25, icon: "fa-egg" },
-  { name: "Toast", category: "bites", suggestedPrice: 30, icon: "fa-bread-slice" },
-  { name: "Kebab", category: "bites", suggestedPrice: 80, icon: "fa-drumstick-bite" },
+function stockLine(costing: MenuCosting | undefined) {
+  if (!costing) return null;
+  if (!costing.has_recipe) {
+    return <span className="tc-menu__card-stock is-warn">No recipe · supplies not tracked</span>;
+  }
+  const left = costing.portions_available;
+  if (left == null) return null;
+  const more =
+    costing.portions_with_store != null && costing.portions_with_store > left
+      ? ` · store can cover ${costing.portions_with_store - Math.max(left, 0)} more`
+      : "";
+  if (left <= 0) {
+    return (
+      <span className="tc-menu__card-stock is-out">
+        Out of stock{costing.limiting_ingredient ? ` (${costing.limiting_ingredient})` : ""}
+        {more}
+      </span>
+    );
+  }
+  return (
+    <span className={`tc-menu__card-stock${left <= 5 ? " is-warn" : ""}`}>
+      {left} {left === 1 ? "portion" : "portions"} left{more}
+    </span>
+  );
+}
 
-  // Hot Drinks
-  { name: "Chai (Tea)", category: "hot_drinks", suggestedPrice: 30, icon: "fa-mug-hot" },
-  { name: "Special Chai", category: "hot_drinks", suggestedPrice: 50, icon: "fa-mug-hot" },
-  { name: "White Coffee", category: "hot_drinks", suggestedPrice: 50, icon: "fa-coffee" },
-  { name: "Black Coffee", category: "hot_drinks", suggestedPrice: 30, icon: "fa-coffee" },
-  { name: "Lemon Tea", category: "hot_drinks", suggestedPrice: 40, icon: "fa-mug-hot" },
-  { name: "Dawa", category: "hot_drinks", suggestedPrice: 70, icon: "fa-mug-saucer" },
-  { name: "Hot Chocolate", category: "hot_drinks", suggestedPrice: 60, icon: "fa-mug-saucer" },
+function parsePrice(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
 
-  // Cold Drinks
-  { name: "Soda 300ml", category: "cold_drinks", suggestedPrice: 50, icon: "fa-bottle-droplet" },
-  { name: "Soda 500ml", category: "cold_drinks", suggestedPrice: 70, icon: "fa-bottle-droplet" },
-  { name: "Fresh Juice", category: "cold_drinks", suggestedPrice: 100, icon: "fa-glass-water" },
-  { name: "Water 500ml", category: "cold_drinks", suggestedPrice: 30, icon: "fa-bottle-water" },
-  { name: "Water 1L", category: "cold_drinks", suggestedPrice: 60, icon: "fa-bottle-water" },
-  { name: "Energy Drink", category: "cold_drinks", suggestedPrice: 100, icon: "fa-bolt" },
-];
+function sameName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
 
-const PRICE_SHORTCUTS = [20, 30, 40, 50, 70, 80, 100, 120, 150, 180, 200, 250, 300];
+function itemGroupIds(item: InventoryItem | null | undefined): string[] {
+  return (item?.product?.modifier_groups ?? []).map((group) => group.id);
+}
+
+function itemParts(item: InventoryItem | null | undefined): ComboPart[] {
+  return (item?.product?.combo_components ?? []).map((part) => ({
+    productId: part.component_product_id,
+    name: part.name || "Item",
+    quantity: part.quantity,
+  }));
+}
+
+function itemRecipe(item: InventoryItem | null | undefined): { productId: string; quantity: number }[] {
+  return (item?.product?.recipe ?? []).map((line) => ({
+    productId: line.ingredient_product_id,
+    quantity: line.quantity,
+  }));
+}
+
+function sameRecipe(
+  a: { productId: string; quantity: number }[],
+  b: { productId: string; quantity: number }[],
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every((line, index) => line.productId === b[index].productId && line.quantity === b[index].quantity)
+  );
+}
+
+function sameIds(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((id, index) => id === b[index]);
+}
+
+function sameParts(a: ComboPart[], b: ComboPart[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((part, index) => part.productId === b[index].productId && part.quantity === b[index].quantity)
+  );
+}
 
 export function TransChapMenuForm() {
-  const [activeCategory, setActiveCategory] = useState<DishCategory>("all");
+  const user = useAuthUser();
+  const accountId = (user.active_account ?? user.account)?.id ?? null;
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [menuSections, setMenuSections] = useState<MenuSectionDef[]>(DEFAULT_MENU_SECTIONS);
+  const [groups, setGroups] = useState<ModifierGroup[]>([]);
+  const [costing, setCosting] = useState<Map<string, MenuCosting>>(new Map());
   const [search, setSearch] = useState("");
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [sessionAddedCount, setSessionAddedCount] = useState(0);
-
-  // Modal State
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalName, setModalName] = useState("");
-  const [modalPrice, setModalPrice] = useState("");
-  const [modalCategory, setModalCategory] = useState<"mains" | "bites" | "hot_drinks" | "cold_drinks">("mains");
-  const [modalIcon, setModalIcon] = useState("fa-utensils");
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const [groupEditor, setGroupEditor] = useState<GroupEditorState | null>(null);
+  const [showGroups, setShowGroups] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  const nameInputRef = useRef<HTMLInputElement | null>(null);
-  const priceInputRef = useRef<HTMLInputElement | null>(null);
+  const nameRef = useRef<HTMLInputElement | null>(null);
+  const priceRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let alive = true;
-    apiFetch<InventoryResponse>(apiRoutes.inventory)
+    apiFetch<InventoryResponse>(`${apiRoutes.inventory}?active=true`)
       .then((data) => {
-        if (!alive) return;
-        setInventory(data.data);
+        if (alive) setItems(data.data);
+      })
+      .catch((err) => {
+        if (alive) void showError("Could not load menu", extractErrorMessage(err));
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    fetchMenuSections()
+      .then((sections) => {
+        if (alive) setMenuSections(sections);
       })
       .catch(() => {
-        if (!alive) return;
-        setInventory([]);
+        /* keep default sections */
+      });
+    fetchModifierGroups()
+      .then((rows) => {
+        if (alive) setGroups(rows);
+      })
+      .catch(() => {
+        /* options can still be created */
       });
     return () => {
       alive = false;
     };
   }, []);
 
-  // Track which dishes already exist in inventory
-  const existingDishesMap = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const item of inventory) {
-      if (item.is_active && isHotelMenuItem(item) && isSaleableRole(inventoryRole(item))) {
-        const n = (item.product?.name || "").trim().toLowerCase();
-        if (n) {
-          map.set(n, item.selling_price ?? 0);
-        }
-      }
+  useEffect(() => {
+    let alive = true;
+    fetchMenuCosting()
+      .then((rows) => {
+        if (alive) setCosting(new Map(rows.map((row) => [row.inventory_item_id, row])));
+      })
+      .catch(() => {
+        /* stock badges are optional */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [items]);
+
+  const groupsById = useMemo(() => new Map(groups.map((group) => [group.id, group])), [groups]);
+  const menuItems = useMemo(
+    () => items.filter((item) => item.is_active && isHotelMenuItem(item) && !isMenuAddonItem(item)),
+    [items],
+  );
+  const dishes = useMemo(() => menuItems.filter((item) => !isMenuComboItem(item)), [menuItems]);
+  const supplies = useMemo(
+    () =>
+      items
+        .filter((item) => item.is_active && isSupplyItem(item))
+        .sort((a, b) => inventoryProductName(a).localeCompare(inventoryProductName(b))),
+    [items],
+  );
+  const itemsByProductId = useMemo(() => new Map(items.map((item) => [item.product_id, item])), [items]);
+
+  /** Ingredient cost of one plate; a meal adds up its dishes (or their buying price). */
+  function plateCost(item: InventoryItem): { cost: number; priced: boolean } | null {
+    if (!isMenuComboItem(item)) {
+      const recipe = itemRecipe(item);
+      return recipe.length ? recipeCost(recipe, itemsByProductId) : null;
     }
-    return map;
-  }, [inventory]);
-
-  // Filter presets by active category and search
-  const visiblePresets = useMemo(() => {
-    let list = PRESET_DISHES;
-    if (activeCategory !== "all") {
-      list = list.filter((dish) => dish.category === activeCategory);
-    }
-    const q = search.trim().toLowerCase();
-    if (q) {
-      list = list.filter((dish) => dish.name.toLowerCase().includes(q));
-    }
-    return list;
-  }, [activeCategory, search]);
-
-  // Check if search query matches an exact preset
-  const searchMatchesExactPreset = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return false;
-    return PRESET_DISHES.some((dish) => dish.name.toLowerCase() === q);
-  }, [search]);
-
-  // Open modal for a preset dish
-  function handleOpenPresetModal(preset: DishPreset) {
-    const existingPrice = existingDishesMap.get(preset.name.toLowerCase());
-    setModalName(preset.name);
-    setModalPrice(String(existingPrice || preset.suggestedPrice));
-    setModalCategory(preset.category);
-    setModalIcon(preset.icon);
-    setModalOpen(true);
-    setTimeout(() => {
-      priceInputRef.current?.focus();
-      priceInputRef.current?.select();
-    }, 80);
-  }
-
-  // Open modal for a custom dish
-  function handleOpenCustomModal(prefilledName = "") {
-    setModalName(prefilledName);
-    setModalPrice("");
-    setModalCategory(activeCategory === "all" ? "mains" : activeCategory);
-    setModalIcon("fa-utensils");
-    setModalOpen(true);
-    setTimeout(() => {
-      if (!prefilledName.trim()) {
-        nameInputRef.current?.focus();
+    let cost = 0;
+    let priced = true;
+    let known = false;
+    for (const part of item.product?.combo_components ?? []) {
+      const dish = itemsByProductId.get(part.component_product_id);
+      const recipe = itemRecipe(dish);
+      if (recipe.length) {
+        const sub = recipeCost(recipe, itemsByProductId);
+        cost += sub.cost * part.quantity;
+        priced &&= sub.priced;
+        known = true;
+      } else if (dish?.buying_price != null) {
+        cost += dish.buying_price * part.quantity;
+        known = true;
       } else {
-        priceInputRef.current?.focus();
+        priced = false;
       }
+    }
+    return known ? { cost, priced } : null;
+  }
+
+  const needle = search.trim().toLowerCase();
+  const visible = useMemo(
+    () =>
+      menuItems
+        .filter(
+          (item) =>
+            !needle ||
+            inventoryProductName(item).toLowerCase().includes(needle) ||
+            (item.product?.combo_components ?? []).some((part) =>
+              (part.name || "").toLowerCase().includes(needle),
+            ),
+        )
+        .sort((a, b) => inventoryProductName(a).localeCompare(inventoryProductName(b))),
+    [menuItems, needle],
+  );
+
+  const sections = useMemo(
+    () =>
+      menuSections
+        .map((section) => ({
+          ...section,
+          rows: visible.filter((item) => menuSection(item, menuSections) === section.id),
+        }))
+        .filter((section) => section.rows.length),
+    [menuSections, visible],
+  );
+
+  const exactMatch = needle
+    ? menuItems.some((item) => sameName(inventoryProductName(item), needle))
+    : false;
+
+  /** Live group definitions for an item (falls back to what came with the inventory row). */
+  function liveGroups(item: InventoryItem): ModifierGroup[] {
+    return (item.product?.modifier_groups ?? [])
+      .map((group) => groupsById.get(group.id) ?? (groups.length ? null : group))
+      .filter((group): group is ModifierGroup => !!group);
+  }
+
+  function focusField(ref: RefObject<HTMLInputElement | null>) {
+    setTimeout(() => {
+      ref.current?.focus();
+      ref.current?.select();
     }, 80);
   }
 
-  // Submit dish to menu
-  async function handleModalSubmit(event?: FormEvent) {
-    if (event) event.preventDefault();
-    const dish = modalName.trim();
-    const sell = Number(modalPrice);
-    if (!dish || !Number.isFinite(sell) || sell <= 0 || saving) return;
+  function openNew(kind: ItemKind, name = "") {
+    const existing = name
+      ? menuItems.find((item) => sameName(inventoryProductName(item), name))
+      : undefined;
+    if (existing) {
+      openExisting(existing);
+      return;
+    }
+    setEditor({
+      kind,
+      item: null,
+      name,
+      price: "",
+      section: menuSections[0]?.id ?? "mains",
+      groupIds: [],
+      parts: [],
+      recipe: [],
+    });
+    focusField(name ? priceRef : nameRef);
+  }
+
+  function openExisting(item: InventoryItem) {
+    setEditor({
+      kind: isMenuComboItem(item) ? "combo" : "meal",
+      item,
+      name: inventoryProductName(item),
+      price: item.selling_price != null ? String(item.selling_price) : "",
+      section: menuSection(item, menuSections),
+      groupIds: itemGroupIds(item).filter((id) => !groups.length || groupsById.has(id)),
+      parts: itemParts(item),
+      recipe: itemRecipe(item).map((line) => ({ productId: line.productId, qty: String(line.quantity) })),
+    });
+  }
+
+  function patchEditor(patch: Partial<Editor>) {
+    setEditor((prev) => (prev ? { ...prev, ...patch } : prev));
+  }
+
+  function handleGroupSaved(saved: ModifierGroup) {
+    const attach = groupEditor?.attach && !groupEditor.group;
+    setGroups((prev) =>
+      prev.some((group) => group.id === saved.id)
+        ? prev.map((group) => (group.id === saved.id ? { ...saved, item_count: group.item_count } : group))
+        : [...prev, saved],
+    );
+    if (attach) {
+      setEditor((prev) =>
+        prev && !prev.groupIds.includes(saved.id) ? { ...prev, groupIds: [...prev.groupIds, saved.id] } : prev,
+      );
+    }
+    setGroupEditor(null);
+  }
+
+  function handleGroupDeleted(groupId: string) {
+    setGroups((prev) => prev.filter((group) => group.id !== groupId));
+    setEditor((prev) => (prev ? { ...prev, groupIds: prev.groupIds.filter((id) => id !== groupId) } : prev));
+    setGroupEditor(null);
+  }
+
+  async function handleSave(event: FormEvent) {
+    event.preventDefault();
+    if (!editor || saving) return;
+    const name = editor.name.trim();
+    const price = parsePrice(editor.price);
+    if (!name || price == null || price <= 0) return;
+
+    const current = editor.item;
+    const clash = menuItems.find(
+      (item) => item.id !== current?.id && sameName(inventoryProductName(item), name),
+    );
+    if (clash) {
+      await showError("Already on the menu", `"${name}" is already saved. Edit that one instead.`);
+      return;
+    }
+
+    const input = { name, price, productType: editor.kind, section: editor.section };
+    const priorGroups = itemGroupIds(current);
+    const priorParts = itemParts(current);
+    const priorRecipe = itemRecipe(current);
+    const recipeLines = recipeDraftLines(editor.recipe);
+    const catalogueChanged =
+      !!current?.product &&
+      (!sameName(current.product.name, name) ||
+        current.product.product_type !== editor.kind ||
+        menuSection(current, menuSections) !== editor.section ||
+        !sameIds(priorGroups, editor.groupIds) ||
+        (editor.kind === "combo" && !sameParts(priorParts, editor.parts)));
+    const sharedProduct =
+      !!current?.product &&
+      !!accountId &&
+      current.product.created_by_account_id !== accountId;
 
     setSaving(true);
     try {
-      let items = inventory;
-      let existing = findInventoryByName(items, dish) ?? null;
-      if (!existing) {
-        const fresh = await apiFetch<InventoryResponse>(apiRoutes.inventory);
-        items = fresh.data;
-        existing = findInventoryByName(items, dish) ?? null;
-      }
-
-      if (!existing) {
-        const created = await addLiteInventoryProduct(dish, String(sell), {
-          category: "food_beverage",
-          stock_quantity: null,
-          inventory_role: "for_sale",
-        });
-        setInventory((prev) => [...prev, created]);
-      } else if (
-        inventoryRole(existing) !== "for_sale" ||
-        existing.stock_quantity != null
-      ) {
-        const patched = await updateInventoryItem(existing.id, {
-          inventory_role: "for_sale",
-          stock_quantity: null,
-          selling_price: sell,
-        });
-        setInventory((prev) =>
-          prev.map((item) => (item.id === patched.id ? patched : item)),
-        );
+      let saved: InventoryItem;
+      if (!current) {
+        saved = await createMenuItem(input);
+      } else if (sharedProduct && catalogueChanged) {
+        // Shared catalogue rows belong to every shop, so give this shop its own copy.
+        saved = await createMenuItem(input);
+        await updateInventoryActive(current.id, false);
       } else {
-        const updated = await updateInventorySellingPrice(existing.id, sell);
-        setInventory((prev) =>
-          prev.map((item) => (item.id === updated.id ? updated : item)),
-        );
+        saved = await updateMenuItem(current, input);
       }
 
-      setSessionAddedCount((prev) => prev + 1);
-      setModalOpen(false);
+      const sameProduct = !!current && saved.product_id === current.product_id;
+      if (!sameIds(sameProduct ? priorGroups : [], editor.groupIds)) {
+        const attached = await saveItemModifierGroups(saved.product_id, editor.groupIds);
+        if (saved.product) saved = { ...saved, product: { ...saved.product, modifier_groups: attached } };
+      }
+      if (editor.kind === "combo" && !sameParts(sameProduct ? priorParts : [], editor.parts)) {
+        const parts = await saveComboComponents(
+          saved.product_id,
+          editor.parts.map((part) => ({ product_id: part.productId, quantity: part.quantity })),
+        );
+        if (saved.product) saved = { ...saved, product: { ...saved.product, combo_components: parts } };
+      }
+      if (editor.kind === "meal" && !sameRecipe(sameProduct ? priorRecipe : [], recipeLines)) {
+        const recipe = await saveRecipe(
+          saved.product_id,
+          recipeLines.map((line) => ({ product_id: line.productId, quantity: line.quantity })),
+        );
+        if (saved.product) saved = { ...saved, product: { ...saved.product, recipe } };
+      }
+
+      setItems((prev) => [
+        saved,
+        ...prev.filter((row) => row.id !== saved.id && row.id !== current?.id),
+      ]);
+      setEditor(null);
       setSearch("");
-      await toastSuccess(`"${dish}" added at ${formatKsh(sell)}!`);
-    } catch {
-      await showInternalError();
+      fetchModifierGroups()
+        .then(setGroups)
+        .catch(() => {
+          /* counts refresh next visit */
+        });
+      await toastSuccess(current ? `"${name}" updated` : `"${name}" added to the menu`);
+    } catch (err) {
+      await showError("Could not save", extractErrorMessage(err));
     } finally {
       setSaving(false);
     }
   }
 
+  async function handleRemove() {
+    const current = editor?.item;
+    if (!current || saving) return;
+    const name = inventoryProductName(current);
+    const ok = await confirmAction(
+      `Remove "${name}" from the menu?`,
+      "It stays in your catalogue and can be turned back on from Stocks.",
+      "Remove",
+    );
+    if (!ok) return;
+    setSaving(true);
+    try {
+      await updateInventoryActive(current.id, false);
+      setItems((prev) => prev.filter((row) => row.id !== current.id));
+      setEditor(null);
+      await toastSuccess(`"${name}" removed`);
+    } catch (err) {
+      await showError("Could not remove", extractErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const editorPrice = editor ? parsePrice(editor.price) : null;
+  const isCombo = editor?.kind === "combo";
+  const canSave =
+    !!editor &&
+    !saving &&
+    !!editor.name.trim() &&
+    editorPrice != null &&
+    editorPrice > 0 &&
+    (!isCombo || editor.parts.length > 0) &&
+    (isCombo || editor.recipe.every((row) => !row.productId || parseRecipeQty(row.qty) != null));
+  const overlayOpen = !!editor || !!groupEditor || showGroups;
+
   return (
-    <div className="pos-panel">
-      <div
-        className="pos-grid"
-        style={{
-          gridTemplateColumns: "1fr",
-          maxWidth: "1080px",
-          margin: "0 auto",
-          paddingBottom: "4rem",
-        }}
-      >
-        <div className="pos-main">
-          <div className="pos-catalog">
-            {/* Catalog Head: Search bar & "+ Custom" button */}
-            <header className="pos-catalog__head">
-              <div className="pos-menu-tools-row">
-                <label className="pos-search">
-                  <i
-                    className="fa-solid fa-magnifying-glass pos-search__icon"
-                    aria-hidden="true"
-                  />
-                  <input
-                    type="search"
-                    placeholder="Search dishes or type custom dish…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    autoFocus
-                  />
-                  {search ? (
+    <div className="tc-menu">
+      <div className="tc-menu__scroll">
+      <div className="tc-menu__bar">
+        <label className="pos-search tc-menu__search">
+          <i className="fa-solid fa-magnifying-glass pos-search__icon" aria-hidden="true" />
+          <input
+            type="search"
+            placeholder="Search your menu…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+      </div>
+
+      {sections.length > 1 ? (
+        <nav className="tc-menu__nav" aria-label="Menu sections">
+          {sections.map((section) => (
+            <a key={section.id} href={`#menu-${section.id}`} className="tc-menu__chip">
+              {section.label}
+              <span>{section.rows.length}</span>
+            </a>
+          ))}
+        </nav>
+      ) : null}
+
+      {needle && !exactMatch ? (
+        <button type="button" className="tc-menu__add-row" onClick={() => openNew("meal", search.trim())}>
+          <i className="fa-solid fa-plus" aria-hidden="true" />
+          Add &ldquo;{search.trim()}&rdquo; to the menu
+        </button>
+      ) : null}
+
+      {loading ? (
+        <p className="tc-menu__empty">Loading menu…</p>
+      ) : menuItems.length === 0 ? (
+        <p className="tc-menu__empty">
+          Your menu is empty. Tap + to add the first dish you serve.
+        </p>
+      ) : (
+        sections.map((section) => (
+          <section key={section.id} id={`menu-${section.id}`} className="tc-menu__section">
+            <h3 className="tc-menu__section-title">{section.label}</h3>
+            <ul className="tc-menu__cards">
+              {section.rows.map((item) => {
+                const itemGroups = liveGroups(item);
+                const combo = isMenuComboItem(item);
+                const parts = item.product?.combo_components ?? [];
+                const cost = plateCost(item);
+                return (
+                  <li key={item.id}>
                     <button
                       type="button"
-                      className="pos-search__clear"
-                      onClick={() => setSearch("")}
-                      aria-label="Clear search"
+                      className="tc-menu__card"
+                      onClick={() => openExisting(item)}
                     >
-                      <i className="fa-solid fa-xmark" aria-hidden="true" />
-                    </button>
-                  ) : null}
-                </label>
-
-                <button
-                  type="button"
-                  className="pos-menu-custom-btn"
-                  onClick={() => handleOpenCustomModal(search.trim())}
-                >
-                  <i className="fa-solid fa-plus" aria-hidden="true" />
-                  <span>Custom Dish</span>
-                </button>
-              </div>
-            </header>
-
-            {/* Horizontal Category Filter Chips */}
-            <div
-              className="pos-category-chips"
-              role="tablist"
-              aria-label="Filter dishes by category"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeCategory === "all"}
-                className={`pos-category-chip${activeCategory === "all" ? " is-active" : ""}`}
-                onClick={() => setActiveCategory("all")}
-              >
-                <i className="fa-solid fa-layer-group" aria-hidden="true" />
-                <span>All ({PRESET_DISHES.length})</span>
-              </button>
-
-              {CATEGORY_TABS.filter((t) => t.id !== "all").map((tab) => {
-                const count = PRESET_DISHES.filter((d) => d.category === tab.id).length;
-                const isActive = activeCategory === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    className={`pos-category-chip${isActive ? " is-active" : ""}`}
-                    onClick={() => setActiveCategory(tab.id)}
-                  >
-                    <i className={`fa-solid ${tab.icon}`} aria-hidden="true" />
-                    <span>{tab.label}</span>
-                    <span className="pos-category-chip__count">{count}</span>
-                  </button>
-                );
-              })}
-
-              {sessionAddedCount > 0 ? (
-                <span className="pos-menu-stats-pill">
-                  <i className="fa-solid fa-circle-check" aria-hidden="true" />
-                  <span>{sessionAddedCount} added this session</span>
-                </span>
-              ) : null}
-            </div>
-
-            {/* Banner when searching for a dish that doesn't match an exact preset */}
-            {search.trim() && !searchMatchesExactPreset ? (
-              <div
-                className="pos-menu-search-prompt"
-                onClick={() => handleOpenCustomModal(search.trim())}
-                role="button"
-                tabIndex={0}
-              >
-                <div className="pos-menu-search-prompt__meta">
-                  <div className="pos-menu-search-prompt__icon">
-                    <i className="fa-solid fa-plus" aria-hidden="true" />
-                  </div>
-                  <div>
-                    <strong className="pos-menu-search-prompt__name">
-                      Add &ldquo;{search.trim()}&rdquo; to Menu
-                    </strong>
-                    <span className="pos-menu-search-prompt__hint">
-                      Tap to set price and save as new menu item
-                    </span>
-                  </div>
-                </div>
-                <span className="pos-menu-search-prompt__action">
-                  Set Price &rarr;
-                </span>
-              </div>
-            ) : null}
-
-            {/* Dish Cards Grid: 2 columns on mobile, auto-fill on desktop */}
-            <ul className="pos-cards" role="list">
-              {/* Card 1: Custom Dish card */}
-              <li className="pos-card pos-card--custom">
-                <div className="pos-card__hit">
-                  <button
-                    type="button"
-                    className="pos-card__main"
-                    onClick={() => handleOpenCustomModal(search.trim())}
-                  >
-                    <div
-                      className="pos-card__thumb"
-                      style={{
-                        background:
-                          "color-mix(in srgb, var(--app-primary) 10%, var(--app-surface))",
-                      }}
-                    >
-                      <div
-                        className="pos-card__thumb-fallback"
-                        style={{ color: "var(--app-primary)" }}
-                      >
-                        <i
-                          className="fa-solid fa-circle-plus"
-                          aria-hidden="true"
-                          style={{ fontSize: "2rem" }}
-                        />
-                      </div>
-                    </div>
-                    <div className="pos-card__info">
-                      <span
-                        className="pos-card__dish-tag"
-                        style={{
-                          background: "var(--app-primary)",
-                          color: "#ffffff",
-                        }}
-                      >
-                        Custom
-                      </span>
-                      <strong className="pos-card__name">Add Custom Dish</strong>
-                      <div className="pos-card__price">
-                        <span className="pos-card__price-unit">
-                          Any name & price
-                        </span>
-                      </div>
-                    </div>
-                  </button>
-                </div>
-              </li>
-
-              {/* Preset Cards */}
-              {visiblePresets.map((dish) => {
-                const isAdded = existingDishesMap.has(dish.name.toLowerCase());
-                const currentPrice = existingDishesMap.get(dish.name.toLowerCase());
-                const displayPrice = isAdded && currentPrice ? currentPrice : dish.suggestedPrice;
-
-                return (
-                  <li
-                    key={dish.name}
-                    className={`pos-card${isAdded ? " is-in-cart" : ""}`}
-                  >
-                    <div className="pos-card__hit">
-                      <button
-                        type="button"
-                        className="pos-card__main"
-                        onClick={() => handleOpenPresetModal(dish)}
-                      >
-                        <div className="pos-card__thumb">
-                          <div className="pos-card__thumb-fallback">
-                            <i className={`fa-solid ${dish.icon}`} aria-hidden="true" />
-                          </div>
-                          {isAdded ? (
-                            <span className="pos-card__in-cart-badge">
-                              <i className="fa-solid fa-check" aria-hidden="true" /> On Menu
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="pos-card__info">
-                          <span className="pos-card__dish-tag">
-                            {CATEGORY_LABELS[dish.category] || dish.category}
+                      <TransChapProductThumb item={item} size="md" />
+                      <span className="tc-menu__card-body">
+                        <span className="tc-menu__card-head">
+                          <strong>
+                            {inventoryProductName(item)}
+                            {combo ? <em className="tc-menu__meal-badge">Meal</em> : null}
+                          </strong>
+                          <span className="tc-menu__card-price">
+                            {item.selling_price != null
+                              ? `${combo && itemGroups.length ? "from " : ""}${formatKsh(item.selling_price)}`
+                              : "—"}
                           </span>
-                          <strong className="pos-card__name">{dish.name}</strong>
-                          <div className="pos-card__price">
-                            <span className="pos-card__price-amount">
-                              KES {displayPrice}
-                            </span>
-                            <span className="pos-card__price-unit">
-                              {isAdded ? "current" : "suggested"}
-                            </span>
-                          </div>
-                        </div>
-                      </button>
-                    </div>
+                        </span>
+                        {combo ? (
+                          <span className="tc-menu__card-hint">
+                            {[
+                              ...parts.map((part) =>
+                                part.quantity > 1 ? `${part.quantity}× ${part.name}` : part.name || "Item",
+                              ),
+                              ...itemGroups.map((group) => group.name),
+                            ].join(" + ") || "No dishes yet"}
+                          </span>
+                        ) : itemGroups.length ? (
+                          <span className="tc-menu__card-addons">
+                            {itemGroups.map((group) => (
+                              <span key={group.id} className="tc-menu__addon-tag">
+                                {group.name}
+                                <em>{modifierRuleLabel(group).split(" · ")[0].toLowerCase()}</em>
+                              </span>
+                            ))}
+                          </span>
+                        ) : (
+                          <span className="tc-menu__card-hint">No options</span>
+                        )}
+                        {cost ? (
+                          <span className="tc-menu__card-cost">
+                            Cost {formatKsh(cost.cost)}
+                            {cost.priced ? "" : "+"}
+                            {item.selling_price
+                              ? ` · ${Math.round(((item.selling_price - cost.cost) / item.selling_price) * 100)}% margin`
+                              : ""}
+                          </span>
+                        ) : null}
+                        {stockLine(costing.get(item.id))}
+                      </span>
+                    </button>
                   </li>
                 );
               })}
             </ul>
-          </div>
-        </div>
+          </section>
+        ))
+      )}
       </div>
 
-      {/* POS Menu Add/Edit Bottom-Sheet (Mobile) & Modal (Desktop) */}
-      {modalOpen ? (
+      {overlayOpen ? null : (
+        <TransChapFab
+          label="Add to menu"
+          options={[
+            { label: "Add dish", icon: "fa-utensils", onClick: () => openNew("meal", exactMatch ? "" : search.trim()) },
+            { label: "Add meal", icon: "fa-burger", onClick: () => openNew("combo") },
+            { label: "Option groups", icon: "fa-list-check", onClick: () => setShowGroups(true) },
+          ]}
+        />
+      )}
+
+      {showGroups && !groupEditor ? (
+        <TransChapMenuGroupsSheet
+          groups={groups}
+          onClose={() => setShowGroups(false)}
+          onNew={() => setGroupEditor({ group: null, attach: false })}
+          onEdit={(group) => setGroupEditor({ group, attach: false })}
+        />
+      ) : null}
+
+      {editor ? (
         <div
           className="pos-menu-modal-backdrop"
-          onClick={() => setModalOpen(false)}
+          onClick={() => !saving && !groupEditor && setEditor(null)}
           role="presentation"
+          style={groupEditor ? { display: "none" } : undefined}
         >
           <div
             className="pos-menu-modal"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-labelledby="menu-modal-title"
+            aria-labelledby="menu-editor-title"
           >
             <div className="pos-menu-modal__drag-handle" />
-
             <header className="pos-menu-modal__header">
               <div className="pos-menu-modal__title-row">
-                <div className="pos-menu-modal__badge">
-                  <i className={`fa-solid ${modalIcon}`} aria-hidden="true" />
-                  <span>{CATEGORY_LABELS[modalCategory] || "Menu Item"}</span>
-                </div>
+                <h2 id="menu-editor-title" className="pos-menu-modal__title">
+                  {editor.item ? (isCombo ? "Edit meal" : "Edit dish") : isCombo ? "New meal" : "New dish"}
+                </h2>
                 <button
                   type="button"
                   className="pos-menu-modal__close-btn"
-                  onClick={() => setModalOpen(false)}
+                  onClick={() => setEditor(null)}
                   aria-label="Close"
                 >
                   <i className="fa-solid fa-xmark" aria-hidden="true" />
                 </button>
               </div>
-              <h2 id="menu-modal-title" className="pos-menu-modal__title">
-                {modalName.trim() ? `Add "${modalName.trim()}"` : "Add New Dish"}
-              </h2>
-              <p className="pos-menu-modal__subtitle">
-                Set selling price to make this item available on POS immediately
-              </p>
             </header>
 
-            <form
-              onSubmit={(e) => void handleModalSubmit(e)}
-              className="pos-menu-modal__body"
-            >
-              {/* Dish Name */}
+            <form onSubmit={(e) => void handleSave(e)} className="pos-menu-modal__body">
               <div className="pos-menu-modal__field">
-                <label htmlFor="modal-dish-name">Dish or Beverage Name</label>
+                <label htmlFor="menu-editor-name">Name</label>
                 <div className="pos-menu-modal__input-wrap">
-                  <span className="pos-menu-modal__input-icon">
-                    <i className="fa-solid fa-utensils" aria-hidden="true" />
-                  </span>
                   <input
-                    id="modal-dish-name"
-                    ref={nameInputRef}
+                    id="menu-editor-name"
+                    ref={nameRef}
                     type="text"
                     required
                     autoComplete="off"
-                    placeholder="e.g. Chapati, Beef stew, Ugali…"
-                    value={modalName}
-                    onChange={(e) => setModalName(e.target.value)}
+                    placeholder={isCombo ? "e.g. Big Mac Meal" : "e.g. Beef stew"}
+                    value={editor.name}
+                    onChange={(e) => patchEditor({ name: e.target.value })}
                     className="pos-menu-modal__text-input"
                   />
-                  {modalName ? (
-                    <button
-                      type="button"
-                      className="pos-menu-modal__clear-btn"
-                      onClick={() => {
-                        setModalName("");
-                        nameInputRef.current?.focus();
-                      }}
-                      aria-label="Clear dish name"
-                    >
-                      <i className="fa-solid fa-xmark" aria-hidden="true" />
-                    </button>
-                  ) : null}
                 </div>
               </div>
 
-              {/* Selling Price */}
               <div className="pos-menu-modal__field">
-                <div className="pos-menu-modal__label-row">
-                  <label htmlFor="modal-dish-price">Selling Price</label>
-                  <span className="pos-menu-modal__label-hint">Per plate or serving</span>
-                </div>
+                <label htmlFor="menu-editor-price">{isCombo ? "Meal price" : "Price"}</label>
                 <div className="pos-menu-modal__price-wrap">
                   <span className="pos-menu-modal__price-prefix">KES</span>
                   <input
-                    id="modal-dish-price"
-                    ref={priceInputRef}
+                    id="menu-editor-price"
+                    ref={priceRef}
                     type="text"
                     required
                     inputMode="decimal"
                     placeholder="0"
-                    value={modalPrice}
-                    onChange={(e) => setModalPrice(e.target.value)}
+                    value={editor.price}
+                    onChange={(e) => patchEditor({ price: e.target.value })}
                     className="pos-menu-modal__price-input"
                   />
                 </div>
-
-                {/* Quick Price Shortcuts */}
-                <div
-                  className="pos-menu-modal__shortcuts"
-                  role="group"
-                  aria-label="Price shortcuts"
-                >
-                  {PRICE_SHORTCUTS.map((amt) => {
-                    const isActive = modalPrice === String(amt);
-                    return (
-                      <button
-                        key={amt}
-                        type="button"
-                        className={`pos-menu-modal__price-pill${isActive ? " is-active" : ""}`}
-                        onClick={() => setModalPrice(String(amt))}
-                      >
-                        {amt}
-                      </button>
-                    );
-                  })}
-                </div>
               </div>
 
-              {/* Category Selector */}
               <div className="pos-menu-modal__field">
-                <label>Category</label>
+                <div className="pos-menu-modal__label-row">
+                  <label>Section</label>
+                  <Link
+                    href="/trans-chap/settings?pane=menu-sections"
+                    className="pos-menu-modal__label-hint"
+                  >
+                    Edit sections
+                  </Link>
+                </div>
                 <div className="pos-menu-modal__cat-selector">
-                  {(["mains", "bites", "hot_drinks", "cold_drinks"] as const).map(
-                    (cat) => (
-                      <button
-                        key={cat}
-                        type="button"
-                        className={`pos-menu-modal__cat-btn${modalCategory === cat ? " is-active" : ""}`}
-                        onClick={() => setModalCategory(cat)}
-                      >
-                        {CATEGORY_LABELS[cat]}
-                      </button>
-                    ),
-                  )}
+                  {menuSections.map((section) => (
+                    <button
+                      key={section.id}
+                      type="button"
+                      className={`pos-menu-modal__cat-btn${editor.section === section.id ? " is-active" : ""}`}
+                      onClick={() => patchEditor({ section: section.id })}
+                    >
+                      {section.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* Modal Footer Submit */}
-              <footer className="pos-menu-modal__footer">
-                <button
-                  type="submit"
-                  disabled={saving || !modalName.trim() || Number(modalPrice) <= 0}
-                  className="pos-menu-modal__submit-btn"
-                >
-                  {saving ? (
-                    <>
-                      <i className="fa-solid fa-spinner fa-spin" aria-hidden="true" />
-                      <span>Adding to Menu…</span>
-                    </>
-                  ) : (
-                    <>
-                      <i className="fa-solid fa-circle-plus" aria-hidden="true" />
-                      <span>
-                        Add {modalName.trim() ? `"${modalName.trim()}"` : "Dish"} to Menu
-                        {Number(modalPrice) > 0 ? ` (KES ${modalPrice})` : ""}
-                      </span>
-                    </>
-                  )}
+              {isCombo ? (
+                <ComboIncludesField
+                  dishes={dishes}
+                  parts={editor.parts}
+                  onChange={(parts) => patchEditor({ parts })}
+                />
+              ) : (
+                <RecipeField
+                  supplies={supplies}
+                  rows={editor.recipe}
+                  price={editorPrice}
+                  onChange={(recipe) => patchEditor({ recipe })}
+                />
+              )}
+
+              <MenuOptionsField
+                label={isCombo ? "Choices" : "Options"}
+                hint={isCombo ? "e.g. Size, Choose side, Choose drink" : "e.g. Burger changes, Add-ons"}
+                groups={groups}
+                attachedIds={editor.groupIds}
+                onChange={(groupIds) => patchEditor({ groupIds })}
+                onNewGroup={() => setGroupEditor({ group: null, attach: true })}
+                onEditGroup={(group) => setGroupEditor({ group, attach: false })}
+              />
+
+              <footer className="pos-menu-modal__footer tc-menu__footer">
+                {editor.item ? (
+                  <button
+                    type="button"
+                    className="tc-menu__remove"
+                    disabled={saving}
+                    onClick={() => void handleRemove()}
+                  >
+                    Remove
+                  </button>
+                ) : null}
+                <button type="submit" disabled={!canSave} className="pos-menu-modal__submit-btn">
+                  {saving
+                    ? "Saving…"
+                    : editor.item
+                      ? "Save changes"
+                      : isCombo
+                        ? "Add meal"
+                        : "Add dish"}
                 </button>
               </footer>
             </form>
           </div>
         </div>
+      ) : null}
+
+      {groupEditor ? (
+        <TransChapMenuGroupEditor
+          key={groupEditor.group?.id ?? "new"}
+          group={groupEditor.group}
+          supplies={supplies}
+          onClose={() => setGroupEditor(null)}
+          onSaved={handleGroupSaved}
+          onDeleted={handleGroupDeleted}
+        />
       ) : null}
     </div>
   );

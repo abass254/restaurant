@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Literal
 
@@ -14,6 +15,7 @@ from app.support.datetime_utils import utc_now
 
 MONEY_QUANTUM = Decimal("0.01")
 MAX_CREDIT_LIMIT = Decimal("99999999.99")
+DEFAULT_CREDIT_LIMIT = Decimal("1000.00")
 ImportUpsertStatus = Literal["created", "updated"]
 
 
@@ -33,6 +35,18 @@ def _money(value: object | None, *, field: str = "Credit limit") -> Decimal:
     if amount > MAX_CREDIT_LIMIT:
         raise CustomerServiceError(f"{field} is too large.")
     return amount
+
+
+def _pay_date(value: date | str | None) -> date | None:
+    if value is None or isinstance(value, date):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError as exc:
+        raise CustomerServiceError("Date to pay must be in YYYY-MM-DD format.") from exc
 
 
 def available_credit(
@@ -111,8 +125,10 @@ class CustomerService:
         phone: str,
         email: str | None = None,
         address: str | None = None,
+        physical_location: str | None = None,
+        date_to_pay: date | str | None = None,
         notes: str | None = None,
-        credit_limit: object | None = 0,
+        credit_limit: object | None = DEFAULT_CREDIT_LIMIT,
         outstanding_balance: object | None = 0,
         commit: bool = True,
     ) -> ShopCustomer:
@@ -132,6 +148,8 @@ class CustomerService:
             raise CustomerServiceError(
                 "Opening balance cannot be higher than the credit limit."
             )
+        clean_location = (physical_location or "").strip() or None
+        due_date = _pay_date(date_to_pay)
 
         now = utc_now()
         customer = ShopCustomer(
@@ -139,7 +157,9 @@ class CustomerService:
             name=clean_name,
             phone=clean_phone,
             email=clean_email,
-            address=(address or "").strip() or None,
+            address=(address or "").strip() or clean_location,
+            physical_location=clean_location,
+            date_to_pay=due_date,
             notes=(notes or "").strip() or None,
             credit_limit=limit,
             outstanding_balance=opening,
@@ -219,10 +239,14 @@ class CustomerService:
         phone: str | None = None,
         email: str | None = None,
         address: str | None = None,
+        physical_location: str | None = None,
+        date_to_pay: date | str | None = None,
         notes: str | None = None,
         credit_limit: object | None = None,
         clear_email: bool = False,
         clear_address: bool = False,
+        clear_physical_location: bool = False,
+        clear_date_to_pay: bool = False,
         clear_notes: bool = False,
     ) -> ShopCustomer:
         customer = self.get_customer(account_id, customer_id)
@@ -246,6 +270,14 @@ class CustomerService:
             customer.address = None
         elif address is not None:
             customer.address = address.strip() or None
+        if clear_physical_location:
+            customer.physical_location = None
+        elif physical_location is not None:
+            customer.physical_location = physical_location.strip() or None
+        if clear_date_to_pay:
+            customer.date_to_pay = None
+        elif date_to_pay is not None:
+            customer.date_to_pay = _pay_date(date_to_pay)
         if clear_notes:
             customer.notes = None
         elif notes is not None:

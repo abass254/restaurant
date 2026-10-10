@@ -44,6 +44,9 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "reference",
         "product reference",
         "internal ref",
+        "code",
+        "item code",
+        "item_code",
         "sku (leave blank to auto generate sku)",
     ),
     "barcode": ("barcode", "barcodes", "ean", "upc", "ean13"),
@@ -86,9 +89,11 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "customer price",
         "lst price",
         "selling price",
+        "price",
     ),
     "buying_price": (
         "cost",
+        "buying price",
         "standard price",
         "cost price",
         "purchase price",
@@ -104,6 +109,8 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "on hand",
         "current stock",
         "quantity",
+        "qty",
+        "stock",
         "qty available",
         "available quantity",
         "inventory quantity",
@@ -305,6 +312,7 @@ class ImportResult:
     updated: int = 0
     skipped: int = 0
     errors: int = 0
+    matched_existing: int = 0
 
     def summary_message(self) -> str:
         parts = []
@@ -312,6 +320,8 @@ class ImportResult:
             parts.append(f"{self.created} added")
         if self.updated:
             parts.append(f"{self.updated} updated")
+        if self.matched_existing:
+            parts.append(f"{self.matched_existing} matched core inventory")
         if self.skipped:
             parts.append(f"{self.skipped} skipped")
         if self.errors:
@@ -608,6 +618,130 @@ def _merge_attrs(
     return merged or None
 
 
+def _parse_row(
+    raw: tuple[Any, ...] | list[Any],
+    column_map: dict[str, int],
+    row_offset: int,
+    early_errors: list[RowResult],
+    parsed_rows: list[ParsedRow],
+) -> None:
+    if raw is None or all(cell is None or str(cell).strip() == "" for cell in raw):
+        return
+
+    def col(field: str) -> Any:
+        idx = column_map.get(field)
+        if idx is None or idx >= len(raw):
+            return None
+        return raw[idx]
+
+    name = _cell_str(col("name"))
+    if not name:
+        early_errors.append(
+            RowResult(
+                row=row_offset,
+                name=None,
+                sku=_cell_str(col("sku")),
+                status="skipped",
+                message="Missing product name.",
+            ),
+        )
+        return
+
+    raw_product_type = _cell_str(col("product_type"))
+    variant_mode = _cell_str(col("variant_mode"))
+    if not variant_mode and raw_product_type and raw_product_type.lower() in {
+        "single",
+        "variable",
+    }:
+        variant_mode = raw_product_type
+
+    product_type = _map_product_type(raw_product_type)
+
+    buying_excl = _cell_float(col("buying_price_excl"))
+    buying_incl = _cell_float(col("buying_price_incl"))
+    buying_generic = _cell_float(col("buying_price"))
+    buying_price = buying_excl if buying_excl is not None else (
+        buying_generic if buying_generic is not None else buying_incl
+    )
+
+    manage_stock = _cell_bool01(col("manage_stock"))
+    stock_qty = _cell_quantity(col("stock_quantity"))
+    if product_type == "service" or manage_stock is False:
+        stock_qty = None
+
+    not_for_selling = _cell_bool01(col("not_for_selling"))
+    inventory_role = "raw_material" if not_for_selling else None
+
+    product_attrs: dict[str, Any] = {}
+    inventory_attrs: dict[str, Any] = {}
+
+    for key in _PRODUCT_ATTR_FIELDS:
+        if key == "variant_mode":
+            continue
+        value = _cell_str(col(key))
+        if value is not None:
+            product_attrs[key] = value
+    if variant_mode:
+        product_attrs["variant_mode"] = variant_mode.lower()
+
+    enable_imei = _cell_bool01(col("enable_imei"))
+    if enable_imei is not None:
+        product_attrs["enable_imei"] = enable_imei
+
+    for key in _INVENTORY_ATTR_FIELDS:
+        if key in {"manage_stock", "profit_margin"}:
+            continue
+        value = _cell_str(col(key))
+        if value is not None:
+            inventory_attrs[key] = value
+
+    if manage_stock is not None:
+        inventory_attrs["manage_stock"] = manage_stock
+    profit_margin = _cell_float(col("profit_margin"))
+    if profit_margin is not None:
+        inventory_attrs["profit_margin"] = profit_margin
+
+    tax_type = _cell_str(col("tax_type"))
+    if tax_type:
+        inventory_attrs["tax_type"] = tax_type.lower()
+
+    # Prefer dedicated location column; keep opening stock location as attr.
+    location = _cell_str(col("location"))
+    opening_loc = _cell_str(col("opening_stock_location"))
+    if opening_loc:
+        inventory_attrs["opening_stock_location"] = opening_loc
+        if not location:
+            location = opening_loc
+
+    packaging = _cell_str(col("unit"))
+
+    parsed_rows.append(
+        ParsedRow(
+            row_number=row_offset,
+            name=name,
+            sku=_cell_str(col("sku")),
+            barcode=_cell_str(col("barcode")),
+            category=_cell_str(col("category")),
+            brand=_cell_str(col("brand")),
+            unit=packaging,
+            description=_cell_str(col("description")),
+            product_type=product_type,
+            selling_price=_cell_float(col("selling_price")),
+            buying_price=buying_price,
+            stock_quantity=stock_qty,
+            low_stock_threshold=_cell_quantity(col("low_stock_threshold")),
+            supplier=_cell_str(col("supplier")),
+            location=location,
+            image_url=_cell_str(col("image_url")),
+            notes=_cell_str(col("notes")),
+            inventory_role=inventory_role,
+            manage_stock=manage_stock,
+            product_attributes=product_attrs,
+            inventory_attributes=inventory_attrs,
+        ),
+    )
+
+
 def _parse_workbook(content: bytes) -> tuple[dict[str, str], list[ParsedRow], list[RowResult]]:
     if len(content) > MAX_IMPORT_BYTES:
         raise ValueError(
@@ -640,8 +774,8 @@ def _parse_workbook(content: bytes) -> tuple[dict[str, str], list[ParsedRow], li
     if "name" not in column_map:
         workbook.close()
         raise ValueError(
-            "Could not find a product name column. Export with a "
-            "'Name' column (Odoo or SmartSales product export)."
+            "Could not find a product name column. Include a "
+            "'Name' or 'Product Name' column."
         )
 
     parsed_rows: list[ParsedRow] = []
@@ -659,125 +793,100 @@ def _parse_workbook(content: bytes) -> tuple[dict[str, str], list[ParsedRow], li
                 ),
             )
             break
+        _parse_row(raw, column_map, row_offset, early_errors, parsed_rows)
 
-        if raw is None or all(cell is None or str(cell).strip() == "" for cell in raw):
+    workbook.close()
+    return detected, parsed_rows, early_errors
+
+
+def _parse_csv(content: bytes) -> tuple[dict[str, str], list[ParsedRow], list[RowResult]]:
+    if len(content) > MAX_IMPORT_BYTES:
+        raise ValueError(
+            f"File is too large (max {MAX_IMPORT_BYTES // (1024 * 1024)} MB)."
+        )
+
+    import csv
+    import io
+
+    text = ""
+    for enc in ("utf-8-sig", "utf-8", "latin1", "cp1252"):
+        try:
+            text = content.decode(enc)
+            break
+        except UnicodeDecodeError:
             continue
+    if not text:
+        raise ValueError("Could not read the CSV file encoding.")
 
-        def col(field: str) -> Any:
-            idx = column_map.get(field)
-            if idx is None or idx >= len(raw):
-                return None
-            return raw[idx]
+    sample = text[:4096]
+    delimiter = ","
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",\t;|")
+        delimiter = dialect.delimiter
+    except Exception:
+        if "\t" in sample and sample.count("\t") > sample.count(","):
+            delimiter = "\t"
+        elif ";" in sample and sample.count(";") > sample.count(","):
+            delimiter = ";"
 
-        name = _cell_str(col("name"))
-        if not name:
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+    try:
+        header_row = next(reader)
+    except StopIteration:
+        raise ValueError("The CSV file is empty.")
+
+    headers = [str(h).strip() if h is not None else "" for h in header_row]
+    column_map = _build_column_map(headers)
+    detected = {
+        field: headers[idx]
+        for field, idx in column_map.items()
+        if idx < len(headers) and headers[idx]
+    }
+
+    if "name" not in column_map:
+        raise ValueError(
+            "Could not find a product name column. Include a "
+            "'Name' or 'Product Name' column in your CSV."
+        )
+
+    parsed_rows: list[ParsedRow] = []
+    early_errors: list[RowResult] = []
+
+    for row_offset, raw in enumerate(reader, start=2):
+        if row_offset > MAX_IMPORT_ROWS + 1:
             early_errors.append(
                 RowResult(
                     row=row_offset,
                     name=None,
-                    sku=_cell_str(col("sku")),
-                    status="skipped",
-                    message="Missing product name.",
+                    sku=None,
+                    status="error",
+                    message=f"Import limited to {MAX_IMPORT_ROWS} rows per file.",
                 ),
             )
-            continue
+            break
+        _parse_row(raw, column_map, row_offset, early_errors, parsed_rows)
 
-        raw_product_type = _cell_str(col("product_type"))
-        variant_mode = _cell_str(col("variant_mode"))
-        if not variant_mode and raw_product_type and raw_product_type.lower() in {
-            "single",
-            "variable",
-        }:
-            variant_mode = raw_product_type
-
-        product_type = _map_product_type(raw_product_type)
-
-        buying_excl = _cell_float(col("buying_price_excl"))
-        buying_incl = _cell_float(col("buying_price_incl"))
-        buying_generic = _cell_float(col("buying_price"))
-        buying_price = buying_excl if buying_excl is not None else (
-            buying_generic if buying_generic is not None else buying_incl
-        )
-
-        manage_stock = _cell_bool01(col("manage_stock"))
-        stock_qty = _cell_quantity(col("stock_quantity"))
-        if product_type == "service" or manage_stock is False:
-            stock_qty = None
-
-        not_for_selling = _cell_bool01(col("not_for_selling"))
-        inventory_role = "raw_material" if not_for_selling else None
-
-        product_attrs: dict[str, Any] = {}
-        inventory_attrs: dict[str, Any] = {}
-
-        for key in _PRODUCT_ATTR_FIELDS:
-            if key == "variant_mode":
-                continue
-            value = _cell_str(col(key))
-            if value is not None:
-                product_attrs[key] = value
-        if variant_mode:
-            product_attrs["variant_mode"] = variant_mode.lower()
-
-        enable_imei = _cell_bool01(col("enable_imei"))
-        if enable_imei is not None:
-            product_attrs["enable_imei"] = enable_imei
-
-        for key in _INVENTORY_ATTR_FIELDS:
-            if key in {"manage_stock", "profit_margin"}:
-                continue
-            value = _cell_str(col(key))
-            if value is not None:
-                inventory_attrs[key] = value
-
-        if manage_stock is not None:
-            inventory_attrs["manage_stock"] = manage_stock
-        profit_margin = _cell_float(col("profit_margin"))
-        if profit_margin is not None:
-            inventory_attrs["profit_margin"] = profit_margin
-
-        tax_type = _cell_str(col("tax_type"))
-        if tax_type:
-            inventory_attrs["tax_type"] = tax_type.lower()
-
-        # Prefer dedicated location column; keep opening stock location as attr.
-        location = _cell_str(col("location"))
-        opening_loc = _cell_str(col("opening_stock_location"))
-        if opening_loc:
-            inventory_attrs["opening_stock_location"] = opening_loc
-            if not location:
-                location = opening_loc
-
-        packaging = _cell_str(col("unit"))
-
-        parsed_rows.append(
-            ParsedRow(
-                row_number=row_offset,
-                name=name,
-                sku=_cell_str(col("sku")),
-                barcode=_cell_str(col("barcode")),
-                category=_cell_str(col("category")),
-                brand=_cell_str(col("brand")),
-                unit=packaging,
-                description=_cell_str(col("description")),
-                product_type=product_type,
-                selling_price=_cell_float(col("selling_price")),
-                buying_price=buying_price,
-                stock_quantity=stock_qty,
-                low_stock_threshold=_cell_quantity(col("low_stock_threshold")),
-                supplier=_cell_str(col("supplier")),
-                location=location,
-                image_url=_cell_str(col("image_url")),
-                notes=_cell_str(col("notes")),
-                inventory_role=inventory_role,
-                manage_stock=manage_stock,
-                product_attributes=product_attrs,
-                inventory_attributes=inventory_attrs,
-            ),
-        )
-
-    workbook.close()
     return detected, parsed_rows, early_errors
+
+
+def parse_import_file(
+    content: bytes, filename: str = "import.xlsx"
+) -> tuple[dict[str, str], list[ParsedRow], list[RowResult]]:
+    lower = (filename or "").lower()
+    if lower.endswith(".csv"):
+        return _parse_csv(content)
+    if lower.endswith(".xlsx") or lower.endswith(".xls"):
+        return _parse_workbook(content)
+
+    # Check magic header for zip / xlsx
+    if content.startswith(b"PK\x03\x04"):
+        return _parse_workbook(content)
+
+    # Fallback to CSV
+    try:
+        return _parse_csv(content)
+    except Exception:
+        raise ValueError("Upload a valid Excel (.xlsx) or CSV (.csv) file.")
 
 
 def _update_product_from_row(
@@ -837,8 +946,15 @@ def _upsert_inventory(
     row: ParsedRow,
     now: datetime,
     existing: InventoryItem | None,
+    stock_mode: str = "replace",
 ) -> tuple[InventoryItem, bool]:
-    """Return (item, created)."""
+    """Return (item, created).
+
+    stock_mode:
+        - "replace": overwrite current stock with imported quantity
+        - "add": add imported quantity to current stock
+        - "keep": keep existing stock, only set if current stock is unset
+    """
     created = existing is None
     item = existing
     if item is None:
@@ -861,7 +977,14 @@ def _upsert_inventory(
         if row.manage_stock is False:
             item.stock_quantity = None
         elif row.stock_quantity is not None:
-            item.stock_quantity = row.stock_quantity
+            if created or stock_mode == "replace":
+                item.stock_quantity = row.stock_quantity
+            elif stock_mode == "add":
+                current_qty = item.stock_quantity or Decimal("0")
+                item.stock_quantity = current_qty + row.stock_quantity
+            elif stock_mode == "keep":
+                if item.stock_quantity is None:
+                    item.stock_quantity = row.stock_quantity
         if row.low_stock_threshold is not None:
             item.low_stock_threshold = row.low_stock_threshold
     if row.notes is not None:
@@ -885,8 +1008,15 @@ def import_inventory_from_excel(
     content: bytes,
     account_id: str,
     user: User,
+    filename: str = "inventory.xlsx",
+    stock_mode: str = "replace",
 ) -> ImportResult:
-    detected, parsed_rows, early_results = _parse_workbook(content)
+    """Import inventory from Excel or CSV file.
+
+    Handles matching with core inventory by SKU, Barcode, Product Code, or Name,
+    updating existing items without duplication according to stock_mode.
+    """
+    detected, parsed_rows, early_results = parse_import_file(content, filename=filename)
     result = ImportResult(detected_columns=detected)
     result.rows.extend(early_results)
 
@@ -936,6 +1066,7 @@ def import_inventory_from_excel(
                 row=row,
                 now=now,
                 existing=existing_item,
+                stock_mode=stock_mode,
             )
             if inventory_created:
                 db.add(item)
@@ -952,20 +1083,31 @@ def import_inventory_from_excel(
             any_success = True
             if product_created:
                 status: RowStatus = "created"
-                message = "Added to catalog and inventory."
+                message = "New product added to catalog and inventory."
                 result.created += 1
             elif inventory_created:
                 status = "created"
-                message = "Linked existing catalog product to your inventory."
+                message = f"Matched existing catalog product ({matched_by or 'core'}) — linked to your inventory."
                 result.created += 1
+                result.matched_existing += 1
             else:
                 status = "updated"
+                result.matched_existing += 1
+                stock_note = ""
+                if row.stock_quantity is not None:
+                    if stock_mode == "add":
+                        stock_note = " (+stock added)"
+                    elif stock_mode == "replace":
+                        stock_note = " (stock replaced)"
+                    elif stock_mode == "keep":
+                        stock_note = " (stock kept)"
+
                 if renamed:
-                    message = "Matched existing product — updated name and inventory."
+                    message = f"Matched core inventory item ({matched_by or 'code'}) — updated name & stock{stock_note}."
                 elif matched_by:
-                    message = "Matched existing product — updated inventory (no duplicate)."
+                    message = f"Matched core inventory item by {matched_by} — updated pricing & stock{stock_note}."
                 else:
-                    message = "Updated inventory pricing/stock."
+                    message = f"Updated existing inventory item{stock_note}."
                 result.updated += 1
 
             result.rows.append(
@@ -1008,3 +1150,236 @@ def import_inventory_from_excel(
         db.rollback()
 
     return result
+
+
+def _generate_excel_template() -> tuple[bytes, str, str]:
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Inventory Template"
+
+    headers = [
+        "Name",
+        "SKU",
+        "Barcode",
+        "Category",
+        "Unit",
+        "Buying Price",
+        "Selling Price",
+        "Quantity",
+        "Low Stock Threshold",
+        "Product Type",
+        "Description",
+        "Supplier",
+    ]
+
+    sample_rows = [
+        [
+            "Fresh Milk 500ml",
+            "MLK-001",
+            "6161101234567",
+            "Dairy",
+            "Pcs",
+            55.00,
+            65.00,
+            40,
+            10,
+            "product",
+            "Pasteurized fresh whole milk 500ml pouch",
+            "Brookside Dairy",
+        ],
+        [
+            "White Sugar 1kg",
+            "SGR-001",
+            "6161102345678",
+            "Groceries",
+            "Kg",
+            130.00,
+            155.00,
+            50,
+            15,
+            "product",
+            "Premium white refined sugar 1kg bag",
+            "Mumias Sugar",
+        ],
+        [
+            "Royco Beef Cubes 40s",
+            "ROY-001",
+            "6161103456789",
+            "Spices & Seasoning",
+            "Box",
+            180.00,
+            220.00,
+            25,
+            5,
+            "product",
+            "Flavor cubes box of 40 tablets",
+            "Unilever Kenya",
+        ],
+    ]
+
+    ws.append(headers)
+
+    header_font = Font(name="Calibri", size=11, bold=True, color="1E293B")
+    header_fill = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    thin_border = Border(
+        left=Side(style="thin", color="CBD5E1"),
+        right=Side(style="thin", color="CBD5E1"),
+        top=Side(style="thin", color="CBD5E1"),
+        bottom=Side(style="thin", color="CBD5E1"),
+    )
+
+    ws.row_dimensions[1].height = 28
+    for col_num in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_num)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+
+    data_font = Font(name="Calibri", size=10, color="0F172A")
+    for r_idx, row_data in enumerate(sample_rows, start=2):
+        ws.row_dimensions[r_idx].height = 20
+        ws.append(row_data)
+        for c_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=r_idx, column=c_idx)
+            cell.font = data_font
+            cell.border = thin_border
+            if c_idx in (6, 7):  # Buying & Selling Price
+                cell.number_format = "#,##0.00"
+                cell.alignment = Alignment(horizontal="right")
+            elif c_idx in (8, 9):  # Quantity & Threshold
+                cell.number_format = "#,##0"
+                cell.alignment = Alignment(horizontal="right")
+
+    for col in ws.columns:
+        col_letter = get_column_letter(col[0].column)
+        max_len = max(len(str(cell.value or "")) for cell in col)
+        ws.column_dimensions[col_letter].width = max(max_len + 4, 14)
+
+    # Instructions sheet
+    guide_ws = wb.create_sheet(title="Instructions & Guide")
+    guide_ws.column_dimensions["A"].width = 24
+    guide_ws.column_dimensions["B"].width = 75
+
+    guide_headers = ["Field / Topic", "Description & Usage Instructions"]
+    guide_ws.append(guide_headers)
+    guide_cell_1 = guide_ws.cell(row=1, column=1)
+    guide_cell_2 = guide_ws.cell(row=1, column=2)
+    for c in (guide_cell_1, guide_cell_2):
+        c.font = header_font
+        c.fill = header_fill
+        c.alignment = header_alignment
+        c.border = thin_border
+
+    guide_rows = [
+        ("Name (Required)", "The product name. Every row must have a name (e.g. 'Fresh Milk 500ml')."),
+        ("SKU (Recommended)", "Unique internal code or SKU. Used to identify existing items and prevent duplicates."),
+        ("Barcode (Recommended)", "EAN-13, UPC, or numeric barcode. Scannable at checkout/POS."),
+        ("Prices & Numbers", "Enter numbers without currency symbols (e.g. 65.00, not 'KSh 65')."),
+        ("Existing Core Inventory", "If an item already exists in core inventory (matched by SKU, Barcode, or Name), DukAI updates the existing item without creating duplicates."),
+        ("Stock Modes", "During import, you can choose to Replace stock, Add to existing stock, or Keep current stock."),
+        ("File Support", "Supports both Excel (.xlsx) and CSV (.csv) formats."),
+    ]
+
+    for g_idx, (topic, desc) in enumerate(guide_rows, start=2):
+        guide_ws.append([topic, desc])
+        c1 = guide_ws.cell(row=g_idx, column=1)
+        c2 = guide_ws.cell(row=g_idx, column=2)
+        c1.font = Font(name="Calibri", size=10, bold=True, color="1E293B")
+        c2.font = data_font
+        c1.border = thin_border
+        c2.border = thin_border
+        c2.alignment = Alignment(wrap_text=True)
+
+    buf = BytesIO()
+    wb.save(buf)
+    return (
+        buf.getvalue(),
+        "dukai_inventory_template.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+def _generate_csv_template() -> tuple[bytes, str, str]:
+    import csv
+    import io
+
+    headers = [
+        "Name",
+        "SKU",
+        "Barcode",
+        "Category",
+        "Unit",
+        "Buying Price",
+        "Selling Price",
+        "Quantity",
+        "Low Stock Threshold",
+        "Product Type",
+        "Description",
+        "Supplier",
+    ]
+
+    sample_rows = [
+        [
+            "Fresh Milk 500ml",
+            "MLK-001",
+            "6161101234567",
+            "Dairy",
+            "Pcs",
+            "55.00",
+            "65.00",
+            "40",
+            "10",
+            "product",
+            "Pasteurized fresh whole milk 500ml pouch",
+            "Brookside Dairy",
+        ],
+        [
+            "White Sugar 1kg",
+            "SGR-001",
+            "6161102345678",
+            "Groceries",
+            "Kg",
+            "130.00",
+            "155.00",
+            "50",
+            "15",
+            "product",
+            "Premium white refined sugar 1kg bag",
+            "Mumias Sugar",
+        ],
+        [
+            "Royco Beef Cubes 40s",
+            "ROY-001",
+            "6161103456789",
+            "Spices & Seasoning",
+            "Box",
+            "180.00",
+            "220.00",
+            "25",
+            "5",
+            "product",
+            "Flavor cubes box of 40 tablets",
+            "Unilever Kenya",
+        ],
+    ]
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(headers)
+    writer.writerows(sample_rows)
+
+    data = output.getvalue().encode("utf-8-sig")
+    return (data, "dukai_inventory_template.csv", "text/csv; charset=utf-8")
+
+
+def generate_inventory_template(format: str = "xlsx") -> tuple[bytes, str, str]:
+    """Generate sample inventory import template in XLSX or CSV format."""
+    if (format or "").strip().lower() == "csv":
+        return _generate_csv_template()
+    return _generate_excel_template()

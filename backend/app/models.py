@@ -64,6 +64,12 @@ class Account(Base):
     allow_price_adjustment: Mapped[bool] = mapped_column(Boolean, default=False)
     adjust_selling_price_on_purchase: Mapped[bool] = mapped_column(Boolean, default=True)
     force_mpesa_prompt: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Restaurant only: refuse a sale when recipe ingredients are short (default lets stock go negative).
+    block_sale_on_low_ingredients: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Restaurant only: stock is split into store and kitchen; recipes consume kitchen stock.
+    kitchen_issuing_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Ordered restaurant menu sections: [{"id": "mains", "label": "Mains"}, ...]
+    menu_sections: Mapped[Any | None] = mapped_column(JSON, nullable=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Merchant Station: online order acceptance + kitchen prep timing
@@ -488,8 +494,23 @@ class ShopSupplier(Base):
     name: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str] = mapped_column(String(32))
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    balance: Mapped[Any] = mapped_column(Numeric(14, 2), default=0, server_default="0", nullable=True)
+    address: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    postal_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    fax: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    pin_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    @property
+    def postalcode(self) -> str | None:
+        return self.postal_code
+
+    @postalcode.setter
+    def postalcode(self, val: str | None) -> None:
+        self.postal_code = val
 
     account: Mapped[Account] = relationship()
 
@@ -913,6 +934,26 @@ class Catalogue(Base):
         back_populates="addon",
         cascade="all, delete-orphan",
     )
+    modifier_group_links: Mapped[list[CatalogueModifierGroup]] = relationship(
+        "CatalogueModifierGroup",
+        back_populates="product",
+        cascade="all, delete-orphan",
+        order_by="CatalogueModifierGroup.sort_order",
+    )
+    recipe_lines: Mapped[list[RecipeLine]] = relationship(
+        "RecipeLine",
+        foreign_keys="[RecipeLine.product_id]",
+        back_populates="product",
+        cascade="all, delete-orphan",
+        order_by="RecipeLine.sort_order",
+    )
+    combo_component_links: Mapped[list[ComboComponent]] = relationship(
+        "ComboComponent",
+        foreign_keys="[ComboComponent.combo_id]",
+        back_populates="combo",
+        cascade="all, delete-orphan",
+        order_by="ComboComponent.sort_order",
+    )
 
     def is_service(self) -> bool:
         return self.product_type == "service"
@@ -922,6 +963,9 @@ class Catalogue(Base):
 
     def is_addon(self) -> bool:
         return self.product_type == "addon"
+
+    def is_combo(self) -> bool:
+        return self.product_type == "combo"
 
     def is_retail(self) -> bool:
         return self.product_type in ("retail", "product")
@@ -969,6 +1013,153 @@ class MealAddon(Base):
         return self.addon.product_code if self.addon else None
 
 
+class ModifierGroup(Base):
+    """Shop-owned question asked at the till, e.g. "Choose your drink (pick 1)"."""
+
+    __tablename__ = "modifier_groups"
+    __table_args__ = (Index("modifier_groups_account_id_idx", "account_id"),)
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    account_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    min_select: Mapped[int] = mapped_column(Integer, default=0)
+    max_select: Mapped[int] = mapped_column(Integer, default=1)
+    # Included choices (e.g. the drink in a meal) are free; otherwise supplies charge their selling price.
+    included: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    options: Mapped[list[ModifierOption]] = relationship(
+        "ModifierOption",
+        back_populates="group",
+        cascade="all, delete-orphan",
+        order_by="ModifierOption.sort_order",
+    )
+    item_links: Mapped[list[CatalogueModifierGroup]] = relationship(
+        "CatalogueModifierGroup",
+        back_populates="group",
+        cascade="all, delete-orphan",
+    )
+
+
+class ModifierOption(Base):
+    """One answer in a modifier group; may link to a catalogue item for stock."""
+
+    __tablename__ = "modifier_options"
+    __table_args__ = (Index("modifier_options_group_id_idx", "group_id"),)
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    group_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("modifier_groups.id", ondelete="CASCADE"),
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    price_delta: Mapped[Any] = mapped_column(Numeric(10, 2), default=0)
+    product_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("catalogue.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # How much of the linked supply one pick uses, in the supply's unit (e.g. 0.05 kg cheese).
+    stock_qty: Mapped[Any] = mapped_column(Numeric(10, 3), default=1)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    group: Mapped[ModifierGroup] = relationship(back_populates="options")
+    product: Mapped[Catalogue | None] = relationship(foreign_keys=[product_id])
+
+
+class CatalogueModifierGroup(Base):
+    """Ordered attachment of a modifier group to a dish or meal."""
+
+    __tablename__ = "catalogue_modifier_groups"
+    __table_args__ = (
+        UniqueConstraint("product_id", "group_id", name="uq_catalogue_modifier_groups"),
+        Index("catalogue_modifier_groups_group_id_idx", "group_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    product_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("catalogue.id", ondelete="CASCADE"),
+    )
+    group_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("modifier_groups.id", ondelete="CASCADE"),
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    product: Mapped[Catalogue] = relationship(back_populates="modifier_group_links")
+    group: Mapped[ModifierGroup] = relationship(back_populates="item_links")
+
+
+class RecipeLine(Base):
+    """How much of a supply one portion of a dish uses, per shop (e.g. Chapati: 0.1 kg flour)."""
+
+    __tablename__ = "recipe_lines"
+    __table_args__ = (
+        UniqueConstraint("account_id", "product_id", "ingredient_product_id", name="uq_recipe_lines"),
+        Index("recipe_lines_account_product_idx", "account_id", "product_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    account_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+    )
+    product_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("catalogue.id", ondelete="CASCADE"),
+    )
+    ingredient_product_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("catalogue.id", ondelete="CASCADE"),
+    )
+    quantity: Mapped[Any] = mapped_column(Numeric(12, 4))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    product: Mapped[Catalogue] = relationship(foreign_keys=[product_id], back_populates="recipe_lines")
+    ingredient: Mapped[Catalogue] = relationship(foreign_keys=[ingredient_product_id])
+
+
+class ComboComponent(Base):
+    """A dish included in a combo meal, e.g. Big Mac x1 in Big Mac Meal."""
+
+    __tablename__ = "combo_components"
+    __table_args__ = (
+        UniqueConstraint("combo_id", "component_product_id", name="uq_combo_components"),
+        Index("combo_components_component_idx", "component_product_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    combo_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("catalogue.id", ondelete="CASCADE"),
+    )
+    component_product_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("catalogue.id", ondelete="CASCADE"),
+    )
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    combo: Mapped[Catalogue] = relationship(
+        foreign_keys=[combo_id],
+        back_populates="combo_component_links",
+    )
+    component: Mapped[Catalogue] = relationship(foreign_keys=[component_product_id])
+
+
 
 class InventoryItem(Base):
     """Per-shop pricing + stock for a catalog product."""
@@ -990,11 +1181,18 @@ class InventoryItem(Base):
     buying_price: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
     selling_price: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
     stock_quantity: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    # Restaurant kitchen issuing: stock_quantity is the store, this is the kitchen.
+    kitchen_quantity: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     low_stock_threshold: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     # for_sale = sell only | raw_material = buy only | both = buy & sell
     inventory_role: Mapped[str] = mapped_column(String(20), default="both")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     supplier: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    preferred_supplier_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("shop_suppliers.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Shop-specific extras from imports (rack/row/position, tax, expiry, etc.).
@@ -1033,12 +1231,20 @@ class InventoryItem(Base):
 
 
 class StockMovement(Base):
-    """Audit row for manual stock in / stock out adjustments."""
+    """Audit row for every stock change.
+
+    Retail shops write rows for manual stock in / out and purchases. Restaurant
+    shops also write ``sale`` / ``sale_reversal`` / ``wastage`` / ``count_variance``
+    rows, linked to their source, so on-hand stock is fully explained by the ledger.
+    """
 
     __tablename__ = "stock_movements"
     __table_args__ = (
         Index("ix_stock_movements_account_created", "account_id", "created_at"),
         Index("ix_stock_movements_item_created", "inventory_item_id", "created_at"),
+        Index("ix_stock_movements_purchase_order", "purchase_order_id"),
+        Index("ix_stock_movements_order", "order_id"),
+        Index("ix_stock_movements_kitchen_issue", "kitchen_issue_id"),
     )
 
     id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
@@ -1052,8 +1258,47 @@ class StockMovement(Base):
     quantity_before: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     quantity_after: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     reason: Mapped[str] = mapped_column(String(32))
+    # store | kitchen (kitchen only when the restaurant uses kitchen issuing).
+    location: Mapped[str] = mapped_column(String(16), default="store")
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Cost per base unit at the time of the movement.
     unit_cost: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
+    total_cost: Mapped[Any | None] = mapped_column(Numeric(14, 2), nullable=True)
+    supplier_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("shop_suppliers.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    purchase_order_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("purchase_orders.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    purchase_order_line_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("purchase_order_lines.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    order_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("orders.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    order_item_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("order_items.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    stock_take_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("stock_takes.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    kitchen_issue_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("kitchen_issues.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_by: Mapped[str | None] = mapped_column(
         String(PK_LEN),
         ForeignKey("users.id"),
@@ -1069,6 +1314,190 @@ class StockMovement(Base):
     void_reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
     account: Mapped[Account] = relationship()
+    inventory_item: Mapped[InventoryItem] = relationship()
+    supplier: Mapped[ShopSupplier | None] = relationship()
+
+
+class PurchaseOrder(Base):
+    """A restaurant's order of supplies from one supplier (header)."""
+
+    __tablename__ = "purchase_orders"
+    __table_args__ = (
+        UniqueConstraint("account_id", "reference", name="uq_purchase_orders_account_reference"),
+        Index("ix_purchase_orders_account_status", "account_id", "status"),
+        Index("ix_purchase_orders_supplier", "supplier_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    account_id: Mapped[str] = mapped_column(
+        String(PK_LEN), ForeignKey("accounts.id", ondelete="CASCADE"),
+    )
+    supplier_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("shop_suppliers.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Snapshot so history stays readable if the supplier is deleted.
+    supplier_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reference: Mapped[str] = mapped_column(String(32))
+    supplier_invoice_no: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # draft | ordered | partially_received | received | cancelled
+    status: Mapped[str] = mapped_column(String(24), default="draft")
+    order_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    expected_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    subtotal: Mapped[Any] = mapped_column(Numeric(14, 2), default=0)
+    discount: Mapped[Any] = mapped_column(Numeric(14, 2), default=0)
+    total: Mapped[Any] = mapped_column(Numeric(14, 2), default=0)
+    amount_paid: Mapped[Any] = mapped_column(Numeric(14, 2), default=0)
+    # unpaid | partial | paid
+    payment_status: Mapped[str] = mapped_column(String(16), default="unpaid")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cancelled_reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(
+        String(PK_LEN), ForeignKey("users.id"), nullable=True,
+    )
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    account: Mapped[Account] = relationship()
+    supplier: Mapped[ShopSupplier | None] = relationship()
+    lines: Mapped[list[PurchaseOrderLine]] = relationship(
+        back_populates="purchase_order",
+        cascade="all, delete-orphan",
+        order_by="PurchaseOrderLine.sort_order",
+    )
+
+
+class PurchaseOrderLine(Base):
+    """One supply on a purchase order, in the unit it is bought in."""
+
+    __tablename__ = "purchase_order_lines"
+    __table_args__ = (Index("ix_purchase_order_lines_po", "purchase_order_id"),)
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    purchase_order_id: Mapped[str] = mapped_column(
+        String(PK_LEN), ForeignKey("purchase_orders.id", ondelete="CASCADE"),
+    )
+    inventory_item_id: Mapped[str] = mapped_column(
+        String(PK_LEN), ForeignKey("inventory_items.id"),
+    )
+    item_name: Mapped[str] = mapped_column(String(255))
+    # e.g. "50kg bag"; unit_factor = base units per purchase unit.
+    purchase_unit: Mapped[str] = mapped_column(String(64))
+    unit_factor: Mapped[Any] = mapped_column(Numeric(12, 4), default=1)
+    quantity_ordered: Mapped[Any] = mapped_column(Numeric(12, 3))
+    quantity_received: Mapped[Any] = mapped_column(Numeric(12, 3), default=0)
+    # Cost per purchase unit.
+    unit_cost: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
+    line_total: Mapped[Any] = mapped_column(Numeric(14, 2), default=0)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    purchase_order: Mapped[PurchaseOrder] = relationship(back_populates="lines")
+    inventory_item: Mapped[InventoryItem] = relationship()
+
+
+class StockTake(Base):
+    """A physical count of a restaurant's supplies."""
+
+    __tablename__ = "stock_takes"
+    __table_args__ = (Index("ix_stock_takes_account_created", "account_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    account_id: Mapped[str] = mapped_column(
+        String(PK_LEN), ForeignKey("accounts.id", ondelete="CASCADE"),
+    )
+    # draft | completed | cancelled
+    status: Mapped[str] = mapped_column(String(16), default="draft")
+    # store | kitchen
+    location: Mapped[str] = mapped_column(String(16), default="store")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    counted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(
+        String(PK_LEN), ForeignKey("users.id"), nullable=True,
+    )
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    lines: Mapped[list[StockTakeLine]] = relationship(
+        back_populates="stock_take",
+        cascade="all, delete-orphan",
+    )
+
+
+class StockTakeLine(Base):
+    __tablename__ = "stock_take_lines"
+    __table_args__ = (
+        UniqueConstraint("stock_take_id", "inventory_item_id", name="uq_stock_take_lines_item"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    stock_take_id: Mapped[str] = mapped_column(
+        String(PK_LEN), ForeignKey("stock_takes.id", ondelete="CASCADE"),
+    )
+    inventory_item_id: Mapped[str] = mapped_column(
+        String(PK_LEN), ForeignKey("inventory_items.id"),
+    )
+    item_name: Mapped[str] = mapped_column(String(255))
+    expected_qty: Mapped[Any | None] = mapped_column(Numeric(12, 3), nullable=True)
+    counted_qty: Mapped[Any | None] = mapped_column(Numeric(12, 3), nullable=True)
+    variance_qty: Mapped[Any | None] = mapped_column(Numeric(12, 3), nullable=True)
+    unit_cost: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
+
+    stock_take: Mapped[StockTake] = relationship(back_populates="lines")
+    inventory_item: Mapped[InventoryItem] = relationship()
+
+
+class KitchenIssue(Base):
+    """Supplies released from the store to the kitchen (a requisition)."""
+
+    __tablename__ = "kitchen_issues"
+    __table_args__ = (Index("ix_kitchen_issues_account_date", "account_id", "issue_date"),)
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    account_id: Mapped[str] = mapped_column(
+        String(PK_LEN), ForeignKey("accounts.id", ondelete="CASCADE"),
+    )
+    # requested | issued | cancelled
+    status: Mapped[str] = mapped_column(String(16), default="requested")
+    issue_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requested_by: Mapped[str | None] = mapped_column(
+        String(PK_LEN), ForeignKey("users.id"), nullable=True,
+    )
+    issued_by: Mapped[str | None] = mapped_column(
+        String(PK_LEN), ForeignKey("users.id"), nullable=True,
+    )
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    lines: Mapped[list[KitchenIssueLine]] = relationship(
+        back_populates="kitchen_issue",
+        cascade="all, delete-orphan",
+    )
+
+
+class KitchenIssueLine(Base):
+    __tablename__ = "kitchen_issue_lines"
+    __table_args__ = (
+        UniqueConstraint("kitchen_issue_id", "inventory_item_id", name="uq_kitchen_issue_lines_item"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    kitchen_issue_id: Mapped[str] = mapped_column(
+        String(PK_LEN), ForeignKey("kitchen_issues.id", ondelete="CASCADE"),
+    )
+    inventory_item_id: Mapped[str] = mapped_column(
+        String(PK_LEN), ForeignKey("inventory_items.id"),
+    )
+    item_name: Mapped[str] = mapped_column(String(255))
+    requested_qty: Mapped[Any | None] = mapped_column(Numeric(12, 3), nullable=True)
+    issued_qty: Mapped[Any | None] = mapped_column(Numeric(12, 3), nullable=True)
+    # Average cost per base unit when issued.
+    unit_cost: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
+
+    kitchen_issue: Mapped[KitchenIssue] = relationship(back_populates="lines")
     inventory_item: Mapped[InventoryItem] = relationship()
 
 
@@ -1306,6 +1735,10 @@ class OrderItem(Base):
     unit_factor: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=1)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     modifiers: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    # Other stock one unit of this line used: [{"stock_item_id", "qty"}] (ingredients, meal parts, options).
+    stock_usage: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    # Restaurant shops only: cost of the stock this line consumed (item, ingredients, parts, options).
+    cost_total: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

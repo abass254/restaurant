@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -195,8 +196,6 @@ def test_upsert_import_updates_existing_by_phone() -> None:
 
 
 def test_create_customer_defaults_to_1000_limit_and_saves_location_and_pay_date() -> None:
-    from datetime import date
-
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = None
     captured = {}

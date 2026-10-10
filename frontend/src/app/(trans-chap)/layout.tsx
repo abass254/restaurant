@@ -6,6 +6,7 @@ import "@/styles/messages-chat.css";
 import "@/styles/tickets-analytics.css";
 import "@/styles/orders-pos.css";
 import "@/styles/trans-chap.css";
+import "@/styles/restaurant-supplies.css";
 
 export const metadata: Metadata = {
   title: "Trans Chap",

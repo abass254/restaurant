@@ -3322,6 +3322,256 @@ html[data-trans-chap-machine="tablet"] .trans-chap-purchase-new__panel--products
     font-size: 0.78rem;
 }
 
+.trans-chap-import-modal {
+    width: min(640px, calc(100vw - 2rem));
+    max-width: 640px;
+}
+
+.trans-chap-import__template-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.95rem 1.05rem;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--app-primary) 6%, var(--app-surface));
+    border: 1px solid color-mix(in srgb, var(--app-primary) 20%, var(--app-border));
+}
+
+.trans-chap-import__template-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.trans-chap-import__template-header i {
+    font-size: 1.35rem;
+    color: var(--app-primary);
+    margin-top: 0.1rem;
+    flex-shrink: 0;
+}
+
+.trans-chap-import__template-header strong {
+    font-size: 0.92rem;
+    font-weight: 750;
+    color: var(--app-text);
+}
+
+.trans-chap-import__template-header p {
+    margin: 0.2rem 0 0;
+    font-size: 0.8rem;
+    color: var(--app-text-secondary);
+    line-height: 1.35;
+}
+
+.trans-chap-import__template-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.trans-chap-import__template-btn {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--app-primary) 30%, var(--app-border));
+    background: var(--app-surface);
+    color: var(--app-text);
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.trans-chap-import__template-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--app-primary) 12%, var(--app-surface));
+    border-color: var(--app-primary);
+    transform: translateY(-1px);
+}
+
+.trans-chap-import__template-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.trans-chap-import__section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.trans-chap-import__section-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.trans-chap-import__section-label label {
+    font-size: 0.86rem;
+    font-weight: 750;
+    color: var(--app-text);
+}
+
+.trans-chap-import__section-label span {
+    font-size: 0.78rem;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-import__mode-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+@media (max-width: 540px) {
+    .trans-chap-import__mode-options {
+        grid-template-columns: 1fr;
+    }
+}
+
+.trans-chap-import__mode-btn {
+    appearance: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+    padding: 0.65rem 0.75rem;
+    border-radius: 12px;
+    border: 1.5px solid var(--app-border);
+    background: var(--app-surface);
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.trans-chap-import__mode-btn i {
+    font-size: 0.95rem;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-import__mode-btn.is-active {
+    border-color: var(--app-primary);
+    background: color-mix(in srgb, var(--app-primary) 8%, var(--app-surface));
+}
+
+.trans-chap-import__mode-btn.is-active i {
+    color: var(--app-primary);
+}
+
+.trans-chap-import__mode-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.trans-chap-import__mode-content strong {
+    font-size: 0.82rem;
+    font-weight: 750;
+    color: var(--app-text);
+}
+
+.trans-chap-import__mode-content small {
+    font-size: 0.72rem;
+    color: var(--app-text-secondary);
+    line-height: 1.25;
+}
+
+.trans-chap-import__stat--created {
+    color: #16a34a;
+}
+
+.trans-chap-import__stat--updated {
+    color: #2563eb;
+}
+
+.trans-chap-import__stat--matched {
+    color: #0284c7;
+}
+
+.trans-chap-import__rows-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    max-height: 220px;
+    overflow-y: auto;
+    margin-top: 0.5rem;
+    padding-right: 0.25rem;
+}
+
+.trans-chap-import__row-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.45rem 0.65rem;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--app-border) 25%, var(--app-surface));
+    font-size: 0.8rem;
+}
+
+.trans-chap-import__row-num {
+    font-weight: 700;
+    color: var(--app-text-secondary);
+    font-size: 0.74rem;
+    min-width: 2rem;
+}
+
+.trans-chap-import__row-desc {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.trans-chap-import__row-desc strong {
+    font-size: 0.82rem;
+    color: var(--app-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.trans-chap-import__row-desc code {
+    font-size: 0.72rem;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-import__row-desc small {
+    font-size: 0.74rem;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-import__tag {
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: 0.15rem 0.45rem;
+    border-radius: 6px;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+}
+
+.trans-chap-import__tag--created {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.trans-chap-import__tag--updated {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.trans-chap-import__tag--skipped {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+.trans-chap-import__tag--error {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
 .trans-chap-form__hint a {
     color: var(--trans-chap-purchase);
     font-weight: 750;
@@ -4713,6 +4963,7 @@ html[data-trans-chap-machine="tablet"] .trans-chap-purchase-new__panel--products
     flex-shrink: 0;
     display: flex;
     flex-direction: row;
+    flex-wrap: nowrap !important;
     align-items: stretch;
     justify-content: space-between;
     gap: 0.2rem;
@@ -8684,6 +8935,42 @@ html[data-theme="dark"] .trans-chap-sale__add {
 
 .trans-chap-sales:has(.trans-chap-fab-wrap) .trans-chap-sales__list {
     padding-bottom: 5.25rem;
+}
+
+.trans-chap-fab-release-wrap {
+    position: absolute;
+    left: max(0.85rem, env(safe-area-inset-left));
+    bottom: max(0.85rem, env(safe-area-inset-bottom));
+    z-index: 6;
+    pointer-events: none;
+}
+
+.trans-chap-fab-release {
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 52px;
+    padding: 0 1.15rem;
+    border-radius: 999px;
+    background: #e8412a;
+    color: #ffffff;
+    font-size: 0.85rem;
+    font-weight: 750;
+    text-decoration: none;
+    box-shadow: 0 8px 20px color-mix(in srgb, #e8412a 35%, transparent);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.trans-chap-fab-release:hover,
+.trans-chap-fab-release:focus-visible {
+    filter: brightness(1.08);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px color-mix(in srgb, #e8412a 45%, transparent);
+}
+
+.trans-chap-fab-release i {
+    font-size: 1rem;
 }
 
 .trans-chap-install {
@@ -12895,12 +13182,28 @@ html[data-trans-chap-machine="phone"] .mobile-nav--4 > .mobile-nav__more-btn {
 html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/pos"],
 html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/customers"],
 html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/suppliers"],
-html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/settings"] {
+html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/reports"],
+html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/settings"],
+html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/kitchen"],
+html[data-trans-chap-machine="phone"] .mobile-nav > a.is-phone-hidden {
     display: none !important;
 }
 
 html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/mpesa"] {
     display: none !important;
+}
+
+@media (max-width: 767px) {
+    .trans-chap-app .mobile-nav > a.is-phone-hidden,
+    .trans-chap-app .mobile-nav > a[href="/trans-chap/kitchen"],
+    .trans-chap-app .mobile-nav > a[href="/trans-chap/pos"],
+    .trans-chap-app .mobile-nav > a[href="/trans-chap/customers"],
+    .trans-chap-app .mobile-nav > a[href="/trans-chap/suppliers"],
+    .trans-chap-app .mobile-nav > a[href="/trans-chap/reports"],
+    .trans-chap-app .mobile-nav > a[href="/trans-chap/settings"],
+    .trans-chap-app .mobile-nav > a[href="/trans-chap/mpesa"] {
+        display: none !important;
+    }
 }
 
 .mobile-nav__more-btn {
@@ -13132,12 +13435,619 @@ html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/mpesa"] 
    TRANS CHAP: POS MENU DISH ADDER (MOBILE & DESKTOP)
    ========================================================================== */
 
-/* Search bar and custom dish header tools */
-.trans-chap-pos-host.fb-app .pos-menu-tools-row {
+.trans-chap-pos-host.fb-app:has(> .tc-menu) {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    padding: 0.75rem max(0.85rem, calc((100% - 1000px) / 2)) 6rem;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__search {
+    width: 100%;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__nav {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    gap: 0.4rem;
+    overflow-x: auto;
+    padding: 0.35rem 0;
+    background: var(--app-bg);
+    scrollbar-width: none;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__nav .tc-menu__chip {
+    flex-shrink: 0;
+    text-decoration: none;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__nav .tc-menu__chip span {
+    font-size: 0.72rem;
+    color: var(--app-text-muted);
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__section {
+    scroll-margin-top: 3.5rem;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__add-row {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    min-height: 44px;
+    padding: 0 0.9rem;
+    border-radius: 12px;
+    border: 1.5px dashed color-mix(in srgb, var(--app-primary) 50%, var(--app-border));
+    background: color-mix(in srgb, var(--app-primary) 6%, var(--app-surface));
+    color: var(--app-primary);
+    font-size: 0.88rem;
+    font-weight: 750;
+    text-align: left;
+    cursor: pointer;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__empty {
+    margin: 0;
+    padding: 1rem 0.25rem;
+    color: var(--app-text-muted);
+    font-size: 0.88rem;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__section-title {
+    margin: 0 0 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--app-text-muted);
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__cards {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 0.6rem;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__card {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
     width: 100%;
+    height: 100%;
+    padding: 0.7rem;
+    border: 1px solid var(--app-border);
+    border-radius: 16px;
+    background: var(--app-surface);
+    color: var(--app-text);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__card:hover {
+    border-color: color-mix(in srgb, var(--app-primary) 45%, var(--app-border));
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__card-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__card-head strong {
+    font-size: 0.98rem;
+    font-weight: 800;
+    line-height: 1.25;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__card-price {
+    font-size: 0.95rem;
+    font-weight: 850;
+    color: var(--app-primary);
+    white-space: nowrap;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__card-addons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__addon-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--app-text) 6%, var(--app-surface));
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__addon-tag em {
+    font-style: normal;
+    font-weight: 800;
+    color: var(--app-text-muted);
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__card-hint {
+    font-size: 0.75rem;
+    color: var(--app-text-muted);
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 34px;
+    padding: 0 0.75rem;
+    border-radius: 9999px;
+    border: 1px solid var(--app-border);
+    background: var(--app-surface);
+    color: var(--app-text);
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__chip i {
+    font-size: 0.7rem;
+    color: var(--app-primary);
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__chip:hover {
+    border-color: var(--app-primary);
+}
+
+.tc-menu__addon-price {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--app-text-muted);
+}
+
+.tc-menu__addon-price input {
+    width: 4.5rem;
+    min-height: 32px;
+    padding: 0 0.5rem;
+    border: 1px solid var(--app-border);
+    border-radius: 8px;
+    background: var(--app-surface);
+    color: var(--app-text);
+    font-weight: 750;
+}
+
+.tc-menu__select {
+    min-height: 40px;
+    padding: 0 0.7rem;
+    border: 1px solid var(--app-border);
+    border-radius: 10px;
+    background: var(--app-bg);
+    color: var(--app-text);
+    font-size: 0.86rem;
+}
+
+.tc-menu__select {
+    width: 100%;
+    margin-bottom: 0.45rem;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__meal-badge {
+    margin-left: 0.4rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--app-primary) 14%, var(--app-surface));
+    color: var(--app-primary);
+    font-size: 0.66rem;
+    font-style: normal;
+    font-weight: 800;
+    vertical-align: middle;
+}
+
+.tc-group__attached,
+.tc-group__options {
+    list-style: none;
+    margin: 0 0 0.5rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.tc-group__attached li {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.35rem 0.35rem 0.75rem;
+    border: 1px solid var(--app-border);
+    border-radius: 12px;
+    background: var(--app-bg);
+}
+
+.tc-group__attached-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    padding: 0.2rem 0;
+    border: none;
+    background: transparent;
+    color: var(--app-text);
+    text-align: left;
+    cursor: pointer;
+}
+
+.tc-group__attached-body strong {
+    font-size: 0.9rem;
+    font-weight: 800;
+}
+
+.tc-group__attached-rule {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--app-primary);
+}
+
+.tc-group__attached-options {
+    font-size: 0.75rem;
+    color: var(--app-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tc-group__option-tools,
+.tc-combo__qty {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.1rem;
+    flex-shrink: 0;
+}
+
+.tc-group__option-tools button,
+.tc-combo__qty button {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--app-text-muted);
+    cursor: pointer;
+}
+
+.tc-group__option-tools button:hover:not(:disabled),
+.tc-combo__qty button:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--app-text) 8%, transparent);
+    color: var(--app-text);
+}
+
+.tc-group__option-tools button:disabled,
+.tc-combo__qty button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.tc-combo__qty span {
+    min-width: 2rem;
+    text-align: center;
+    font-weight: 800;
+    font-size: 0.88rem;
+}
+
+.tc-group__option {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.5rem;
+    border: 1px solid var(--app-border);
+    border-radius: 12px;
+    background: var(--app-bg);
+}
+
+.tc-group__option-main,
+.tc-group__option-meta,
+.tc-group__attach-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.tc-group__option-main > input {
+    flex: 1;
+    min-width: 0;
+    min-height: 38px;
+    padding: 0 0.65rem;
+    border: 1px solid var(--app-border);
+    border-radius: 9px;
+    background: var(--app-surface);
+    color: var(--app-text);
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.tc-group__supply {
+    flex: 1;
+    min-width: 0;
+    min-height: 38px;
+    padding: 0 0.5rem;
+    border: 1px solid var(--app-border);
+    border-radius: 9px;
+    background: var(--app-surface);
+    color: var(--app-text);
+    font-size: 0.86rem;
+    font-weight: 700;
+}
+
+.tc-group__uses {
+    flex: 1;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.76rem;
+    color: var(--app-text-muted);
+}
+
+.tc-group__uses input {
+    width: 4rem;
+    min-height: 32px;
+    padding: 0 0.45rem;
+    border: 1px solid var(--app-border);
+    border-radius: 8px;
+    background: var(--app-surface);
+    color: var(--app-text);
+    font-weight: 750;
+}
+
+.tc-group__uses.is-error input {
+    border-color: #dc2626;
+}
+
+.tc-recipe__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--app-border);
+    border-radius: 10px;
+    background: var(--app-surface);
+}
+
+.tc-recipe__row .tc-group__uses {
+    flex: none;
+}
+
+.tc-recipe__cost {
+    min-width: 4.5rem;
+    text-align: right;
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: var(--app-text-muted);
+}
+
+.tc-recipe__summary {
+    margin-left: auto;
+    font-size: 0.8rem;
+    font-weight: 750;
+    color: var(--app-text);
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__card-cost {
+    font-size: 0.72rem;
+    font-weight: 650;
+    color: #047857;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__card-stock {
+    font-size: 0.72rem;
+    font-weight: 650;
+    color: #475569;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__card-stock.is-warn {
+    color: #b45309;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__card-stock.is-out {
+    color: #b91c1c;
+}
+
+.tc-group__instruction-tag {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.74rem;
+    color: var(--app-text-muted);
+}
+
+.tc-group__default {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-height: 32px;
+    padding: 0 0.55rem;
+    border: 1px solid var(--app-border);
+    border-radius: 9999px;
+    background: var(--app-surface);
+    color: var(--app-text-muted);
+    font-size: 0.74rem;
+    font-weight: 750;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.tc-group__default.is-on {
+    border-color: var(--app-primary);
+    color: var(--app-primary);
+}
+
+.tc-group__attach-row .tc-menu__select {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+.tc-group__add-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 40px;
+    padding: 0 0.85rem;
+    border: 1px dashed color-mix(in srgb, var(--app-primary) 55%, var(--app-border));
+    border-radius: 10px;
+    background: transparent;
+    color: var(--app-primary);
+    font-size: 0.84rem;
+    font-weight: 750;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.tc-group__counts {
+    display: flex;
+    gap: 0.6rem;
+    margin-top: 0.5rem;
+}
+
+.tc-group__counts label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+    color: var(--app-text-muted);
+}
+
+.tc-group__counts input {
+    width: 4rem;
+    min-height: 36px;
+    padding: 0 0.5rem;
+    border: 1px solid var(--app-border);
+    border-radius: 8px;
+    background: var(--app-bg);
+    color: var(--app-text);
+    font-weight: 750;
+}
+
+.tc-group__rule {
+    margin: 0.4rem 0 0;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--app-text-muted);
+}
+
+.tc-group__rule.is-error {
+    color: #dc2626;
+}
+
+.tc-group__intro {
+    margin: 0 0 0.75rem;
+    font-size: 0.84rem;
+    color: var(--app-text-muted);
+}
+
+.tc-sections__row {
+    gap: 0.5rem;
+}
+
+.tc-sections__input {
+    flex: 1;
+    min-width: 0;
+    min-height: 38px;
+    padding: 0 0.6rem;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--app-text);
+    font-size: 0.95rem;
+    font-weight: 650;
+}
+
+.tc-sections__input:focus {
+    outline: none;
+    border-color: var(--app-primary);
+    background: var(--app-bg);
+}
+
+.tc-sections__actions {
+    display: inline-flex;
+    gap: 0.15rem;
+    flex-shrink: 0;
+}
+
+.tc-sections__actions button {
+    width: 34px;
+    height: 34px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--app-text-muted);
+    cursor: pointer;
+}
+
+.tc-sections__actions button:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--app-text) 8%, transparent);
+    color: var(--app-text);
+}
+
+.tc-sections__actions button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.tc-sections__save {
+    margin-top: 0.75rem;
+}
+
+.tc-menu__footer {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.tc-menu__remove {
+    flex-shrink: 0;
+    min-height: 50px;
+    padding: 0 1rem;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, #dc2626 40%, var(--app-border));
+    background: transparent;
+    color: #dc2626;
+    font-weight: 750;
+    cursor: pointer;
 }
 
 .trans-chap-pos-host.fb-app .pos-menu-custom-btn {
@@ -13168,96 +14078,6 @@ html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/mpesa"] 
 
 .trans-chap-pos-host.fb-app .pos-menu-custom-btn:active {
     transform: scale(0.97);
-}
-
-/* Prompt card to add search query as custom dish */
-.trans-chap-pos-host.fb-app .pos-menu-search-prompt {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--app-primary) 8%, var(--app-surface));
-    border: 1.5px dashed color-mix(in srgb, var(--app-primary) 50%, var(--app-border));
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.trans-chap-pos-host.fb-app .pos-menu-search-prompt:hover {
-    background: color-mix(in srgb, var(--app-primary) 12%, var(--app-surface));
-    border-color: var(--app-primary);
-}
-
-.trans-chap-pos-host.fb-app .pos-menu-search-prompt__meta {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    min-width: 0;
-}
-
-.trans-chap-pos-host.fb-app .pos-menu-search-prompt__icon {
-    width: 34px;
-    height: 34px;
-    border-radius: 10px;
-    background: var(--app-primary);
-    color: #ffffff;
-    display: grid;
-    place-items: center;
-    font-size: 0.95rem;
-    flex-shrink: 0;
-}
-
-.trans-chap-pos-host.fb-app .pos-menu-search-prompt__name {
-    display: block;
-    font-size: 0.92rem;
-    font-weight: 800;
-    color: var(--app-text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.trans-chap-pos-host.fb-app .pos-menu-search-prompt__hint {
-    font-size: 0.75rem;
-    color: var(--app-text-muted);
-}
-
-.trans-chap-pos-host.fb-app .pos-menu-search-prompt__action {
-    font-size: 0.8rem;
-    font-weight: 750;
-    color: var(--app-primary);
-    padding: 0.35rem 0.7rem;
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--app-primary) 12%, transparent);
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-
-/* Card for adding custom dish in the grid */
-.trans-chap-pos-host.fb-app .pos-card--custom {
-    border: 1.5px dashed color-mix(in srgb, var(--app-primary) 60%, var(--app-border));
-    background: color-mix(in srgb, var(--app-primary) 3%, var(--app-surface));
-}
-
-.trans-chap-pos-host.fb-app .pos-card--custom:hover {
-    border-color: var(--app-primary);
-    background: color-mix(in srgb, var(--app-primary) 7%, var(--app-surface));
-}
-
-/* Session stats chip */
-.trans-chap-pos-host.fb-app .pos-menu-stats-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.3rem 0.65rem;
-    border-radius: 9999px;
-    background: color-mix(in srgb, #10b981 14%, var(--app-surface));
-    border: 1px solid color-mix(in srgb, #10b981 30%, transparent);
-    color: #059669;
-    font-size: 0.75rem;
-    font-weight: 800;
-    white-space: nowrap;
 }
 
 /* ==========================================================================

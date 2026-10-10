@@ -58,9 +58,16 @@ from app.services.customer_service import CustomerService, CustomerServiceError
 from app.services.inventory_stock_service import (
     InsufficientStockError,
     deduct_stock,
-    restore_stock_for_order,
+    stock_usage_lines,
 )
+from app.services.menu_options import (
+    LineOptionsError,
+    line_stock_usage,
+    resolve_line_options,
+)
+from app.services.order_stock_service import consume_for_order, reverse_for_order
 from app.services.sell_units import resolve_sell_unit
+from app.support.store_type import is_restaurant
 from app.support.order_delivery_details import order_needs_delivery_details
 from app.support.account_location import (
     STORE_LOCATION_REQUIRED_FOR_RIDERS,
@@ -178,6 +185,20 @@ class OrderItemPayload(BaseModel):
         decimal_places=4,
     )
     notes: str | None = Field(default=None, max_length=1000)
+    # Choices from the item's option groups; the server prices and snapshots them.
+    modifier_option_ids: list[str] | None = Field(default=None, max_length=60)
+    # Free-form extras typed at the till (not from an option group).
+    modifiers: list["OrderItemModifierPayload"] | None = Field(default=None, max_length=30)
+
+
+class OrderItemModifierPayload(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    price: float = Field(default=0, ge=0, le=99_999_999.99)
+    group: str | None = Field(default=None, max_length=120)
+    option_id: str | None = Field(default=None, max_length=64)
+
+
+OrderItemPayload.model_rebuild()
 
 
 class OrderPaymentSplitPayload(BaseModel):
@@ -194,7 +215,8 @@ class OrderCreate(BaseModel):
         "tiktok",
         "facebook",
     ]
-    fulfillment_type: Literal["pickup", "delivery"]
+    fulfillment_type: Literal["pickup", "delivery", "dine_in"]
+    table_number: str | None = Field(default=None, max_length=50)
 
     customer_name: str | None = Field(default=None, max_length=255)
     customer_phone: str | None = Field(default=None, max_length=32)
@@ -252,6 +274,8 @@ class OrderTransition(BaseModel):
     ]
     note: str | None = Field(default=None, max_length=1000)
     mpesa_receipt_number: str | None = Field(default=None, max_length=50)
+    # Restaurant cancel / refund: food was made or not returned, so write the stock off as wastage.
+    waste_stock: bool = False
 
 
 class OrderMpesaTransactionUpdate(BaseModel):
@@ -928,6 +952,8 @@ def create_order(
             Decimal,
         ]
     ] = []
+    line_modifiers: list[list[dict] | None] = []
+    line_usage: list[list[dict] | None] = []
     for idx, line in enumerate(payload.items):
         inv_item: InventoryItem | None = None
         sell_unit_label: str | None = None
@@ -1111,6 +1137,56 @@ def create_order(
             sku = (line.product_sku or "").strip() or None
             price = _money(line.unit_price)
 
+        custom_mods = [
+            {
+                "group": (mod.group or "").strip() or "Extras",
+                "name": mod.name.strip(),
+                "price": float(_money(mod.price)),
+            }
+            for mod in line.modifiers or []
+            if not mod.option_id
+        ]
+        snapshot: list[dict] | None = None
+        chosen_options: list = []
+        if line.modifier_option_ids is not None:
+            if not (inv_item and inv_item.product):
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "errors": {
+                            f"items.{idx}.modifier_option_ids": [
+                                "Choices can only be added to menu items.",
+                            ],
+                        },
+                    },
+                )
+            try:
+                resolved = resolve_line_options(
+                    db, account_id, inv_item.product, line.modifier_option_ids,
+                )
+            except LineOptionsError as exc:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={"errors": {f"items.{idx}.modifier_option_ids": [str(exc)]}},
+                ) from exc
+            price = (
+                default_price
+                + resolved.price_delta
+                + sum((_money(m["price"]) for m in custom_mods), Decimal("0"))
+            ).quantize(Decimal("0.01"))
+            if resolved.size_label and inv_item.product.is_combo():
+                name = f"{name} ({resolved.size_label})"
+            snapshot = resolved.modifiers + custom_mods
+            chosen_options = resolved.chosen
+        elif line.modifiers:
+            snapshot = [mod.model_dump(exclude_none=True) for mod in line.modifiers]
+        line_modifiers.append(snapshot or None)
+        line_usage.append(
+            line_stock_usage(db, account_id, inv_item.product, chosen_options) or None
+            if inv_item and inv_item.product
+            else None
+        )
+
         resolved_lines.append(
             (line, inv_item, price, name, sku, sell_unit_label, unit_factor),
         )
@@ -1147,6 +1223,7 @@ def create_order(
         order_number=next_order_number(db, account_id),
         source=payload.source,
         fulfillment_type=payload.fulfillment_type,
+        table_number=(payload.table_number or "").strip() or None,
         status=PLACED,
         customer_name=(payload.customer_name or "").strip() or None,
         customer_phone=(payload.customer_phone or "").strip() or None,
@@ -1169,7 +1246,10 @@ def create_order(
     db.add(order)
     db.flush()  # need order.id for the FKs below
 
-    for line, inv_item, price, name, sku, sell_unit_label, unit_factor in resolved_lines:
+    order_items: list[OrderItem] = []
+    for (line, inv_item, price, name, sku, sell_unit_label, unit_factor), modifiers, usage in zip(
+        resolved_lines, line_modifiers, line_usage,
+    ):
         item = OrderItem(
             order_id=order.id,
             inventory_item_id=inv_item.id if inv_item else None,
@@ -1181,11 +1261,14 @@ def create_order(
             line_total=(price * line.quantity).quantize(Decimal("0.01")),
             sell_unit=sell_unit_label,
             unit_factor=unit_factor,
+            modifiers=modifiers,
+            stock_usage=usage,
             notes=line.notes,
             created_at=now,
             updated_at=now,
         )
         db.add(item)
+        order_items.append(item)
 
     db.add(
         OrderStatusHistory(
@@ -1198,17 +1281,42 @@ def create_order(
         ),
     )
 
+    shop = db.get(Account, account_id)
     try:
-        if deduct_stock(
-            db,
-            [
-                (inv_item.id, line.quantity * unit_factor)
-                for line, inv_item, _, _, _, _, unit_factor in resolved_lines
-                if inv_item
-            ],
-            account_id=account_id,
-        ):
-            order.stock_deducted = True
+        if is_restaurant(shop):
+            db.flush()  # order item ids for the ledger links
+            consume_for_order(db, order, order_items, account=shop, user_id=user.id)
+        else:
+            if deduct_stock(
+                db,
+                [
+                    (inv_item.id, line.quantity * unit_factor)
+                    for line, inv_item, _, _, _, _, unit_factor in resolved_lines
+                    if inv_item
+                ]
+                + [
+                    stock_line
+                    for (line, *_), usage in zip(resolved_lines, line_usage)
+                    for stock_line in stock_usage_lines(
+                        usage, Decimal(str(line.quantity)), recipe=False,
+                    )
+                ],
+                account_id=account_id,
+            ):
+                order.stock_deducted = True
+            if deduct_stock(
+                db,
+                [
+                    stock_line
+                    for (line, *_), usage in zip(resolved_lines, line_usage)
+                    for stock_line in stock_usage_lines(
+                        usage, Decimal(str(line.quantity)), recipe=True,
+                    )
+                ],
+                account_id=account_id,
+                allow_negative=True,
+            ):
+                order.stock_deducted = True
     except InsufficientStockError as exc:
         db.rollback()
         raise HTTPException(
@@ -1613,7 +1721,7 @@ def transition_order(
     if target == CANCELLED and not order.cancelled_at:
         order.cancelled_at = now
     if target in (CANCELLED, REFUNDED) and order.stock_deducted:
-        restore_stock_for_order(db, order)
+        reverse_for_order(db, order, wastage=payload.waste_stock, user_id=user.id)
         order.stock_deducted = False
     credit_due = payment_portion(order, PAYMENT_CREDIT)
     if target in (CANCELLED, REFUNDED) and credit_due > 0:

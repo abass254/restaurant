@@ -85,3 +85,50 @@ def test_parse_workbook_skips_incomplete_rows() -> None:
     assert rows[0].name == "Ok"
     assert len(early) == 2
     assert all(item.status == "skipped" for item in early)
+
+
+def test_parse_workbook_all_extended_columns() -> None:
+    content = _xlsx(
+        [
+            ["Name", "Phone", "Balance", "Address", "Postal Code", "City", "Email", "Fax", "PIN Number", "Notes"],
+            ["Nairobi Flour Mills", "0722112233", 4500.50, "Mombasa Rd", "PO Box 99", "Nairobi", "info@nfm.co.ke", "0201122", "P012345678X", "Weekly supply"],
+        ]
+    )
+    detected, rows, early = _parse_workbook(content)
+    assert early == []
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.name == "Nairobi Flour Mills"
+    assert row.phone == "0722112233"
+    assert float(row.balance) == 4500.50
+    assert row.address == "Mombasa Rd"
+    assert row.postal_code == "PO Box 99"
+    assert row.city == "Nairobi"
+    assert row.email == "info@nfm.co.ke"
+    assert row.fax == "0201122"
+    assert row.pin_number == "P012345678X"
+    assert row.notes == "Weekly supply"
+
+
+def test_parse_csv_and_template_generation() -> None:
+    from app.services.supplier_import_service import _parse_csv, generate_supplier_template
+
+    csv_data = (
+        "Supplier Name,Phone,Balance,Address,Postal Code,City,Email,Fax,PIN Number,Notes\n"
+        "Alpha Mills,0711223344,1200,Lunga Lunga,PO Box 1,Nairobi,alpha@test.com,020123,P123,Grain supplier\n"
+    ).encode("utf-8")
+
+    detected, rows, early = _parse_csv(csv_data)
+    assert early == []
+    assert len(rows) == 1
+    assert rows[0].name == "Alpha Mills"
+    assert rows[0].phone == "0711223344"
+    assert float(rows[0].balance) == 1200.0
+
+    xlsx_bytes, xlsx_name, xlsx_type = generate_supplier_template("xlsx")
+    assert xlsx_name.endswith(".xlsx")
+    assert len(xlsx_bytes) > 0
+
+    csv_bytes, csv_name, csv_type = generate_supplier_template("csv")
+    assert csv_name.endswith(".csv")
+    assert b"Supplier Name,Phone,Balance" in csv_bytes

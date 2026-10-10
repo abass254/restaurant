@@ -15,6 +15,7 @@ import { showError, showInternalError, toastSuccess, promptMpesaReceipt, promptP
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { isStoreAdmin } from "@/lib/merchant-permissions";
+import { isRestaurantStore } from "@/lib/onboarding";
 import { formatNairobiStamp24, isWithinLastDays, nairobiDateKey, parseIso } from "@/lib/nairobi-time";
 import {
   PAYMENT_LABELS,
@@ -101,6 +102,7 @@ function matchesQuery(order: Order, query: string): boolean {
 
 export function TransChapSalesList() {
   const user = useAuthUser();
+  const restaurant = isRestaurantStore(user.active_account ?? user.account);
   const listId = useId();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -149,7 +151,7 @@ export function TransChapSalesList() {
   async function undoSale(order: Order) {
     setUndoingId(order.id);
     try {
-      const updated = await promptAndUndoWalkinSale(order);
+      const updated = await promptAndUndoWalkinSale(order, { restaurant });
       if (!updated) return;
       setOrders((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
       await toastSuccess(updated.status === "refunded" ? "Sale refunded" : "Sale voided");
@@ -293,7 +295,7 @@ export function TransChapSalesList() {
     if (!selectedOrders.length || bulkUndoing) return;
     setBulkUndoing(true);
     try {
-      const result = await promptAndUndoWalkinSales(selectedOrders);
+      const result = await promptAndUndoWalkinSales(selectedOrders, { restaurant });
       if (!result) return;
       const byId = new Map(result.updated.map((order) => [order.id, order]));
       setOrders((prev) => prev.map((row) => byId.get(row.id) ?? row));

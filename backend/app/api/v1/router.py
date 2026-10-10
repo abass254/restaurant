@@ -16,9 +16,11 @@ from app.api.v1 import (
     google_maps,
     integrations,
     inventory,
+    kitchen_issues,
     kra,
     login_codes,
     mapbox,
+    menu,
     messages,
     messaging_settings,
     mpesa,
@@ -29,8 +31,10 @@ from app.api.v1 import (
     orders,
     platform,
     products,
+    purchase_orders,
     qa,
     registration,
+    restaurant_stock,
     rider_deliveries,
     riders,
     settings,
@@ -71,6 +75,7 @@ router.include_router(mapbox.router)
 router.include_router(messaging_settings.router)
 router.include_router(platform.router)
 router.include_router(products.router)
+router.include_router(menu.router)
 router.include_router(inventory.router)
 router.include_router(orders.router)
 router.include_router(deliveries.router)
@@ -84,6 +89,9 @@ router.include_router(storefront.router)
 router.include_router(staff.router)
 router.include_router(customers.router)
 router.include_router(suppliers.router)
+router.include_router(purchase_orders.router)
+router.include_router(restaurant_stock.router)
+router.include_router(kitchen_issues.router)
 router.include_router(admin.router)
 router.include_router(admin_whatsapp.router)
 router.include_router(meta.router)

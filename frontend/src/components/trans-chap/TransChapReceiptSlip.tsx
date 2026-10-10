@@ -113,6 +113,20 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
                 <span className="trans-chap-slip__dots" />
                 <em>{formatKesDigits(line.lineTotal)}</em>
               </div>
+              {line.modifiers?.length ? (
+                <ul className="trans-chap-slip__modifiers">
+                  {line.modifiers.map((mod, modIndex) => (
+                    <li key={`${mod.name}-${modIndex}`}>
+                      <span>
+                        {mod.kind === "component"
+                          ? `${(mod.quantity ?? 1) > 1 ? `${mod.quantity}× ` : ""}${mod.name}`
+                          : `+ ${mod.name}`}
+                      </span>
+                      {mod.price > 0 ? <span>{formatKesDigits(mod.price)}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
               {line.quantity > 1 ? (
                 <small>
                   {line.quantity} × {formatKesDigits(line.unitPrice)}

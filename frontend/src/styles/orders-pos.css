@@ -3056,6 +3056,50 @@ html[data-theme="dark"] .pos-modifier-chip {
   border-color: rgba(255, 255, 255, 0.08);
 }
 
+.pos-modifier-chip-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pos-modifier-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 10px;
+  background: #f1f5f9;
+}
+
+html[data-theme="dark"] .pos-modifier-stepper {
+  background: #272d38;
+}
+
+.pos-modifier-stepper button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: inherit;
+  cursor: pointer;
+}
+
+html[data-theme="dark"] .pos-modifier-stepper button {
+  background: #1f242d;
+}
+
+.pos-modifier-stepper button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pos-modifier-stepper strong {
+  font-size: 0.9rem;
+}
+
 .pos-modifier-chip:hover {
   border-color: #cbd5e1;
   background: #f8fafc;
@@ -3258,6 +3302,32 @@ html[data-theme="dark"] .pos-modifier-summary__total {
 
 .pos-modifier-confirm-btn:hover {
   background: #c2410c;
+}
+
+.pos-modifier-confirm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.pos-modifier-group__hint.is-required {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.pos-modifier-group__hint.is-done {
+  color: #16a34a;
+  font-weight: 700;
+}
+
+.pos-modifier-group__parent {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.pos-modifier-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* === Cart lines with modifiers === */
@@ -3496,4 +3566,203 @@ html[data-theme="dark"] .fb-app .pos-line__unit-chip.is-active {
 }
 .fb-app .pos-line__price-edit.has-error input:focus {
   outline-color: color-mix(in srgb, var(--app-error) 35%, transparent);
+}
+
+/* === Purchase Cart Line Items === */
+.fb-app .pos-line--purchase {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  padding: 8px 10px !important;
+  background: var(--app-surface) !important;
+  border: 1px solid var(--app-border-light, var(--app-border)) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  margin-bottom: 6px;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.fb-app .pos-line--purchase .pos-line__purchase-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.fb-app .pos-line--purchase .pos-line__thumb {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 8px;
+  background: var(--cream-100, #f5efe6);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: var(--brown-600, #854d0e);
+  flex-shrink: 0;
+}
+
+html[data-theme="dark"] .fb-app .pos-line--purchase .pos-line__thumb {
+  background: rgba(160, 107, 72, 0.18);
+  color: var(--cream-300, #fed7aa);
+}
+
+.fb-app .pos-line--purchase .pos-line__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fb-app .pos-line--purchase .pos-line__purchase-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fb-app .pos-line--purchase .pos-line__purchase-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fb-app .pos-line--purchase .pos-line__purchase-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--app-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.fb-app .pos-line--purchase .pos-line__bulk-tag {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--app-text-secondary);
+  background: var(--app-surface-hover, #f1f5f9);
+  padding: 1px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.fb-app .pos-line--purchase .pos-purchase-role {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.fb-app .pos-line--purchase .pos-purchase-role > button {
+  appearance: none;
+  border: 1px solid var(--app-border, #e2e8f0);
+  border-radius: 999px;
+  background: var(--app-surface);
+  color: var(--app-text-secondary);
+  font: inherit;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 1px 7px;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: all 0.12s ease;
+}
+
+.fb-app .pos-line--purchase .pos-purchase-role > button.is-active {
+  border-color: color-mix(in srgb, var(--app-primary) 45%, var(--app-border));
+  background: color-mix(in srgb, var(--app-primary) 12%, var(--app-surface));
+  color: var(--app-primary);
+  font-weight: 700;
+}
+
+.fb-app .pos-line--purchase .pos-line__purchase-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.fb-app .pos-line--purchase .pos-line__purchase-total {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--app-text);
+  white-space: nowrap;
+}
+
+.fb-app .pos-line--purchase .pos-line__remove {
+  border: 0;
+  background: transparent;
+  color: var(--app-text-secondary);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0.6;
+  transition: all 0.12s;
+}
+
+.fb-app .pos-line--purchase .pos-line__remove:hover {
+  opacity: 1;
+  color: var(--app-danger, #ef4444);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.fb-app .pos-line--purchase .pos-line__purchase-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 6px;
+  border-top: 1px dashed var(--app-border-light, rgba(0, 0, 0, 0.08));
+}
+
+.fb-app .pos-line--purchase .pos-line__prices {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.fb-app .pos-line--purchase .pos-line__price-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fb-app .pos-line--purchase .pos-line__price-label {
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--app-text-secondary);
+}
+
+.fb-app .pos-line--purchase .pos-line__price-edit input {
+  width: 58px;
+  height: 26px;
+  padding: 2px 6px;
+  border: 1px solid var(--app-border, #cbd5e1);
+  border-radius: 6px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.fb-app .pos-line--purchase .pos-line__qty-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
 }

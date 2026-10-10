@@ -14,7 +14,7 @@ from fastapi import (
 )
 from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.session import require_user, validate_csrf
 from app.support.merchant_permissions import (
@@ -23,10 +23,12 @@ from app.support.merchant_permissions import (
 )
 from app.database import get_db
 from app.dependencies import get_request_session
-from app.models import InventoryItem, Product, User
-from app.schemas import ProductOut
+from app.models import InventoryItem, MealAddon, Product, User
+from app.schemas import MealAddonOut, ProductOut
 
 router = APIRouter(prefix="/products", tags=["products"])
+
+CatalogueType = Literal["product", "retail", "meal", "combo", "addon", "service"]
 
 
 _SLUG_NON_WORD = re.compile(r"[^a-z0-9]+")
@@ -72,7 +74,7 @@ def _next_product_code(db: Session) -> str:
 
 class ProductCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
-    product_type: Literal["product", "service"]
+    product_type: CatalogueType
     category: str | None = Field(default=None, max_length=120)
     brand: str | None = Field(default=None, max_length=120)
     unit: str | None = Field(default=None, max_length=32)
@@ -85,7 +87,7 @@ class ProductCreate(BaseModel):
 
 class ProductUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    product_type: Literal["product", "service"] | None = None
+    product_type: CatalogueType | None = None
     category: str | None = Field(default=None, max_length=120)
     brand: str | None = Field(default=None, max_length=120)
     unit: str | None = Field(default=None, max_length=32)
@@ -99,7 +101,7 @@ class ProductUpdate(BaseModel):
 @router.get("")
 def list_products(
     q: str | None = Query(default=None, max_length=255),
-    type: Literal["product", "service"] | None = Query(default=None),
+    type: CatalogueType | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=30, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -296,3 +298,110 @@ def get_product(
     out = ProductOut.model_validate(product)
     out.shops_carrying_count = shops_count
     return {"data": out}
+
+
+class MealAddonLineIn(BaseModel):
+    addon_id: str = Field(min_length=1, max_length=64)
+    additional_price: float | None = Field(default=None, ge=0, le=99_999_999.99)
+    is_required: bool = False
+    max_quantity: int = Field(default=1, ge=1, le=99)
+
+
+class MealAddonsReplace(BaseModel):
+    addons: list[MealAddonLineIn] = Field(default_factory=list, max_length=50)
+
+
+def _meal_addons_out(db: Session, meal_id: str) -> list[MealAddonOut]:
+    rows = (
+        db.query(MealAddon)
+        .options(selectinload(MealAddon.addon))
+        .filter(MealAddon.meal_id == meal_id)
+        .order_by(MealAddon.sort_order.asc(), MealAddon.created_at.asc())
+        .all()
+    )
+    return [MealAddonOut.model_validate(row) for row in rows]
+
+
+@router.get("/{product_id}/addons")
+def list_meal_addons(
+    product_id: str,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    user = require_user(db, session)
+    assert_merchant_section_any_access(user, "inventory", "pos", "services")
+    if not db.get(Product, product_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Product not found.")
+    return {"data": _meal_addons_out(db, product_id)}
+
+
+@router.put("/{product_id}/addons")
+def replace_meal_addons(
+    product_id: str,
+    payload: MealAddonsReplace,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Replace the add-ons attached to a shop-owned meal."""
+    validate_csrf(request, session)
+    user = require_user(db, session)
+    assert_merchant_section_any_access(user, "inventory", "services")
+    account_id = active_account_id(user)
+
+    meal = db.get(Product, product_id)
+    if not meal:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Dish not found.")
+    # Catalogue rows are shared across shops; only the creating shop may change a meal's add-ons.
+    if str(meal.created_by_account_id or "") != str(account_id):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="This dish is shared with other shops. Add it as your own dish to attach add-ons.",
+        )
+    if meal.product_type != "meal":
+        meal.product_type = "meal"
+
+    addon_ids = [line.addon_id for line in payload.addons]
+    if len(set(addon_ids)) != len(addon_ids):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Each add-on can only be attached once.",
+        )
+    if product_id in addon_ids:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A dish cannot be its own add-on.",
+        )
+    addons = (
+        {row.id: row for row in db.query(Product).filter(Product.id.in_(addon_ids)).all()}
+        if addon_ids
+        else {}
+    )
+    for addon_id in addon_ids:
+        addon = addons.get(addon_id)
+        if addon is None or addon.product_type != "addon":
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="One of the selected add-ons no longer exists.",
+            )
+
+    existing = {
+        row.addon_id: row
+        for row in db.query(MealAddon).filter(MealAddon.meal_id == product_id).all()
+    }
+    now = datetime.utcnow()
+    for index, line in enumerate(payload.addons):
+        link = existing.pop(line.addon_id, None)
+        if link is None:
+            link = MealAddon(meal_id=product_id, addon_id=line.addon_id, created_at=now)
+            db.add(link)
+        link.additional_price = line.additional_price
+        link.is_required = line.is_required
+        link.max_quantity = line.max_quantity
+        link.sort_order = index
+    for stale in existing.values():
+        db.delete(stale)
+    meal.updated_at = now
+
+    db.commit()
+    return {"message": "Dish add-ons saved.", "data": _meal_addons_out(db, product_id)}

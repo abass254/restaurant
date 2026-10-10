@@ -1,5 +1,10 @@
 import { apiFetch } from "@/lib/api";
-import { extractErrorMessage, internalErrorMessage, promptVoidReason } from "@/lib/alerts";
+import {
+  extractErrorMessage,
+  internalErrorMessage,
+  promptStockFate,
+  promptVoidReason,
+} from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { orderHasSuccessfulMpesa, orderUsesPayment } from "@/lib/orders";
 import type { Order, OrderMutationResponse, OrdersListResponse } from "@/lib/types";
@@ -53,21 +58,27 @@ export async function transitionWalkinSale(
   orderId: string,
   toStatus: "cancelled" | "refunded",
   note: string,
+  wasteStock = false,
 ): Promise<Order> {
   const data = await apiFetch<OrderMutationResponse>(apiRoutes.orderTransition(orderId), {
     method: "POST",
-    body: JSON.stringify({ to_status: toStatus, note }),
+    body: JSON.stringify({ to_status: toStatus, note, waste_stock: wasteStock }),
   });
   return data.data;
 }
 
-export async function promptAndUndoWalkinSale(order: {
-  id: string;
-  status: string;
-  allowed_next_statuses?: string[] | null;
-  payment_method?: string | null;
-  payment_splits?: Order["payment_splits"];
-}): Promise<Order | null> {
+type UndoOptions = { restaurant?: boolean };
+
+export async function promptAndUndoWalkinSale(
+  order: {
+    id: string;
+    status: string;
+    allowed_next_statuses?: string[] | null;
+    payment_method?: string | null;
+    payment_splits?: Order["payment_splits"];
+  },
+  options: UndoOptions = {},
+): Promise<Order | null> {
   const action = walkinUndoAction(order);
   if (!action) return null;
   const isRefund = action === "refund";
@@ -83,12 +94,15 @@ export async function promptAndUndoWalkinSale(order: {
     isRefund ? "Refund" : "Void sale",
   );
   if (!reason) return null;
-  return transitionWalkinSale(order.id, isRefund ? "refunded" : "cancelled", reason);
+  const fate = options.restaurant ? await promptStockFate() : "return";
+  if (!fate) return null;
+  return transitionWalkinSale(order.id, isRefund ? "refunded" : "cancelled", reason, fate === "waste");
 }
 
 /** Void (or refund, once completed) several sales with one reason. */
 export async function promptAndUndoWalkinSales(
   orders: Order[],
+  options: UndoOptions = {},
 ): Promise<{ updated: Order[]; failures: string[] } | null> {
   const targets = orders.flatMap((order) => {
     const action = walkinUndoAction(order);
@@ -110,6 +124,8 @@ export async function promptAndUndoWalkinSales(
     `Void ${count}`,
   );
   if (!reason) return null;
+  const fate = options.restaurant ? await promptStockFate(count) : "return";
+  if (!fate) return null;
   const updated: Order[] = [];
   const failures: string[] = [];
   for (const { order, action } of targets) {
@@ -119,6 +135,7 @@ export async function promptAndUndoWalkinSales(
           order.id,
           action === "refund" ? "refunded" : "cancelled",
           reason,
+          fate === "waste",
         ),
       );
     } catch (err) {

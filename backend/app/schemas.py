@@ -9,6 +9,13 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, ConfigDict
 
 
+def _optional_float(value: Any) -> float | None:
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 class AccountOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -255,6 +262,121 @@ class MealAddonLinkPayload(BaseModel):
     sort_order: int = 0
 
 
+class ModifierOptionOut(BaseModel):
+    id: str
+    group_id: str
+    name: str
+    price_delta: float = 0
+    product_id: str | None = None
+    product_name: str | None = None
+    product_unit: str | None = None
+    stock_qty: float = 1
+    is_default: bool = False
+    sort_order: int = 0
+    is_active: bool = True
+
+    @classmethod
+    def from_model(cls, option) -> "ModifierOptionOut":
+        return cls(
+            id=option.id,
+            group_id=option.group_id,
+            name=option.name,
+            price_delta=float(option.price_delta or 0),
+            product_id=option.product_id,
+            product_name=option.product.name if option.product else None,
+            product_unit=option.product.unit if option.product else None,
+            stock_qty=float(option.stock_qty) if option.stock_qty is not None else 1,
+            is_default=bool(option.is_default),
+            sort_order=option.sort_order or 0,
+            is_active=option.is_active is not False,
+        )
+
+
+class ModifierGroupOut(BaseModel):
+    id: str
+    name: str
+    min_select: int = 0
+    max_select: int = 1
+    included: bool = False
+    sort_order: int = 0
+    options: list[ModifierOptionOut] = []
+    item_count: int | None = None
+
+    @classmethod
+    def from_model(cls, group, *, item_count: int | None = None) -> "ModifierGroupOut":
+        return cls(
+            id=group.id,
+            name=group.name,
+            min_select=group.min_select or 0,
+            max_select=group.max_select or 1,
+            included=bool(group.included),
+            sort_order=group.sort_order or 0,
+            options=[ModifierOptionOut.from_model(o) for o in group.options or []],
+            item_count=item_count,
+        )
+
+
+class ComboComponentOut(BaseModel):
+    id: str
+    component_product_id: str
+    name: str | None = None
+    quantity: int = 1
+    sort_order: int = 0
+    modifier_groups: list[ModifierGroupOut] = []
+
+
+class RecipeLineOut(BaseModel):
+    id: str
+    ingredient_product_id: str
+    name: str | None = None
+    unit: str | None = None
+    quantity: float
+
+
+def recipe_for(product, account_id: str | None) -> list[RecipeLineOut]:
+    """This shop's recipe for a dish (catalogue rows are shared, recipes are not)."""
+    if product is None or account_id is None:
+        return []
+    return [
+        RecipeLineOut(
+            id=line.id,
+            ingredient_product_id=line.ingredient_product_id,
+            name=line.ingredient.name if line.ingredient else None,
+            unit=line.ingredient.unit if line.ingredient else None,
+            quantity=float(line.quantity or 0),
+        )
+        for line in product.recipe_lines or []
+        if line.account_id == account_id
+    ]
+
+
+def modifier_groups_for(product, account_id: str | None) -> list[ModifierGroupOut]:
+    """Groups the given shop attached to ``product`` (catalogue rows are shared)."""
+    if product is None:
+        return []
+    return [
+        ModifierGroupOut.from_model(link.group)
+        for link in product.modifier_group_links or []
+        if link.group is not None and (account_id is None or link.group.account_id == account_id)
+    ]
+
+
+def combo_components_for(product, account_id: str | None) -> list[ComboComponentOut]:
+    if product is None:
+        return []
+    return [
+        ComboComponentOut(
+            id=row.id,
+            component_product_id=row.component_product_id,
+            name=row.component.name if row.component else None,
+            quantity=row.quantity or 1,
+            sort_order=row.sort_order or 0,
+            modifier_groups=modifier_groups_for(row.component, account_id),
+        )
+        for row in product.combo_component_links or []
+    ]
+
+
 class ProductOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -276,6 +398,9 @@ class ProductOut(BaseModel):
     shops_carrying_count: int | None = None
     total_quantity: int | None = None
     addons: list[MealAddonOut] | None = None
+    modifier_groups: list[ModifierGroupOut] | None = None
+    combo_components: list[ComboComponentOut] | None = None
+    recipe: list[RecipeLineOut] | None = None
     is_active: bool = True
     created_at: datetime | None
     updated_at: datetime | None
@@ -294,11 +419,13 @@ class InventoryItemOut(BaseModel):
     selling_price: float | None
     margin: float | None
     stock_quantity: float | None
+    kitchen_quantity: float | None = None
     low_stock_threshold: float | None
     inventory_role: str = "both"
     is_active: bool
     is_low_stock: bool
     supplier: str | None = None
+    preferred_supplier_id: str | None = None
     location: str | None = None
     notes: str | None
     attributes: Any | None = None
@@ -327,6 +454,7 @@ class InventoryItemOut(BaseModel):
             stock_quantity=(
                 float(item.stock_quantity) if item.stock_quantity is not None else None
             ),
+            kitchen_quantity=_optional_float(getattr(item, "kitchen_quantity", None)),
             low_stock_threshold=(
                 float(item.low_stock_threshold)
                 if item.low_stock_threshold is not None
@@ -336,14 +464,35 @@ class InventoryItemOut(BaseModel):
             is_active=bool(item.is_active),
             is_low_stock=item.is_low_stock(),
             supplier=getattr(item, "supplier", None),
+            preferred_supplier_id=getattr(item, "preferred_supplier_id", None),
             location=getattr(item, "location", None),
             notes=item.notes,
             attributes=getattr(item, "attributes", None),
             media=inventory_media_for_item(item) or None,
-            product=ProductOut.model_validate(item.product) if item.product else None,
+            product=_inventory_product_out(item.product, item.account_id),
             created_at=item.created_at,
             updated_at=item.updated_at,
         )
+
+
+def _inventory_product_out(product, account_id: str | None = None) -> ProductOut | None:
+    if product is None:
+        return None
+    out = ProductOut.model_validate(product)
+    product_type = getattr(product, "product_type", None)
+    if product_type == "meal":
+        links = sorted(
+            product.available_addons or [],
+            key=lambda link: (link.sort_order or 0, link.created_at or datetime.min),
+        )
+        out.addons = [MealAddonOut.model_validate(link) for link in links]
+    if product_type in ("meal", "combo"):
+        out.modifier_groups = modifier_groups_for(product, account_id)
+    if product_type == "meal":
+        out.recipe = recipe_for(product, account_id)
+    if product_type == "combo":
+        out.combo_components = combo_components_for(product, account_id)
+    return out
 
 
 class StockMovementOut(BaseModel):
@@ -357,8 +506,14 @@ class StockMovementOut(BaseModel):
     quantity_before: float | None
     quantity_after: float | None
     reason: str
+    location: str = "store"
     note: str | None
     unit_cost: float | None = None
+    total_cost: float | None = None
+    supplier_id: str | None = None
+    purchase_order_id: str | None = None
+    order_id: str | None = None
+    stock_take_id: str | None = None
     created_by: str | None
     created_at: datetime | None
     voided_at: datetime | None = None
@@ -392,8 +547,14 @@ class StockMovementOut(BaseModel):
                 else None
             ),
             reason=movement.reason,
+            location=getattr(movement, "location", None) or "store",
             note=movement.note,
             unit_cost=unit_cost_out,
+            total_cost=_optional_float(getattr(movement, "total_cost", None)),
+            supplier_id=getattr(movement, "supplier_id", None),
+            purchase_order_id=getattr(movement, "purchase_order_id", None),
+            order_id=getattr(movement, "order_id", None),
+            stock_take_id=getattr(movement, "stock_take_id", None),
             created_by=movement.created_by,
             created_at=movement.created_at,
             voided_at=getattr(movement, "voided_at", None),
@@ -422,6 +583,7 @@ class OrderItemOut(BaseModel):
     modifiers: list[dict[str, Any]] | None = None
     # Current on-hand stock for the linked inventory item (if any).
     stock_quantity: float | None = None
+    cost_total: float | None = None
 
     @classmethod
     def from_model(cls, item) -> "OrderItemOut":
@@ -444,6 +606,7 @@ class OrderItemOut(BaseModel):
             notes=item.notes,
             modifiers=getattr(item, "modifiers", None),
             stock_quantity=float(stock) if stock is not None else None,
+            cost_total=_optional_float(getattr(item, "cost_total", None)),
         )
 
 

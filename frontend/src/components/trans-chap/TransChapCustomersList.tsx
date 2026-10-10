@@ -119,6 +119,7 @@ export function TransChapCustomersList() {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
+  const [downloadingFormat, setDownloadingFormat] = useState<"xlsx" | "csv" | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<CustomerImportResponse | null>(null);
   const [sendingWaId, setSendingWaId] = useState<string | null>(null);
@@ -393,6 +394,29 @@ export function TransChapCustomersList() {
     }
   }
 
+  async function handleDownloadTemplate(format: "xlsx" | "csv") {
+    setDownloadingFormat(format);
+    try {
+      const url = apiRoutes.customerTemplate(format);
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error(`Template download failed (${res.status})`);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = blobUrl;
+      anchor.download = `dukai_customers_template.${format}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(blobUrl);
+      await toastSuccess(`${format.toUpperCase()} template downloaded.`);
+    } catch (err) {
+      await showError("Download failed", extractErrorMessage(err));
+    } finally {
+      setDownloadingFormat(null);
+    }
+  }
+
   if (view === "create") {
     return (
       <form className="auth-split__form trans-chap-form" onSubmit={(e) => void handleCreate(e)}>
@@ -519,9 +543,9 @@ export function TransChapCustomersList() {
     return (
       <div className="auth-split__form trans-chap-form">
         <p className="trans-chap-form__lead">
-          Upload an <strong>.xlsx</strong> with <code>Name</code>, <code>Phone</code>,{" "}
-          <code>Credit Limit</code>, and <code>Opening Balance</code>. Matching uses phone —
-          existing customers are updated.
+          Upload an <strong>Excel (.xlsx)</strong> or <strong>CSV (.csv)</strong> file with{" "}
+          <code>Name</code>, <code>Phone</code>, <code>Credit Limit</code>, and <code>Opening Balance</code>.
+          Existing customers matching by phone are automatically updated without duplicates.
         </p>
         <div className="trans-chap-form__fields">
           <button
@@ -536,10 +560,53 @@ export function TransChapCustomersList() {
             Customers
           </button>
 
+          <div
+            style={{
+              padding: "12px 14px",
+              borderRadius: "10px",
+              background: "rgba(255, 255, 255, 0.05)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+              <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                Download standard import template:
+              </span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  className="trans-chap-btn trans-chap-btn--secondary"
+                  style={{ fontSize: "0.8rem", padding: "6px 12px" }}
+                  disabled={downloadingFormat !== null}
+                  onClick={() => void handleDownloadTemplate("xlsx")}
+                >
+                  <i className="fa-solid fa-file-excel" aria-hidden style={{ marginRight: 6 }} />
+                  {downloadingFormat === "xlsx" ? "Downloading…" : "Excel (.xlsx)"}
+                </button>
+                <button
+                  type="button"
+                  className="trans-chap-btn trans-chap-btn--secondary"
+                  style={{ fontSize: "0.8rem", padding: "6px 12px" }}
+                  disabled={downloadingFormat !== null}
+                  onClick={() => void handleDownloadTemplate("csv")}
+                >
+                  <i className="fa-solid fa-file-csv" aria-hidden style={{ marginRight: 6 }} />
+                  {downloadingFormat === "csv" ? "Downloading…" : "CSV (.csv)"}
+                </button>
+              </div>
+            </div>
+            <p style={{ margin: 0, fontSize: "0.78rem", opacity: 0.75 }}>
+              Supported columns: <code>NAME</code>, <code>PHONE</code>, <code>CREDIT LIMIT</code>, <code>OPENING BALANCE</code>, <code>PHYSICAL LOCATION</code>, <code>NOTES</code>
+            </p>
+          </div>
+
           <input
             ref={fileInputRef}
             type="file"
-            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             className="trans-chap-import__file-input"
             onChange={onImportFileChange}
           />
@@ -560,8 +627,8 @@ export function TransChapCustomersList() {
               </>
             ) : (
               <>
-                <strong>Choose an Excel file</strong>
-                <span>.xlsx only, up to 5 MB</span>
+                <strong>Choose an Excel or CSV file</strong>
+                <span>.xlsx or .csv up to 5 MB</span>
               </>
             )}
           </button>
@@ -681,6 +748,24 @@ export function TransChapCustomersList() {
             </button>
           </div>
         </div>
+        <div className="trans-chap-sales__chips" role="toolbar" aria-label="Customer actions">
+          <button
+            type="button"
+            className="trans-chap-chip"
+            onClick={openCreate}
+          >
+            <i className="fa-solid fa-plus" aria-hidden />
+            <span>Add customer</span>
+          </button>
+          <button
+            type="button"
+            className="trans-chap-chip"
+            onClick={openImport}
+          >
+            <i className="fa-solid fa-file-import" aria-hidden />
+            <span>Import</span>
+          </button>
+        </div>
         {!loading && owingCount > 0 ? (
           <p className="trans-chap-credit__total">
             <Link href="/trans-chap/credit">
@@ -698,7 +783,7 @@ export function TransChapCustomersList() {
         <TransChapStatus tone="error">{error}</TransChapStatus>
       ) : customers.length === 0 ? (
         <TransChapStatus>
-          No customers yet. Tap + to add people you sell to, or import from Excel.
+          No customers yet. Tap + to add people you sell to, or import from Excel or CSV.
         </TransChapStatus>
       ) : filtered.length === 0 ? (
         <p className="trans-chap-sales__empty">No names match this search.</p>
@@ -1094,8 +1179,8 @@ export function TransChapCustomersList() {
             onClick: openCreate,
           },
           {
-            label: "Import Excel",
-            icon: "fa-file-excel",
+            label: "Import file",
+            icon: "fa-file-import",
             onClick: openImport,
           },
         ]}

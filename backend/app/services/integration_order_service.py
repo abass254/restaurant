@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models import InventoryItem, Order, OrderItem, OrderStatusHistory
 from app.services.inventory_stock_service import InsufficientStockError, deduct_stock
+from app.services.order_stock_service import consume_for_order, restaurant_line_usage
+from app.support.store_type import is_restaurant_account
 from app.services.order_creation import next_order_number
 from app.support.order_status import (
     FULFILLMENT_DELIVERY,
@@ -195,24 +197,29 @@ class IntegrationOrderService:
         self.db.add(order)
         self.db.flush()
 
+        restaurant = is_restaurant_account(self.db, account_id)
+        order_items: list[OrderItem] = []
         for line, inv_item, price, product_name, sku in resolved:
-            self.db.add(
-                OrderItem(
-                    order_id=order.id,
-                    inventory_item_id=inv_item.id if inv_item else None,
-                    product_id=inv_item.product_id if inv_item else None,
-                    product_name=product_name,
-                    product_sku=sku,
-                    quantity=int(line.get("quantity") or 0),
-                    unit_price=price,
-                    line_total=(price * int(line.get("quantity") or 0)).quantize(
-                        Decimal("0.01"),
-                    ),
-                    notes=(line.get("notes") or None),
-                    created_at=now,
-                    updated_at=now,
+            order_item = OrderItem(
+                order_id=order.id,
+                inventory_item_id=inv_item.id if inv_item else None,
+                product_id=inv_item.product_id if inv_item else None,
+                product_name=product_name,
+                product_sku=sku,
+                quantity=int(line.get("quantity") or 0),
+                unit_price=price,
+                line_total=(price * int(line.get("quantity") or 0)).quantize(
+                    Decimal("0.01"),
                 ),
+                stock_usage=(
+                    restaurant_line_usage(self.db, account_id, inv_item) if restaurant else None
+                ),
+                notes=(line.get("notes") or None),
+                created_at=now,
+                updated_at=now,
             )
+            self.db.add(order_item)
+            order_items.append(order_item)
 
         self.db.add(
             OrderStatusHistory(
@@ -226,7 +233,10 @@ class IntegrationOrderService:
         )
 
         try:
-            if deduct_stock(
+            if restaurant:
+                self.db.flush()
+                consume_for_order(self.db, order, order_items)
+            elif deduct_stock(
                 self.db,
                 [
                     (inv_item.id, int(line.get("quantity") or 0))
