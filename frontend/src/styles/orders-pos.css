@@ -3043,6 +3043,17 @@ html[data-theme="dark"] .fb-app .orders-action-btn--primary {
 }
 
 @media print {
+  body.has-receipt-print .fb-app,
+  body:has(> .trans-chap-print-root) .fb-app {
+    display: none !important;
+  }
+
+  .fb-topbar,
+  .fb-sidebar,
+  .fb-app__backdrop {
+    display: none !important;
+  }
+
   .fb-app .orders-detail > :not(.orders-receipt-print),
   .fb-app .pos-panel > :not(.orders-receipt-print) {
     display: none !important;

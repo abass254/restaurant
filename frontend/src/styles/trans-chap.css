@@ -6847,30 +6847,33 @@ html[data-theme="dark"] .trans-chap-receipt {
     display: none;
 }
 
-@page trans-chap-receipt {
-    size: 80mm auto;
+@page {
     margin: 0;
 }
 
 @media print {
     html:has(body > .trans-chap-print-root),
-    body:has(> .trans-chap-print-root) {
+    html.has-receipt-print,
+    body:has(> .trans-chap-print-root),
+    body.has-receipt-print {
         height: auto !important;
         min-height: 0 !important;
+        max-height: none !important;
         overflow: visible !important;
         background: #fff !important;
     }
 
-    body:has(> .trans-chap-print-root) > :not(.trans-chap-print-root) {
+    body:has(> .trans-chap-print-root) > :not(.trans-chap-print-root),
+    body.has-receipt-print > :not(.trans-chap-print-root) {
         display: none !important;
     }
 
     .trans-chap-print-root {
         display: block !important;
         visibility: visible !important;
-        page: trans-chap-receipt;
         width: 80mm;
-        margin: 0;
+        max-width: 80mm;
+        margin: 0 auto;
         padding: 0;
         background: #fff;
         -webkit-print-color-adjust: exact;
@@ -6917,6 +6920,10 @@ html[data-theme="dark"] .trans-chap-receipt {
         box-shadow: none !important;
         text-shadow: none !important;
         animation: none !important;
+    }
+
+    .trans-chap-print-root .trans-chap-slip__bars .is-bar {
+        background: #000 !important;
     }
 }
 
