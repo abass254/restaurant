@@ -565,7 +565,6 @@ export function PosWorkspace({
 
   const AUTO_PRINT_STORAGE_KEY = "pos:auto_print_receipt";
   const INCLUDE_TAX_STORAGE_KEY = "pos:include_tax_price";
-  const QUICK_ADD_QTY_STORAGE_KEY = "pos:quick_add_qty";
   const HELD_SESSIONS_STORAGE_KEY = `pos:held_sessions:${salesProfile}`;
   const CART_COLLAPSED_STORAGE_KEY = "pos:cart_collapsed";
 
@@ -687,17 +686,6 @@ export function PosWorkspace({
 
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(QUICK_ADD_QTY_STORAGE_KEY);
-      if (raw === null) return;
-      const parsed = Math.max(1, Math.floor(Number(raw) || 1));
-      setQuickAddQty(parsed);
-    } catch {
-      // Ignore storage access failures and keep sensible default.
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
       const raw = window.sessionStorage.getItem(HELD_SESSIONS_STORAGE_KEY);
       setHeldSessions(parseHeldSessions(raw));
     } catch {
@@ -738,13 +726,7 @@ export function PosWorkspace({
   }
 
   function handleQuickAddQtyChange(value: string) {
-    const next = Math.max(1, Math.floor(Number(value) || 1));
-    setQuickAddQty(next);
-    try {
-      window.localStorage.setItem(QUICK_ADD_QTY_STORAGE_KEY, String(next));
-    } catch {
-      // Ignore storage access failures; setting still applies this session.
-    }
+    setQuickAddQty(Math.max(1, Math.floor(Number(value) || 1)));
   }
 
   function clearScannerBuffer() {

@@ -69,7 +69,12 @@ SAMPLE_VALUES = {
     "041223344",
 }
 
-FILLER = {"1", "0"}
+# Shiil POS export: comma-space separated with a trailing comma, a POS ID and an
+# account code column. Addresses containing a comma spill into extra cells.
+SHIIL_CUSTOMER_COLUMNS = ["id", "name", "code", "balance", "address", "postal_code", "city", "email", "phone", "fax"]
+SHIIL_SUPPLIER_COLUMNS = [*SHIIL_CUSTOMER_COLUMNS, "pin_number"]
+
+FILLER = {"1", "0", "00"}
 PIN_RE = re.compile(r"^[AP]\d{9}[A-Z]$")
 HEADER_NAMES = {"name", "customer name", "supplier name"}
 
@@ -134,9 +139,43 @@ def _postal(raw: str) -> str:
     return raw
 
 
-def read_rows(path: Path, layout: list[str]) -> list[Contact]:
+def read_shiil_rows(rows: list[list[str]], kind: str) -> list[Contact]:
+    columns = SHIIL_CUSTOMER_COLUMNS if kind == "customers" else SHIIL_SUPPLIER_COLUMNS
+    layout = CUSTOMER_RAW if kind == "customers" else SUPPLIER_RAW
+    address_at = columns.index("address")
+    width = len(rows[0])
+    contacts = []
+    for line, row in enumerate(rows[1:], start=2):
+        cells = [_clean_text(c) for c in row]
+        if not any(cells):
+            continue
+        extra = len(cells) - width
+        if extra > 0:
+            address = ", ".join(p for p in cells[address_at : address_at + extra + 1] if p)
+            cells = [*cells[:address_at], address, *cells[address_at + extra + 1 :]]
+        raw = {key: (cells[i] if i < len(cells) else "") for i, key in enumerate(columns)}
+        values = {key: raw.get(key, "") for key in layout}
+        contact = Contact(line=line, values=values)
+        code = raw["code"]
+        code_phone, _ = _phone(code)
+        if code_phone and code_phone.startswith(("07", "01")):
+            listed_phone = _phone(values["phone"])[0]
+            if listed_phone is None:
+                if values["phone"] not in ("", *FILLER):
+                    contact.extra_notes.append(f"Original phone '{values['phone']}' is not a valid Kenyan number")
+                values["phone"] = code
+            elif listed_phone != code_phone:
+                contact.extra_notes.append(f"Other phone: {code_phone}")
+        contacts.append(contact)
+    return contacts
+
+
+def read_rows(path: Path, layout: list[str], kind: str) -> list[Contact]:
     with path.open(newline="", encoding="utf-8-sig") as fh:
-        rows = list(csv.reader(fh))
+        rows = list(csv.reader(fh, skipinitialspace=True))
+    header = [_clean_text(c).lower() for c in rows[0]] if rows else []
+    if header[:2] == ["id", "name"] and "phone" in header:
+        return read_shiil_rows(rows, kind)
     contacts = []
     for line, row in enumerate(rows, start=1):
         cells = [_clean_text(c) for c in row]
@@ -313,7 +352,7 @@ def main() -> None:
 
     layout = CUSTOMER_RAW if kind == "customers" else SUPPLIER_RAW
     notes: list[str] = []
-    contacts = clean(kind, read_rows(src, layout), notes)
+    contacts = clean(kind, read_rows(src, layout, kind), notes)
     write_rows(dst, kind, contacts)
 
     text = "\n".join(notes) + "\n"
