@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef } from "react";
+import { forwardRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
@@ -207,6 +207,16 @@ function SlipBars({ value }: { value: string }) {
  * outputs just the slip (80mm thermal page) instead of the whole app shell.
  */
 export function TransChapReceiptPrint({ receipt }: { receipt: TransChapReceipt | null }) {
+  useEffect(() => {
+    if (!receipt || typeof document === "undefined") return;
+    document.body.classList.add("has-receipt-print");
+    document.documentElement.classList.add("has-receipt-print");
+    return () => {
+      document.body.classList.remove("has-receipt-print");
+      document.documentElement.classList.remove("has-receipt-print");
+    };
+  }, [receipt]);
+
   if (!receipt || typeof document === "undefined") return null;
   return createPortal(
     <div className="trans-chap-print-root" aria-hidden="true">

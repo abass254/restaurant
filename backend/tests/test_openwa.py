@@ -39,6 +39,7 @@ def _httpx_client(response: httpx.Response) -> MagicMock:
     client = MagicMock()
     client.post.return_value = response
     client.get.return_value = response
+    client.request.return_value = response
     return MagicMock(
         __enter__=lambda self: client,
         __exit__=lambda *args: None,
@@ -58,8 +59,9 @@ def test_send_text_posts_e164_payload():
         )
     assert result.ok is True
     assert result.message_id == "99"
-    posted = wrapper._inner.post.call_args
-    assert posted.args[0] == "http://127.0.0.1:7010/send"
+    posted = wrapper._inner.request.call_args
+    assert posted.args[0] == "POST"
+    assert posted.args[1] == "http://127.0.0.1:7010/send"
     assert posted.kwargs["json"] == {"to": "+254712345678", "text": "Hello from DukAI"}
 
 

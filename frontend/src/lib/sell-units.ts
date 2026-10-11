@@ -198,3 +198,17 @@ export function mergeSellUnitsIntoAttributes(
   }
   return Object.keys(next).length ? next : null;
 }
+
+/**
+ * Try to detect pack size from product names like "Unga (pack of 24)" or "Water (12pcs)".
+ */
+export function detectPackSize(name: string): number | null {
+  const normalized = name.toLowerCase();
+  const packMatch = normalized.match(/(?:pack|bundle|box|carton|case|crate)\s+(?:of\s+)?(\d+)/);
+  if (packMatch) return parseInt(packMatch[1], 10);
+
+  const pcsMatch = normalized.match(/(\d+)\s*(?:pcs|packets|pieces|pkts)/);
+  if (pcsMatch) return parseInt(pcsMatch[1], 10);
+
+  return null;
+}

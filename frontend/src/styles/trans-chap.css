@@ -296,6 +296,11 @@ button.trans-chap-header__icon {
     padding-inline: 0;
 }
 
+.trans-chap-app__content:has(.trans-chap-quotation) {
+    padding-inline: max(0.75rem, env(safe-area-inset-left))
+        max(0.75rem, env(safe-area-inset-right));
+}
+
 .trans-chap-app__content:has(.trans-chap-form--purchase-workspace) {
     overflow: hidden;
 }
@@ -6791,31 +6796,6 @@ html[data-theme="dark"] .theme-switch:not(.is-on) {
     color: var(--app-text);
 }
 
-.trans-chap-slip__printer-cfg {
-    grid-column: 1 / -1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    min-height: 40px;
-    padding: 0.5rem 0.75rem;
-    border-radius: 12px;
-    border: 1px dashed var(--app-border);
-    background: transparent;
-    color: var(--app-text-muted, #64748b);
-    font: inherit;
-    font-size: 0.76rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.trans-chap-slip__printer-cfg:hover {
-    border-color: var(--brown-700, #5c4033);
-    color: var(--app-text);
-    background: var(--app-surface);
-}
-
 .trans-chap-slip__retry {
     border: 0;
     background: var(--trans-chap-mpesa, #00a651);
@@ -6886,7 +6866,8 @@ html[data-theme="dark"] .trans-chap-receipt {
     }
 
     .trans-chap-print-root {
-        display: block;
+        display: block !important;
+        visibility: visible !important;
         page: trans-chap-receipt;
         width: 80mm;
         margin: 0;
@@ -6894,6 +6875,10 @@ html[data-theme="dark"] .trans-chap-receipt {
         background: #fff;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
+    }
+
+    .trans-chap-print-root * {
+        visibility: visible !important;
     }
 
     .trans-chap-print-root .trans-chap-receipt {
@@ -7507,6 +7492,67 @@ html[data-theme="dark"] .trans-chap-receipt {
 
 .trans-chap-stock-table--purchase {
     --panel-head: var(--trans-chap-purchase);
+}
+
+/* Inventory list: same card rows as purchases, stock accent, more columns. */
+.trans-chap-stock-table--stock {
+    --panel-head: var(--trans-chap-stock);
+}
+
+.trans-chap-stock-table-wrap--stock {
+    overflow-x: auto;
+}
+
+.trans-chap-stock-table--stock td {
+    white-space: nowrap;
+}
+
+/* One line per entry: nothing wraps or stacks inside a row. */
+.trans-chap-stock-table--cards.trans-chap-stock-table--stock td,
+.trans-chap-stock-table--cards.trans-chap-stock-table--stock .trans-chap-stock-table__product,
+.trans-chap-stock-table--cards.trans-chap-stock-table--stock .trans-chap-stock-table__wrap,
+.trans-chap-stock-table--cards.trans-chap-stock-table--stock .trans-chap-stock-table__actions {
+    white-space: nowrap;
+    padding-top: 0.6rem;
+    padding-bottom: 0.6rem;
+    vertical-align: middle;
+}
+
+.trans-chap-stock-table--cards.trans-chap-stock-table--stock .trans-chap-stock-table__product-inner,
+.trans-chap-stock-table--cards.trans-chap-stock-table--stock .trans-chap-stock-table__actions-inner {
+    flex-wrap: nowrap;
+}
+
+.trans-chap-stock-table--cards.trans-chap-stock-table--stock .trans-chap-stock-table__product-inner span {
+    max-width: 16rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Compact Qty column: shrink to content, small input, no spinner arrows. */
+.trans-chap-stock-table--cards.trans-chap-stock-table--stock .trans-chap-stock-table__qty {
+    width: 1%;
+    padding-left: 0.35rem;
+    padding-right: 0.35rem;
+    text-align: center;
+}
+
+.trans-chap-stock-table--stock .trans-chap-stock-table__qty .trans-chap-panel__qty-edit {
+    min-height: 30px;
+    padding: 0.15rem 0.35rem;
+}
+
+.trans-chap-stock-table--stock .trans-chap-stock-table__qty .trans-chap-panel__qty-edit input {
+    width: 2.6rem;
+    text-align: center;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.trans-chap-stock-table--stock .trans-chap-stock-table__qty .trans-chap-panel__qty-edit input::-webkit-outer-spin-button,
+.trans-chap-stock-table--stock .trans-chap-stock-table__qty .trans-chap-panel__qty-edit input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 
 .trans-chap-stock-table__due {

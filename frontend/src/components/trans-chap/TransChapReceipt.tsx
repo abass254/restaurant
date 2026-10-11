@@ -20,8 +20,6 @@ import {
   type TransChapReceipt,
 } from "@/lib/trans-chap-receipt";
 import { buildTransChapReceiptPdf, saveReceiptFile } from "@/lib/trans-chap-receipt-pdf";
-import { thermalPrinter, useThermalPrinter } from "@/lib/thermal-printer";
-import { PosPrinterModal } from "@/components/pos/PosPrinterModal";
 import type { OrderDetailResponse, OrderMutationResponse } from "@/lib/types";
 
 const ORDER_POLL_MS = 4_000;
@@ -40,10 +38,8 @@ export function TransChapReceiptView() {
   const [sendingEmail, setSendingEmail] = useState(false);
   const [resending, setResending] = useState(false);
   const [undoing, setUndoing] = useState(false);
-  const [printing, setPrinting] = useState(false);
-  const [showPrinterModal, setShowPrinterModal] = useState(false);
-  const printer = useThermalPrinter();
   const slipRef = useRef<HTMLElement>(null);
+  const hasAutoPrintedRef = useRef(false);
 
   function applyReceipt(next: TransChapReceipt) {
     setReceipt(next);
@@ -215,36 +211,22 @@ export function TransChapReceiptView() {
     }
   }
 
-  async function printReceipt() {
-    if (thermalPrinter.getState().isConnected && receipt) {
-      setPrinting(true);
-      try {
-        const res = await thermalPrinter.printReceipt(receipt);
-        if (res.success) {
-          await toastSuccess(
-            `Receipt printed to ${thermalPrinter.getState().name || "thermal printer"}`,
-          );
-        } else {
-          await showError("Printer error", res.error || "Could not print to thermal printer.");
-        }
-      } finally {
-        setPrinting(false);
-      }
-      return;
-    }
-    setPrinting(true);
+  function printReceipt() {
+    window.print();
   }
 
   useEffect(() => {
-    if (!printing) return;
-    const done = () => setPrinting(false);
-    window.addEventListener("afterprint", done, { once: true });
-    const timer = window.setTimeout(() => window.print(), 50);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("afterprint", done);
-    };
-  }, [printing]);
+    if (!receipt || hasAutoPrintedRef.current) return;
+    const shouldPrint =
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("print") === "1";
+    if (!shouldPrint) return;
+    hasAutoPrintedRef.current = true;
+    const timer = window.setTimeout(() => {
+      window.print();
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [receipt]);
 
   async function downloadPdf() {
     if (!receipt) return;
@@ -384,7 +366,7 @@ export function TransChapReceiptView() {
   return (
     <div className="trans-chap-receipt">
       <TransChapReceiptSlip ref={slipRef} receipt={receipt} />
-      <TransChapReceiptPrint receipt={printing ? receipt : null} />
+      <TransChapReceiptPrint receipt={receipt} />
 
       <div className="trans-chap-slip__actions">
         {closed ? null : paid || onCredit ? (
@@ -411,15 +393,10 @@ export function TransChapReceiptView() {
               type="button"
               className="trans-chap-slip__print"
               onClick={printReceipt}
-              disabled={printing || openingWhatsApp || sendingEmail || undoing}
-              title={
-                printer.isConnected
-                  ? `Print ticket directly to ${printer.name || "Thermal Printer"}`
-                  : "Open print view / Connect printer"
-              }
+              disabled={openingWhatsApp || sendingEmail || undoing}
             >
               <i className="fa-solid fa-print" aria-hidden />
-              {printing ? "Printing…" : printer.isConnected ? "Print Slip" : "Print"}
+              Print
             </button>
             <button
               type="button"
@@ -429,22 +406,6 @@ export function TransChapReceiptView() {
             >
               <i className="fa-solid fa-file-pdf" aria-hidden />
               {downloading ? "Saving…" : "Download PDF"}
-            </button>
-            <button
-              type="button"
-              className="trans-chap-slip__printer-cfg"
-              onClick={() => setShowPrinterModal(true)}
-              title={
-                printer.isConnected
-                  ? `Connected: ${printer.name || "Thermal Printer"} (${printer.type})`
-                  : "Thermal printer setup (Bluetooth / USB)"
-              }
-              aria-label="Thermal printer settings"
-            >
-              <span
-                className={`pos-printer-dot ${printer.isConnected ? "is-connected" : "is-disconnected"}`}
-              />
-              <i className="fa-solid fa-gear" aria-hidden />
             </button>
           </div>
         ) : (
@@ -472,10 +433,6 @@ export function TransChapReceiptView() {
           Make another sale
         </Link>
       </div>
-
-      {showPrinterModal ? (
-        <PosPrinterModal onClose={() => setShowPrinterModal(false)} />
-      ) : null}
     </div>
   );
 }

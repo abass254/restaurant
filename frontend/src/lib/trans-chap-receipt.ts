@@ -99,8 +99,14 @@ export function transChapReceiptHref(orderId: string | null | undefined): string
 }
 
 export function saveTransChapReceipt(receipt: TransChapReceipt): void {
+  const serialized = JSON.stringify(receipt);
   try {
-    sessionStorage.setItem(TRANS_CHAP_RECEIPT_KEY, JSON.stringify(receipt));
+    sessionStorage.setItem(TRANS_CHAP_RECEIPT_KEY, serialized);
+  } catch {
+    /* ignore quota / private mode */
+  }
+  try {
+    localStorage.setItem(TRANS_CHAP_RECEIPT_KEY, serialized);
   } catch {
     /* ignore quota / private mode */
   }
@@ -108,7 +114,19 @@ export function saveTransChapReceipt(receipt: TransChapReceipt): void {
 
 export function loadTransChapReceipt(): TransChapReceipt | null {
   try {
-    const raw = sessionStorage.getItem(TRANS_CHAP_RECEIPT_KEY);
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(TRANS_CHAP_RECEIPT_KEY);
+    } catch {
+      /* ignore */
+    }
+    if (!raw) {
+      try {
+        raw = localStorage.getItem(TRANS_CHAP_RECEIPT_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<TransChapReceipt>;
     if (!parsed?.productName || !Number.isFinite(parsed.amount)) return null;

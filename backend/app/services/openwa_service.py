@@ -227,6 +227,14 @@ class OpenWaAgentService:
             logger.warning("OpenWA ok=false (to=%s): %s", phone, error)
             return OpenWaSendResult(ok=False, error=error, message_id=message_id)
 
+        if message_id and (message_id.startswith("ERROR:") or message_id.lower() == "false"):
+            logger.warning("OpenWA returned error message_id (to=%s): %s", phone, message_id)
+            return OpenWaSendResult(
+                ok=False,
+                error=message_id if not message_id.lower() == "false" else "WhatsApp message delivery failed.",
+                message_id=message_id,
+            )
+
         logger.info("OpenWA message sent to %s id=%s", phone, message_id)
         return OpenWaSendResult(ok=True, message_id=message_id)
 

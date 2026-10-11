@@ -220,7 +220,7 @@ async function startClient() {
       disableSpins: true,
       // Print ASCII QR in this terminal as a fallback when Admin has no PNG yet.
       qrLogSkip: false,
-      killProcessOnBrowserClose: true,
+      killProcessOnBrowserClose: false,
       throwErrorOnTosBlock: false,
       ...(LICENSE_KEY ? { licenseKey: LICENSE_KEY } : {}),
     });
@@ -278,6 +278,39 @@ app.get("/status", requireAuth, async (_req, res) => {
   res.json(statusPayload());
 });
 
+async function injectWapiBypass(c) {
+  if (!c) return;
+  try {
+    const page = c.getPage();
+    if (!page) return;
+    await page.evaluate(() => {
+      if (!window.WAPI) return;
+      window.WAPI.sendMessage = async function (id, message) {
+        if (id === "status@broadcast") return "Not able to send message to broadcast";
+        let chat = window.WAPI.getChat(id);
+        if (!chat || !chat.msgs || chat.msgs.models.length === 0) {
+          try {
+            const contactObj = window.Store?.Contact ? window.Store.Contact.get(id) : null;
+            const targetWid = (contactObj && contactObj.id) || (window.Store?.WidFactory && window.Store.WidFactory.createWid(id)) || id;
+            if (window.Store?.Chat && window.Store.Chat.find) {
+              await window.Store.Chat.find(targetWid);
+            }
+            chat = window.WAPI.getChat(id);
+          } catch (e) {
+            console.warn("[wapi bypass] Chat.find failed:", e);
+          }
+        }
+        if (chat !== undefined && chat.sendMessage) {
+          return await chat.sendMessage(message).then((_) => chat.lastReceivedKey?._serialized || true);
+        }
+        return false;
+      };
+    });
+  } catch (err) {
+    console.warn("[whatsapp-agent] injectWapiBypass error:", err?.message || err);
+  }
+}
+
 app.post("/send", requireAuth, async (req, res) => {
   if (!client) {
     return res.status(503).json({
@@ -295,8 +328,16 @@ app.post("/send", requireAuth, async (req, res) => {
   if (!text) {
     return res.status(422).json({ ok: false, error: "Message text is required." });
   }
+
+  await injectWapiBypass(client);
+
   try {
     const messageId = await client.sendText(chatId, text);
+    if (!messageId || (typeof messageId === "string" && messageId.toLowerCase().includes("error"))) {
+      const err = typeof messageId === "string" ? messageId : "Failed to deliver WhatsApp message.";
+      console.warn(`[whatsapp-agent] sendText failed for ${chatId}: ${err}`);
+      return res.status(422).json({ ok: false, error: err });
+    }
     return res.json({
       ok: true,
       message_id: messageId != null ? String(messageId) : null,

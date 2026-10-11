@@ -6,10 +6,12 @@
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0.5rem 0.75rem 4rem;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0.5rem 0.5rem 4rem;
   color: var(--app-text, #1e293b);
+  box-sizing: border-box;
 }
 
 /* Header Banner */
@@ -79,15 +81,16 @@
   color: var(--app-text, #334155);
 }
 
-/* Two-column layout */
+/* Two-column layout: Left takes full remaining width, right stays phone-proportioned */
 .tc-quote-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-  gap: 1.25rem;
+  grid-template-columns: minmax(0, 1fr) clamp(380px, 32vw, 450px);
+  gap: 1.35rem;
   align-items: start;
+  width: 100%;
 }
 
-@media (max-width: 960px) {
+@media (max-width: 1080px) {
   .tc-quote-grid {
     grid-template-columns: 1fr;
   }
@@ -292,9 +295,64 @@
 .tc-quote-item-sub {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.45rem;
   font-size: 0.74rem;
   color: var(--app-text-muted, #64748b);
+}
+
+.tc-quote-unit-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.tc-quote-unit-pill.is-single {
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563eb;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.tc-quote-unit-pill.is-bulk {
+  background: rgba(147, 51, 234, 0.1);
+  color: #9333ea;
+  border: 1px solid rgba(147, 51, 234, 0.25);
+}
+
+.tc-quote-line-unit-switch {
+  display: inline-flex;
+  align-items: center;
+  background: var(--app-bg, #f1f5f9);
+  border: 1px solid var(--app-border, #e2e8f0);
+  border-radius: 6px;
+  padding: 1px;
+}
+
+.tc-quote-line-unit-btn {
+  border: 0;
+  background: transparent;
+  padding: 2px 7px;
+  font-size: 0.7rem;
+  font-weight: 650;
+  color: var(--app-text-muted, #64748b);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.tc-quote-line-unit-btn:hover {
+  color: var(--app-text, #0f172a);
+}
+
+.tc-quote-line-unit-btn.is-active {
+  background: var(--app-surface, #ffffff);
+  color: var(--app-text, #0f172a);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .tc-quote-stock-pill {
@@ -493,87 +551,225 @@
 }
 
 .tc-quote-catalog-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 0.65rem;
-  max-height: 380px;
+  max-height: 540px;
   overflow-y: auto;
   padding-right: 0.25rem;
 }
 
-.tc-quote-catalog-card {
+/* POS Sales-Style Tabular Row (matches /trans-chap/pos and user screenshot) */
+.tc-quote-pos-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid var(--app-border, #e2e8f0);
-  border-radius: 10px;
-  background: var(--app-surface, #ffffff);
-  cursor: pointer;
-  transition: all 0.15s ease;
+  background: #11111b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 0.85rem 1.4rem;
+  gap: 1.25rem;
+  margin-bottom: 0.4rem;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
-.tc-quote-catalog-card:hover {
-  border-color: #25d366;
-  box-shadow: 0 4px 12px rgba(37, 211, 102, 0.12);
-  transform: translateY(-1px);
+.tc-quote-pos-row:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: #151624;
 }
 
-.tc-quote-catalog-card.is-in-basket {
-  border-color: #25d366;
-  background: rgba(37, 211, 102, 0.04);
+.tc-quote-pos-row.is-in-basket {
+  border-color: rgba(37, 211, 102, 0.4);
+  background: #121921;
 }
 
-.tc-quote-catalog-info {
+.tc-quote-pos-name-col {
   min-width: 0;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.2rem;
 }
 
-.tc-quote-catalog-name {
-  margin: 0;
-  font-size: 0.82rem;
-  font-weight: 750;
-  color: var(--app-text, #1e293b);
+.tc-quote-pos-name {
+  font-size: 1.02rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #ffffff;
+  text-transform: uppercase;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin: 0;
 }
 
-.tc-quote-catalog-meta {
+.tc-quote-pos-sub {
   font-size: 0.72rem;
-  color: var(--app-text-muted, #64748b);
+  font-weight: 600;
+  color: #94a3b8;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
 }
 
-.tc-quote-catalog-price {
-  font-weight: 750;
-  color: #15803d;
-}
-
-.tc-quote-catalog-btn {
+.tc-quote-pos-controls {
   display: flex;
+  align-items: center;
+  gap: 1.4rem;
+  flex-shrink: 0;
+}
+
+/* Single / Bulk Text Toggle */
+.tc-quote-pos-units {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tc-quote-pos-unit-btn {
+  background: transparent;
+  border: 0;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.12s ease;
+}
+
+.tc-quote-pos-unit-btn:hover {
+  color: #cbd5e1;
+}
+
+.tc-quote-pos-unit-btn.is-active {
+  color: #ffffff;
+  font-weight: 800;
+}
+
+/* Stepper: – 1 + */
+.tc-quote-pos-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.tc-quote-pos-step-btn {
+  background: transparent;
+  border: 0;
+  color: #f43f5e;
+  font-size: 1.25rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0.1rem 0.35rem;
+  line-height: 1;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  border: 0;
-  background: rgba(37, 211, 102, 0.15);
-  color: #15803d;
-  font-weight: 800;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.15s ease, color 0.15s ease;
+  border-radius: 4px;
+  transition: transform 0.1s ease, color 0.1s ease;
 }
 
-.tc-quote-catalog-card:hover .tc-quote-catalog-btn {
-  background: #25d366;
+.tc-quote-pos-step-btn:hover:not(:disabled) {
+  color: #fb7185;
+  transform: scale(1.15);
+}
+
+.tc-quote-pos-step-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.tc-quote-pos-qty {
+  font-size: 1.05rem;
+  font-weight: 800;
   color: #ffffff;
+  min-width: 1.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Price Box: [ 5250 ] */
+.tc-quote-pos-price-wrap {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  height: 38px;
+  width: 90px;
+  padding: 0 0.5rem;
+  transition: border-color 0.15s ease;
+}
+
+.tc-quote-pos-price-wrap:focus-within {
+  border-color: #38bdf8;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tc-quote-pos-price-input {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 800;
+  text-align: right;
+  outline: none;
+  font-variant-numeric: tabular-nums;
+  padding: 0;
+}
+
+.tc-quote-pos-price-input::-webkit-outer-spin-button,
+.tc-quote-pos-price-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.tc-quote-pos-price-input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Total: KES 5,250.00 */
+.tc-quote-pos-total {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #ffffff;
+  min-width: 125px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Remove button */
+.tc-quote-pos-remove-btn {
+  background: transparent;
+  border: 0;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0.35rem;
+  font-size: 0.9rem;
+  border-radius: 6px;
+  transition: color 0.15s ease;
+}
+
+.tc-quote-pos-remove-btn:hover {
+  color: #ef4444;
+}
+
+@media (max-width: 768px) {
+  .tc-quote-pos-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .tc-quote-pos-controls {
+    width: 100%;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
 }
 
 /* WhatsApp Live Preview Side */
@@ -800,18 +996,22 @@
   background: #20bd5a;
 }
 
-/* Print Slip Styles */
+/* Print Slip Styles for Quotation */
+.tc-quote-print-root {
+  display: none;
+}
+
 @media print {
-  body * {
-    visibility: hidden;
+  body:has(> .tc-quote-print-root) {
+    background: #ffffff !important;
   }
 
-  .tc-quote-print-area,
-  .tc-quote-print-area * {
-    visibility: visible;
+  body:has(> .tc-quote-print-root) > :not(.tc-quote-print-root) {
+    display: none !important;
   }
 
-  .tc-quote-print-area {
+  .tc-quote-print-root {
+    display: block !important;
     position: absolute;
     left: 0;
     top: 0;

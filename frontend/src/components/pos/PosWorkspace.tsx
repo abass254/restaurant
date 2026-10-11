@@ -46,8 +46,6 @@ import {
   transChapReceiptHref,
 } from "@/lib/trans-chap-receipt";
 import { TransChapReceiptPrint } from "@/components/trans-chap/TransChapReceiptSlip";
-import { thermalPrinter, useThermalPrinter } from "@/lib/thermal-printer";
-import { PosPrinterModal } from "@/components/pos/PosPrinterModal";
 import { findInventoryByBarcode } from "@/lib/barcode";
 import { packUnits } from "@/lib/sell-units";
 import { formatCategoryLabel } from "@/lib/product-categories";
@@ -532,8 +530,6 @@ export function PosWorkspace({
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [autoPrintReceipt, setAutoPrintReceipt] = useState(true);
-  const [showPrinterModal, setShowPrinterModal] = useState(false);
-  const printer = useThermalPrinter();
   const [includeTax, setIncludeTax] = useState(true);
   const [quickAddQty, setQuickAddQty] = useState(1);
   const [heldSessions, setHeldSessions] = useState<PosHeldSession[]>([]);
@@ -1888,41 +1884,11 @@ export function PosWorkspace({
   useEffect(() => {
     if (!completeInPlace || !receiptOrder || !printAfterSaleRef.current) return;
     printAfterSaleRef.current = false;
-
-    const receipt = receiptFromOrder(receiptOrder, receiptShopName);
-
-    // If thermal printer is connected, print automatically to it
-    if (thermalPrinter.getState().isConnected) {
-      void thermalPrinter.printReceipt(receipt).then((res) => {
-        if (res.success) {
-          void toastSuccess(
-            `Receipt printed to ${thermalPrinter.getState().name || "thermal printer"}`,
-          );
-        } else {
-          void showError(
-            "Print failed",
-            res.error || "Could not print to thermal printer.",
-          );
-          // Fallback to displaying normal in-built print page if printing failed
-          if (isTransChapSale) {
-            saveTransChapReceipt(receipt);
-            router.push(transChapReceiptHref(receiptOrder.id));
-          } else {
-            router.push(`/orders/${receiptOrder.id}?print=1`);
-          }
-        }
-      });
-      return;
-    }
-
-    // If no printer is connected, show/display the normal in-built print page
-    if (isTransChapSale) {
-      saveTransChapReceipt(receipt);
-      router.push(transChapReceiptHref(receiptOrder.id));
-    } else {
-      router.push(`/orders/${receiptOrder.id}?print=1`);
-    }
-  }, [completeInPlace, isTransChapSale, receiptOrder, receiptShopName, router]);
+    const timer = window.setTimeout(() => {
+      window.print();
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [completeInPlace, receiptOrder]);
 
   const pendingMpesaId = pendingMpesa?.order.id ?? null;
   const pendingMpesaPaid = pendingMpesa
@@ -3640,30 +3606,14 @@ export function PosWorkspace({
               />
               <span>Include tax price</span>
             </label>
-            <div className="pos-cart-print-bar">
-              <label className="pos-autoprint-toggle">
-                <input
-                  type="checkbox"
-                  checked={autoPrintReceipt}
-                  onChange={(e) => handleAutoPrintChange(e.target.checked)}
-                />
-                <span>Auto-print receipt after sale</span>
-              </label>
-              <button
-                type="button"
-                className={`pos-printer-badge ${printer.isConnected ? "is-connected" : "is-disconnected"}`}
-                onClick={() => setShowPrinterModal(true)}
-                title={
-                  printer.isConnected
-                    ? `Connected to ${printer.name || "Thermal Printer"} (Direct ESC/POS)`
-                    : "No thermal printer connected (Will open in-built receipt page)"
-                }
-              >
-                <span className={`pos-printer-dot ${printer.isConnected ? "is-connected" : "is-disconnected"}`} />
-                <i className="fa-solid fa-print" aria-hidden="true" />
-                <span>{printer.isConnected ? printer.name || "Printer" : "Connect printer"}</span>
-              </button>
-            </div>
+            <label className="pos-autoprint-toggle">
+              <input
+                type="checkbox"
+                checked={autoPrintReceipt}
+                onChange={(e) => handleAutoPrintChange(e.target.checked)}
+              />
+              <span>Auto-print receipt after sale</span>
+            </label>
           </footer>
             </>
           )}
@@ -3834,10 +3784,6 @@ export function PosWorkspace({
           prices={sellingPrices}
           onConfirm={handleConfirmModifiers}
         />
-      ) : null}
-
-      {showPrinterModal ? (
-        <PosPrinterModal onClose={() => setShowPrinterModal(false)} />
       ) : null}
     </section>
   );

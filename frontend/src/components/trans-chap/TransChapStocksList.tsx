@@ -488,8 +488,8 @@ export function TransChapStocksList() {
                   : "No products match this search."}
           </p>
         ) : view === "list" ? (
-          <div className="trans-chap-stock-table-wrap">
-            <table className="trans-chap-stock-table">
+          <div className="trans-chap-stock-table-wrap trans-chap-stock-table-wrap--cards trans-chap-stock-table-wrap--stock">
+            <table className="trans-chap-stock-table trans-chap-stock-table--cards trans-chap-stock-table--stock">
               <thead>
                 <tr>
                   {selecting ? <th className="trans-chap-stock-table__check" scope="col"> </th> : null}
@@ -497,16 +497,13 @@ export function TransChapStocksList() {
                   <th scope="col">SKU</th>
                   <th scope="col">Type</th>
                   <th scope="col">Unit</th>
-                  <th scope="col">Qty</th>
+                  <th className="trans-chap-stock-table__qty" scope="col">Qty</th>
                   <th scope="col">Buy</th>
                   <th scope="col">Sell</th>
                   <th scope="col">Margin</th>
-                  <th scope="col">Location</th>
-                  <th scope="col">Supplier</th>
-                  <th scope="col">Status</th>
                   <th scope="col">Active</th>
                   <th className="trans-chap-stock-table__actions" scope="col">
-                    Actions
+                    Action
                   </th>
                 </tr>
               </thead>
@@ -515,7 +512,6 @@ export function TransChapStocksList() {
                   const name = inventoryProductName(item);
                   const hotel = isHotelMenuItem(item);
                   const picked = selectedIds.has(item.id);
-                  const badge = stockBadge(item, restaurant);
                   const sell =
                     item.selling_price != null ? formatKsh(item.selling_price) : "—";
                   const buy =
@@ -537,8 +533,10 @@ export function TransChapStocksList() {
                     item.product?.product_code?.trim() ||
                     "—";
                   const unit = item.product?.unit?.trim() || "—";
-                  const location = item.location?.trim() || "—";
-                  const supplier = item.supplier?.trim() || "—";
+                  const qtyHint =
+                    !hotel && canAdjustQty && groupedQtyBreakdown(item)
+                      ? `${groupedQtyBreakdown(item)} · qty in ${baseUnitName(item)}`
+                      : undefined;
                   return (
                     <tr
                       key={item.id}
@@ -565,7 +563,7 @@ export function TransChapStocksList() {
                             name={name}
                             size="sm"
                           />
-                          <span>{name}</span>
+                          <span title={name}>{name}</span>
                         </div>
                       </td>
                       <td className="trans-chap-stock-table__mono">{sku}</td>
@@ -575,7 +573,7 @@ export function TransChapStocksList() {
                           : inventoryRoleLabel(inventoryRole(item))}
                       </td>
                       <td>{unit}</td>
-                      <td className="trans-chap-stock-table__qty">
+                      <td className="trans-chap-stock-table__qty" title={qtyHint}>
                         {hotel ? (
                           <span className="trans-chap-stock-table__muted">—</span>
                         ) : canAdjustQty ? (
@@ -615,30 +613,10 @@ export function TransChapStocksList() {
                             {formatGroupedQty(item)}
                           </span>
                         )}
-                        {!hotel && canAdjustQty && groupedQtyBreakdown(item) ? (
-                          <small className="trans-chap-stock-table__muted trans-chap-stock-table__qty-hint">
-                            {groupedQtyBreakdown(item)} · qty in {baseUnitName(item)}
-                          </small>
-                        ) : null}
                       </td>
                       <td>{buy}</td>
-                      <td>{sell}</td>
+                      <td className="trans-chap-stock-table__strong">{sell}</td>
                       <td>{margin}</td>
-                      <td className="trans-chap-stock-table__wrap">{location}</td>
-                      <td className="trans-chap-stock-table__wrap">{supplier}</td>
-                      <td>
-                        {badge ? (
-                          <em className={`trans-chap-panel__badge is-${badge.tone}`}>
-                            {badge.label}
-                          </em>
-                        ) : restaurant ? (
-                          <span className="trans-chap-stock-table__muted">—</span>
-                        ) : item.is_active ? (
-                          <span className="trans-chap-stock-table__muted">In stock</span>
-                        ) : (
-                          <span className="trans-chap-stock-table__muted">Disabled</span>
-                        )}
-                      </td>
                       <td>
                         {selecting ? (
                           <span className="trans-chap-stock-table__muted">—</span>

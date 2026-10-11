@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAuthUser } from "@/components/app/AuthProvider";
@@ -19,6 +20,7 @@ import {
   isHotelMenuItem,
 } from "@/lib/trans-chap-product";
 import { isRestaurantStore } from "@/lib/onboarding";
+import { packUnits, detectPackSize } from "@/lib/sell-units";
 import type {
   InventoryItem,
   InventoryResponse,
@@ -28,12 +30,49 @@ import type {
 import "@/styles/trans-chap-quotation.css";
 
 export type QuotationLineItem = {
-  id: string; // item id
+  id: string; // key: `${item.id}::${unitType}`
+  itemId?: string;
   item: InventoryItem;
   quantity: number;
   unitPrice: number;
   unit: string;
+  unitType?: "single" | "bulk";
+  factor?: number;
 };
+
+export function getItemUnitOptions(item: InventoryItem) {
+  const name = inventoryProductName(item);
+  const packs = packUnits(item);
+  const basePrice = item.selling_price ?? 0;
+  const baseUnit = item.product?.unit?.trim() || "pcs";
+
+  const single = {
+    type: "single" as const,
+    name: "Single",
+    unit: baseUnit,
+    factor: 1,
+    price: basePrice,
+    stock: item.stock_quantity,
+  };
+
+  const autoFactor = packs[0]?.factor ?? detectPackSize(name) ?? 12;
+  const packName = packs[0]?.name || `Bulk (${autoFactor} ${baseUnit})`;
+  const bulkPrice =
+    packs[0]?.selling_price != null ? packs[0].selling_price : basePrice * autoFactor;
+  const bulkStock =
+    item.stock_quantity != null ? Math.floor(item.stock_quantity / autoFactor) : null;
+
+  const bulk = {
+    type: "bulk" as const,
+    name: packs[0]?.name || "Bulk",
+    unit: packName,
+    factor: autoFactor,
+    price: bulkPrice,
+    stock: bulkStock,
+  };
+
+  return { single, bulk, packs };
+}
 
 const VALIDITY_PRESETS = [
   { label: "3 days", text: "Valid for 3 days. Prices inclusive of VAT." },
@@ -84,6 +123,8 @@ export function TransChapQuotation() {
   const [discount, setDiscount] = useState<string>("");
 
   const [quoteItems, setQuoteItems] = useState<QuotationLineItem[]>([]);
+  const [catalogUnitByItemId, setCatalogUnitByItemId] = useState<Record<string, "single" | "bulk">>({});
+  const [catalogCustomPrices, setCatalogCustomPrices] = useState<Record<string, number>>({});
   const [catalogQuery, setCatalogQuery] = useState("");
   const [catalogFilter, setCatalogFilter] = useState<"all" | "in_stock">("all");
 
@@ -124,12 +165,16 @@ export function TransChapQuotation() {
       for (const id of queryParamItemIds) {
         const found = inventory.find((it) => it.id === id);
         if (found) {
+          const { single } = getItemUnitOptions(found);
           matched.push({
-            id: found.id,
+            id: `${found.id}::single`,
+            itemId: found.id,
             item: found,
             quantity: 1,
-            unitPrice: found.selling_price ?? 0,
-            unit: found.product?.unit?.trim() || "pcs",
+            unitPrice: single.price,
+            unit: single.unit,
+            unitType: "single",
+            factor: 1,
           });
         }
       }
@@ -178,26 +223,85 @@ export function TransChapQuotation() {
   }
 
   // Basket actions
-  function addItemToQuote(item: InventoryItem) {
+  function addItemToQuote(
+    item: InventoryItem,
+    forcedUnitType?: "single" | "bulk",
+    customPrice?: number,
+  ) {
+    const { single, bulk } = getItemUnitOptions(item);
+    const chosenType = forcedUnitType ?? catalogUnitByItemId[item.id] ?? "single";
+    const chosenOption = chosenType === "bulk" ? bulk : single;
+    const lineKey = `${item.id}::${chosenType}`;
+    const priceToUse = customPrice !== undefined ? customPrice : chosenOption.price;
+
     setQuoteItems((prev) => {
-      const existing = prev.find((line) => line.id === item.id);
+      const existing = prev.find(
+        (line) =>
+          line.id === lineKey ||
+          (line.id === item.id && (line.unitType || "single") === chosenType) ||
+          ((line.itemId || line.id) === item.id && (line.unitType || "single") === chosenType),
+      );
       if (existing) {
         return prev.map((line) =>
-          line.id === item.id ? { ...line, quantity: line.quantity + 1 } : line,
+          line === existing
+            ? {
+                ...line,
+                quantity: line.quantity + 1,
+                ...(customPrice !== undefined ? { unitPrice: customPrice } : {}),
+              }
+            : line,
         );
       }
       return [
         ...prev,
         {
-          id: item.id,
+          id: lineKey,
+          itemId: item.id,
           item,
           quantity: 1,
-          unitPrice: item.selling_price ?? 0,
-          unit: item.product?.unit?.trim() || "pcs",
+          unitPrice: priceToUse,
+          unit: chosenOption.unit,
+          unitType: chosenType,
+          factor: chosenOption.factor,
         },
       ];
     });
-    void toastSuccess(`Added ${inventoryProductName(item)} to quotation`);
+    void toastSuccess(
+      `Added ${inventoryProductName(item)} (${chosenType === "bulk" ? "Bulk" : "Single"}) to quotation`,
+    );
+  }
+
+  function toggleItemUnitType(lineId: string, nextType: "single" | "bulk") {
+    setQuoteItems((prev) => {
+      const target = prev.find((l) => l.id === lineId);
+      if (!target || (target.unitType || "single") === nextType) return prev;
+      const { single, bulk } = getItemUnitOptions(target.item);
+      const nextOption = nextType === "bulk" ? bulk : single;
+      const nextKey = `${target.itemId || target.item.id}::${nextType}`;
+
+      const duplicate = prev.find((l) => l.id === nextKey && l.id !== lineId);
+      if (duplicate) {
+        return prev
+          .filter((l) => l.id !== lineId)
+          .map((l) =>
+            l.id === duplicate.id
+              ? { ...l, quantity: l.quantity + target.quantity }
+              : l,
+          );
+      }
+
+      return prev.map((line) => {
+        if (line.id !== lineId) return line;
+        return {
+          ...line,
+          id: nextKey,
+          unitType: nextType,
+          unit: nextOption.unit,
+          unitPrice: nextOption.price,
+          factor: nextOption.factor,
+        };
+      });
+    });
   }
 
   function updateItemQty(id: string, qty: number) {
@@ -267,9 +371,11 @@ export function TransChapQuotation() {
       quoteItems.forEach((line, idx) => {
         const name = inventoryProductName(line.item);
         const lineTotal = line.quantity * line.unitPrice;
-        const unitPart = line.unit ? ` ${line.unit}` : "";
+        const isBulk = line.unitType === "bulk";
+        const typeTag = isBulk ? " [Bulk]" : "";
+        const unitPart = line.unit ? ` (${line.unit})` : "";
         lines.push(
-          `${idx + 1}. *${name}*\n   ${line.quantity}${unitPart} × KES ${line.unitPrice.toLocaleString()} = *KES ${lineTotal.toLocaleString()}*`,
+          `${idx + 1}. *${name}${typeTag}*\n   ${line.quantity}${unitPart} × KES ${line.unitPrice.toLocaleString()} = *KES ${lineTotal.toLocaleString()}*`,
         );
       });
     }
@@ -562,73 +668,54 @@ export function TransChapQuotation() {
                 {quoteItems.map((line) => {
                   const name = inventoryProductName(line.item);
                   const onHand = line.item.stock_quantity;
-                  const isLow = line.item.is_low_stock;
-                  const isOut = onHand != null && onHand <= 0;
                   const lineTotal = line.quantity * line.unitPrice;
+                  const isBulk = line.unitType === "bulk";
 
                   return (
-                    <div key={line.id} className="tc-quote-item-row" role="listitem">
-                      <div className="tc-quote-item-left">
-                        {/* Thumbnail */}
-                        <img
-                          src={inventoryCoverUrl(line.item) ?? undefined}
-                          alt={name}
-                          className="tc-quote-item-thumb"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = "none";
-                          }}
-                        />
-                        <div className="tc-quote-item-details">
-                          <p className="tc-quote-item-name" title={name}>
-                            {name}
-                          </p>
-                          <div className="tc-quote-item-sub">
-                            <span>{line.unit || "unit"}</span>
-                            <span>•</span>
-                            <span
-                              className={`tc-quote-stock-pill${isOut ? " is-out" : isLow ? " is-low" : ""}`}
-                            >
-                              {onHand == null ? "Stock: —" : `Stock: ${onHand}`}
-                            </span>
-                          </div>
+                    <div key={line.id} className="tc-quote-pos-row is-in-basket" role="listitem">
+                      <div className="tc-quote-pos-name-col">
+                        <strong className="tc-quote-pos-name" title={name}>
+                          {name}
+                        </strong>
+                        <div className="tc-quote-pos-sub">
+                          <span>{line.unit || (isBulk ? "bulk" : "pc")}</span>
+                          <span>•</span>
+                          <span>{onHand == null ? "Stock: —" : `Stock: ${onHand}`}</span>
                         </div>
                       </div>
 
-                      <div className="tc-quote-item-right">
-                        {/* Unit price editor */}
-                        <div className="tc-quote-price-input" title="Unit Price for this quote">
-                          <span>KES</span>
-                          <input
-                            type="number"
-                            min={0}
-                            step={1}
-                            value={line.unitPrice}
-                            aria-label={`Price for ${name}`}
-                            onChange={(e) => updateItemPrice(line.id, Number(e.target.value))}
-                          />
-                        </div>
-
-                        {/* Quantity Stepper */}
-                        <div className="tc-quote-stepper">
+                      <div className="tc-quote-pos-controls">
+                        <div className="tc-quote-pos-units" role="group" aria-label="Unit type">
                           <button
                             type="button"
+                            className={`tc-quote-pos-unit-btn${!isBulk ? " is-active" : ""}`}
+                            onClick={() => toggleItemUnitType(line.id, "single")}
+                          >
+                            Single
+                          </button>
+                          <button
+                            type="button"
+                            className={`tc-quote-pos-unit-btn${isBulk ? " is-active" : ""}`}
+                            onClick={() => toggleItemUnitType(line.id, "bulk")}
+                            title={`Units per bulk: ${line.factor || 12}`}
+                          >
+                            Bulk
+                          </button>
+                        </div>
+
+                        <div className="tc-quote-pos-stepper">
+                          <button
+                            type="button"
+                            className="tc-quote-pos-step-btn"
                             aria-label={`Decrease ${name} quantity`}
                             onClick={() => updateItemQty(line.id, line.quantity - 1)}
                           >
                             –
                           </button>
-                          <input
-                            type="number"
-                            min={1}
-                            step={1}
-                            value={line.quantity}
-                            aria-label={`Quantity for ${name}`}
-                            onChange={(e) =>
-                              updateItemQty(line.id, Math.max(1, Number(e.target.value)))
-                            }
-                          />
+                          <span className="tc-quote-pos-qty">{line.quantity}</span>
                           <button
                             type="button"
+                            className="tc-quote-pos-step-btn"
                             aria-label={`Increase ${name} quantity`}
                             onClick={() => updateItemQty(line.id, line.quantity + 1)}
                           >
@@ -636,18 +723,30 @@ export function TransChapQuotation() {
                           </button>
                         </div>
 
-                        {/* Line total */}
-                        <div className="tc-quote-item-total">{formatKsh(lineTotal)}</div>
+                        <div className="tc-quote-pos-price-wrap" title="Unit Price for this quote">
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            className="tc-quote-pos-price-input"
+                            value={line.unitPrice}
+                            aria-label={`Price for ${name}`}
+                            onChange={(e) => updateItemPrice(line.id, Number(e.target.value))}
+                          />
+                        </div>
 
-                        {/* Remove */}
+                        <div className="tc-quote-pos-total">
+                          KES {lineTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+
                         <button
                           type="button"
-                          className="tc-quote-item-remove"
+                          className="tc-quote-pos-remove-btn"
                           title={`Remove ${name}`}
                           aria-label={`Remove ${name}`}
                           onClick={() => removeItem(line.id)}
                         >
-                          <i className="fa-solid fa-xmark" aria-hidden />
+                          <i className="fa-solid fa-trash-can" aria-hidden />
                         </button>
                       </div>
                     </div>
@@ -750,42 +849,137 @@ export function TransChapQuotation() {
               <div className="tc-quote-catalog-list">
                 {filteredCatalog.map((item) => {
                   const name = inventoryProductName(item);
-                  const price = item.selling_price != null ? formatKsh(item.selling_price) : "—";
-                  const inBasket = quoteItems.find((line) => line.id === item.id);
+                  const { single, bulk } = getItemUnitOptions(item);
+                  const currentUnitType = catalogUnitByItemId[item.id] ?? "single";
+                  const activeUnit = currentUnitType === "bulk" ? bulk : single;
                   const onHand = item.stock_quantity;
+
+                  const singleInQuote = quoteItems.find(
+                    (l) =>
+                      l.id === `${item.id}::single` ||
+                      (l.id === item.id && (l.unitType || "single") === "single") ||
+                      ((l.itemId || l.id) === item.id && (l.unitType || "single") === "single"),
+                  );
+                  const bulkInQuote = quoteItems.find(
+                    (l) =>
+                      l.id === `${item.id}::bulk` ||
+                      ((l.itemId || l.id) === item.id && l.unitType === "bulk"),
+                  );
+                  const inBasket = currentUnitType === "bulk" ? bulkInQuote : singleInQuote;
+
+                  const draftPriceKey = `${item.id}::${currentUnitType}`;
+                  const displayPrice = inBasket
+                    ? inBasket.unitPrice
+                    : (catalogCustomPrices[draftPriceKey] ?? activeUnit.price);
+                  const displayQty = inBasket ? inBasket.quantity : 0;
+                  const displayTotal = inBasket
+                    ? inBasket.quantity * inBasket.unitPrice
+                    : displayPrice;
 
                   return (
                     <div
                       key={item.id}
-                      className={`tc-quote-catalog-card${inBasket ? " is-in-basket" : ""}`}
-                      onClick={() => addItemToQuote(item)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          addItemToQuote(item);
-                        }
-                      }}
+                      className={`tc-quote-pos-row${inBasket ? " is-in-basket" : ""}`}
                     >
-                      <div className="tc-quote-catalog-info">
-                        <strong className="tc-quote-catalog-name" title={name}>
+                      <div className="tc-quote-pos-name-col">
+                        <strong className="tc-quote-pos-name" title={name}>
                           {name}
                         </strong>
-                        <div className="tc-quote-catalog-meta">
-                          <span className="tc-quote-catalog-price">{price}</span>
+                        <div className="tc-quote-pos-sub">
+                          <span>{activeUnit.unit || (currentUnitType === "bulk" ? "bulk" : "pc")}</span>
                           <span>•</span>
-                          <span>{onHand != null ? `Qty: ${onHand}` : "Qty: —"}</span>
+                          <span>
+                            {currentUnitType === "bulk"
+                              ? activeUnit.stock != null
+                                ? `Stock: ${activeUnit.stock} bulk`
+                                : "Stock: —"
+                              : onHand != null
+                                ? `Stock: ${onHand}`
+                                : "Stock: —"}
+                          </span>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        className="tc-quote-catalog-btn"
-                        aria-label={`Add ${name} to quote`}
-                        title={inBasket ? `In quote (${inBasket.quantity})` : `Add ${name}`}
-                      >
-                        {inBasket ? inBasket.quantity : <i className="fa-solid fa-plus" aria-hidden />}
-                      </button>
+
+                      <div className="tc-quote-pos-controls">
+                        <div className="tc-quote-pos-units" role="group" aria-label="Unit type">
+                          <button
+                            type="button"
+                            className={`tc-quote-pos-unit-btn${currentUnitType === "single" ? " is-active" : ""}`}
+                            onClick={() =>
+                              setCatalogUnitByItemId((prev) => ({ ...prev, [item.id]: "single" }))
+                            }
+                          >
+                            Single
+                          </button>
+                          <button
+                            type="button"
+                            className={`tc-quote-pos-unit-btn${currentUnitType === "bulk" ? " is-active" : ""}`}
+                            onClick={() =>
+                              setCatalogUnitByItemId((prev) => ({ ...prev, [item.id]: "bulk" }))
+                            }
+                            title={`Bulk pack: ${bulk.factor} ${single.unit}`}
+                          >
+                            Bulk
+                          </button>
+                        </div>
+
+                        <div className="tc-quote-pos-stepper">
+                          <button
+                            type="button"
+                            className="tc-quote-pos-step-btn"
+                            disabled={!inBasket}
+                            onClick={() => {
+                              if (inBasket) {
+                                updateItemQty(inBasket.id, inBasket.quantity - 1);
+                              }
+                            }}
+                            aria-label={`Decrease ${name} quantity`}
+                          >
+                            –
+                          </button>
+                          <span className="tc-quote-pos-qty">{displayQty}</span>
+                          <button
+                            type="button"
+                            className="tc-quote-pos-step-btn"
+                            onClick={() => {
+                              if (inBasket) {
+                                updateItemQty(inBasket.id, inBasket.quantity + 1);
+                              } else {
+                                addItemToQuote(item, currentUnitType, displayPrice);
+                              }
+                            }}
+                            aria-label={`Increase ${name} quantity`}
+                          >
+                            +
+                          </button>
+                        </div>
+
+                        <div className="tc-quote-pos-price-wrap" title="Unit Price for this quote">
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            className="tc-quote-pos-price-input"
+                            value={displayPrice}
+                            aria-label={`Price for ${name}`}
+                            onChange={(e) => {
+                              const val = Math.max(0, Number(e.target.value));
+                              if (inBasket) {
+                                updateItemPrice(inBasket.id, val);
+                              } else {
+                                setCatalogCustomPrices((prev) => ({
+                                  ...prev,
+                                  [draftPriceKey]: val,
+                                }));
+                              }
+                            }}
+                          />
+                        </div>
+
+                        <div className="tc-quote-pos-total">
+                          KES {displayTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
@@ -867,68 +1061,76 @@ export function TransChapQuotation() {
         </div>
       </div>
 
-      {/* Hidden Print Slip View (only visible when window.print() is called) */}
-      <div className="tc-quote-print-area" aria-hidden="true" style={{ display: "none" }}>
-        <div style={{ maxWidth: "600px", margin: "0 auto", padding: "20px", fontFamily: "sans-serif" }}>
-          <div style={{ textAlign: "center", borderBottom: "2px solid #000", paddingBottom: "10px", marginBottom: "15px" }}>
-            <h2 style={{ margin: 0 }}>{shopName}</h2>
-            {shopLocation ? <p style={{ margin: "2px 0" }}>{shopLocation}</p> : null}
-            {shopPhone ? <p style={{ margin: "2px 0" }}>Tel: {shopPhone}</p> : null}
-            <h3 style={{ margin: "8px 0 0", letterSpacing: "1px" }}>PRICE QUOTATION</h3>
-          </div>
+      {/* Print Slip View (portalled to body for clean print output) */}
+      {typeof document !== "undefined"
+        ? createPortal(
+            <div className="tc-quote-print-root" aria-hidden="true">
+              <div style={{ maxWidth: "600px", margin: "0 auto", padding: "20px", fontFamily: "sans-serif" }}>
+                <div style={{ textAlign: "center", borderBottom: "2px solid #000", paddingBottom: "10px", marginBottom: "15px" }}>
+                  <h2 style={{ margin: 0 }}>{shopName}</h2>
+                  {shopLocation ? <p style={{ margin: "2px 0" }}>{shopLocation}</p> : null}
+                  {shopPhone ? <p style={{ margin: "2px 0" }}>Tel: {shopPhone}</p> : null}
+                  <h3 style={{ margin: "8px 0 0", letterSpacing: "1px" }}>PRICE QUOTATION</h3>
+                </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "15px", fontSize: "14px" }}>
-            <div>
-              <strong>Quotation Ref:</strong> {quoteRef}<br />
-              <strong>Date:</strong> {new Date().toLocaleDateString("en-GB")}
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <strong>Customer:</strong> {customerName || "Walk-in"}<br />
-              {customerPhone ? <span><strong>Phone:</strong> +{countryDial} {customerPhone}</span> : null}
-            </div>
-          </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "15px", fontSize: "14px" }}>
+                  <div>
+                    <strong>Quotation Ref:</strong> {quoteRef}<br />
+                    <strong>Date:</strong> {new Date().toLocaleDateString("en-GB")}
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <strong>Customer:</strong> {customerName || "Walk-in"}<br />
+                    {customerPhone ? <span><strong>Phone:</strong> +{countryDial} {customerPhone}</span> : null}
+                  </div>
+                </div>
 
-          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "15px", fontSize: "13px" }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid #000", textAlign: "left" }}>
-                <th style={{ padding: "6px 4px" }}>#</th>
-                <th style={{ padding: "6px 4px" }}>Item</th>
-                <th style={{ padding: "6px 4px", textAlign: "right" }}>Qty</th>
-                <th style={{ padding: "6px 4px", textAlign: "right" }}>Unit Price</th>
-                <th style={{ padding: "6px 4px", textAlign: "right" }}>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {quoteItems.map((line, idx) => (
-                <tr key={line.id} style={{ borderBottom: "1px solid #eee" }}>
-                  <td style={{ padding: "6px 4px" }}>{idx + 1}</td>
-                  <td style={{ padding: "6px 4px" }}>{inventoryProductName(line.item)}</td>
-                  <td style={{ padding: "6px 4px", textAlign: "right" }}>{line.quantity} {line.unit}</td>
-                  <td style={{ padding: "6px 4px", textAlign: "right" }}>KES {line.unitPrice.toLocaleString()}</td>
-                  <td style={{ padding: "6px 4px", textAlign: "right" }}>KES {(line.quantity * line.unitPrice).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "15px", fontSize: "13px" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #000", textAlign: "left" }}>
+                      <th style={{ padding: "6px 4px" }}>#</th>
+                      <th style={{ padding: "6px 4px" }}>Item</th>
+                      <th style={{ padding: "6px 4px", textAlign: "right" }}>Qty</th>
+                      <th style={{ padding: "6px 4px", textAlign: "right" }}>Unit Price</th>
+                      <th style={{ padding: "6px 4px", textAlign: "right" }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quoteItems.map((line, idx) => (
+                      <tr key={line.id} style={{ borderBottom: "1px solid #eee" }}>
+                        <td style={{ padding: "6px 4px" }}>{idx + 1}</td>
+                        <td style={{ padding: "6px 4px" }}>
+                          {inventoryProductName(line.item)}
+                          {line.unitType === "bulk" ? " [Bulk]" : ""}
+                        </td>
+                        <td style={{ padding: "6px 4px", textAlign: "right" }}>{line.quantity} {line.unit}</td>
+                        <td style={{ padding: "6px 4px", textAlign: "right" }}>KES {line.unitPrice.toLocaleString()}</td>
+                        <td style={{ padding: "6px 4px", textAlign: "right" }}>KES {(line.quantity * line.unitPrice).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
 
-          <div style={{ textAlign: "right", borderTop: "1px solid #000", paddingTop: "8px", fontSize: "14px", lineHeight: "1.6" }}>
-            <div>Subtotal: KES {subtotal.toLocaleString()}</div>
-            {discountNum > 0 ? <div>Discount: -KES {discountNum.toLocaleString()}</div> : null}
-            <div style={{ fontSize: "16px", fontWeight: "bold" }}>Grand Total: KES {grandTotal.toLocaleString()}</div>
-          </div>
+                <div style={{ textAlign: "right", borderTop: "1px solid #000", paddingTop: "8px", fontSize: "14px", lineHeight: "1.6" }}>
+                  <div>Subtotal: KES {subtotal.toLocaleString()}</div>
+                  {discountNum > 0 ? <div>Discount: -KES {discountNum.toLocaleString()}</div> : null}
+                  <div style={{ fontSize: "16px", fontWeight: "bold" }}>Grand Total: KES {grandTotal.toLocaleString()}</div>
+                </div>
 
-          {notes ? (
-            <div style={{ marginTop: "20px", fontSize: "12px", borderTop: "1px dashed #ccc", paddingTop: "10px" }}>
-              <strong>Notes & Terms:</strong>
-              <p style={{ margin: "4px 0" }}>{notes}</p>
-            </div>
-          ) : null}
+                {notes ? (
+                  <div style={{ marginTop: "20px", fontSize: "12px", borderTop: "1px dashed #ccc", paddingTop: "10px" }}>
+                    <strong>Notes & Terms:</strong>
+                    <p style={{ margin: "4px 0" }}>{notes}</p>
+                  </div>
+                ) : null}
 
-          <div style={{ textAlign: "center", marginTop: "30px", fontSize: "12px", color: "#666" }}>
-            Thank you for your business!
-          </div>
-        </div>
-      </div>
+                <div style={{ textAlign: "center", marginTop: "30px", fontSize: "12px", color: "#666" }}>
+                  Thank you for your business!
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
