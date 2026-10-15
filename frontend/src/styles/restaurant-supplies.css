@@ -447,44 +447,427 @@ button.rs-card {
     }
 }
 
-.rs-tab-bar {
+.rs-tab-bar,
+.tc-kitchen-tabs {
     display: flex;
-    gap: 0.35rem;
-    padding: 0.25rem;
-    border-radius: 12px;
-    background: var(--app-surface-subtle, rgba(0, 0, 0, 0.04));
-    border: 1px solid var(--app-border, rgba(0, 0, 0, 0.08));
-    margin-bottom: 1rem;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem;
+    border-radius: 14px;
+    background: var(--app-surface-elevated, var(--app-surface));
+    border: 1px solid var(--app-border);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    margin-bottom: 1.25rem;
     width: fit-content;
     max-width: 100%;
     overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
 }
 
-.rs-tab-btn {
+.rs-tab-bar::-webkit-scrollbar,
+.tc-kitchen-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.rs-tab-btn,
+.tc-kitchen-tab-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
-    padding: 0.45rem 0.95rem;
-    border: none;
-    border-radius: 9px;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 40px;
+    padding: 0.5rem 1rem;
+    border: 1px solid transparent;
+    border-radius: 10px;
     background: transparent;
     color: var(--app-text-secondary);
     font: inherit;
-    font-size: 0.85rem;
-    font-weight: 700;
+    font-size: 0.88rem;
+    font-weight: 750;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all 0.18s ease;
+    white-space: nowrap;
+    text-decoration: none;
+    user-select: none;
+}
+
+.rs-tab-btn:hover,
+.tc-kitchen-tab-btn:hover {
+    color: var(--app-text);
+    background: var(--app-surface-hover);
+}
+
+.rs-tab-btn.is-active,
+.tc-kitchen-tab-btn.is-active {
+    background: var(--app-primary, #e8412a);
+    color: #ffffff !important;
+    border-color: var(--app-primary, #e8412a);
+    box-shadow: 0 2px 8px rgba(232, 65, 42, 0.28);
+}
+
+.tc-kitchen-tab-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    padding: 0.12rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    line-height: 1.2;
+    background: var(--app-surface-active, rgba(0, 0, 0, 0.07));
+    color: inherit;
+}
+
+.rs-tab-btn.is-active .tc-kitchen-tab-pill,
+.tc-kitchen-tab-btn.is-active .tc-kitchen-tab-pill {
+    background: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+}
+
+/* ── Full Kitchen Page Layout & Structure ── */
+.tc-kitchen-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    width: 100%;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 1rem 0 3rem;
+}
+
+.tc-kitchen-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    padding: 1.35rem 1.6rem;
+    border-radius: 18px;
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.tc-kitchen-header__info {
+    display: flex;
+    flex-direction: column;
+    min-width: 220px;
+}
+
+.tc-kitchen-header__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    background: var(--app-accent-teal-soft, rgba(45, 212, 168, 0.12));
+    color: var(--app-accent-teal, #0f766e);
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.45rem;
+    width: fit-content;
+}
+
+.tc-kitchen-header__title {
+    margin: 0;
+    font-size: 1.45rem;
+    font-weight: 850;
+    letter-spacing: -0.02em;
+    color: var(--app-text);
+}
+
+.tc-kitchen-header__subtitle {
+    margin: 0.3rem 0 0;
+    font-size: 0.88rem;
+    color: var(--app-text-secondary);
+    line-height: 1.4;
+}
+
+.tc-kitchen-header__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.tc-kitchen-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 44px;
+    padding: 0 1.25rem;
+    border-radius: 12px;
+    font-weight: 800;
+    font-size: 0.88rem;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.18s ease;
     white-space: nowrap;
 }
 
-.rs-tab-btn:hover {
+.tc-kitchen-btn--primary {
+    background: var(--app-primary, #e8412a) !important;
+    border-color: var(--app-primary, #e8412a) !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 8px rgba(232, 65, 42, 0.28);
+}
+
+.tc-kitchen-btn--primary:hover {
+    background: var(--app-primary-hover, #c2341f) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(232, 65, 42, 0.35);
+}
+
+.tc-kitchen-btn--secondary {
+    background: var(--app-surface-elevated, var(--app-surface));
+    border: 1px solid var(--app-border);
     color: var(--app-text);
 }
 
-.rs-tab-btn.is-active {
-    background: var(--app-surface, #fff);
+.tc-kitchen-btn--secondary:hover {
+    background: var(--app-surface-hover);
     color: var(--app-text);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* ── Live Kitchen KPI Stats Row ── */
+.tc-kitchen-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.85rem;
+}
+
+.tc-kitchen-stat-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.1rem 1.25rem;
+    border-radius: 16px;
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.tc-kitchen-stat-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px;
+    height: 46px;
+    border-radius: 13px;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.tc-kitchen-stat-icon--teal {
+    background: var(--app-accent-teal-soft, rgba(45, 212, 168, 0.12));
+    color: var(--app-accent-teal, #0f766e);
+}
+
+.tc-kitchen-stat-icon--amber {
+    background: var(--app-accent-amber-soft, rgba(252, 211, 77, 0.12));
+    color: var(--app-accent-amber, #b45309);
+}
+
+.tc-kitchen-stat-icon--indigo {
+    background: var(--app-accent-peach-soft, rgba(232, 65, 42, 0.12));
+    color: var(--app-primary, #e8412a);
+}
+
+.tc-kitchen-stat-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.tc-kitchen-stat-label {
+    font-size: 0.72rem;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--app-text-secondary);
+}
+
+.tc-kitchen-stat-val {
+    font-size: 1.25rem;
+    font-weight: 850;
+    color: var(--app-text);
+    margin-top: 0.15rem;
+}
+
+.tc-kitchen-stat-sub {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--app-text-secondary);
+    margin-top: 0.15rem;
+}
+
+/* ── Section Cards ── */
+.tc-kitchen-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1.4rem;
+    border-radius: 18px;
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.tc-kitchen-section__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.tc-kitchen-section__title {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--app-text);
+}
+
+.tc-kitchen-section__subtitle {
+    margin: 0.25rem 0 0;
+    font-size: 0.82rem;
+    color: var(--app-text-secondary);
+}
+
+.tc-kitchen-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.tc-kitchen-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 220px;
+}
+
+.tc-kitchen-search i {
+    position: absolute;
+    left: 0.95rem;
+    color: var(--app-text-secondary);
+    font-size: 0.9rem;
+    pointer-events: none;
+}
+
+.tc-kitchen-search input {
+    width: 100%;
+    min-height: 42px;
+    padding: 0 1rem 0 2.5rem;
+    border-radius: 12px;
+    border: 1px solid var(--app-border);
+    background: var(--app-bg, var(--app-surface));
+    color: var(--app-text);
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 600;
+    transition: all 0.18s ease;
+}
+
+.tc-kitchen-search input:focus {
+    outline: none;
+    border-color: var(--app-primary);
+    box-shadow: 0 0 0 3px rgba(232, 65, 42, 0.15);
+}
+
+.tc-kitchen-search__clear {
+    position: absolute;
+    right: 0.75rem;
+    padding: 0.2rem 0.45rem;
+    border: none;
+    background: transparent;
+    color: var(--app-text-secondary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    border-radius: 6px;
+}
+
+.tc-kitchen-search__clear:hover {
+    color: var(--app-text);
+}
+
+.tc-kitchen-chips {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+/* ── Mobile & Small Screen Adaptations ── */
+@media (max-width: 768px) {
+    .tc-kitchen-page {
+        gap: 1rem;
+        padding-top: 0.5rem;
+    }
+
+    .tc-kitchen-header {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 1.15rem;
+        gap: 1rem;
+    }
+
+    .tc-kitchen-header__actions {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.6rem;
+    }
+
+    .tc-kitchen-btn {
+        width: 100%;
+    }
+
+    .tc-kitchen-tabs {
+        width: 100%;
+        display: flex;
+    }
+
+    .tc-kitchen-tab-btn {
+        flex: 1;
+        padding: 0.45rem 0.65rem;
+        font-size: 0.82rem;
+    }
+
+    .tc-kitchen-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .tc-kitchen-section {
+        padding: 1rem;
+    }
+
+    .tc-kitchen-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .tc-kitchen-chips {
+        width: 100%;
+    }
+
+    .tc-kitchen-chips button {
+        flex: 1;
+        text-align: center;
+        justify-content: center;
+    }
 }
 
 .rs-modal-overlay {

@@ -271,6 +271,13 @@ export const apiRoutes = {
   restaurantUsageReport: `${apiUrl}/api/v1/restaurant-stock/reports/usage`,
   restaurantProfitReport: `${apiUrl}/api/v1/restaurant-stock/reports/profit`,
   restaurantKitchenDayReport: `${apiUrl}/api/v1/restaurant-stock/reports/kitchen-day`,
+  reportsSummary: (start?: string, end?: string) => {
+    const params = new URLSearchParams();
+    if (start) params.set("start", start);
+    if (end) params.set("end", end);
+    const qs = params.toString();
+    return `${apiUrl}/api/v1/reports/summary${qs ? `?${qs}` : ""}`;
+  },
   kitchenIssues: `${apiUrl}/api/v1/kitchen-issues`,
   kitchenStock: `${apiUrl}/api/v1/kitchen-issues/stock`,
   kitchenSuggest: `${apiUrl}/api/v1/kitchen-issues/suggest`,

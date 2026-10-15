@@ -15,11 +15,14 @@ import { fetchOwingCustomers } from "@/lib/trans-chap-credit";
 import { formatKesDigits, formatKsh } from "@/lib/trans-chap-receipt";
 import { nairobiDateKey, parseIso } from "@/lib/nairobi-time";
 import { orderPaymentPortions } from "@/lib/orders";
+import { apiFetch } from "@/lib/api";
+import { apiRoutes } from "@/lib/config";
 import {
   buildChartBuckets,
   inRange,
   rangeForPreset,
   rangeLabel,
+  type ChartBucket,
   type DateRange,
   type RangePreset,
 } from "@/lib/trans-chap-range";
@@ -29,6 +32,27 @@ type Slice = {
   name: string;
   value: number;
   fill: string;
+};
+
+export type ReportsSummary = {
+  sales_total: number;
+  sales_count: number;
+  units: number;
+  purchase_total: number;
+  purchase_count: number;
+  net_profit: number;
+  cogs: number;
+  gross_profit: number;
+  payment_methods: {
+    mpesa: number;
+    cash: number;
+    credit: number;
+    other: number;
+  };
+  buckets: ChartBucket[];
+  top_products: Array<{ name: string; qty: number; amount: number }>;
+  owing_total: number;
+  owing_count: number;
 };
 
 const PRESETS: RangePreset[] = ["today", "yesterday", "7d", "30d", "custom"];
@@ -52,43 +76,98 @@ export function TransChapHomePies() {
   const owner = isShopOwner(user);
   const canInventory = userCanAccessSection(user, "inventory");
   const canCustomers = userCanAccessSection(user, "customer");
+  const [summary, setSummary] = useState<ReportsSummary | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [purchases, setPurchases] = useState<TransChapPurchase[]>([]);
-  const [owingTotal, setOwingTotal] = useState(0);
-  const [owingCount, setOwingCount] = useState(0);
+  const [legacyOwingTotal, setLegacyOwingTotal] = useState(0);
+  const [legacyOwingCount, setLegacyOwingCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const todayKey = nairobiDateKey(new Date());
   const [range, setRange] = useState<DateRange>(() => rangeForPreset("today", todayKey));
 
-  const reload = useCallback(async () => {
-    setLoading(true);
-    const [sales, bought, owing] = await Promise.all([
-      fetchWalkinOrders(),
-      canInventory
-        ? fetchTransChapPurchases({ accountId })
-        : Promise.resolve({ purchases: [], error: null as string | null, truncated: false }),
-      canCustomers
-        ? fetchOwingCustomers()
-        : Promise.resolve({
-            customers: [],
-            owingTotal: 0,
-            error: null as string | null,
-          }),
-    ]);
-    setOrders(sales.orders.filter(isCountedWalkinSale));
-    setPurchases(bought.purchases.filter((row) => !row.voidedAt));
-    setOwingTotal(owing.owingTotal);
-    setOwingCount(owing.customers?.length ?? 0);
-    setError(sales.error || bought.error || owing.error);
-    setLoading(false);
-  }, [accountId, canCustomers, canInventory]);
+  const loadData = useCallback(
+    async (targetRange: DateRange, isInitial = false) => {
+      if (isInitial) {
+        setLoading(true);
+      } else {
+        setIsUpdating(true);
+      }
+
+      try {
+        // 1. Try server-side summary endpoint (fastest: < 30ms, 1 request)
+        const summaryRes = await apiFetch<{ data: ReportsSummary }>(
+          apiRoutes.reportsSummary(targetRange.from, targetRange.to),
+        );
+        if (summaryRes?.data) {
+          setSummary(summaryRes.data);
+          setError(null);
+          return;
+        }
+      } catch {
+        // Fallback to legacy client-side computation if server endpoint is unavailable
+        try {
+          const [sales, bought, owing] = await Promise.all([
+            fetchWalkinOrders(),
+            canInventory
+              ? fetchTransChapPurchases({ accountId })
+              : Promise.resolve({ purchases: [], error: null as string | null, truncated: false }),
+            canCustomers
+              ? fetchOwingCustomers()
+              : Promise.resolve({
+                  customers: [],
+                  owingTotal: 0,
+                  error: null as string | null,
+                }),
+          ]);
+          setOrders(sales.orders.filter(isCountedWalkinSale));
+          setPurchases(bought.purchases.filter((row) => !row.voidedAt));
+          setLegacyOwingTotal(owing.owingTotal);
+          setLegacyOwingCount(owing.customers?.length ?? 0);
+          setError(sales.error || bought.error || owing.error);
+        } catch (fallbackErr) {
+          setError(
+            fallbackErr instanceof Error ? fallbackErr.message : "Failed to load reports data",
+          );
+        }
+      } finally {
+        setLoading(false);
+        setIsUpdating(false);
+      }
+    },
+    [accountId, canCustomers, canInventory],
+  );
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    void loadData(range, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId]);
+
+  const handleRangeChange = useCallback(
+    (newRange: DateRange) => {
+      setRange(newRange);
+      void loadData(newRange, false);
+    },
+    [loadData],
+  );
 
   const stats = useMemo(() => {
+    if (summary) {
+      return {
+        salesTotal: summary.sales_total,
+        salesCount: summary.sales_count,
+        purchaseTotal: summary.purchase_total,
+        purchaseCount: summary.purchase_count,
+        mpesaTotal: summary.payment_methods.mpesa,
+        creditTotal: summary.payment_methods.credit,
+        cashTotal: summary.payment_methods.cash,
+        buckets: summary.buckets,
+        owingTotal: summary.owing_total,
+        owingCount: summary.owing_count,
+      };
+    }
+
     const salesRows = orders
       .map((order) => ({ order, when: orderTime(order) }))
       .filter((row): row is { order: Order; when: Date } => inRange(row.when, range));
@@ -123,10 +202,12 @@ export function TransChapHomePies() {
         salesRows.map((row) => ({ when: row.when, total: row.order.total })),
         purchaseRows,
       ),
+      owingTotal: legacyOwingTotal,
+      owingCount: legacyOwingCount,
     };
-  }, [orders, purchases, range]);
+  }, [summary, orders, purchases, range, legacyOwingTotal, legacyOwingCount]);
 
-  const { salesTotal, salesCount, purchaseTotal, purchaseCount } = stats;
+  const { salesTotal, salesCount, purchaseTotal, purchaseCount, owingTotal, owingCount } = stats;
   const profit = salesTotal - purchaseTotal;
   const period = rangeLabel(range, todayKey);
   const paySlices = useMemo<Slice[]>(
@@ -143,16 +224,21 @@ export function TransChapHomePies() {
     return <TransChapTodaySkeleton />;
   }
 
-  if (error && orders.length === 0 && purchases.length === 0) {
+  if (error && !summary && orders.length === 0 && purchases.length === 0) {
     return <TransChapStatus tone="error">{error}</TransChapStatus>;
   }
 
   return (
-    <MotionFade as="div" className="trans-chap-dash__analytics" aria-label="Sales analytics">
+    <MotionFade
+      as="div"
+      className="trans-chap-dash__analytics"
+      aria-label="Sales analytics"
+      style={{ opacity: isUpdating ? 0.72 : 1, transition: "opacity 0.15s ease" }}
+    >
       <article className={`trans-chap-dash__spotlight${profit < 0 ? " is-loss" : ""}`}>
         <TransChapRangeFilter
           value={range}
-          onChange={setRange}
+          onChange={handleRangeChange}
           todayKey={todayKey}
           presets={PRESETS}
         />

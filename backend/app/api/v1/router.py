@@ -44,6 +44,7 @@ from app.api.v1 import (
     tickets,
     tigo,
     meta,
+    reports,
     sms_tools,
     whatsapp_tools,
 )
@@ -94,4 +95,5 @@ router.include_router(restaurant_stock.router)
 router.include_router(kitchen_issues.router)
 router.include_router(admin.router)
 router.include_router(admin_whatsapp.router)
+router.include_router(reports.router)
 router.include_router(meta.router)
