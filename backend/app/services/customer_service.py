@@ -427,10 +427,17 @@ class CustomerService:
         self.db.flush()
         return customer
 
-    def charge_credit(self, customer: ShopCustomer, amount: object) -> None:
+    def charge_credit(
+        self,
+        customer: ShopCustomer,
+        amount: object,
+        *,
+        date_to_pay: date | str | None = None,
+    ) -> None:
         sale = _money(amount, field="Sale total")
         if sale <= 0:
             raise CustomerServiceError("Credit sale total must be greater than zero.")
+        due_date = _pay_date(date_to_pay)
         outstanding = _money(customer.outstanding_balance, field="Outstanding balance")
         limit = _money(customer.credit_limit)
         leftover = available_credit(limit, outstanding)
@@ -439,6 +446,8 @@ class CustomerService:
                 f"Only Ksh{leftover} credit is left for this customer."
             )
         customer.outstanding_balance = outstanding + sale
+        if due_date is not None:
+            customer.date_to_pay = due_date
         customer.updated_at = utc_now()
 
     def release_credit(self, customer: ShopCustomer, amount: object) -> None:
@@ -474,6 +483,33 @@ class CustomerService:
         if customer is None:
             return
         self.release_credit(customer, amount)
+
+    def rebalance_order_credit(
+        self,
+        account_id: str,
+        *,
+        previous_phone: str | None,
+        previous_amount: object,
+        phone: str | None,
+        name: str | None,
+        amount: object,
+    ) -> None:
+        """After an order edit, charge or release the change in what it puts on credit."""
+        before = _money(previous_amount, field="Sale total")
+        after = _money(amount, field="Sale total")
+        if normalize_phone(previous_phone or "") == normalize_phone(phone or ""):
+            change = after - before
+            if change < 0:
+                self.release_credit_for_order(account_id, phone=phone, amount=-change)
+            elif change > 0:
+                customer = self.get_or_create_for_sale(account_id, name=name or "", phone=phone or "")
+                self.charge_credit(customer, change)
+            return
+        if before > 0:
+            self.release_credit_for_order(account_id, phone=previous_phone, amount=before)
+        if after > 0:
+            customer = self.get_or_create_for_sale(account_id, name=name or "", phone=phone or "")
+            self.charge_credit(customer, after)
 
     def delete_customer(self, account_id: str, customer_id: str) -> None:
         customer = self.get_customer(account_id, customer_id)

@@ -161,7 +161,7 @@ export function RestaurantPurchaseOrderDetail() {
             <p className="rs-card__title">{po.reference}</p>
             <p className="rs-card__meta">
               {po.supplier_id ? (
-                <Link href={`/trans-chap/purchases?supplier=${encodeURIComponent(po.supplier_id)}`}>
+                <Link href={`/trans-chap/purchases?tab=orders&supplier=${encodeURIComponent(po.supplier_id)}`}>
                   {po.supplier_name || "Supplier"}
                 </Link>
               ) : (
@@ -271,7 +271,7 @@ export function RestaurantPurchaseOrderDetail() {
                   </td>
                   <td className="rs-num">{formatQty(line.quantity_ordered, line.purchase_unit)}</td>
                   <td className={`rs-num ${line.quantity_outstanding > 0 && po.status !== "cancelled" ? "rs-neg" : ""}`}>
-                    {formatQty(line.quantity_received)}
+                    {formatQty(line.quantity_received, line.purchase_unit)}
                   </td>
                   <td className="rs-num">{formatKsh(line.unit_cost)}</td>
                   <td className="rs-num">{formatKsh(line.line_total)}</td>
@@ -357,32 +357,35 @@ export function RestaurantPurchaseOrderDetail() {
         <>
           <h3 className="rs-section-title">Deliveries</h3>
           <ul className="rs-list">
-            {(po.receipts ?? []).map((receipt) => (
-              <li key={receipt.id} className={`rs-card ${receipt.voided_at ? "rs-muted" : ""}`}>
-                <div className="rs-row rs-row--between">
-                  <div>
-                    <p className="rs-card__title">
-                      {receipt.item_name} · {formatQty(receipt.quantity)}
-                    </p>
-                    <p className="rs-card__meta">
-                      {formatNairobiStamp24(receipt.created_at)}
-                      {receipt.total_cost != null ? ` · ${formatKsh(receipt.total_cost)}` : ""}
-                      {receipt.voided_at ? ` · Undone${receipt.void_reason ? `: ${receipt.void_reason}` : ""}` : ""}
-                    </p>
+            {(po.receipts ?? []).map((receipt) => {
+              const baseUnit = po.lines.find((line) => line.id === receipt.line_id)?.base_unit;
+              return (
+                <li key={receipt.id} className={`rs-card ${receipt.voided_at ? "rs-muted" : ""}`}>
+                  <div className="rs-row rs-row--between">
+                    <div>
+                      <p className="rs-card__title">
+                        {receipt.item_name} · {formatQty(receipt.quantity, baseUnit)}
+                      </p>
+                      <p className="rs-card__meta">
+                        {formatNairobiStamp24(receipt.created_at)}
+                        {receipt.total_cost != null ? ` · ${formatKsh(receipt.total_cost)}` : ""}
+                        {receipt.voided_at ? ` · Undone${receipt.void_reason ? `: ${receipt.void_reason}` : ""}` : ""}
+                      </p>
+                    </div>
+                    {canVoid && !receipt.voided_at ? (
+                      <button
+                        type="button"
+                        className="rs-btn rs-btn--small rs-btn--danger"
+                        disabled={busy}
+                        onClick={() => void voidReceipt(receipt.id, `${formatQty(receipt.quantity, baseUnit)} of ${receipt.item_name}`)}
+                      >
+                        Undo
+                      </button>
+                    ) : null}
                   </div>
-                  {canVoid && !receipt.voided_at ? (
-                    <button
-                      type="button"
-                      className="rs-btn rs-btn--small rs-btn--danger"
-                      disabled={busy}
-                      onClick={() => void voidReceipt(receipt.id, `${formatQty(receipt.quantity)} of ${receipt.item_name}`)}
-                    >
-                      Undo
-                    </button>
-                  ) : null}
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         </>
       ) : null}

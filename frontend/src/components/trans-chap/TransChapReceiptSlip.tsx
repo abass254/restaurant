@@ -37,6 +37,12 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
             : "Failed";
     const statusTone = paid ? "ok" : onCredit ? "credit" : waiting ? "wait" : "fail";
     const customer = receipt.customerName?.trim() || "Walk-in";
+    const subtotal = receipt.subtotal ?? lines.reduce((sum, line) => sum + line.lineTotal, 0);
+    const adjustments = [
+      { label: "Delivery fee", amount: receipt.deliveryFee ?? 0, negative: false },
+      { label: "Discount", amount: receipt.discount ?? 0, negative: true },
+      { label: "Tax (16%)", amount: receipt.tax ?? 0, negative: false },
+    ].filter((row) => row.amount > 0);
     const creditPart = receipt.paymentSplits?.find((p) => p.method === "credit");
     const note = closed
       ? `Stock came back.${
@@ -136,11 +142,22 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
           ))}
         </ul>
 
-        {receipt.tax && receipt.tax > 0 ? (
-          <p className="trans-chap-slip__tax" style={{ display: "flex", justifyContent: "space-between", margin: "0.25rem 0", fontSize: "0.85rem", color: "var(--app-text-secondary, #6b7280)" }}>
-            <span>Tax (16%)</span>
-            <strong>{formatKesDigits(receipt.tax)}</strong>
-          </p>
+        {adjustments.length ? (
+          <dl className="trans-chap-slip__sums">
+            <div>
+              <dt>Subtotal</dt>
+              <dd>{formatKesDigits(subtotal)}</dd>
+            </div>
+            {adjustments.map((row) => (
+              <div key={row.label}>
+                <dt>{row.label}</dt>
+                <dd>
+                  {row.negative ? "−" : ""}
+                  {formatKesDigits(row.amount)}
+                </dd>
+              </div>
+            ))}
+          </dl>
         ) : null}
         <p className="trans-chap-slip__total">
           <span>Total</span>
@@ -148,6 +165,12 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
         </p>
 
         <dl className="trans-chap-slip__meta">
+          {receipt.tableNumber ? (
+            <div>
+              <dt>Table</dt>
+              <dd>{receipt.tableNumber}</dd>
+            </div>
+          ) : null}
           <div>
             <dt>Ref</dt>
             <dd>{receipt.orderNumber}</dd>

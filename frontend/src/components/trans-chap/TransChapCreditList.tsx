@@ -7,7 +7,7 @@ import { MotionItem, MotionList } from "@/components/app/MotionList";
 import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, readPageCache, writePageCache } from "@/lib/api";
 import { extractErrorMessage, showError, showInternalError, toastSuccess } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { buildDebtReminderWhatsAppUrl, fetchOwingCustomers } from "@/lib/trans-chap-credit";
@@ -27,13 +27,18 @@ function parseAmount(value: string): number | null {
   return Math.round(amount);
 }
 
+const CREDIT_CACHE_KEY = "trans-chap:credit";
+
+type CreditSnapshot = { customers: ShopCustomer[]; owingTotal: number };
+
 export function TransChapCreditList() {
   const user = useAuthUser();
   const shopName = user.active_account?.business_name || user.account?.business_name;
   const listId = useId();
-  const [customers, setCustomers] = useState<ShopCustomer[]>([]);
-  const [owingTotal, setOwingTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [cached] = useState(() => readPageCache<CreditSnapshot>(CREDIT_CACHE_KEY));
+  const [customers, setCustomers] = useState<ShopCustomer[]>(cached?.customers ?? []);
+  const [owingTotal, setOwingTotal] = useState(cached?.owingTotal ?? 0);
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -59,11 +64,17 @@ export function TransChapCreditList() {
   }
 
   const reload = useCallback(async () => {
-    setLoading(true);
+    if (!readPageCache(CREDIT_CACHE_KEY)) setLoading(true);
     const result = await fetchOwingCustomers();
     setCustomers(result.customers);
     setOwingTotal(result.owingTotal);
     setError(result.error);
+    if (!result.error) {
+      writePageCache(CREDIT_CACHE_KEY, {
+        customers: result.customers,
+        owingTotal: result.owingTotal,
+      } satisfies CreditSnapshot);
+    }
     setLoading(false);
   }, []);
 

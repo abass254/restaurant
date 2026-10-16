@@ -35,6 +35,15 @@ export function TransChapTodaySkeleton() {
   );
 }
 
+/** Route-level fallback (`loading.tsx`) shown while a Trans Chap segment loads. */
+export function TransChapPageSkeleton() {
+  return (
+    <div className="trans-chap-sales__list" aria-busy="true" aria-label="Loading">
+      <TransChapListSkeleton />
+    </div>
+  );
+}
+
 export function TransChapListSkeleton({ count = 4 }: { count?: number }) {
   return (
     <>

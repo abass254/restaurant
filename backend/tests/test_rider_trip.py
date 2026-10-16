@@ -135,6 +135,32 @@ def test_rider_search_expires_and_cancels_standalone_delivery() -> None:
     db.commit.assert_called()
 
 
+def test_rider_search_expiry_cancels_ready_order_and_returns_its_stock_and_credit() -> None:
+    from app.support.delivery_status import DELIVERY_SEARCHING
+    from app.support.order_status import CANCELLED, READY
+
+    db = MagicMock()
+    now = datetime.now(timezone.utc)
+    delivery = MagicMock()
+    delivery.order_id = None
+    delivery.status = DELIVERY_SEARCHING
+    delivery.assigned_rider_id = None
+    delivery.rider_search_expires_at = (now - timedelta(minutes=1)).replace(tzinfo=None)
+    order = MagicMock()
+    order.status = READY
+    db.query.return_value.filter.return_value.all.return_value = []
+
+    with (
+        patch("app.services.rider_trip_service.DeliveryService") as delivery_service,
+        patch("app.services.rider_trip_service.release_order_holds") as release,
+    ):
+        delivery_service.return_value.linked_order.return_value = order
+        assert RiderTripService(db).expire_rider_search(delivery, now=now) is True
+
+    assert order.status == CANCELLED
+    release.assert_called_once_with(db, order, user_id=None)
+
+
 def test_claim_searching_delivery_second_writer_loses() -> None:
     engine = create_engine("sqlite:///:memory:")
     with engine.begin() as conn:

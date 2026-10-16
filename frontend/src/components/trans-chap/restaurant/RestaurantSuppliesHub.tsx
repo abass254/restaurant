@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { TransChapFab } from "@/components/trans-chap/TransChapFab";
+import { TransChapPurchasesList } from "@/components/trans-chap/TransChapPurchasesList";
 import { extractErrorMessage, showError } from "@/lib/alerts";
 import { isStoreAdmin } from "@/lib/merchant-permissions";
 import { formatNairobiStamp24 } from "@/lib/nairobi-time";
@@ -29,10 +30,11 @@ import type { ShopSupplier } from "@/lib/types";
 import { RestaurantKitchenTab } from "./RestaurantKitchenTab";
 import { RestaurantReportsTab } from "./RestaurantReportsTab";
 
-type Tab = "orders" | "stock" | "kitchen" | "counts" | "reports";
+type Tab = "orders" | "purchases" | "stock" | "kitchen" | "counts" | "reports";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "orders", label: "Purchase orders" },
+  { id: "purchases", label: "Bought" },
   { id: "stock", label: "Supply stock" },
   { id: "kitchen", label: "Kitchen" },
   { id: "counts", label: "Stock counts" },
@@ -76,22 +78,37 @@ export function RestaurantSuppliesHub() {
     router.replace(`${pathname}?${search.toString()}`);
   }
 
+  const tabs = (
+    <div className="rs-tabs" role="tablist" aria-label="Supplies">
+      {TABS.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          role="tab"
+          aria-selected={tab === item.id}
+          className={tab === item.id ? "is-active" : undefined}
+          onClick={() => setTab(item.id)}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (tab === "purchases") {
+    return (
+      <>
+        <div className="rs" style={{ paddingBottom: 0 }}>
+          {tabs}
+        </div>
+        <TransChapPurchasesList />
+      </>
+    );
+  }
+
   return (
     <div className="rs">
-      <div className="rs-tabs" role="tablist" aria-label="Supplies">
-        {TABS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === item.id}
-            className={tab === item.id ? "is-active" : undefined}
-            onClick={() => setTab(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      {tabs}
       {tab === "orders" ? <OrdersTab initialSupplier={params.get("supplier")} /> : null}
       {tab === "stock" ? <StockTab /> : null}
       {tab === "kitchen" ? <RestaurantKitchenTab /> : null}
@@ -265,7 +282,7 @@ function OrdersTab({ initialSupplier }: { initialSupplier: string | null }) {
           ))}
         </ul>
       )}
-      <TransChapFab label="New purchase order" href="/trans-chap/purchases/new" />
+      <TransChapFab label="New purchase order" href="/trans-chap/purchases/po/new" />
     </>
   );
 }
@@ -334,7 +351,7 @@ function StockTab() {
           {lowItems.length ? (
             <Link
               className="rs-btn rs-btn--small rs-btn--primary"
-              href={`/trans-chap/purchases/new?items=${lowItems.map((item) => item.id).join(",")}`}
+              href={`/trans-chap/purchases/po/new?items=${lowItems.map((item) => item.id).join(",")}`}
             >
               Reorder low stock
             </Link>
@@ -391,7 +408,7 @@ function StockTab() {
           ))}
         </ul>
       )}
-      <TransChapFab label="New purchase order" href="/trans-chap/purchases/new" />
+      <TransChapFab label="New purchase order" href="/trans-chap/purchases/po/new" />
     </>
   );
 }

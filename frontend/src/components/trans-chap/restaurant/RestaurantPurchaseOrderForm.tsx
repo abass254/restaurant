@@ -39,6 +39,13 @@ function round(value: number, places: number): number {
   return Math.round(value * factor) / factor;
 }
 
+function lineCents(qty: number, cost: number): number {
+  const raw = Math.round(qty * 1000) * Math.round(cost * 100);
+  const cents = Math.floor(raw / 1000);
+  const rest = raw - cents * 1000;
+  return rest > 500 || (rest === 500 && cents % 2 === 1) ? cents + 1 : cents;
+}
+
 function defaultCost(unit: BuyUnit | undefined): string {
   return unit?.buying_price != null ? String(round(unit.buying_price, 2)) : "";
 }
@@ -126,13 +133,12 @@ export function RestaurantPurchaseOrderForm() {
     setSearch("");
   }
 
-  const subtotal = lines.reduce((sum, line) => {
-    const qty = parseNumber(line.qty) ?? 0;
-    const cost = parseNumber(line.cost) ?? 0;
-    return sum + qty * cost;
-  }, 0);
+  const subtotalCents = lines.reduce(
+    (sum, line) => sum + lineCents(parseNumber(line.qty) ?? 0, parseNumber(line.cost) ?? 0),
+    0,
+  );
   const discountValue = parseNumber(discount) ?? 0;
-  const total = Math.max(subtotal - discountValue, 0);
+  const total = Math.max(subtotalCents - Math.round(discountValue * 100), 0) / 100;
   const linesValid =
     lines.length > 0 &&
     lines.every((line) => (parseNumber(line.qty) ?? 0) > 0 && (parseNumber(line.cost) ?? -1) >= 0);
@@ -271,7 +277,7 @@ export function RestaurantPurchaseOrderForm() {
                 </div>
                 {qty > 0 ? (
                   <p className="rs-card__meta" style={{ gridColumn: "1 / -1" }}>
-                    Line total <strong>{formatKsh(qty * cost)}</strong>
+                    Line total <strong>{formatKsh(lineCents(qty, cost) / 100)}</strong>
                     {unit && unit.factor !== 1 && cost > 0
                       ? ` · ${formatKsh(cost / unit.factor)} per ${line.item.base_unit}`
                       : ""}

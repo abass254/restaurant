@@ -292,7 +292,7 @@ def apply_unit_costs(
         if raw is None:
             continue
         try:
-            cost = round(float(raw), 2)
+            cost = round(float(raw), 4)
         except (TypeError, ValueError):
             continue
         if cost < 0:
@@ -382,6 +382,7 @@ def restore_stock_for_order(db: Session, order: Order) -> None:
 
 QTY = Decimal("0.001")
 MONEY = Decimal("0.01")
+UNIT_COST = Decimal("0.0001")
 
 LedgerReason = Literal[
     "receive",
@@ -430,10 +431,6 @@ def _qty(value: Any) -> Decimal:
     return Decimal(str(value or 0)).quantize(QTY)
 
 
-def _money(value: Any) -> Decimal:
-    return Decimal(str(value or 0)).quantize(MONEY)
-
-
 def weighted_average_cost(
     on_hand: Decimal | None,
     current_cost: Any,
@@ -447,9 +444,9 @@ def weighted_average_cost(
     """
     held = max(on_hand or Decimal("0"), Decimal("0"))
     if current_cost is None or held == 0:
-        return received_unit_cost.quantize(MONEY)
+        return received_unit_cost.quantize(UNIT_COST)
     total = held * Decimal(str(current_cost)) + received_qty * received_unit_cost
-    return (total / (held + received_qty)).quantize(MONEY)
+    return (total / (held + received_qty)).quantize(UNIT_COST)
 
 
 def record_movement(
@@ -490,7 +487,7 @@ def record_movement(
         item.buying_price = weighted_average_cost(held, item.buying_price, qty, unit_cost)
 
     cost = unit_cost if unit_cost is not None else item.buying_price
-    cost_value = _money(cost) if cost is not None else None
+    cost_value = Decimal(str(cost)).quantize(UNIT_COST) if cost is not None else None
     _set_location_quantity(item, location, after)
     item.updated_at = now
     if direction == "in" and after > 0 and not item.is_active:

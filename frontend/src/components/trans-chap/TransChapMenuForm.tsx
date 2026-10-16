@@ -25,7 +25,6 @@ import {
   TransChapMenuGroupEditor,
   TransChapMenuGroupsSheet,
 } from "@/components/trans-chap/TransChapMenuGroupEditor";
-import { ComboIncludesField, type ComboPart } from "@/components/trans-chap/TransChapMenuComboEditor";
 import {
   RecipeField,
   parseRecipeQty,
@@ -41,11 +40,9 @@ import {
   inventoryProductName,
   isHotelMenuItem,
   isMenuAddonItem,
-  isMenuComboItem,
   isSupplyItem,
   menuSection,
   modifierRuleLabel,
-  saveComboComponents,
   saveItemModifierGroups,
   saveRecipe,
   recipeCost,
@@ -56,16 +53,12 @@ import {
 import { fetchMenuCosting, type MenuCosting } from "@/lib/restaurant-supplies";
 import type { InventoryItem, InventoryResponse, ModifierGroup } from "@/lib/types";
 
-type ItemKind = "meal" | "combo";
-
 type Editor = {
-  kind: ItemKind;
   item: InventoryItem | null;
   name: string;
   price: string;
   section: string;
   groupIds: string[];
-  parts: ComboPart[];
   recipe: RecipeDraft[];
 };
 
@@ -112,14 +105,6 @@ function itemGroupIds(item: InventoryItem | null | undefined): string[] {
   return (item?.product?.modifier_groups ?? []).map((group) => group.id);
 }
 
-function itemParts(item: InventoryItem | null | undefined): ComboPart[] {
-  return (item?.product?.combo_components ?? []).map((part) => ({
-    productId: part.component_product_id,
-    name: part.name || "Item",
-    quantity: part.quantity,
-  }));
-}
-
 function itemRecipe(item: InventoryItem | null | undefined): { productId: string; quantity: number }[] {
   return (item?.product?.recipe ?? []).map((line) => ({
     productId: line.ingredient_product_id,
@@ -141,12 +126,6 @@ function sameIds(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((id, index) => id === b[index]);
 }
 
-function sameParts(a: ComboPart[], b: ComboPart[]): boolean {
-  return (
-    a.length === b.length &&
-    a.every((part, index) => part.productId === b[index].productId && part.quantity === b[index].quantity)
-  );
-}
 
 export function TransChapMenuForm() {
   const user = useAuthUser();
@@ -214,7 +193,6 @@ export function TransChapMenuForm() {
     () => items.filter((item) => item.is_active && isHotelMenuItem(item) && !isMenuAddonItem(item)),
     [items],
   );
-  const dishes = useMemo(() => menuItems.filter((item) => !isMenuComboItem(item)), [menuItems]);
   const supplies = useMemo(
     () =>
       items
@@ -224,31 +202,10 @@ export function TransChapMenuForm() {
   );
   const itemsByProductId = useMemo(() => new Map(items.map((item) => [item.product_id, item])), [items]);
 
-  /** Ingredient cost of one plate; a meal adds up its dishes (or their buying price). */
+  /** Cost of the fixed ingredients of one plate; modifier picks are on top. */
   function plateCost(item: InventoryItem): { cost: number; priced: boolean } | null {
-    if (!isMenuComboItem(item)) {
-      const recipe = itemRecipe(item);
-      return recipe.length ? recipeCost(recipe, itemsByProductId) : null;
-    }
-    let cost = 0;
-    let priced = true;
-    let known = false;
-    for (const part of item.product?.combo_components ?? []) {
-      const dish = itemsByProductId.get(part.component_product_id);
-      const recipe = itemRecipe(dish);
-      if (recipe.length) {
-        const sub = recipeCost(recipe, itemsByProductId);
-        cost += sub.cost * part.quantity;
-        priced &&= sub.priced;
-        known = true;
-      } else if (dish?.buying_price != null) {
-        cost += dish.buying_price * part.quantity;
-        known = true;
-      } else {
-        priced = false;
-      }
-    }
-    return known ? { cost, priced } : null;
+    const recipe = itemRecipe(item);
+    return recipe.length ? recipeCost(recipe, itemsByProductId) : null;
   }
 
   const needle = search.trim().toLowerCase();
@@ -258,10 +215,7 @@ export function TransChapMenuForm() {
         .filter(
           (item) =>
             !needle ||
-            inventoryProductName(item).toLowerCase().includes(needle) ||
-            (item.product?.combo_components ?? []).some((part) =>
-              (part.name || "").toLowerCase().includes(needle),
-            ),
+            inventoryProductName(item).toLowerCase().includes(needle),
         )
         .sort((a, b) => inventoryProductName(a).localeCompare(inventoryProductName(b))),
     [menuItems, needle],
@@ -296,7 +250,7 @@ export function TransChapMenuForm() {
     }, 80);
   }
 
-  function openNew(kind: ItemKind, name = "") {
+  function openNew(name = "") {
     const existing = name
       ? menuItems.find((item) => sameName(inventoryProductName(item), name))
       : undefined;
@@ -305,13 +259,11 @@ export function TransChapMenuForm() {
       return;
     }
     setEditor({
-      kind,
       item: null,
       name,
       price: "",
       section: menuSections[0]?.id ?? "mains",
       groupIds: [],
-      parts: [],
       recipe: [],
     });
     focusField(name ? priceRef : nameRef);
@@ -319,13 +271,11 @@ export function TransChapMenuForm() {
 
   function openExisting(item: InventoryItem) {
     setEditor({
-      kind: isMenuComboItem(item) ? "combo" : "meal",
       item,
       name: inventoryProductName(item),
       price: item.selling_price != null ? String(item.selling_price) : "",
       section: menuSection(item, menuSections),
       groupIds: itemGroupIds(item).filter((id) => !groups.length || groupsById.has(id)),
-      parts: itemParts(item),
       recipe: itemRecipe(item).map((line) => ({ productId: line.productId, qty: String(line.quantity) })),
     });
   }
@@ -371,18 +321,16 @@ export function TransChapMenuForm() {
       return;
     }
 
-    const input = { name, price, productType: editor.kind, section: editor.section };
+    const input = { name, price, productType: "meal" as const, section: editor.section };
     const priorGroups = itemGroupIds(current);
-    const priorParts = itemParts(current);
     const priorRecipe = itemRecipe(current);
     const recipeLines = recipeDraftLines(editor.recipe);
     const catalogueChanged =
       !!current?.product &&
       (!sameName(current.product.name, name) ||
-        current.product.product_type !== editor.kind ||
+        current.product.product_type !== "meal" ||
         menuSection(current, menuSections) !== editor.section ||
-        !sameIds(priorGroups, editor.groupIds) ||
-        (editor.kind === "combo" && !sameParts(priorParts, editor.parts)));
+        !sameIds(priorGroups, editor.groupIds));
     const sharedProduct =
       !!current?.product &&
       !!accountId &&
@@ -406,14 +354,7 @@ export function TransChapMenuForm() {
         const attached = await saveItemModifierGroups(saved.product_id, editor.groupIds);
         if (saved.product) saved = { ...saved, product: { ...saved.product, modifier_groups: attached } };
       }
-      if (editor.kind === "combo" && !sameParts(sameProduct ? priorParts : [], editor.parts)) {
-        const parts = await saveComboComponents(
-          saved.product_id,
-          editor.parts.map((part) => ({ product_id: part.productId, quantity: part.quantity })),
-        );
-        if (saved.product) saved = { ...saved, product: { ...saved.product, combo_components: parts } };
-      }
-      if (editor.kind === "meal" && !sameRecipe(sameProduct ? priorRecipe : [], recipeLines)) {
+      if (!sameRecipe(sameProduct ? priorRecipe : [], recipeLines)) {
         const recipe = await saveRecipe(
           saved.product_id,
           recipeLines.map((line) => ({ product_id: line.productId, quantity: line.quantity })),
@@ -464,15 +405,13 @@ export function TransChapMenuForm() {
   }
 
   const editorPrice = editor ? parsePrice(editor.price) : null;
-  const isCombo = editor?.kind === "combo";
   const canSave =
     !!editor &&
     !saving &&
     !!editor.name.trim() &&
     editorPrice != null &&
     editorPrice > 0 &&
-    (!isCombo || editor.parts.length > 0) &&
-    (isCombo || editor.recipe.every((row) => !row.productId || parseRecipeQty(row.qty) != null));
+    (editor.recipe.every((row) => !row.productId || parseRecipeQty(row.qty) != null));
   const overlayOpen = !!editor || !!groupEditor || showGroups;
 
   return (
@@ -502,7 +441,7 @@ export function TransChapMenuForm() {
       ) : null}
 
       {needle && !exactMatch ? (
-        <button type="button" className="tc-menu__add-row" onClick={() => openNew("meal", search.trim())}>
+        <button type="button" className="tc-menu__add-row" onClick={() => openNew(search.trim())}>
           <i className="fa-solid fa-plus" aria-hidden="true" />
           Add &ldquo;{search.trim()}&rdquo; to the menu
         </button>
@@ -512,7 +451,7 @@ export function TransChapMenuForm() {
         <p className="tc-menu__empty">Loading menu…</p>
       ) : menuItems.length === 0 ? (
         <p className="tc-menu__empty">
-          Your menu is empty. Tap + to add the first dish you serve.
+          Your menu is empty. Tap + to add the first meal you serve.
         </p>
       ) : (
         sections.map((section) => (
@@ -521,8 +460,6 @@ export function TransChapMenuForm() {
             <ul className="tc-menu__cards">
               {section.rows.map((item) => {
                 const itemGroups = liveGroups(item);
-                const combo = isMenuComboItem(item);
-                const parts = item.product?.combo_components ?? [];
                 const cost = plateCost(item);
                 return (
                   <li key={item.id}>
@@ -536,24 +473,14 @@ export function TransChapMenuForm() {
                         <span className="tc-menu__card-head">
                           <strong>
                             {inventoryProductName(item)}
-                            {combo ? <em className="tc-menu__meal-badge">Meal</em> : null}
                           </strong>
                           <span className="tc-menu__card-price">
                             {item.selling_price != null
-                              ? `${combo && itemGroups.length ? "from " : ""}${formatKsh(item.selling_price)}`
+                              ? `${itemGroups.length ? "from " : ""}${formatKsh(item.selling_price)}`
                               : "—"}
                           </span>
                         </span>
-                        {combo ? (
-                          <span className="tc-menu__card-hint">
-                            {[
-                              ...parts.map((part) =>
-                                part.quantity > 1 ? `${part.quantity}× ${part.name}` : part.name || "Item",
-                              ),
-                              ...itemGroups.map((group) => group.name),
-                            ].join(" + ") || "No dishes yet"}
-                          </span>
-                        ) : itemGroups.length ? (
+                        {itemGroups.length ? (
                           <span className="tc-menu__card-addons">
                             {itemGroups.map((group) => (
                               <span key={group.id} className="tc-menu__addon-tag">
@@ -563,7 +490,7 @@ export function TransChapMenuForm() {
                             ))}
                           </span>
                         ) : (
-                          <span className="tc-menu__card-hint">No options</span>
+                          <span className="tc-menu__card-hint">No modifiers</span>
                         )}
                         {cost ? (
                           <span className="tc-menu__card-cost">
@@ -590,9 +517,8 @@ export function TransChapMenuForm() {
         <TransChapFab
           label="Add to menu"
           options={[
-            { label: "Add dish", icon: "fa-utensils", onClick: () => openNew("meal", exactMatch ? "" : search.trim()) },
-            { label: "Add meal", icon: "fa-burger", onClick: () => openNew("combo") },
-            { label: "Option groups", icon: "fa-list-check", onClick: () => setShowGroups(true) },
+            { label: "Add meal", icon: "fa-burger", onClick: () => openNew(exactMatch ? "" : search.trim()) },
+            { label: "Modifiers", icon: "fa-list-check", onClick: () => setShowGroups(true) },
           ]}
         />
       )}
@@ -624,7 +550,7 @@ export function TransChapMenuForm() {
             <header className="pos-menu-modal__header">
               <div className="pos-menu-modal__title-row">
                 <h2 id="menu-editor-title" className="pos-menu-modal__title">
-                  {editor.item ? (isCombo ? "Edit meal" : "Edit dish") : isCombo ? "New meal" : "New dish"}
+                  {editor.item ? "Edit meal" : "New meal"}
                 </h2>
                 <button
                   type="button"
@@ -647,7 +573,7 @@ export function TransChapMenuForm() {
                     type="text"
                     required
                     autoComplete="off"
-                    placeholder={isCombo ? "e.g. Big Mac Meal" : "e.g. Beef stew"}
+                    placeholder="e.g. Beef stew meal"
                     value={editor.name}
                     onChange={(e) => patchEditor({ name: e.target.value })}
                     className="pos-menu-modal__text-input"
@@ -656,7 +582,7 @@ export function TransChapMenuForm() {
               </div>
 
               <div className="pos-menu-modal__field">
-                <label htmlFor="menu-editor-price">{isCombo ? "Meal price" : "Price"}</label>
+                <label htmlFor="menu-editor-price">Price</label>
                 <div className="pos-menu-modal__price-wrap">
                   <span className="pos-menu-modal__price-prefix">KES</span>
                   <input
@@ -697,24 +623,17 @@ export function TransChapMenuForm() {
                 </div>
               </div>
 
-              {isCombo ? (
-                <ComboIncludesField
-                  dishes={dishes}
-                  parts={editor.parts}
-                  onChange={(parts) => patchEditor({ parts })}
-                />
-              ) : (
-                <RecipeField
-                  supplies={supplies}
-                  rows={editor.recipe}
-                  price={editorPrice}
-                  onChange={(recipe) => patchEditor({ recipe })}
-                />
-              )}
+              <RecipeField
+                label="Always in this meal"
+                supplies={supplies}
+                rows={editor.recipe}
+                price={editorPrice}
+                onChange={(recipe) => patchEditor({ recipe })}
+              />
 
               <MenuOptionsField
-                label={isCombo ? "Choices" : "Options"}
-                hint={isCombo ? "e.g. Size, Choose side, Choose drink" : "e.g. Burger changes, Add-ons"}
+                label="Modifiers"
+                hint="What the customer chooses, e.g. Starch, Drink, Extras"
                 groups={groups}
                 attachedIds={editor.groupIds}
                 onChange={(groupIds) => patchEditor({ groupIds })}
@@ -738,9 +657,7 @@ export function TransChapMenuForm() {
                     ? "Saving…"
                     : editor.item
                       ? "Save changes"
-                      : isCombo
-                        ? "Add meal"
-                        : "Add dish"}
+                      : "Add meal"}
                 </button>
               </footer>
             </form>

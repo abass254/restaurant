@@ -19,11 +19,13 @@ export function recipeDraftLines(rows: RecipeDraft[]): { productId: string; quan
 
 /** "Made from" block: supplies one portion uses, with cost per plate and margin. */
 export function RecipeField({
+  label = "Made from",
   supplies,
   rows,
   price,
   onChange,
 }: {
+  label?: string;
   supplies: InventoryItem[];
   rows: RecipeDraft[];
   /** Selling price of the dish, for the margin. */
@@ -42,7 +44,7 @@ export function RecipeField({
   return (
     <div className="pos-menu-modal__field">
       <div className="pos-menu-modal__label-row">
-        <label>Made from</label>
+        <label>{label}</label>
         <span className="pos-menu-modal__label-hint">Per portion · deducted when sold</span>
       </div>
       {rows.length ? (
@@ -116,7 +118,7 @@ export function RecipeField({
         ) : null}
       </div>
       {!supplies.length ? (
-        <p className="tc-group__intro">Record supplies under Purchases first, then list what this dish uses.</p>
+        <p className="tc-group__intro">Record supplies under Purchases first, then list what this meal uses.</p>
       ) : null}
     </div>
   );

@@ -65,7 +65,7 @@ export function TransChapHome() {
               ) : null}
               {canInventory ? (
                 <Link
-                  href="/trans-chap/purchases/issue?new=1"
+                  href="/trans-chap/purchases/issue?new=1&from=store"
                   className="trans-chap-btn trans-chap-btn--primary"
                 >
                   <i className="fa-solid fa-dolly" aria-hidden />
@@ -107,7 +107,7 @@ export function TransChapHome() {
                   <i className="fa-solid fa-cash-register" aria-hidden />
                   <span>Open POS</span>
                 </Link>
-              ) : null},
+              ) : null}
               {canInventory ? (
                 <Link href="/trans-chap/purchases/new" className="trans-chap-btn trans-chap-btn--ghost">
                   <i className="fa-solid fa-cart-flatbed" aria-hidden />

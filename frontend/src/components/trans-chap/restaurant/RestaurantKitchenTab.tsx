@@ -24,6 +24,7 @@ import {
   type SupplyItem,
 } from "@/lib/restaurant-supplies";
 import { isHotelMenuItem, updateInventoryActive } from "@/lib/trans-chap-product";
+import { RestaurantKitchenModifiers } from "@/components/trans-chap/restaurant/RestaurantKitchenModifiers";
 import type { InventoryItem } from "@/lib/types";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 
@@ -233,13 +234,13 @@ function KitchenBoard({
 
   async function closeDay() {
     if (openCount) {
-      router.push(`/trans-chap/purchases/count?id=${encodeURIComponent(openCount.id)}`);
+      router.push(`/trans-chap/purchases/count?id=${encodeURIComponent(openCount.id)}&from=kitchen`);
       return;
     }
     setBusy(true);
     try {
       const take = await startStockTake("kitchen");
-      router.push(`/trans-chap/purchases/count?id=${encodeURIComponent(take.id)}`);
+      router.push(`/trans-chap/purchases/count?id=${encodeURIComponent(take.id)}&from=kitchen`);
     } catch (err) {
       await showError("Could not start ending the kitchen session", extractErrorMessage(err));
       setBusy(false);
@@ -257,26 +258,36 @@ function KitchenBoard({
           </div>
           <h1 className="tc-kitchen-header__title">Kitchen Operations</h1>
           <p className="tc-kitchen-header__subtitle">
-            Manage inventory items in the kitchen and live menu dish availability.
+            Manage inventory items in the kitchen and live meal availability.
           </p>
         </div>
 
         <div className="tc-kitchen-header__actions">
           <Link
-            className="tc-kitchen-btn tc-kitchen-btn--primary"
-            href="/trans-chap/purchases/issue?new=1"
+            className="tc-kitchen-action tc-kitchen-action--primary"
+            href="/trans-chap/purchases/issue?new=1&from=kitchen"
           >
-            <i className="fa-solid fa-cart-flatbed" aria-hidden />
-            <span>Order items from the inventory</span>
+            <span className="tc-kitchen-action__icon" aria-hidden>
+              <i className="fa-solid fa-cart-flatbed" />
+            </span>
+            <span className="tc-kitchen-action__text">
+              <strong>Order from inventory</strong>
+              <small>Request supplies from the store</small>
+            </span>
           </Link>
           <button
             type="button"
-            className="tc-kitchen-btn tc-kitchen-btn--secondary"
+            className="tc-kitchen-action"
             disabled={busy}
             onClick={() => void closeDay()}
           >
-            <i className="fa-solid fa-calendar-check" aria-hidden />
-            <span>{openCount ? "Continue ending kitchen session" : "End kitchen session for the day"}</span>
+            <span className="tc-kitchen-action__icon" aria-hidden>
+              <i className="fa-solid fa-calendar-check" />
+            </span>
+            <span className="tc-kitchen-action__text">
+              <strong>{openCount ? "Continue ending session" : "End kitchen session"}</strong>
+              <small>{openCount ? "Finish the closing count" : "Count what is left for the day"}</small>
+            </span>
           </button>
         </div>
       </header>
@@ -420,7 +431,7 @@ function KitchenBoard({
               >
                 Order supplies from your inventory store to bring ingredients to the kitchen for meal preparation.
               </p>
-              <Link href="/trans-chap/purchases/issue?new=1" className="tc-kitchen-btn tc-kitchen-btn--primary">
+              <Link href="/trans-chap/purchases/issue?new=1&from=kitchen" className="tc-kitchen-btn tc-kitchen-btn--primary">
                 <i className="fa-solid fa-cart-flatbed" aria-hidden /> Order items from the inventory
               </Link>
             </div>
@@ -428,7 +439,7 @@ function KitchenBoard({
             <p className="rs-empty">No items match &quot;{inventoryQuery}&quot;.</p>
           ) : (
             <div className="rs-table-wrap">
-              <table className="rs-table">
+              <table className="rs-table tc-kitchen-table">
                 <thead>
                   <tr>
                     <th>Item from inventory</th>
@@ -460,9 +471,10 @@ function KitchenBoard({
                           className="rs-btn rs-btn--primary rs-btn--small"
                           onClick={() => setUsingItem(item)}
                           title={`Record ${item.name} used in kitchen`}
-                          style={{ minHeight: "34px", padding: "0 0.85rem", fontWeight: 750 }}
+                          style={{ minHeight: "34px", fontWeight: 750 }}
                         >
-                          <i className="fa-solid fa-utensils" aria-hidden /> Record Used
+                          <i className="fa-solid fa-utensils" aria-hidden />{" "}
+                          <span className="tc-kitchen-table__action-label">Record Used</span>
                         </button>
                       </td>
                     </tr>
@@ -482,6 +494,12 @@ function KitchenBoard({
             setDishes={setDishes}
             loading={dishesLoading}
           />
+        </section>
+      )}
+
+      {(activeView === "all" || activeView === "menu") && !dishesLoading && (
+        <section className="tc-kitchen-section" aria-label="Modifier options">
+          <RestaurantKitchenModifiers dishes={dishes} />
         </section>
       )}
 
@@ -640,10 +658,10 @@ function CurrentMenuSection({
         <p className="rs-empty">No dishes match &quot;{query}&quot;.</p>
       ) : (
         <div className="rs-table-wrap">
-          <table className="rs-table">
+          <table className="rs-table tc-kitchen-table">
             <thead>
               <tr>
-                <th>Menu Dish</th>
+                <th>Meal</th>
                 <th className="rs-num">Price</th>
                 <th className="rs-num">Status &amp; Availability</th>
               </tr>
@@ -850,6 +868,7 @@ function KitchenUsedModal({
               style={{ width: "100%", padding: "0.5rem 0.75rem" }}
               placeholder={reason === "wastage" ? "e.g. Spilled / burned batch" : "e.g. Lunch batch prep"}
               value={note}
+              maxLength={500}
               onChange={(e) => setNote(e.target.value)}
             />
           </div>

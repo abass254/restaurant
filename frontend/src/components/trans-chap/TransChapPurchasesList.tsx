@@ -19,6 +19,7 @@ import { summarizeFailures, useTransChapListView } from "@/lib/trans-chap-list-v
 import { purchaseDraftSummary } from "@/lib/trans-chap-purchase-draft";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import { inventoryRoleLabel } from "@/lib/trans-chap-product";
+import { readPageCache, writePageCache } from "@/lib/api";
 import type { InventoryRole } from "@/lib/types";
 import {
   fetchTransChapPurchases,
@@ -119,6 +120,10 @@ export function groupPurchasesIntoBatches(purchases: TransChapPurchase[]): Purch
   return batches;
 }
 
+const PURCHASES_CACHE_KEY = "trans-chap:purchases";
+
+type PurchasesSnapshot = { purchases: TransChapPurchase[]; truncated: boolean };
+
 export function TransChapPurchasesList() {
   const user = useAuthUser();
   const restaurant = isRestaurantStore(user.active_account ?? user.account);
@@ -128,7 +133,8 @@ export function TransChapPurchasesList() {
   const listId = useId();
   const [view, setView] = useTransChapListView("trans-chap-purchases-view");
   const [groupMode, setGroupMode] = useState<"batches" | "items">("batches");
-  const [purchases, setPurchases] = useState<TransChapPurchase[]>([]);
+  const [cached] = useState(() => readPageCache<PurchasesSnapshot>(PURCHASES_CACHE_KEY));
+  const [purchases, setPurchases] = useState<TransChapPurchase[]>(cached?.purchases ?? []);
   const [query, setQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [when, setWhen] = useState<WhenFilter>("all");
@@ -141,9 +147,9 @@ export function TransChapPurchasesList() {
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [bulkVoiding, setBulkVoiding] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
-  const [truncated, setTruncated] = useState(false);
+  const [truncated, setTruncated] = useState(cached?.truncated ?? false);
   const [draftSummary, setDraftSummary] = useState<{
     itemCount: number;
     lineCount: number;
@@ -151,12 +157,18 @@ export function TransChapPurchasesList() {
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
+    if (!readPageCache(PURCHASES_CACHE_KEY)) setLoading(true);
     void fetchTransChapPurchases({ accountId }).then((result) => {
       if (!alive) return;
       setPurchases(result.purchases);
       setError(result.error);
       setTruncated(result.truncated);
+      if (!result.error) {
+        writePageCache(PURCHASES_CACHE_KEY, {
+          purchases: result.purchases,
+          truncated: result.truncated,
+        } satisfies PurchasesSnapshot);
+      }
       setLoading(false);
     });
     return () => {
@@ -451,45 +463,6 @@ export function TransChapPurchasesList() {
             ? `You have a purchase draft (${draftSummary.itemCount} qty).`
             : `You have a purchase draft (${draftSummary.lineCount} items · ${draftSummary.itemCount} qty).`}
         </TransChapStatus>
-      ) : null}
-      {restaurant ? (
-        <div
-          className="rs-row rs-row--between"
-          style={{
-            marginBottom: "0.6rem",
-            padding: "0.5rem 0.75rem",
-            background: "var(--app-surface)",
-            borderRadius: 14,
-            border: "1px solid var(--app-border-light)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <span style={{ fontSize: "0.84rem", fontWeight: 750, color: "var(--app-text)" }}>
-              <i
-                className="fa-solid fa-boxes-stacked"
-                style={{ color: "var(--app-primary)", marginRight: 6 }}
-                aria-hidden
-              />
-              Store Inventory
-            </span>
-          </div>
-          <div style={{ display: "flex", gap: "0.45rem" }}>
-            <Link
-              href="/trans-chap/purchases/issue?new=1"
-              className="rs-btn rs-btn--primary"
-              style={{ fontSize: "0.75rem", padding: "0.28rem 0.75rem", fontWeight: 700 }}
-            >
-              <i className="fa-solid fa-dolly" aria-hidden /> Release to Kitchen
-            </Link>
-            <Link
-              href="/trans-chap/stocks"
-              className="rs-btn"
-              style={{ fontSize: "0.75rem", padding: "0.28rem 0.75rem" }}
-            >
-              View Inventory
-            </Link>
-          </div>
-        </div>
       ) : null}
       <div className="trans-chap-sales__filters">
         <div className="trans-chap-sales__search-row">
@@ -1119,7 +1092,7 @@ export function TransChapPurchasesList() {
         </div>
       ) : (
         <TransChapFab
-          label={restaurant ? "Buy supplies" : "New purchase"}
+          label={restaurant ? "Order for supplies" : "New purchase"}
           href="/trans-chap/purchases/new"
         />
       )}

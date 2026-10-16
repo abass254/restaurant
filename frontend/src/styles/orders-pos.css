@@ -405,6 +405,19 @@ html[data-theme="dark"] .fb-app .pos-card.is-in-cart {
   opacity: 0.55;
 }
 
+.fb-app .pos-card.is-paused {
+  filter: grayscale(1);
+}
+
+.fb-app .pos-card.is-paused .pos-card__hit {
+  cursor: not-allowed;
+}
+
+.fb-app .pos-card__stock.is-paused {
+  color: var(--text-muted, #6b7280);
+  font-weight: 600;
+}
+
 .fb-app .pos-card__hit {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -3530,6 +3543,15 @@ html[data-theme="dark"] .pos-modifier-summary__total {
 .pos-modifier-chip:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.pos-modifier-chip.is-unavailable .pos-modifier-chip__label {
+  text-decoration: line-through;
+}
+
+.pos-modifier-chip.is-unavailable .pos-modifier-chip__price {
+  color: #b45309;
+  font-weight: 700;
 }
 
 /* === Cart lines with modifiers === */

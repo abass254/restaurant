@@ -55,7 +55,9 @@ import {
   isHotelMenuItem,
   isSaleableRole,
   itemModifierGroups,
-  sellingPricesByProduct,
+  fetchOptionAvailability,
+  mealBlockedBy,
+  type OptionAvailabilityMap,
 } from "@/lib/trans-chap-product";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
 import { useOptionalAuthUser } from "@/components/app/AuthProvider";
@@ -600,13 +602,23 @@ export function PosWorkspace({
     return map;
   }, [heldSessions]);
 
+  const [optionAvailability, setOptionAvailability] = useState<OptionAvailabilityMap | null>(null);
+
   const reload = useCallback(async (opts?: { silent?: boolean; q?: string }) => {
     const requestId = ++inventoryRequestId.current;
+    if (isRestaurant) {
+      fetchOptionAvailability()
+        .then(setOptionAvailability)
+        .catch(() => {
+          /* the server still rejects sold-out picks */
+        });
+    }
     const silent = opts?.silent ?? false;
     if (!silent) setLoading(true);
     else setSearching(true);
     try {
-      const params = new URLSearchParams({ active: "true" });
+      // Restaurants list paused dishes too, shown greyed out so staff can see what is off today.
+      const params = new URLSearchParams(isRestaurant ? {} : { active: "true" });
       const term = (opts?.q ?? "").trim();
       if (term) params.set("q", term);
       const data = await apiFetch<InventoryResponse>(
@@ -629,7 +641,7 @@ export function PosWorkspace({
       if (!silent) setLoading(false);
       setSearching(false);
     }
-  }, []);
+  }, [isRestaurant]);
 
   useEffect(() => {
     const term = search.trim();
@@ -751,6 +763,13 @@ export function PosWorkspace({
 
   const addToCart = useCallback((item: InventoryItem, qty = quickAddQty) => {
     const addAmount = Math.max(1, Math.floor(qty || 1));
+    if (!item.is_active) {
+      void showError(
+        "Paused",
+        `"${item.product?.name ?? "This item"}" is paused. Turn it on in the Kitchen or Menu before selling it.`,
+      );
+      return;
+    }
     if (!isSaleableRole(inventoryRole(item))) {
       void showError(
         "Raw material",
@@ -933,32 +952,35 @@ export function PosWorkspace({
   }, [addToCart, catalogById, clearScannerBuffer, items]);
 
   const itemsById = catalogById;
-  const sellingPrices = useMemo(() => sellingPricesByProduct(catalogById.values()), [catalogById]);
+
+  const inCatalog = useCallback(
+    (item: InventoryItem) =>
+      isRestaurant
+        ? isHotelMenuItem(item)
+        : item.is_active && isSaleableRole(inventoryRole(item)),
+    [isRestaurant],
+  );
+
+  const catalogItems = useMemo(() => items.filter(inCatalog), [items, inCatalog]);
 
   const availableCategories = useMemo(() => {
     const set = new Set<string>();
-    for (const item of items) {
-      if (!item.is_active || !isSaleableRole(inventoryRole(item))) continue;
+    for (const item of catalogItems) {
       const cat = item.product?.category?.trim();
       if (cat) set.add(cat);
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [items]);
+  }, [catalogItems]);
 
   const filteredItems = useMemo(() => {
-    return items.filter((item) => {
-      if (!item.is_active) return false;
-      if (!isSaleableRole(inventoryRole(item))) return false;
-      if (
-        selectedCategory !== "all" &&
-        (item.product?.category || "").trim().toLowerCase() !==
-        selectedCategory.toLowerCase()
-      ) {
-        return false;
-      }
-      return true;
-    });
-  }, [items, selectedCategory]);
+    return catalogItems
+      .filter(
+        (item) =>
+          selectedCategory === "all" ||
+          (item.product?.category || "").trim().toLowerCase() === selectedCategory.toLowerCase(),
+      )
+      .sort((a, b) => Number(b.is_active) - Number(a.is_active));
+  }, [catalogItems, selectedCategory]);
 
   const POS_PAGE_SIZE = 24;
   const [posVisibleCount, setPosVisibleCount] = useState(POS_PAGE_SIZE);
@@ -1482,7 +1504,8 @@ export function PosWorkspace({
     () => cart.reduce((sum, c) => sum + c.unit_price * c.quantity, 0),
     [cart],
   );
-  const deliveryFeeNum = Number(deliveryFee) || 0;
+  const deliveryFeeNum =
+    fulfillment === "delivery" && (!isTransChapSale || isRestaurant) ? Number(deliveryFee) || 0 : 0;
   const discountNum = Number(discount) || 0;
   const baseTotal = Math.max(0, subtotal + deliveryFeeNum - discountNum);
   const taxAmount = includeTax ? roundMoney(baseTotal * 0.16) : 0;
@@ -2378,14 +2401,11 @@ export function PosWorkspace({
                   onClick={() => setSelectedCategory("all")}
                 >
                   <i className="fa-solid fa-layer-group" aria-hidden="true" />
-                  <span>All ({items.filter((i) => i.is_active && isSaleableRole(inventoryRole(i))).length})</span>
+                  <span>All ({catalogItems.length})</span>
                 </button>
                 {availableCategories.map((cat) => {
-                  const count = items.filter(
-                    (i) =>
-                      i.is_active &&
-                      isSaleableRole(inventoryRole(i)) &&
-                      (i.product?.category || "").trim().toLowerCase() === cat.toLowerCase(),
+                  const count = catalogItems.filter(
+                    (i) => (i.product?.category || "").trim().toLowerCase() === cat.toLowerCase(),
                   ).length;
                   return (
                     <button
@@ -2423,13 +2443,17 @@ export function PosWorkspace({
                 >
                   <i className="fa-solid fa-boxes-stacked" aria-hidden="true" />
                   <h3>
-                    {items.length === 0 && !search.trim()
-                      ? "Inventory is empty"
+                    {catalogItems.length === 0 && !search.trim()
+                      ? isRestaurant
+                        ? "No menu dishes yet"
+                        : "Inventory is empty"
                       : "No items match your filters"}
                   </h3>
                   <p>
-                    {items.length === 0 && !search.trim()
-                      ? "Add products in Inventory and they'll appear here for one-tap selling."
+                    {catalogItems.length === 0 && !search.trim()
+                      ? isRestaurant
+                        ? "Add dishes in the Menu and they'll appear here for one-tap selling."
+                        : "Add products in Inventory and they'll appear here for one-tap selling."
                       : "Try a different search."}
                   </p>
                 </motion.div>
@@ -2465,7 +2489,6 @@ export function PosWorkspace({
                     const isPulsing = pulseId === item.id;
                     const isHotelDish = isHotelMenuItem(item);
                     const hasOptions = isHotelDish && itemModifierGroups(item).length > 0;
-                    const isMeal = item.product?.product_type === "combo";
                     const subtitleParts = [
                       item.product?.category ? formatCategoryLabel(item.product.category) : null,
                       item.product?.brand,
@@ -2473,8 +2496,10 @@ export function PosWorkspace({
                     const subtitle = subtitleParts.join(" · ");
                     const hasPrice = item.selling_price !== null;
                     const outOfStock = isOutOfStock(item);
+                    const paused = !item.is_active;
+                    const blockedBy = isHotelDish && !paused ? mealBlockedBy(item, optionAvailability) : null;
                     const canAdd =
-                      (hasPrice || canEditPrice) && !outOfStock;
+                      (hasPrice || canEditPrice) && !outOfStock && !paused && !blockedBy;
                     const stockCap = maxCartQty(item);
                     const effectiveCap =
                       stockCap === null ? null : Math.max(0, stockCap - heldQty);
@@ -2507,7 +2532,7 @@ export function PosWorkspace({
                           duration: motionDuration.base,
                           ease: easeOutExpressive,
                         }}
-                        className={`pos-card${inCartQty > 0 ? " is-in-cart" : ""}${!canAdd ? " is-disabled" : ""}`}
+                        className={`pos-card${inCartQty > 0 ? " is-in-cart" : ""}${!canAdd ? " is-disabled" : ""}${paused ? " is-paused" : ""}`}
                       >
                         <div className="pos-card__hit">
                           <button
@@ -2546,8 +2571,7 @@ export function PosWorkspace({
                             <div className="pos-card__info">
                               {isHotelDish ? (
                                 <span className="pos-card__dish-tag">
-                                  <i className={`fa-solid ${isMeal ? "fa-burger" : "fa-bowl-food"}`} aria-hidden="true" />{" "}
-                                  {isMeal ? "Meal" : "Dish"}
+                                  <i className="fa-solid fa-burger" aria-hidden="true" /> Meal
                                   {typeof (item.attributes as Record<string, unknown> | null)?.prep_time_minutes === "number" ? (
                                     <> &middot; ⏱️ {String((item.attributes as Record<string, unknown>).prep_time_minutes)}m</>
                                   ) : null}
@@ -2583,7 +2607,13 @@ export function PosWorkspace({
                                   </span>
                                 )}
                               </span>
-                              {isServiceItem(item) ? (
+                              {paused ? (
+                                <span className="pos-card__stock is-paused">
+                                  <i className="fa-solid fa-pause" aria-hidden="true" /> Paused
+                                </span>
+                              ) : blockedBy ? (
+                                <span className="pos-card__stock is-out">No {blockedBy.name} left</span>
+                              ) : isServiceItem(item) ? (
                                 <span className="pos-card__stock">Service</span>
                               ) : isHotelDish && item.stock_quantity == null ? (
                                 <span className="pos-card__stock is-fresh">
@@ -2735,8 +2765,9 @@ export function PosWorkspace({
                       const atStockCap =
                         effectiveLineCap !== null &&
                         line.quantity >= effectiveLineCap;
+                      const optionPriced = line.optionIds != null;
                       const showLinePriceEdit =
-                        canEditPrice && !isTransChapSale;
+                        canEditPrice && !isTransChapSale && !optionPriced;
                       return (
                         <motion.li
                           key={lineKey}
@@ -2825,7 +2856,13 @@ export function PosWorkspace({
                               </button>
                             ) : null}
                             {!showLinePriceEdit && !isTransChapSale ? (
-                              <span>{formatMoney(line.unit_price)} ea</span>
+                              <span>
+                                {formatMoney(line.unit_price)} ea
+                                {optionPriced && canEditPrice ? " · Set by options" : ""}
+                              </span>
+                            ) : null}
+                            {isTransChapSale && optionPriced ? (
+                              <div className="pos-cart__mod-note">Price set by options</div>
                             ) : null}
                             {stockItem &&
                               !isServiceItem(stockItem) &&
@@ -2960,7 +2997,16 @@ export function PosWorkspace({
                             </div>
                           </div>
                           <div className="pos-line__total">
-                            {isTransChapSale ? (
+                            {isTransChapSale && optionPriced ? (
+                              <input
+                                type="text"
+                                className="pos-line__bulk-price"
+                                value={Number.isFinite(line.unit_price) ? String(line.unit_price) : ""}
+                                readOnly
+                                aria-label={`Price for ${line.name}, set by options`}
+                                title="Set by options"
+                              />
+                            ) : isTransChapSale ? (
                               <input
                                 type="text"
                                 inputMode="decimal"
@@ -3763,7 +3809,7 @@ export function PosWorkspace({
           initialModifiers={modifyingItem.initialModifiers}
           initialNotes={modifyingItem.initialNotes}
           currency="KES"
-          prices={sellingPrices}
+          availability={optionAvailability}
           onConfirm={handleConfirmModifiers}
         />
       ) : null}

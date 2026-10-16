@@ -24,7 +24,7 @@ import {
 } from "@/components/trans-chap/TransChapPurchaseFields";
 import { TransChapSupplierField } from "@/components/trans-chap/TransChapSupplierField";
 import { confirmAction, extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiFetchCached } from "@/lib/api";
 import { findInventoryByBarcode } from "@/lib/barcode";
 import { apiRoutes, resolveAssetUrl } from "@/lib/config";
 import {
@@ -430,7 +430,7 @@ export function TransChapPurchaseForm() {
 
   useEffect(() => {
     let cancelled = false;
-    void apiFetch<SettingsResponse>(apiRoutes.settings)
+    void apiFetchCached<SettingsResponse>(apiRoutes.settings)
       .then((data) => {
         if (!cancelled) {
           setAdjustSellingPrice(data.adjust_selling_price_on_purchase ?? true);

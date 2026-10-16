@@ -18,6 +18,41 @@ let csrfReady = false;
 /** Call after login/logout so the next mutation fetches a fresh CSRF cookie. */
 export function resetCsrfCookie(): void {
   csrfReady = false;
+  clearPageCache();
+}
+
+/**
+ * In-memory snapshots of page data so revisiting a page renders the last result
+ * instantly while it refreshes. Any mutation through {@link apiFetch} clears it,
+ * so a snapshot never outlives a write (including merchant switches).
+ */
+const pageCache = new Map<string, unknown>();
+const cachedGets = new Map<string, Promise<unknown>>();
+
+export function readPageCache<T>(key: string): T | undefined {
+  return pageCache.get(key) as T | undefined;
+}
+
+export function writePageCache(key: string, value: unknown): void {
+  pageCache.set(key, value);
+}
+
+export function clearPageCache(): void {
+  pageCache.clear();
+  cachedGets.clear();
+}
+
+/** GET shared by every caller until the next mutation (e.g. merchant settings). */
+export function apiFetchCached<T>(url: string): Promise<T> {
+  let promise = cachedGets.get(url) as Promise<T> | undefined;
+  if (!promise) {
+    promise = apiFetch<T>(url);
+    cachedGets.set(url, promise);
+    promise.catch(() => {
+      if (cachedGets.get(url) === promise) cachedGets.delete(url);
+    });
+  }
+  return promise;
 }
 
 function parseApiErrorMessage(payload: unknown, status: number, fallback?: string): string {
@@ -197,6 +232,10 @@ export function apiFetch<T>(
   init: RequestInit = {},
 ): Promise<T> {
   const p = apiFetchInternal<T>(url, init);
+  const method = (init.method ?? "GET").toUpperCase();
+  if (method !== "GET" && method !== "HEAD") {
+    p.then(clearPageCache, clearPageCache);
+  }
   if (typeof window !== "undefined" && isNavigationLoading()) {
     trackNavigationPromise(p);
   }

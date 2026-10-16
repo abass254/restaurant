@@ -26,7 +26,11 @@ function movementLink(row: StockMovementRow) {
   }
   if (row.stock_take_id) {
     return (
-      <Link href={`/trans-chap/purchases/count?id=${encodeURIComponent(row.stock_take_id)}`}>Stock count</Link>
+      <Link
+        href={`/trans-chap/purchases/count?id=${encodeURIComponent(row.stock_take_id)}${row.location === "kitchen" ? "&from=kitchen" : ""}`}
+      >
+        Stock count
+      </Link>
     );
   }
   if (row.kitchen_issue_id) {
@@ -109,7 +113,7 @@ export function RestaurantStockCard() {
         </div>
       </div>
       <div className="rs-row">
-        <Link className="rs-btn rs-btn--primary" href={`/trans-chap/purchases/new?items=${encodeURIComponent(item.id)}`}>
+        <Link className="rs-btn rs-btn--primary" href={`/trans-chap/purchases/po/new?items=${encodeURIComponent(item.id)}`}>
           Buy more
         </Link>
         {split ? (

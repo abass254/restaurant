@@ -7,7 +7,7 @@ import { TransChapSalesChart } from "@/components/trans-chap/TransChapSalesChart
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { TransChapStoreProfile } from "@/components/trans-chap/TransChapStoreProfile";
 import { TransChapTodaySkeleton } from "@/components/trans-chap/TransChapSkeleton";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiFetchCached } from "@/lib/api";
 import { internalErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { nairobiDateKey, parseIso } from "@/lib/nairobi-time";
@@ -77,7 +77,7 @@ export function TransChapReports() {
         fetchWalkinOrders(),
         apiFetch<InventoryResponse>(apiRoutes.inventory),
         fetchTransChapPurchases({ accountId }),
-        apiFetch<{
+        apiFetchCached<{
           opening_amount?: number | string | null;
           opening_stock?: number | string | null;
           opening_investment?: number | string | null;

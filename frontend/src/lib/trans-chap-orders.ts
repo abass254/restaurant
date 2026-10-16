@@ -7,33 +7,24 @@ import {
 } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { orderHasSuccessfulMpesa, orderUsesPayment } from "@/lib/orders";
+import { fetchAllPages, timeWindowQuery, type TimeWindow } from "@/lib/paged-fetch";
 import type { Order, OrderMutationResponse, OrdersListResponse } from "@/lib/types";
 
 const MAX_PAGES = 20;
 
-export async function fetchWalkinOrders(options?: {
-  maxPages?: number;
-}): Promise<{ orders: Order[]; error: string | null; truncated: boolean }> {
-  const maxPages = options?.maxPages ?? MAX_PAGES;
-  const orders: Order[] = [];
-  try {
-    for (let page = 1; page <= maxPages; page += 1) {
-      const data = await apiFetch<OrdersListResponse>(
-        `${apiRoutes.orders}?source=walkin&per_page=100&page=${page}`,
-      );
-      orders.push(...data.data);
-      if (page >= data.meta.last_page) {
-        return { orders, error: null, truncated: false };
-      }
-    }
-    return { orders, error: null, truncated: true };
-  } catch {
-    return {
-      orders,
-      error: internalErrorMessage(),
-      truncated: false,
-    };
-  }
+export async function fetchWalkinOrders(
+  options?: { maxPages?: number } & TimeWindow,
+): Promise<{ orders: Order[]; error: string | null; truncated: boolean }> {
+  const window = timeWindowQuery(options);
+  const result = await fetchAllPages<OrdersListResponse["data"][number]>(
+    (page) => `${apiRoutes.orders}?source=walkin&per_page=100&page=${page}${window}`,
+    options?.maxPages ?? MAX_PAGES,
+  );
+  return {
+    orders: result.rows,
+    error: result.failed ? internalErrorMessage() : null,
+    truncated: result.truncated,
+  };
 }
 
 export function isCountedWalkinSale(order: Order): boolean {

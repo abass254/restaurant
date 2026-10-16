@@ -34,7 +34,11 @@ export type TransChapReceipt = {
   productName: string;
   items: TransChapReceiptLine[];
   amount: number;
+  subtotal?: number | null;
+  deliveryFee?: number | null;
+  discount?: number | null;
   tax?: number | null;
+  tableNumber?: string | null;
   currency: string;
   payMode: TransChapPayMode;
   paymentStatus: TransChapPaymentStatus;
@@ -77,6 +81,10 @@ function payModeFromOrder(order: Order): TransChapPayMode {
   if (orderUsesPayment(order, "mpesa")) return "mpesa";
   if (orderUsesPayment(order, "credit")) return "credit";
   return "cash";
+}
+
+function optionalAmount(value: unknown): number | null {
+  return value != null && Number.isFinite(Number(value)) ? Number(value) : null;
 }
 
 function parsePaymentSplits(value: unknown): OrderPaymentSplit[] | null {
@@ -165,6 +173,11 @@ export function loadTransChapReceipt(): TransChapReceipt | null {
       productName,
       items,
       amount,
+      subtotal: optionalAmount(parsed.subtotal),
+      deliveryFee: optionalAmount(parsed.deliveryFee),
+      discount: optionalAmount(parsed.discount),
+      tax: optionalAmount(parsed.tax),
+      tableNumber: typeof parsed.tableNumber === "string" ? parsed.tableNumber : null,
       currency: parsed.currency || "KES",
       payMode,
       paymentStatus: normalizePaymentStatus(payMode, parsed.paymentStatus),
@@ -273,7 +286,11 @@ export function receiptFromOrder(
       ? items
       : [{ name: productName, quantity: 1, unitPrice: order.total, lineTotal: order.total }],
     amount: order.total,
+    subtotal: order.subtotal ?? null,
+    deliveryFee: order.delivery_fee ?? null,
+    discount: order.discount ?? null,
     tax: order.tax ?? null,
+    tableNumber: order.table_number?.trim() || null,
     currency: order.currency || "KES",
     payMode,
     paymentStatus: paymentStatusFromOrder(order, push),

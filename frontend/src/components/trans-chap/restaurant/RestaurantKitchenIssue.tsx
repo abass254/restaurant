@@ -12,6 +12,7 @@ import {
   fetchKitchenIssue,
   fetchKitchenSuggestion,
   formatQty,
+  isKitchenIssuableRole,
   releaseKitchenIssue,
   roundQty,
   type KitchenIssue,
@@ -44,7 +45,16 @@ function NewIssue() {
   const [notes, setNotes] = useState("");
 
   const params = useSearchParams();
-  const preselected = params.get("item");
+  const preselected = [params.get("items"), params.get("item")]
+    .filter(Boolean)
+    .join(",");
+  const from = params.get("from");
+  const canRequest = from !== "store";
+  const canIssueNow = from !== "kitchen";
+  const picks = useMemo(
+    () => new Set(preselected.split(",").map((value) => value.trim()).filter(Boolean)),
+    [preselected],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -54,10 +64,12 @@ function NewIssue() {
         setRows(data);
         const filled: Record<string, string> = {};
         for (const row of data) {
-          if (row.suggested_qty > 0) filled[row.inventory_item_id] = String(row.suggested_qty);
-        }
-        if (preselected && !filled[preselected]) {
-          filled[preselected] = "1";
+          if (picks.size) {
+            if (!picks.has(row.inventory_item_id) && !picks.has(row.name)) continue;
+            filled[row.inventory_item_id] = String(row.suggested_qty > 0 ? row.suggested_qty : 1);
+          } else if (row.suggested_qty > 0) {
+            filled[row.inventory_item_id] = String(row.suggested_qty);
+          }
         }
         setQty(filled);
       })
@@ -70,20 +82,23 @@ function NewIssue() {
     return () => {
       alive = false;
     };
-  }, [preselected]);
+  }, [picks]);
 
   const needle = query.trim().toLowerCase();
-  const visible = useMemo(
-    () =>
-      [...rows]
-        .filter(
-          (row) =>
-            (!needle || row.name.toLowerCase().includes(needle)) &&
-            (row.inventory_role === "raw_material" || !row.inventory_role),
-        )
-        .sort((a, b) => b.daily_usage - a.daily_usage || a.name.localeCompare(b.name)),
-    [rows, needle],
-  );
+  const visible = useMemo(() => {
+    const picked = (row: KitchenSuggestion) =>
+      picks.has(row.inventory_item_id) || picks.has(row.name) ? 1 : 0;
+    return [...rows]
+      .filter(
+        (row) =>
+          (!needle || row.name.toLowerCase().includes(needle)) &&
+          isKitchenIssuableRole(row.inventory_role),
+      )
+      .sort(
+        (a, b) =>
+          picked(b) - picked(a) || b.daily_usage - a.daily_usage || a.name.localeCompare(b.name),
+      );
+  }, [rows, needle, picks]);
   const lines = rows
     .map((row) => ({ row, quantity: parseQty(qty[row.inventory_item_id] ?? "") ?? 0 }))
     .filter((line) => line.quantity > 0);
@@ -107,7 +122,9 @@ function NewIssue() {
         lines: lines.map((line) => ({ inventory_item_id: line.row.inventory_item_id, quantity: line.quantity })),
       });
       await toastSuccess(issueNow ? "Issued to the kitchen" : "Request sent to the store");
-      router.replace(`/trans-chap/purchases/issue?id=${encodeURIComponent(issue.id)}`);
+      router.replace(
+        `/trans-chap/purchases/issue?id=${encodeURIComponent(issue.id)}${from ? `&from=${encodeURIComponent(from)}` : ""}`,
+      );
     } catch (err) {
       await showError("Could not save the issue", extractErrorMessage(err));
       setSaving(false);
@@ -118,8 +135,20 @@ function NewIssue() {
 
   return (
     <div className="rs">
+      {from === "kitchen" ? (
+        <p className="rs-card__meta">
+          Enter what the kitchen needs and send the request. The store sees it under Inventory and issues what it hands
+          over.
+        </p>
+      ) : from === "store" ? (
+        <p className="rs-card__meta">
+          Enter what you are handing to the kitchen now. Stock moves from the store to the kitchen as soon as you tap
+          Issue now.
+        </p>
+      ) : null}
       <p className="rs-card__meta">
-        Only raw materials and ingredients for meal preparation are released to the kitchen. Buy &amp; sell items (drinks, snacks) are sold directly as they are at the counter.
+        Raw materials and items used in cooking are released to the kitchen. Items set as buy &amp; sell only (drinks,
+        snacks) are sold directly as they are at the counter.
       </p>
       <label className="trans-chap-sales__search">
         <i className="fa-solid fa-magnifying-glass" aria-hidden />
@@ -182,17 +211,26 @@ function NewIssue() {
           <strong className="rs-card__amount">{formatKsh(value)}</strong>
         </div>
         <div className="rs-row">
-          <button type="button" className="rs-btn" disabled={!lines.length || saving} onClick={() => void submit(false)}>
-            Send request
-          </button>
-          <button
-            type="button"
-            className="rs-btn rs-btn--primary"
-            disabled={!lines.length || saving}
-            onClick={() => void submit(true)}
-          >
-            {saving ? "Saving…" : "Issue now"}
-          </button>
+          {canRequest ? (
+            <button
+              type="button"
+              className={`rs-btn${canIssueNow ? "" : " rs-btn--primary"}`}
+              disabled={!lines.length || saving}
+              onClick={() => void submit(false)}
+            >
+              {saving && !canIssueNow ? "Sending…" : "Send request"}
+            </button>
+          ) : null}
+          {canIssueNow ? (
+            <button
+              type="button"
+              className="rs-btn rs-btn--primary"
+              disabled={!lines.length || saving}
+              onClick={() => void submit(true)}
+            >
+              {saving ? "Saving…" : "Issue now"}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

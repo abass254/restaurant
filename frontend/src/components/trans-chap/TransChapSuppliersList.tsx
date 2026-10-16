@@ -20,7 +20,7 @@ import { TransChapFab } from "@/components/trans-chap/TransChapFab";
 import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, readPageCache, writePageCache } from "@/lib/api";
 import {
   confirmAction,
   extractErrorMessage,
@@ -173,6 +173,8 @@ function formFromSupplier(supplier: ShopSupplier): SupplierForm {
   };
 }
 
+const SUPPLIERS_CACHE_KEY = "trans-chap:suppliers";
+
 export function TransChapSuppliersList() {
   const listId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -193,8 +195,12 @@ export function TransChapSuppliersList() {
     }
   }
 
-  const [suppliers, setSuppliers] = useState<ShopSupplier[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [suppliers, setSuppliers] = useState<ShopSupplier[]>(
+    () => readPageCache<ShopSupplier[]>(SUPPLIERS_CACHE_KEY) ?? [],
+  );
+  const [loading, setLoading] = useState(
+    () => readPageCache(SUPPLIERS_CACHE_KEY) === undefined,
+  );
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -218,10 +224,11 @@ export function TransChapSuppliersList() {
   const [importResult, setImportResult] = useState<SupplierImportResponse | null>(null);
 
   const reload = useCallback(async () => {
-    setLoading(true);
+    if (readPageCache(SUPPLIERS_CACHE_KEY) === undefined) setLoading(true);
     try {
       const rows = await fetchShopSuppliers();
       setSuppliers(rows);
+      writePageCache(SUPPLIERS_CACHE_KEY, rows);
       setError(null);
     } catch (err) {
       setError(extractErrorMessage(err, "Could not load suppliers."));

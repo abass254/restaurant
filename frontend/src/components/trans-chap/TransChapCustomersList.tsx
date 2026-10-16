@@ -21,7 +21,7 @@ import { TransChapFab } from "@/components/trans-chap/TransChapFab";
 import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, readPageCache, writePageCache } from "@/lib/api";
 import {
   confirmAction,
   extractErrorMessage,
@@ -92,6 +92,10 @@ function badgeFor(customer: ShopCustomer): { label: string; tone: "ok" | "credit
   return { label: "Cash only", tone: "wait" };
 }
 
+const CUSTOMERS_CACHE_KEY = "trans-chap:customers";
+
+type CustomersSnapshot = { customers: ShopCustomer[]; forceMpesaPrompt: boolean };
+
 export function TransChapCustomersList() {
   const user = useAuthUser();
   const shopName = user.active_account?.business_name || user.account?.business_name;
@@ -113,8 +117,9 @@ export function TransChapCustomersList() {
     }
   }
 
-  const [customers, setCustomers] = useState<ShopCustomer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [cached] = useState(() => readPageCache<CustomersSnapshot>(CUSTOMERS_CACHE_KEY));
+  const [customers, setCustomers] = useState<ShopCustomer[]>(cached?.customers ?? []);
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -129,7 +134,7 @@ export function TransChapCustomersList() {
   const [importError, setImportError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<CustomerImportResponse | null>(null);
   const [sendingWaId, setSendingWaId] = useState<string | null>(null);
-  const [forceMpesaPrompt, setForceMpesaPrompt] = useState(true);
+  const [forceMpesaPrompt, setForceMpesaPrompt] = useState(cached?.forceMpesaPrompt ?? true);
   const [manualCollectingId, setManualCollectingId] = useState<string | null>(null);
   const [manualPaymentValues, setManualPaymentValues] = useState<
     Record<string, { amount: string; mpesaCode: string }>
@@ -158,7 +163,7 @@ export function TransChapCustomersList() {
   }
 
   const reload = useCallback(async () => {
-    setLoading(true);
+    if (!readPageCache(CUSTOMERS_CACHE_KEY)) setLoading(true);
     try {
       const [rows, settings] = await Promise.all([
         fetchShopCustomers(),
@@ -166,6 +171,10 @@ export function TransChapCustomersList() {
       ]);
       setCustomers(rows);
       setForceMpesaPrompt(settings.force_mpesa_prompt);
+      writePageCache(CUSTOMERS_CACHE_KEY, {
+        customers: rows,
+        forceMpesaPrompt: settings.force_mpesa_prompt,
+      } satisfies CustomersSnapshot);
       setError(null);
     } catch (err) {
       setError(extractErrorMessage(err, "Could not load customers."));

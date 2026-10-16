@@ -1,6 +1,7 @@
 import { apiFetch } from "@/lib/api";
 import { extractErrorMessage, internalErrorMessage, promptVoidReason } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
+import { fetchAllPages, timeWindowQuery, type TimeWindow } from "@/lib/paged-fetch";
 import {
   findInventoryByName,
   inventoryProductName,
@@ -115,33 +116,23 @@ function supplierLabelFromNote(note: string | null | undefined): string | null {
   return first;
 }
 
-export async function fetchTransChapPurchases(options?: {
-  maxPages?: number;
-  accountId?: string;
-}): Promise<{ purchases: TransChapPurchase[]; error: string | null; truncated: boolean }> {
+export async function fetchTransChapPurchases(
+  options?: { maxPages?: number; accountId?: string } & TimeWindow,
+): Promise<{ purchases: TransChapPurchase[]; error: string | null; truncated: boolean }> {
   if (options?.accountId) {
     await migrateLegacyTransChapPurchases(options.accountId);
   }
-  const maxPages = options?.maxPages ?? MAX_PAGES;
-  const purchases: TransChapPurchase[] = [];
-  try {
-    for (let page = 1; page <= maxPages; page += 1) {
-      const data = await apiFetch<StockMovementsListResponse>(
-        `${apiRoutes.inventoryStockMovements}?direction=in&reason=receive&per_page=100&page=${page}`,
-      );
-      purchases.push(...data.data.map(purchaseFromMovement));
-      if (page >= data.meta.last_page) {
-        return { purchases, error: null, truncated: false };
-      }
-    }
-    return { purchases, error: null, truncated: true };
-  } catch {
-    return {
-      purchases,
-      error: internalErrorMessage(),
-      truncated: false,
-    };
-  }
+  const window = timeWindowQuery(options);
+  const result = await fetchAllPages<StockMovementsListResponse["data"][number]>(
+    (page) =>
+      `${apiRoutes.inventoryStockMovements}?direction=in&reason=receive&per_page=100&page=${page}${window}`,
+    options?.maxPages ?? MAX_PAGES,
+  );
+  return {
+    purchases: result.rows.map((movement) => purchaseFromMovement(movement)),
+    error: result.failed ? internalErrorMessage() : null,
+    truncated: result.truncated,
+  };
 }
 
 const LEGACY_PURCHASES_KEY = "trans-chap:purchases";

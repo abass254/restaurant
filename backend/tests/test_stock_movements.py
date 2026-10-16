@@ -147,9 +147,9 @@ def test_apply_unit_costs_stamps_movement_and_buying_price() -> None:
         inventory_item=item,
         created_at="now",
     )
-    apply_unit_costs([movement], {"item-1": 42.499})
-    assert movement.unit_cost == 42.5
-    assert item.buying_price == 42.5
+    apply_unit_costs([movement], {"item-1": 0.00499})
+    assert movement.unit_cost == 0.005
+    assert item.buying_price == 0.005
     assert item.updated_at == "now"
 
 

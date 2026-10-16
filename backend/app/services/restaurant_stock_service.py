@@ -635,8 +635,15 @@ def kitchen_day_report(db: Session, account_id: str, start: datetime, end: datet
     }
 
 
-def profit_report(db: Session, account_id: str, start: datetime, end: datetime) -> dict[str, Any]:
-    """Sales vs cost of the stock they used, per menu item and per day."""
+def profit_report(
+    db: Session,
+    account_id: str,
+    start: datetime,
+    end: datetime,
+    tz_offset_minutes: int = 180,
+) -> dict[str, Any]:
+    """Sales vs cost of the stock they used, per menu item and per local calendar day."""
+    local_offset = timedelta(minutes=tz_offset_minutes)
     rows = (
         db.query(Order.created_at, OrderItem)
         .join(OrderItem, OrderItem.order_id == Order.id)
@@ -678,7 +685,7 @@ def profit_report(db: Session, account_id: str, start: datetime, end: datetime) 
             entry["cost"] += cost
             cost_total += cost
         revenue_total += revenue
-        day = (created_at or datetime.utcnow()).date().isoformat()
+        day = ((created_at or datetime.utcnow()) + local_offset).date().isoformat()
         by_day[day]["revenue"] += revenue
         by_day[day]["cost"] += cost or Decimal("0")
 

@@ -451,6 +451,11 @@ export type KitchenIssue = {
   lines?: KitchenIssueLine[];
 };
 
+/** Must match ISSUABLE_ROLES in the backend kitchen issue service. */
+export function isKitchenIssuableRole(role: string | null | undefined): boolean {
+  return role === "raw_material" || role === "both";
+}
+
 export const KITCHEN_ISSUE_STATUS_LABELS: Record<KitchenIssueStatus, string> = {
   requested: "Waiting for store",
   issued: "Issued",

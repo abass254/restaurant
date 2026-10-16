@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.api.v1 import reports as reports_api
 from app.database import Base
 from app.models import (
     Account,
@@ -181,3 +184,23 @@ def test_reports_summary_single_day(db):
     total_bucket_purchases = sum(b["purchases"] for b in summary["buckets"])
     assert total_bucket_sales == 1000.0
     assert total_bucket_purchases == 1000.0
+
+
+def test_daily_buckets_use_creation_time_like_the_range_filter(db):
+    order = db.get(Order, "ord-1")
+    order.paid_at = datetime(2026, 10, 16, 22, 0, 0)  # paid days later, after midnight EAT
+    db.commit()
+    summary = reports_summary(db, ACCOUNT_ID, date(2026, 10, 15), date(2026, 10, 16), tz_offset_minutes=180)
+    by_day = {b["key"]: b["sales"] for b in summary["buckets"]}
+    assert by_day == {"2026-10-15": 1000.0, "2026-10-16": 0.0}
+
+
+def test_reports_range_is_capped_at_a_year(monkeypatch):
+    monkeypatch.setattr(reports_api, "require_user", lambda *_a, **_k: SimpleNamespace(id="u1"))
+    monkeypatch.setattr(reports_api, "assert_merchant_section_any_access", lambda *_a, **_k: None)
+    monkeypatch.setattr(reports_api, "active_account_id", lambda _u: ACCOUNT_ID)
+    with pytest.raises(HTTPException) as exc:
+        reports_api.get_reports_summary(
+            start=date(2025, 1, 1), end=date(2026, 6, 1), tz_offset_minutes=180, source=None, db=None, session={},
+        )
+    assert exc.value.status_code == 422

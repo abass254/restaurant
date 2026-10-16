@@ -2,28 +2,28 @@
 
 import { FormEvent, useState } from "react";
 import { confirmAction, extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
-import { formatKsh } from "@/lib/trans-chap-receipt";
 import {
   deleteModifierGroup,
   inventoryProductName,
-  inventoryRole,
-  inventoryRoleShortLabel,
   modifierRuleLabel,
   saveModifierGroup,
 } from "@/lib/trans-chap-product";
 import type { InventoryItem, ModifierGroup } from "@/lib/types";
 
-type RuleKind = "pick_one" | "optional_one" | "up_to" | "custom";
-
-/** "supply" options come from stock and deduct it; "instruction" options are kitchen notes like "No pickles". */
-type OptionKind = "supply" | "instruction";
+type RuleKind = "pick_one" | "optional_one" | "several";
 
 type OptionDraft = {
   key: string;
   id?: string;
-  kind: OptionKind;
   name: string;
+  /** Blank means free (part of the meal price). */
+  price: string;
+  /** Optional supply this choice uses up; most choices (sizes, notes) have none. */
   productId: string;
+  /** Amount of the supply one pick uses, in the supply's unit. */
+  qty: string;
+  /** Stock link row is open. */
+  tracking: boolean;
   isDefault: boolean;
 };
 
@@ -33,25 +33,13 @@ function nextKey(): string {
   return `opt-${draftSeq}`;
 }
 
-function blankOption(kind: OptionKind): OptionDraft {
-  return { key: nextKey(), kind, name: "", productId: "", isDefault: false };
+function blankOption(): OptionDraft {
+  return { key: nextKey(), name: "", price: "", productId: "", qty: "1", tracking: false, isDefault: false };
 }
 
-function supplyLabel(item: InventoryItem): string {
-  const stock =
-    item.stock_quantity != null
-      ? ` · ${item.stock_quantity} ${item.product?.unit || "in stock"}`
-      : "";
-  return `${inventoryProductName(item)} (${inventoryRoleShortLabel(inventoryRole(item))}${stock})`;
-}
-
-function ruleKindOf(group: ModifierGroup | null): RuleKind {
-  if (!group) return "pick_one";
-  const { min_select: low, max_select: high } = group;
-  if (low === 1 && high === 1) return "pick_one";
-  if (low === 0 && high === 1) return "optional_one";
-  if (low === 0) return "up_to";
-  return "custom";
+function parseAmount(value: string): number | null {
+  const parsed = Number(value.trim());
+  return value.trim() && Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function parseCount(value: string, fallback: number): number {
@@ -59,14 +47,19 @@ function parseCount(value: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+function ruleKindOf(group: ModifierGroup | null): RuleKind {
+  if (!group) return "pick_one";
+  if (group.max_select === 1) return group.min_select >= 1 ? "pick_one" : "optional_one";
+  return "several";
+}
+
 const RULES: { kind: RuleKind; label: string }[] = [
-  { kind: "pick_one", label: "Required, pick 1" },
-  { kind: "optional_one", label: "Optional, pick 1" },
-  { kind: "up_to", label: "Optional, up to…" },
-  { kind: "custom", label: "Custom" },
+  { kind: "pick_one", label: "Must pick 1" },
+  { kind: "optional_one", label: "Can pick 1" },
+  { kind: "several", label: "Can pick several" },
 ];
 
-/** Create or edit one option group, e.g. "Choose drink" with Coke / Fanta / Water. */
+/** Create or edit one modifier, e.g. "Size" (Small / Medium / Large +50) or "Drink" (Coke / Fanta). */
 export function TransChapMenuGroupEditor({
   group,
   supplies,
@@ -75,7 +68,7 @@ export function TransChapMenuGroupEditor({
   onDeleted,
 }: {
   group: ModifierGroup | null;
-  /** Stock bought through Purchases; options are picked from these. */
+  /** Stock bought through Purchases; an option can optionally use one of these. */
   supplies: InventoryItem[];
   onClose: () => void;
   onSaved: (group: ModifierGroup) => void;
@@ -83,20 +76,23 @@ export function TransChapMenuGroupEditor({
 }) {
   const [name, setName] = useState(group?.name ?? "");
   const [rule, setRule] = useState<RuleKind>(ruleKindOf(group));
-  const [minText, setMinText] = useState(String(group?.min_select ?? 1));
-  const [maxText, setMaxText] = useState(String(group?.max_select ?? 3));
-  const [included, setIncluded] = useState(group?.included ?? false);
+  const [maxText, setMaxText] = useState(String(group && group.max_select > 1 ? group.max_select : 3));
+  // Kept for older modifiers that require several picks; new ones start at 0.
+  const [minText, setMinText] = useState(String(group && group.max_select > 1 ? group.min_select : 0));
+  const showMin = !!group && group.max_select > 1 && group.min_select > 0;
   const [options, setOptions] = useState<OptionDraft[]>(() =>
     group?.options.length
       ? group.options.map((option) => ({
           key: nextKey(),
           id: option.id,
-          kind: option.product_id ? "supply" : "instruction",
           name: option.name,
+          price: !group.included && option.price_delta ? String(option.price_delta) : "",
           productId: option.product_id ?? "",
+          qty: String(option.stock_qty ?? 1),
+          tracking: !!option.product_id,
           isDefault: option.is_default,
         }))
-      : [blankOption("supply")],
+      : [blankOption(), blankOption()],
   );
   const [saving, setSaving] = useState(false);
 
@@ -106,57 +102,40 @@ export function TransChapMenuGroupEditor({
     (option) => option.product_id && !suppliesById.has(option.product_id),
   );
 
-  function optionName(option: OptionDraft): string {
-    if (option.kind === "instruction") return option.name.trim();
-    const supply = suppliesById.get(option.productId);
-    return supply ? inventoryProductName(supply) : option.name.trim();
-  }
-
-  const filled = options.filter((option) =>
-    option.kind === "supply" ? !!option.productId : !!option.name.trim(),
-  );
+  const filled = options.filter((option) => !!option.name.trim());
   const [minSelect, maxSelect] =
     rule === "pick_one"
       ? [1, 1]
       : rule === "optional_one"
         ? [0, 1]
-        : rule === "up_to"
-          ? [0, Math.max(1, parseCount(maxText, 3))]
-          : [parseCount(minText, 1), Math.max(1, parseCount(maxText, 1))];
+        : [showMin ? parseCount(minText, 0) : 0, Math.max(2, parseCount(maxText, 3))];
+  const priceError = filled.some((option) => option.price.trim() && parseAmount(option.price) == null && Number(option.price) !== 0);
+  const qtyError = filled.some((option) => option.productId && parseAmount(option.qty) == null);
   const ruleError =
     minSelect > maxSelect
       ? "Minimum can't be more than the maximum."
       : filled.length && minSelect > filled.length
         ? "Add more options than customers must pick."
         : null;
-  const canSave = !saving && !!name.trim() && filled.length > 0 && !ruleError;
-
-  function pickSupply(key: string, productId: string) {
-    const supply = suppliesById.get(productId);
-    setOptions((prev) =>
-      prev.map((option) =>
-        option.key === key
-          ? { ...option, productId, name: supply ? inventoryProductName(supply) : option.name }
-          : option,
-      ),
-    );
-  }
-
-  function priceTag(option: OptionDraft): string {
-    if (option.kind === "instruction" || included) return "Free";
-    const price = suppliesById.get(option.productId)?.selling_price;
-    return price ? `+${formatKsh(Number(price))}` : "No selling price · free";
-  }
+  const canSave = !saving && !!name.trim() && filled.length > 0 && !ruleError && !priceError && !qtyError;
 
   function patchOption(key: string, patch: Partial<OptionDraft>) {
     setOptions((prev) =>
       prev.map((option) => {
         if (option.key === key) return { ...option, ...patch };
-        // Single-pick groups can only have one default.
+        // Single-pick modifiers can only have one default.
         if (patch.isDefault && maxSelect === 1) return { ...option, isDefault: false };
         return option;
       }),
     );
+  }
+
+  function linkSupply(option: OptionDraft, productId: string) {
+    const supply = suppliesById.get(productId);
+    patchOption(option.key, {
+      productId,
+      name: option.name.trim() || !supply ? option.name : inventoryProductName(supply),
+    });
   }
 
   function moveOption(key: string, step: -1 | 1) {
@@ -179,19 +158,20 @@ export function TransChapMenuGroupEditor({
         name: name.trim(),
         min_select: minSelect,
         max_select: maxSelect,
-        included,
+        included: false,
         options: filled.map((option) => ({
           ...(option.id ? { id: option.id } : {}),
-          name: optionName(option),
-          price_delta: 0,
-          product_id: option.kind === "supply" ? option.productId : null,
+          name: option.name.trim(),
+          price_delta: parseAmount(option.price) ?? 0,
+          product_id: option.productId || null,
+          stock_qty: option.productId ? (parseAmount(option.qty) ?? 1) : 1,
           is_default: option.isDefault,
         })),
       });
       await toastSuccess(group ? `"${saved.name}" updated` : `"${saved.name}" created`);
       onSaved(saved);
     } catch (err) {
-      await showError("Could not save options", extractErrorMessage(err));
+      await showError("Could not save modifier", extractErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -233,7 +213,7 @@ export function TransChapMenuGroupEditor({
         <header className="pos-menu-modal__header">
           <div className="pos-menu-modal__title-row">
             <h2 id="group-editor-title" className="pos-menu-modal__title">
-              {group ? "Edit options" : "New option group"}
+              {group ? "Edit modifier" : "New modifier"}
             </h2>
             <button type="button" className="pos-menu-modal__close-btn" onClick={onClose} aria-label="Close">
               <i className="fa-solid fa-xmark" aria-hidden="true" />
@@ -241,15 +221,15 @@ export function TransChapMenuGroupEditor({
           </div>
         </header>
 
-        <form onSubmit={(e) => void handleSave(e)} className="pos-menu-modal__body">
+        <form onSubmit={(e) => void handleSave(e)} className="pos-menu-modal__body tc-mod">
           <div className="pos-menu-modal__field">
-            <label htmlFor="group-editor-name">Question</label>
+            <label htmlFor="group-editor-name">Name</label>
             <div className="pos-menu-modal__input-wrap">
               <input
                 id="group-editor-name"
                 type="text"
                 autoComplete="off"
-                placeholder="e.g. Choose your drink"
+                placeholder="e.g. Size, Drink, Extras"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="pos-menu-modal__text-input"
@@ -258,12 +238,14 @@ export function TransChapMenuGroupEditor({
           </div>
 
           <div className="pos-menu-modal__field">
-            <label>Rule</label>
-            <div className="pos-menu-modal__cat-selector">
+            <label>Customer</label>
+            <div className="tc-mod__rules" role="radiogroup" aria-label="How many can be picked">
               {RULES.map((option) => (
                 <button
                   key={option.kind}
                   type="button"
+                  role="radio"
+                  aria-checked={rule === option.kind}
                   className={`pos-menu-modal__cat-btn${rule === option.kind ? " is-active" : ""}`}
                   onClick={() => setRule(option.kind)}
                 >
@@ -271,9 +253,9 @@ export function TransChapMenuGroupEditor({
                 </button>
               ))}
             </div>
-            {rule === "up_to" || rule === "custom" ? (
+            {rule === "several" ? (
               <div className="tc-group__counts">
-                {rule === "custom" ? (
+                {showMin ? (
                   <label>
                     <span>At least</span>
                     <input
@@ -286,10 +268,10 @@ export function TransChapMenuGroupEditor({
                   </label>
                 ) : null}
                 <label>
-                  <span>At most</span>
+                  <span>Up to</span>
                   <input
                     type="number"
-                    min={1}
+                    min={2}
                     inputMode="numeric"
                     value={maxText}
                     onChange={(e) => setMaxText(e.target.value)}
@@ -297,139 +279,146 @@ export function TransChapMenuGroupEditor({
                 </label>
               </div>
             ) : null}
-            <p className={`tc-group__rule${ruleError ? " is-error" : ""}`}>
-              {ruleError ?? modifierRuleLabel({ min_select: minSelect, max_select: maxSelect })}
-            </p>
-          </div>
-
-          <div className="pos-menu-modal__field">
-            <label>Pricing</label>
-            <div className="pos-menu-modal__cat-selector">
-              <button
-                type="button"
-                className={`pos-menu-modal__cat-btn${included ? "" : " is-active"}`}
-                onClick={() => setIncluded(false)}
-              >
-                Charge selling price
-              </button>
-              <button
-                type="button"
-                className={`pos-menu-modal__cat-btn${included ? " is-active" : ""}`}
-                onClick={() => setIncluded(true)}
-              >
-                Included in the price
-              </button>
-            </div>
-            <p className="tc-group__rule">
-              {included
-                ? "Free choice, e.g. the drink that comes with a meal."
-                : "Each pick adds the supply's selling price from Stocks. The cashier sets how many at the till."}
-            </p>
+            {ruleError ? <p className="tc-group__rule is-error">{ruleError}</p> : null}
           </div>
 
           <div className="pos-menu-modal__field">
             <div className="pos-menu-modal__label-row">
               <label>Options</label>
-              <span className="pos-menu-modal__label-hint">Prices come from Stocks</span>
+              <span className="pos-menu-modal__label-hint">Leave price empty if free</span>
             </div>
-            <ul className="tc-group__options">
+            <ul className="tc-mod__options">
               {options.map((option, index) => {
+                const supply = suppliesById.get(option.productId);
+                const badPrice = !!option.price.trim() && parseAmount(option.price) == null && Number(option.price) !== 0;
                 return (
-                <li key={option.key} className="tc-group__option">
-                  <div className="tc-group__option-main">
-                    {option.kind === "supply" ? (
-                      <select
-                        className="tc-group__supply"
-                        aria-label="Supply"
-                        value={option.productId}
-                        onChange={(e) => pickSupply(option.key, e.target.value)}
-                      >
-                        <option value="">Choose a supply…</option>
-                        {supplies.map((item) => (
-                          <option key={item.id} value={item.product_id}>
-                            {supplyLabel(item)}
-                          </option>
-                        ))}
-                        {linkedElsewhere.map((linked) => (
-                          <option key={linked.id} value={linked.product_id ?? ""}>
-                            {linked.product_name || linked.name}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
+                  <li key={option.key} className="tc-mod__option">
+                    <div className="tc-mod__row">
                       <input
                         type="text"
-                        placeholder="e.g. No pickles"
-                        aria-label="Instruction"
+                        className="tc-mod__name"
+                        placeholder={index === 0 ? "e.g. Large" : "Option name"}
+                        aria-label="Option name"
                         value={option.name}
                         onChange={(e) => patchOption(option.key, { name: e.target.value })}
                       />
-                    )}
-                  </div>
-                  <div className="tc-group__option-meta">
-                    <button
-                      type="button"
-                      className={`tc-group__default${option.isDefault ? " is-on" : ""}`}
-                      aria-pressed={option.isDefault}
-                      onClick={() => patchOption(option.key, { isDefault: !option.isDefault })}
-                    >
-                      <i className={`fa-solid ${option.isDefault ? "fa-circle-check" : "fa-circle"}`} aria-hidden="true" />
-                      Default
-                    </button>
-                    <span className="tc-group__instruction-tag">
-                      {option.kind === "supply"
-                        ? option.productId
-                          ? priceTag(option)
-                          : ""
-                        : "Kitchen instruction · free · no stock"}
-                    </span>
-                    <span className="tc-group__option-tools">
-                      <button type="button" aria-label="Move up" disabled={index === 0} onClick={() => moveOption(option.key, -1)}>
-                        <i className="fa-solid fa-arrow-up" aria-hidden="true" />
-                      </button>
+                      <label className={`tc-mod__price${badPrice ? " is-error" : ""}`}>
+                        <span>+KES</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="0"
+                          aria-label="Extra price"
+                          value={option.price}
+                          onChange={(e) => patchOption(option.key, { price: e.target.value })}
+                        />
+                      </label>
                       <button
                         type="button"
-                        aria-label="Move down"
-                        disabled={index === options.length - 1}
-                        onClick={() => moveOption(option.key, 1)}
-                      >
-                        <i className="fa-solid fa-arrow-down" aria-hidden="true" />
-                      </button>
-                      <button
-                        type="button"
+                        className="tc-mod__icon"
                         aria-label={`Remove ${option.name || "option"}`}
                         onClick={() => setOptions((prev) => prev.filter((row) => row.key !== option.key))}
                       >
                         <i className="fa-solid fa-xmark" aria-hidden="true" />
                       </button>
-                    </span>
-                  </div>
-                </li>
+                    </div>
+
+                    {option.tracking ? (
+                      <div className="tc-mod__stock">
+                        <span>Uses</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          aria-label="Amount used per pick"
+                          className={option.productId && parseAmount(option.qty) == null ? "is-error" : undefined}
+                          value={option.qty}
+                          onChange={(e) => patchOption(option.key, { qty: e.target.value })}
+                        />
+                        <select
+                          aria-label="Supply used"
+                          value={option.productId}
+                          onChange={(e) => linkSupply(option, e.target.value)}
+                        >
+                          <option value="">Choose stock…</option>
+                          {supplies.map((item) => (
+                            <option key={item.id} value={item.product_id}>
+                              {inventoryProductName(item)}
+                              {item.product?.unit ? ` (${item.product.unit})` : ""}
+                            </option>
+                          ))}
+                          {linkedElsewhere.map((linked) => (
+                            <option key={linked.id} value={linked.product_id ?? ""}>
+                              {linked.product_name || linked.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="tc-mod__icon"
+                          aria-label="Stop tracking stock"
+                          onClick={() => patchOption(option.key, { tracking: false, productId: "" })}
+                        >
+                          <i className="fa-solid fa-link-slash" aria-hidden="true" />
+                        </button>
+                      </div>
+                    ) : null}
+
+                    <div className="tc-mod__meta">
+                      <button
+                        type="button"
+                        className={`tc-group__default${option.isDefault ? " is-on" : ""}`}
+                        aria-pressed={option.isDefault}
+                        onClick={() => patchOption(option.key, { isDefault: !option.isDefault })}
+                      >
+                        <i
+                          className={`fa-solid ${option.isDefault ? "fa-circle-check" : "fa-circle"}`}
+                          aria-hidden="true"
+                        />
+                        Default
+                      </button>
+                      {!option.tracking && supplies.length ? (
+                        <button
+                          type="button"
+                          className="tc-mod__link"
+                          onClick={() => patchOption(option.key, { tracking: true })}
+                        >
+                          <i className="fa-solid fa-box" aria-hidden="true" /> Uses stock
+                        </button>
+                      ) : supply ? (
+                        <span className="tc-mod__note">
+                          {supply.stock_quantity != null ? `${supply.stock_quantity} ${supply.product?.unit || ""} on hand` : ""}
+                        </span>
+                      ) : null}
+                      <span className="tc-group__option-tools">
+                        <button
+                          type="button"
+                          aria-label="Move up"
+                          disabled={index === 0}
+                          onClick={() => moveOption(option.key, -1)}
+                        >
+                          <i className="fa-solid fa-arrow-up" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Move down"
+                          disabled={index === options.length - 1}
+                          onClick={() => moveOption(option.key, 1)}
+                        >
+                          <i className="fa-solid fa-arrow-down" aria-hidden="true" />
+                        </button>
+                      </span>
+                    </div>
+                  </li>
                 );
               })}
             </ul>
-            <div className="tc-group__attach-row">
-              <button
-                type="button"
-                className="tc-group__add-option"
-                onClick={() => setOptions((prev) => [...prev, blankOption("supply")])}
-              >
-                <i className="fa-solid fa-box" aria-hidden="true" /> Add from supplies
-              </button>
-              <button
-                type="button"
-                className="tc-group__add-option"
-                onClick={() => setOptions((prev) => [...prev, blankOption("instruction")])}
-              >
-                <i className="fa-solid fa-comment" aria-hidden="true" /> Add instruction
-              </button>
-            </div>
-            {supplies.length === 0 ? (
-              <p className="tc-group__intro">
-                No supplies yet. Record a purchase first (e.g. Coke 500ml as Buy &amp; sell, cheese as Raw
-                material) and it will show up here.
-              </p>
-            ) : null}
+            <button
+              type="button"
+              className="tc-group__add-option tc-mod__add"
+              onClick={() => setOptions((prev) => [...prev, blankOption()])}
+            >
+              <i className="fa-solid fa-plus" aria-hidden="true" /> Add option
+            </button>
           </div>
 
           <footer className="pos-menu-modal__footer tc-menu__footer">
@@ -439,7 +428,7 @@ export function TransChapMenuGroupEditor({
               </button>
             ) : null}
             <button type="submit" disabled={!canSave} className="pos-menu-modal__submit-btn">
-              {saving ? "Saving…" : group ? "Save options" : "Create group"}
+              {saving ? "Saving…" : group ? "Save modifier" : "Create modifier"}
             </button>
           </footer>
         </form>
@@ -448,13 +437,15 @@ export function TransChapMenuGroupEditor({
   );
 }
 
-/** Summary line under a group, e.g. "Coke · Fanta · Water (included)". */
+/** Summary line under a group, e.g. "Small · Medium · Large +50". */
 export function modifierOptionsSummary(group: ModifierGroup): string {
-  const names = group.options
+  return group.options
     .filter((option) => option.is_active)
-    .map((option) => option.name)
+    .map((option) => {
+      const price = group.included ? 0 : Number(option.price_delta) || 0;
+      return price > 0 ? `${option.name} +${price}` : option.name;
+    })
     .join(" · ");
-  return group.included ? `${names} (included)` : names;
 }
 
 /** The ordered option groups attached to a dish or meal, with attach / reorder / edit. */
@@ -532,12 +523,12 @@ export function MenuOptionsField({
           <select
             className="tc-menu__select"
             value=""
-            aria-label="Attach an option group"
+            aria-label="Attach a modifier"
             onChange={(e) => {
               if (e.target.value) onChange([...attachedIds, e.target.value]);
             }}
           >
-            <option value="">Attach options…</option>
+            <option value="">Attach modifier…</option>
             {available.map((group) => (
               <option key={group.id} value={group.id}>
                 {group.name} ({modifierRuleLabel(group).toLowerCase()})
@@ -546,7 +537,7 @@ export function MenuOptionsField({
           </select>
         ) : null}
         <button type="button" className="tc-group__add-option" onClick={onNewGroup}>
-          <i className="fa-solid fa-plus" aria-hidden="true" /> New group
+          <i className="fa-solid fa-plus" aria-hidden="true" /> New modifier
         </button>
       </div>
     </div>
@@ -578,7 +569,7 @@ export function TransChapMenuGroupsSheet({
         <header className="pos-menu-modal__header">
           <div className="pos-menu-modal__title-row">
             <h2 id="groups-sheet-title" className="pos-menu-modal__title">
-              Option groups
+              Modifiers
             </h2>
             <button type="button" className="pos-menu-modal__close-btn" onClick={onClose} aria-label="Close">
               <i className="fa-solid fa-xmark" aria-hidden="true" />
@@ -608,11 +599,11 @@ export function TransChapMenuGroupsSheet({
               ))}
             </ul>
           ) : (
-            <p className="tc-menu__empty">No option groups yet.</p>
+            <p className="tc-menu__empty">No modifiers yet.</p>
           )}
           <footer className="pos-menu-modal__footer tc-menu__footer">
             <button type="button" className="pos-menu-modal__submit-btn" onClick={onNew}>
-              New option group
+              New modifier
             </button>
           </footer>
         </div>

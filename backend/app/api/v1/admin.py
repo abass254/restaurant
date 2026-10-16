@@ -76,7 +76,8 @@ from app.services.image_generation_service import (
     build_prompt_for_product,
     generate_product_image,
 )
-from app.services.order_stock_service import reverse_for_order
+from app.services.kitchen_issue_service import disable_kitchen_issuing
+from app.services.order_stock_service import kitchen_issuing_on, release_order_holds
 from app.services.product_media_service import (
     collect_store_media,
     is_image_media,
@@ -103,6 +104,7 @@ from app.support.merchant_permissions import (
     user_allowed_sections,
     with_active_account_context,
 )
+from app.support.store_type import RESTAURANT
 from app.support.user_invite_lookup import UserInviteLookupOut, lookup_user_for_merchant_invite
 
 # Default "from" identity for platform test emails. The domain must be verified
@@ -913,9 +915,7 @@ def transition_order_admin(
         row.completed_at = now
     if target == CANCELLED and not row.cancelled_at:
         row.cancelled_at = now
-        if row.stock_deducted:
-            reverse_for_order(db, row)
-            row.stock_deducted = False
+        release_order_holds(db, row)
 
     db.add(
         OrderStatusHistory(
@@ -1015,7 +1015,7 @@ def update_merchant_profile(
     request: Request,
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
-    _: User = Depends(require_super_admin),
+    admin: User = Depends(require_super_admin),
 ):
     """Update merchant identity, store type, and what they sell."""
     validate_csrf(request, session)
@@ -1044,6 +1044,8 @@ def update_merchant_profile(
             detail="Choose a valid category for what this merchant sells.",
         )
 
+    if store_type != RESTAURANT and kitchen_issuing_on(account):
+        disable_kitchen_issuing(db, account, user_id=admin.id)
     account.business_name = name
     account.business_location = location[:255]
     account.business_category = category

@@ -18,6 +18,8 @@ from app.support.merchant_permissions import (
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
+MAX_RANGE_DAYS = 366
+
 
 @router.get("/summary")
 def get_reports_summary(
@@ -40,6 +42,11 @@ def get_reports_summary(
 
     if start_date > end_date:
         start_date, end_date = end_date, start_date
+    if (end_date - start_date).days > MAX_RANGE_DAYS:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Pick a range of a year or less.",
+        )
 
     data = reports_summary(
         db=db,

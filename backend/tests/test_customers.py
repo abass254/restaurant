@@ -110,6 +110,59 @@ def test_charge_credit_rejects_when_limit_exceeded() -> None:
         CustomerService(MagicMock()).charge_credit(customer, Decimal("150.00"))
 
 
+def test_charge_credit_records_date_to_pay() -> None:
+    customer = MagicMock()
+    customer.credit_limit = Decimal("0.00")
+    customer.outstanding_balance = Decimal("0.00")
+    CustomerService(MagicMock()).charge_credit(customer, Decimal("50.00"), date_to_pay="2026-11-01")
+    assert customer.date_to_pay == date(2026, 11, 1)
+    with pytest.raises(CustomerServiceError, match="YYYY-MM-DD"):
+        CustomerService(MagicMock()).charge_credit(customer, Decimal("50.00"), date_to_pay="soon")
+
+
+def test_rebalance_order_credit_charges_or_releases_the_difference() -> None:
+    service = CustomerService(MagicMock())
+    customer = MagicMock()
+    service.get_or_create_for_sale = MagicMock(return_value=customer)
+    service.charge_credit = MagicMock()
+    service.release_credit_for_order = MagicMock()
+
+    service.rebalance_order_credit(
+        "acct-1", previous_phone="+254712345678", previous_amount=300,
+        phone="0712345678", name="Amina", amount=350,
+    )
+    service.charge_credit.assert_called_once_with(customer, Decimal("50.00"))
+    service.release_credit_for_order.assert_not_called()
+
+    service.charge_credit.reset_mock()
+    service.rebalance_order_credit(
+        "acct-1", previous_phone="+254712345678", previous_amount=300,
+        phone="+254712345678", name="Amina", amount=0,
+    )
+    service.release_credit_for_order.assert_called_once_with(
+        "acct-1", phone="+254712345678", amount=Decimal("300.00"),
+    )
+    service.charge_credit.assert_not_called()
+
+
+def test_rebalance_order_credit_moves_tab_when_customer_changes() -> None:
+    service = CustomerService(MagicMock())
+    customer = MagicMock()
+    service.get_or_create_for_sale = MagicMock(return_value=customer)
+    service.charge_credit = MagicMock()
+    service.release_credit_for_order = MagicMock()
+
+    service.rebalance_order_credit(
+        "acct-1", previous_phone="+254712345678", previous_amount=300,
+        phone="+254700000001", name="Baraka", amount=300,
+    )
+    service.release_credit_for_order.assert_called_once_with(
+        "acct-1", phone="+254712345678", amount=Decimal("300.00"),
+    )
+    service.get_or_create_for_sale.assert_called_once_with("acct-1", name="Baraka", phone="+254700000001")
+    service.charge_credit.assert_called_once_with(customer, Decimal("300.00"))
+
+
 def test_collect_credit_partial_and_caps_at_outstanding() -> None:
     customer = MagicMock()
     customer.outstanding_balance = Decimal("80.00")

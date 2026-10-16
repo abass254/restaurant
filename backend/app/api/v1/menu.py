@@ -13,6 +13,7 @@ from app.core.session import require_user, validate_csrf
 from app.database import get_db
 from app.dependencies import get_request_session
 from app.models import (
+    Account,
     CatalogueModifierGroup,
     ComboComponent,
     InventoryItem,
@@ -24,10 +25,11 @@ from app.models import (
 )
 from app.schemas import (
     ModifierGroupOut,
-    combo_components_for,
+    ModifierOptionOut,
     modifier_groups_for,
     recipe_for,
 )
+from app.services.menu_options import option_availability
 from app.support.merchant_permissions import (
     active_account_id,
     assert_merchant_section_any_access,
@@ -62,6 +64,10 @@ class ModifierGroupPatch(BaseModel):
     max_select: int | None = Field(default=None, ge=1, le=MAX_OPTIONS)
     included: bool | None = None
     options: list[ModifierOptionIn] | None = Field(default=None, max_length=MAX_OPTIONS)
+
+
+class OptionActivePatch(BaseModel):
+    is_active: bool
 
 
 class ItemGroupsReplace(BaseModel):
@@ -110,7 +116,7 @@ def _owned_group(db: Session, account_id: str, group_id: str) -> ModifierGroup:
         .first()
     )
     if group is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Option group not found.")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Modifier not found.")
     return group
 
 
@@ -167,14 +173,13 @@ def _apply_options(
     for index, row in enumerate(rows):
         option = existing.pop(row.id, None) if row.id else None
         if option is None:
-            option = ModifierOption(group_id=group.id, created_at=now)
+            option = ModifierOption(group_id=group.id, created_at=now, is_active=True)
         option.name = row.name.strip()
         option.price_delta = round(row.price_delta, 2)
         option.product_id = row.product_id or None
         option.stock_qty = round(row.stock_qty, 3) if row.product_id else 1
         option.is_default = row.is_default
         option.sort_order = index
-        option.is_active = True
         option.updated_at = now
         kept.append(option)
     group.options = kept
@@ -256,6 +261,44 @@ def update_modifier_group(
     return {"data": _group_out(db, _owned_group(db, account_id, group.id))}
 
 
+@router.patch("/menu/modifier-options/{option_id}")
+def set_modifier_option_active(
+    option_id: str,
+    payload: OptionActivePatch,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Mark one option available or sold out, e.g. from the Kitchen page."""
+    validate_csrf(request, session)
+    user = require_user(db, session)
+    assert_merchant_section_any_access(user, "inventory", "services", "pos")
+    account_id = str(active_account_id(user))
+    option = (
+        db.query(ModifierOption)
+        .join(ModifierGroup, ModifierGroup.id == ModifierOption.group_id)
+        .options(joinedload(ModifierOption.product))
+        .filter(ModifierOption.id == option_id, ModifierGroup.account_id == account_id)
+        .first()
+    )
+    if option is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Option not found.")
+    option.is_active = payload.is_active
+    option.updated_at = datetime.utcnow()
+    db.commit()
+    return {"data": ModifierOptionOut.from_model(option)}
+
+
+@router.get("/menu/option-availability")
+def list_option_availability(
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Whether each of the shop's options can be picked now: sold out by staff or short of stock."""
+    _, account_id = _menu_user(db, session, write=False)
+    return {"data": option_availability(db, db.get(Account, account_id))}
+
+
 @router.delete("/menu/modifier-groups/{group_id}")
 def delete_modifier_group(
     group_id: str,
@@ -268,7 +311,7 @@ def delete_modifier_group(
     group = _owned_group(db, account_id, group_id)
     db.delete(group)
     db.commit()
-    return {"message": "Option group removed."}
+    return {"message": "Modifier removed."}
 
 
 def _owned_item(db: Session, account_id: str, product_id: str, noun: str) -> Product:
@@ -306,11 +349,11 @@ def replace_item_modifier_groups(
     _, account_id = _menu_user(db, session, write=True)
     product = _owned_item(db, account_id, product_id, "dish")
     if product.product_type not in ("meal", "combo"):
-        raise _unprocessable("product_id", "Option groups can only be attached to dishes and meals.")
+        raise _unprocessable("product_id", "Modifiers can only be attached to dishes and meals.")
 
     group_ids = payload.group_ids
     if len(set(group_ids)) != len(group_ids):
-        raise _unprocessable("group_ids", "Each option group can only be attached once.")
+        raise _unprocessable("group_ids", "Each modifier can only be attached once.")
     owned = {
         group_id
         for (group_id,) in db.query(ModifierGroup.id).filter(
@@ -319,7 +362,7 @@ def replace_item_modifier_groups(
         )
     }
     if set(group_ids) - owned:
-        raise _unprocessable("group_ids", "Choose option groups from your own menu.")
+        raise _unprocessable("group_ids", "Choose modifiers from your own menu.")
 
     now = datetime.utcnow()
     other_shops = [
@@ -418,44 +461,9 @@ def replace_combo_components(
     session: dict = Depends(get_request_session),
 ):
     validate_csrf(request, session)
-    _, account_id = _menu_user(db, session, write=True)
-    combo = _owned_item(db, account_id, product_id, "meal")
-    if combo.product_type != "combo":
-        raise _unprocessable("product_id", "Only meals can include other dishes.")
-
-    ids = [row.product_id for row in payload.components]
-    if len(set(ids)) != len(ids):
-        raise _unprocessable("components", "Each dish can only be listed once; change its quantity instead.")
-    if combo.id in ids:
-        raise _unprocessable("components", "A meal can't include itself.")
-    carried = {
-        item.product_id: item
-        for item in db.query(InventoryItem)
-        .options(joinedload(InventoryItem.product))
-        .filter(InventoryItem.account_id == account_id, InventoryItem.product_id.in_(ids or [""]))
-    }
-    for pid in ids:
-        item = carried.get(pid)
-        if item is None:
-            raise _unprocessable("components", "Choose dishes from your own menu.")
-        if item.product and item.product.product_type == "combo":
-            raise _unprocessable("components", "A meal can't include another meal.")
-
-    now = datetime.utcnow()
-    existing = {row.component_product_id: row for row in combo.combo_component_links}
-    rows: list[ComboComponent] = []
-    for index, row_in in enumerate(payload.components):
-        row = existing.get(row_in.product_id) or ComboComponent(
-            component_product_id=row_in.product_id,
-            created_at=now,
-        )
-        row.quantity = row_in.quantity
-        row.sort_order = index
-        rows.append(row)
-    combo.combo_component_links = rows
-    combo.updated_at = now
-    db.commit()
-
-    db.expire_all()
-    combo = _owned_item(db, account_id, product_id, "meal")
-    return {"data": [c.model_dump() for c in combo_components_for(combo, account_id)]}
+    _menu_user(db, session, write=True)
+    raise _unprocessable(
+        "components",
+        "Meals are built with modifiers now: list fixed ingredients under 'Always in this meal' "
+        "and the choices as modifiers.",
+    )

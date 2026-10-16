@@ -137,7 +137,7 @@ export function RestaurantReportsTab() {
               <table className="rs-table">
                 <thead>
                   <tr>
-                    <th>Dish</th>
+                    <th>Meal</th>
                     <th className="rs-num">Sold</th>
                     <th className="rs-num">Sales</th>
                     <th className="rs-num">Cost</th>

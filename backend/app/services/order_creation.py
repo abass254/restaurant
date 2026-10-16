@@ -22,6 +22,7 @@ from app.services.order_stock_service import consume_for_order, restaurant_line_
 from app.support.order_status import PAYMENT_MPESA, PLACED
 from app.support.store_type import is_restaurant_account
 from app.support.store_status import is_accepting_orders
+from app.support.unique_insert import insert_unique
 
 # Mirror of the autopilot cap so a single line can't request an absurd qty.
 MAX_QUANTITY = 999
@@ -75,11 +76,12 @@ def format_merchant_order_number(initials: str, seq: int) -> str:
     return f"ORD{code}{max(1, int(seq)):05d}"
 
 
-def next_order_number(db: Session, account_id: str) -> str:
+def next_order_number(db: Session, account_id: str, *, at_least: int = 1) -> str:
     """Next free ``ORDSPH00001``-style reference for this shop.
 
     Sequence is per merchant (and per initials prefix). The unique index on
-    ``order_number`` keeps concurrent inserts from colliding.
+    ``order_number`` keeps concurrent inserts from colliding; :func:`insert_order`
+    retries with a later number when that happens.
     """
     account = db.query(Account).filter(Account.id == str(account_id)).first()
     initials = merchant_order_initials(
@@ -98,11 +100,27 @@ def next_order_number(db: Session, account_id: str) -> str:
         )
         + 1
     )
+    seq = max(seq, at_least)
     while True:
         candidate = format_merchant_order_number(initials, seq)
         if not db.query(Order.id).filter(Order.order_number == candidate).first():
             return candidate
         seq += 1
+
+
+def insert_order(db: Session, order: Order) -> None:
+    """Add and flush a new order, moving to a later number if another sale took this one.
+
+    Under MySQL REPEATABLE READ the losing transaction can't see the winner's
+    row, so the retry starts past the number that failed.
+    """
+
+    def renumber() -> None:
+        failed = order.order_number or ""
+        seq = int(failed[-5:]) if failed[-5:].isdigit() else 0
+        order.order_number = next_order_number(db, order.account_id, at_least=seq + 1)
+
+    insert_unique(db, order, renumber)
 
 
 def build_instagram_order(
@@ -151,8 +169,7 @@ def build_instagram_order(
         updated_at=now,
         placed_at=now,
     )
-    db.add(order)
-    db.flush()
+    insert_order(db, order)
 
     restaurant = is_restaurant_account(db, account_id)
     running = Decimal("0.00")
@@ -272,8 +289,7 @@ def build_catalog_order(
         updated_at=now,
         placed_at=now,
     )
-    db.add(order)
-    db.flush()
+    insert_order(db, order)
 
     restaurant = is_restaurant_account(db, account_id)
     running = Decimal("0.00")
@@ -285,9 +301,17 @@ def build_catalog_order(
         line_total = (unit_price * quantity).quantize(Decimal("0.01"))
         running += line_total
         inv_id = item.inventory_item_id or platform_inventory_item_id(item.ref)
+        inv_row = (
+            db.query(InventoryItem)
+            .filter(InventoryItem.id == str(inv_id), InventoryItem.account_id == str(account_id))
+            .first()
+            if inv_id
+            else None
+        )
+        inv_id = inv_row.id if inv_row else None
         usage = None
-        if restaurant and inv_id:
-            usage = restaurant_line_usage(db, account_id, db.get(InventoryItem, str(inv_id)))
+        if restaurant and inv_row:
+            usage = restaurant_line_usage(db, account_id, inv_row)
         order_item = OrderItem(
             order_id=order.id,
             inventory_item_id=inv_id,

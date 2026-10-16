@@ -5,8 +5,13 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+from sqlalchemy.exc import IntegrityError
+
+from app.services import order_creation
 from app.services.order_creation import (
     format_merchant_order_number,
+    insert_order,
     merchant_order_initials,
     next_order_number,
 )
@@ -61,3 +66,33 @@ def test_next_order_number_increments_and_skips_taken_slots() -> None:
     db.query.side_effect = [account_query, count_query, taken, free]
 
     assert next_order_number(db, "acc-2") == "ORDMAM00005"
+
+
+def test_insert_order_retries_past_a_number_taken_concurrently(monkeypatch) -> None:
+    db = MagicMock()
+    db.get_bind.return_value.dialect.name = "mysql"
+    db.flush.side_effect = [None, IntegrityError("INSERT", {}, Exception("duplicate")), None]
+    calls: list[int] = []
+
+    def fake_next(_db, _account_id, *, at_least: int = 1) -> str:
+        calls.append(at_least)
+        return format_merchant_order_number("MAM", at_least)
+
+    monkeypatch.setattr(order_creation, "next_order_number", fake_next)
+    order = SimpleNamespace(account_id="acc-2", order_number="ORDMAM00004")
+
+    insert_order(db, order)
+
+    assert calls == [5]
+    assert order.order_number == "ORDMAM00005"
+    assert db.begin_nested.call_count == 2
+
+
+def test_insert_order_gives_up_after_repeated_clashes(monkeypatch) -> None:
+    db = MagicMock()
+    db.get_bind.return_value.dialect.name = "mysql"
+    db.flush.side_effect = [None] + [IntegrityError("INSERT", {}, Exception("duplicate"))] * 5
+    monkeypatch.setattr(order_creation, "next_order_number", lambda *_a, **_k: "ORDMAM00009")
+
+    with pytest.raises(IntegrityError):
+        insert_order(db, SimpleNamespace(account_id="acc-2", order_number="ORDMAM00004"))

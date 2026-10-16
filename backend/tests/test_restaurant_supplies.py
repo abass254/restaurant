@@ -5,7 +5,7 @@ Retail shops must keep their original behaviour (no ledger rows on sales).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -17,7 +17,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.v1 import menu, orders
 from app.api.v1.menu import RecipeLineIn, RecipeReplace
-from app.api.v1.orders import OrderCreate, OrderTransition
+from app.api.v1.orders import OrderCreate, OrderTransition, OrderUpdate
 from app.database import Base
 from app.models import (
     Account,
@@ -26,10 +26,15 @@ from app.models import (
     Order,
     OrderItem,
     PurchaseOrder,
+    ShopCustomer,
     ShopSupplier,
     StockMovement,
 )
+from app.services.catalog.catalog_types import CatalogItem
 from app.services.inventory_stock_service import weighted_average_cost
+from app.services.order_creation import build_catalog_order
+from app.services.order_notification_service import OrderNotificationService
+from app.services.order_stock_service import adjust_line_quantity, release_order_holds
 from app.services.purchase_order_service import (
     LineInput,
     PurchaseOrderError,
@@ -390,3 +395,129 @@ def test_usage_report_balances(rdb):
     profit = profit_report(rdb, ACCOUNT, start, datetime.utcnow() + timedelta(minutes=1))
     assert profit["totals"]["revenue"] == pytest.approx(300.0)
     assert profit["totals"]["cost"] == pytest.approx(130.0)
+
+
+def test_profit_report_days_are_local_calendar_days(rdb):
+    out = _order(rdb, {"inventory_item_id": "inv-soda", "quantity": 1})
+    order = rdb.get(Order, out.id)
+    order.created_at = datetime(2026, 10, 15, 22, 30)  # 01:30 on the 16th in Nairobi
+    rdb.commit()
+    profit = profit_report(rdb, ACCOUNT, datetime(2026, 10, 15, 21), datetime(2026, 10, 16, 21), 180)
+    assert [day["date"] for day in profit["days"]] == ["2026-10-16"]
+
+
+# --- Cost precision ---------------------------------------------------------------
+
+
+def test_cheap_pack_split_into_many_units_keeps_its_cost(rdb):
+    eggs = rdb.get(InventoryItem, "inv-eggs")
+    eggs.stock_quantity = 0
+    eggs.attributes = {"buy_units": [{"name": "Box of 200", "factor": 200}]}
+    rdb.commit()
+    service = PurchaseOrderService(rdb)
+    po = service.create(ACCOUNT, user_id=None, supplier_id=None, status="ordered",
+                        lines=[LineInput("inv-eggs", Decimal("1"), Decimal("1"), "Box of 200")])
+    _, movements = service.receive(ACCOUNT, po.id, [ReceiveInput(po.lines[0].id, Decimal("1"))])
+    rdb.commit()
+    rdb.expire_all()
+    assert Decimal(str(rdb.get(StockMovement, movements[0].id).unit_cost)) == Decimal("0.005")
+    assert Decimal(str(rdb.get(InventoryItem, "inv-eggs").buying_price)) == Decimal("0.005")
+
+
+def test_purchase_order_reference_skips_past_a_taken_one(rdb):
+    service = PurchaseOrderService(rdb)
+    assert service._next_reference(ACCOUNT) == "PO-00001"
+    assert service._next_reference(ACCOUNT, after="PO-00007") == "PO-00008"
+
+
+# --- Credit sales ---------------------------------------------------------------------
+
+
+@pytest.fixture()
+def no_receipts(monkeypatch):
+    monkeypatch.setattr(OrderNotificationService, "notify_customer_receipt_whatsapp", lambda *_a, **_k: None)
+
+
+def _credit_order(db, **extra):
+    payload = OrderCreate(
+        source="walkin",
+        fulfillment_type="dine_in",
+        payment_method="credit",
+        customer_name="Amina",
+        customer_phone="0712345678",
+        items=[{"inventory_item_id": "inv-chapati", "quantity": 10}],
+        **extra,
+    )
+    return orders.create_order(payload, request=None, db=db, session={})["data"]
+
+
+def _owed(db) -> Decimal:
+    db.expire_all()
+    return Decimal(str(db.query(ShopCustomer).one().outstanding_balance))
+
+
+@pytest.mark.usefixtures("no_receipts")
+def test_credit_sale_saves_date_to_pay(rdb):
+    _credit_order(rdb, date_to_pay="2026-11-01")
+    customer = rdb.query(ShopCustomer).one()
+    assert customer.date_to_pay == date(2026, 11, 1)
+    assert Decimal(str(customer.outstanding_balance)) == Decimal("300.00")
+
+    with pytest.raises(HTTPException) as exc:
+        _credit_order(rdb, date_to_pay="next week")
+    assert exc.value.status_code == 422
+
+
+@pytest.mark.usefixtures("no_receipts")
+def test_editing_a_credit_order_moves_the_customer_balance(rdb):
+    out = _credit_order(rdb)
+    assert _owed(rdb) == Decimal("300.00")
+
+    def edit(**fields):
+        orders.update_order(out.id, OrderUpdate(**fields), request=None, db=rdb, session={})
+
+    edit(discount=50)
+    assert _owed(rdb) == Decimal("250.00")
+    edit(delivery_fee=100)
+    assert _owed(rdb) == Decimal("350.00")
+    edit(payment_method="cash")
+    assert _owed(rdb) == Decimal("0.00")
+    edit(payment_method="credit")
+    assert _owed(rdb) == Decimal("350.00")
+
+
+@pytest.mark.usefixtures("no_receipts")
+def test_releasing_a_cancelled_credit_order_returns_stock_and_credit(rdb):
+    out = _credit_order(rdb)
+    assert _stock(rdb, "inv-flour") == pytest.approx(9.0)
+    order = rdb.get(Order, out.id)
+    release_order_holds(rdb, order)
+    rdb.commit()
+    assert _stock(rdb, "inv-flour") == pytest.approx(10.0)
+    assert _owed(rdb) == Decimal("0.00")
+    assert rdb.get(Order, out.id).stock_deducted is False
+
+
+def test_cancel_after_a_partial_line_reduction_returns_the_rest(rdb):
+    out = _order(rdb, {"inventory_item_id": "inv-chapati", "quantity": 10})
+    order = rdb.get(Order, out.id)
+    adjust_line_quantity(rdb, order, order.items[0], -4)
+    rdb.commit()
+    assert _stock(rdb, "inv-flour") == pytest.approx(9.4)
+    _cancel(rdb, out.id, waste=False)
+    assert _stock(rdb, "inv-flour") == pytest.approx(10.0)
+    assert _stock(rdb, "inv-oil") == pytest.approx(5.0)
+
+
+def test_external_catalogue_line_never_keeps_another_shops_item(rdb):
+    rdb.add(Account(id="acct-other", business_name="Other", business_location="Nairobi",
+                    business_category="restaurant", store_type="restaurant"))
+    rdb.add(InventoryItem(id="inv-foreign", account_id="acct-other", product_id="soda", stock_quantity=5))
+    rdb.commit()
+    foreign = CatalogItem(ref="external:sku-1", source="external", name="Soda", price=Decimal("80"),
+                          platform_inventory_item_id="inv-foreign")
+    order = build_catalog_order(rdb, account_id=ACCOUNT, conversation_id=None, line_items=[(foreign, 1)],
+                                phone=None, note=None, enforce_store_open=False)
+    rdb.commit()
+    assert [line.inventory_item_id for line in order.items] == [None]
+    assert _stock(rdb, "inv-foreign") == 5

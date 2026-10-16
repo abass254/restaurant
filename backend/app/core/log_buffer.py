@@ -17,6 +17,9 @@ REQUEST_BUFFER_SIZE = 2000
 LOG_BUFFER_SIZE = 2000
 MAX_MESSAGE_CHARS = 4000
 MAX_PATH_CHARS = 300
+SLOW_REQUEST_MS = 1000
+
+logger = logging.getLogger(__name__)
 
 # Polling the dashboard itself would otherwise drown out real traffic.
 EXCLUDED_PATHS = frozenset({"/api/v1/admin/logs"})
@@ -103,16 +106,25 @@ class RequestLogMiddleware:
             query = scope.get("query_string", b"").decode("latin-1")
             if query:
                 path = f"{path}?{_redact_query(query)}"
+            duration_ms = round((time.perf_counter() - start) * 1000, 1)
             request_buffer.append(
                 {
                     "ts": _iso(time.time()),
                     "method": scope.get("method", ""),
                     "path": path[:MAX_PATH_CHARS],
                     "status": status_holder["status"],
-                    "duration_ms": round((time.perf_counter() - start) * 1000, 1),
+                    "duration_ms": duration_ms,
                     "ip": _client_ip(scope),
                 }
             )
+            if duration_ms >= SLOW_REQUEST_MS:
+                logger.warning(
+                    "Slow request %s %s took %.0fms (status %s)",
+                    scope.get("method", ""),
+                    path[:MAX_PATH_CHARS],
+                    duration_ms,
+                    status_holder["status"],
+                )
 
 
 def snapshot(*, request_limit: int, log_limit: int) -> dict[str, Any]:

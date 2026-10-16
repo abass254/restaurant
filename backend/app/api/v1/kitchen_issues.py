@@ -37,7 +37,7 @@ from app.support.merchant_permissions import (
     assert_merchant_section_any_access,
     require_store_admin,
 )
-from app.support.store_type import is_restaurant, require_restaurant_account
+from app.support.store_type import require_restaurant_account
 
 router = APIRouter(prefix="/kitchen-issues", tags=["kitchen-issues"])
 
@@ -93,12 +93,9 @@ def _error(exc: KitchenIssueError) -> HTTPException:
 
 
 def _stock(db: Session, account: Account) -> dict:
-    if is_restaurant(account) and not account.kitchen_issuing_enabled:
-        account.kitchen_issuing_enabled = True
-        db.flush()
     items = kitchen_supplies(db, account.id)
     return {
-        "enabled": True,
+        "enabled": kitchen_issuing_on(account),
         "items": [kitchen_item_out(item) for item in items],
     }
 

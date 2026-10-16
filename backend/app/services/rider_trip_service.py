@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models import Account, Delivery, DeliveryOffer, Order, OrderStatusHistory, Rider, RiderLoginCode
 from app.services.delivery_service import DeliveryService
+from app.services.order_stock_service import release_order_holds
 from app.services.rider_service import RiderServiceError, normalize_phone
 from app.support.otp_delivery import (
     MAIL_SEND_FAILED,
@@ -321,6 +322,7 @@ class RiderTripService:
             order.cancelled_at = stamp
             order.rider_trip_phase = TRIP_CANCELLED
             order.updated_at = stamp
+            release_order_holds(self.db, order, user_id=changed_by_user_id)
             self.db.add(
                 OrderStatusHistory(
                     order_id=order.id,

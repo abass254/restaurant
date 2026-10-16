@@ -127,7 +127,7 @@ export function RestaurantStockTake() {
     setBusy(true);
     try {
       await cancelStockTake(take.id);
-      router.replace(`/trans-chap/purchases?tab=${take.location === "kitchen" ? "kitchen" : "counts"}`);
+      router.replace(take.location === "kitchen" ? "/trans-chap/kitchen" : "/trans-chap/purchases?tab=counts");
     } catch (err) {
       await showError("Could not discard stock count", extractErrorMessage(err));
       setBusy(false);

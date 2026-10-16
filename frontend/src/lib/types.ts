@@ -1134,6 +1134,18 @@ export type ModifierOption = {
   is_active: boolean;
 };
 
+/** Whether an option can be picked now: sold out by staff, or short of stock for one pick. */
+export type OptionAvailability = {
+  option_id: string;
+  group_id: string;
+  is_active: boolean;
+  available: boolean;
+  reason: "sold_out" | "out_of_stock" | null;
+  on_hand: number | null;
+  location: "store" | "kitchen" | null;
+  unit: string | null;
+};
+
 /** Shop-owned question asked at the till, e.g. "Choose your drink" (pick 1). */
 export type ModifierGroup = {
   id: string;

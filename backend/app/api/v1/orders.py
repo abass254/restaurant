@@ -9,13 +9,13 @@ state-machine helpers.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.session import require_user, validate_csrf
@@ -47,7 +47,7 @@ from app.services.mpesa_service import (
     MpesaConfigurationMissing,
 )
 from app.support.mpesa_merchant_copy import merchant_safe_stk_error
-from app.services.order_creation import next_order_number
+from app.services.order_creation import insert_order, next_order_number
 from app.services.order_tracking_service import (
     OrderTrackingError,
     OrderTrackingService,
@@ -65,8 +65,9 @@ from app.services.menu_options import (
     line_stock_usage,
     resolve_line_options,
 )
-from app.services.order_stock_service import consume_for_order, reverse_for_order
+from app.services.order_stock_service import consume_for_order, release_order_holds
 from app.services.sell_units import resolve_sell_unit
+from app.support.datetime_utils import naive_utc
 from app.support.store_type import is_restaurant
 from app.support.order_delivery_details import order_needs_delivery_details
 from app.support.account_location import (
@@ -228,6 +229,8 @@ class OrderCreate(BaseModel):
     payment_method: Literal["mpesa", "cash", "card", "credit", "other", "split"] | None = None
     # Required when payment_method="split"; amounts must add up to the order total.
     payments: list[OrderPaymentSplitPayload] | None = Field(default=None, max_length=5)
+    # Credit sales: when the customer promises to pay (YYYY-MM-DD).
+    date_to_pay: date | str | None = None
 
     delivery_fee: float | None = Field(default=0, ge=0, le=99_999_999.99)
     discount: float | None = Field(default=0, ge=0, le=99_999_999.99)
@@ -332,6 +335,14 @@ def list_orders(
     status_filter: str | None = Query(default=None, alias="status"),
     source: str | None = Query(default=None),
     fulfillment_type: str | None = Query(default=None),
+    since: datetime | None = Query(
+        default=None,
+        description="Only orders whose paid/placed/created time is at or after this instant.",
+    ),
+    until: datetime | None = Query(
+        default=None,
+        description="Only orders whose paid/placed/created time is before this instant.",
+    ),
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=30, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -346,17 +357,23 @@ def list_orders(
         user = _auth_orders_user(db, session, pos_ok=True)
     account_id = _require_shop(user)
 
-    from app.services.rider_trip_service import RiderTripService
+    # Hail upkeep only concerns standalone deliveries; walk-in (POS) lists are
+    # fetched many pages at a time and must not repeat it per page.
+    if source != "walkin":
+        from app.services.rider_trip_service import RiderTripService
 
-    trip_service = RiderTripService(db)
-    trip_service.repair_cancelled_hails_with_active_rider(account_id)
-    trip_service.expire_stale_rider_searches(account_id)
+        trip_service = RiderTripService(db)
+        trip_service.repair_cancelled_hails_with_active_rider(account_id)
+        trip_service.expire_stale_rider_searches(account_id)
 
     query = (
         db.query(Order)
         .options(
             selectinload(Order.items).selectinload(OrderItem.inventory_item),
             joinedload(Order.assigned_rider),
+            joinedload(Order.placed_by),
+            joinedload(Order.mpesa_transaction),
+            selectinload(Order.mpesa_transactions),
         )
         .filter(Order.account_id == account_id)
         .order_by(
@@ -389,6 +406,14 @@ def list_orders(
                 detail=f"Unknown fulfillment type: {fulfillment_type}",
             )
         query = query.filter(Order.fulfillment_type == fulfillment_type)
+
+    if since is not None or until is not None:
+        # Same timestamp the Trans Chap dashboard buckets a sale by.
+        activity_at = func.coalesce(Order.paid_at, Order.placed_at, Order.created_at)
+        if since is not None:
+            query = query.filter(activity_at >= naive_utc(since))
+        if until is not None:
+            query = query.filter(activity_at < naive_utc(until))
 
     if q:
         term = f"%{q}%"
@@ -602,8 +627,7 @@ def create_test_delivery(
         created_at=now,
         updated_at=now,
     )
-    db.add(order)
-    db.flush()
+    insert_order(db, order)
 
     db.add(
         OrderItem(
@@ -1246,8 +1270,7 @@ def create_order(
         created_at=now,
         updated_at=now,
     )
-    db.add(order)
-    db.flush()  # need order.id for the FKs below
+    insert_order(db, order)
 
     order_items: list[OrderItem] = []
     for (line, inv_item, price, name, sku, sell_unit_label, unit_factor), modifiers, usage in zip(
@@ -1336,7 +1359,11 @@ def create_order(
                 name=payload.customer_name or "",
                 phone=payload.customer_phone or "",
             )
-            customers.charge_credit(credit_customer, payment_portion(order, PAYMENT_CREDIT))
+            customers.charge_credit(
+                credit_customer,
+                payment_portion(order, PAYMENT_CREDIT),
+                date_to_pay=payload.date_to_pay,
+            )
             order.customer_name = credit_customer.name
             order.customer_phone = credit_customer.phone
         except CustomerServiceError as exc:
@@ -1582,6 +1609,8 @@ def update_order(
 
     data = payload.model_dump(exclude_unset=True)
     previous_total = _money(order.total)
+    previous_credit = payment_portion(order, PAYMENT_CREDIT)
+    previous_phone = order.customer_phone
     for key, value in data.items():
         if isinstance(value, str):
             value = value.strip() or None
@@ -1594,6 +1623,7 @@ def update_order(
         order.total = (
             Decimal(str(order.subtotal or 0))
             + Decimal(str(order.delivery_fee or 0))
+            + Decimal(str(order.tax or 0))
             - Decimal(str(order.discount or 0))
         ).quantize(Decimal("0.01"))
         if order.total < 0:
@@ -1604,6 +1634,24 @@ def update_order(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="This order was paid with split payments, so its total can't change.",
             )
+
+    new_credit = payment_portion(order, PAYMENT_CREDIT)
+    if previous_credit > 0 or new_credit > 0:
+        try:
+            CustomerService(db).rebalance_order_credit(
+                str(account_id),
+                previous_phone=previous_phone,
+                previous_amount=previous_credit,
+                phone=order.customer_phone,
+                name=order.customer_name,
+                amount=new_credit,
+            )
+        except CustomerServiceError as exc:
+            db.rollback()
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
 
     order.updated_at = datetime.utcnow()
     db.commit()
@@ -1723,16 +1771,8 @@ def transition_order(
         order.completed_at = now
     if target == CANCELLED and not order.cancelled_at:
         order.cancelled_at = now
-    if target in (CANCELLED, REFUNDED) and order.stock_deducted:
-        reverse_for_order(db, order, wastage=payload.waste_stock, user_id=user.id)
-        order.stock_deducted = False
-    credit_due = payment_portion(order, PAYMENT_CREDIT)
-    if target in (CANCELLED, REFUNDED) and credit_due > 0:
-        CustomerService(db).release_credit_for_order(
-            str(account_id),
-            phone=order.customer_phone,
-            amount=credit_due,
-        )
+    if target in (CANCELLED, REFUNDED):
+        release_order_holds(db, order, wastage=payload.waste_stock, user_id=user.id)
 
     db.add(
         OrderStatusHistory(
@@ -2201,6 +2241,8 @@ def delete_order(
         )
     if order.source == SOURCE_WALKIN:
         require_store_admin(user, "Only the store admin can void a sale.")
+
+    release_order_holds(db, order, user_id=user.id)
 
     db.delete(order)
     db.commit()

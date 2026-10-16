@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { BackendUnavailableError, fetchBackend } from "@/lib/backend";
 import { firstAllowedPath } from "@/lib/merchant-permissions";
 import type { AuthUser } from "@/lib/types";
@@ -11,8 +12,12 @@ function cookieHeaderFromStore(store: Awaited<ReturnType<typeof cookies>>): stri
     .join("; ");
 }
 
-/** Load the current user on the server (dashboard layouts, RSC). */
-export async function getServerUser(): Promise<AuthUser | null> {
+/**
+ * Load the current user on the server (dashboard layouts, RSC).
+ * Memoized per request: `fetchBackend` passes an abort signal, which opts out of
+ * Next's fetch memoization, so nested layouts would otherwise each hit the API.
+ */
+export const getServerUser = cache(async (): Promise<AuthUser | null> => {
   const store = await cookies();
   const cookieHeader = cookieHeaderFromStore(store);
   if (!cookieHeader) {
@@ -29,7 +34,7 @@ export async function getServerUser(): Promise<AuthUser | null> {
   }
 
   return (await res.json()) as AuthUser;
-}
+});
 
 /** Send an already-authenticated merchant to their first allowed page. */
 export async function redirectIfSignedIn(): Promise<void> {

@@ -14,6 +14,11 @@ import {
   type MerchantSection,
 } from "@/lib/merchant-permissions";
 import { logoutToSignIn } from "@/lib/logout";
+import { formatNavBadgeCount } from "@/lib/merchant-nav";
+import {
+  TRANS_CHAP_NAV_COUNT_PATHS,
+  useTransChapNavCounts,
+} from "@/lib/use-trans-chap-nav-counts";
 import { migrateLegacyTransChapPurchases } from "@/lib/trans-chap-purchases";
 import { detectTransChapMachine, syncTransChapMachine } from "@/lib/trans-chap-machine";
 
@@ -140,6 +145,7 @@ function headerMeta(
   pathname: string,
   mode: string | null,
   restaurant = false,
+  from: string | null = null,
 ): { title: string; backHref: string | null } {
   if (pathname.startsWith("/trans-chap/sales/receipt")) {
     return { title: "Receipt", backHref: "/trans-chap/sales" };
@@ -176,16 +182,24 @@ function headerMeta(
       backHref: "/trans-chap/purchases",
     };
   }
+  if (pathname.startsWith("/trans-chap/purchases/po/new")) {
+    return { title: "New purchase order", backHref: "/trans-chap/purchases?tab=orders" };
+  }
   if (pathname.startsWith("/trans-chap/purchases/po")) {
-    return { title: "Purchase order", backHref: "/trans-chap/purchases" };
+    return { title: "Purchase order", backHref: "/trans-chap/purchases?tab=orders" };
   }
   if (pathname.startsWith("/trans-chap/purchases/item")) {
     return { title: "Stock card", backHref: "/trans-chap/purchases?tab=stock" };
   }
   if (pathname.startsWith("/trans-chap/purchases/count")) {
-    return { title: "Stock count", backHref: "/trans-chap/purchases?tab=counts" };
+    return {
+      title: from === "kitchen" ? "Kitchen count" : "Stock count",
+      backHref: from === "kitchen" ? "/trans-chap/kitchen" : "/trans-chap/purchases?tab=counts",
+    };
   }
   if (pathname.startsWith("/trans-chap/purchases/issue")) {
+    if (from === "store") return { title: "Issue to kitchen", backHref: "/trans-chap/stocks" };
+    if (from === "kitchen") return { title: "Request supplies", backHref: "/trans-chap/kitchen" };
     return { title: "Kitchen issue", backHref: "/trans-chap/kitchen" };
   }
   if (pathname.startsWith("/trans-chap/purchases/kitchen-day")) {
@@ -294,6 +308,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
     pathname,
     searchParams.get("mode"),
     restaurant,
+    searchParams.get("from"),
   );
   const isSignIn = pathname.startsWith("/trans-chap/sign-in");
   const isNewPost = pathname.startsWith("/trans-chap/feeds/new");
@@ -351,6 +366,23 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
     [instagramConnected, restaurant, user],
   );
 
+  const navCounts = useTransChapNavCounts({
+    accountId: user?.active_account?.id || user?.account?.id,
+    userId: user?.id,
+    pathname,
+    enabled: {
+      orders: !isSignIn && items.some((item) => item.href === TRANS_CHAP_NAV_COUNT_PATHS.orders),
+      kitchenRequests:
+        !isSignIn &&
+        restaurant &&
+        items.some((item) => item.href === TRANS_CHAP_NAV_COUNT_PATHS.kitchenRequests),
+    },
+  });
+  const badgeByHref: Record<string, number> = {
+    [TRANS_CHAP_NAV_COUNT_PATHS.orders]: navCounts.orders,
+    [TRANS_CHAP_NAV_COUNT_PATHS.kitchenRequests]: navCounts.kitchenRequests,
+  };
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     if ("serviceWorker" in navigator) {
@@ -391,16 +423,23 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
     const isActive = item.exact
       ? pathname === item.href
       : pathname === item.href || pathname.startsWith(`${item.href}/`);
+    const badgeCount = badgeByHref[item.href] ?? 0;
+    const badgeLabel = formatNavBadgeCount(badgeCount);
     return (
       <Link
         key={item.href}
         href={item.href}
         className={`${isActive ? "is-active" : ""}${isPhoneHidden ? " is-phone-hidden" : ""}`}
-        aria-label={item.label}
+        aria-label={badgeCount > 0 ? `${item.label}, ${badgeCount} new` : item.label}
         title={item.label}
       >
         <span className="mobile-nav__icon">
           <i className={`fa-solid ${item.icon}`} aria-hidden />
+          {badgeLabel ? (
+            <span className="mobile-nav__badge" aria-hidden>
+              {badgeLabel}
+            </span>
+          ) : null}
         </span>
         <span className="mobile-nav__label">{item.label}</span>
       </Link>

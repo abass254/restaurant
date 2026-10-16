@@ -15,6 +15,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models import Account, InventoryItem, Order, OrderItem, StockMovement
+from app.services.customer_service import CustomerService
 from app.services.inventory_stock_service import (
     MONEY,
     LedgerLine,
@@ -25,6 +26,8 @@ from app.services.inventory_stock_service import (
     stock_usage_lines,
 )
 from app.services.menu_options import line_stock_usage
+from app.support.order_payments import payment_portion
+from app.support.order_status import PAYMENT_CREDIT
 from app.support.store_type import is_restaurant
 
 
@@ -147,16 +150,30 @@ def _sale_movements(db: Session, order: Order) -> list[StockMovement]:
     )
 
 
-def _already_reversed(db: Session, order: Order) -> bool:
-    return (
-        db.query(StockMovement.id)
+def _unreversed_sales(db: Session, order: Order, sales: list[StockMovement]) -> list[tuple[StockMovement, Decimal]]:
+    """Each (item, order line) still out of stock after earlier reversals, with its first sale row."""
+    reversed_qty: dict[tuple[str, str | None], Decimal] = defaultdict(lambda: Decimal("0"))
+    for row in (
+        db.query(StockMovement)
         .filter(
             StockMovement.order_id == order.id,
             StockMovement.reason == "sale_reversal",
+            StockMovement.voided_at.is_(None),
         )
-        .first()
-        is not None
-    )
+        .all()
+    ):
+        reversed_qty[(row.inventory_item_id, row.order_item_id)] += Decimal(str(row.quantity))
+    outstanding: dict[tuple[str, str | None], tuple[StockMovement, Decimal]] = {}
+    for sale in sales:
+        key = (sale.inventory_item_id, sale.order_item_id)
+        first, qty = outstanding.get(key, (sale, Decimal("0")))
+        outstanding[key] = (first, qty + Decimal(str(sale.quantity)))
+    remaining = []
+    for key, (sale, qty) in outstanding.items():
+        left = qty - reversed_qty[key]
+        if left > 0:
+            remaining.append((sale, left))
+    return remaining
 
 
 def reverse_for_order(
@@ -178,24 +195,26 @@ def reverse_for_order(
     if not sales:
         restore_stock_for_order(db, order)
         return
-    if _already_reversed(db, order):
+    remaining = _unreversed_sales(db, order, sales)
+    if not remaining:
         return
 
     now = datetime.utcnow()
     account_id = str(order.account_id)
-    for sale in sales:
+    kitchen_on = kitchen_issuing_on(db.get(Account, account_id))
+    for sale, quantity in remaining:
         item = lock_item(db, sale.inventory_item_id, account_id=account_id)
         if item is None or item.stock_quantity is None:
             continue
         links = {"order_id": order.id, "order_item_id": sale.order_item_id}
         unit_cost = Decimal(str(sale.unit_cost)) if sale.unit_cost is not None else None
-        location = sale.location or "store"
+        location = (sale.location or "store") if kitchen_on else "store"
         record_movement(
             db,
             item,
             account_id=account_id,
             direction="in",
-            quantity=Decimal(str(sale.quantity)),
+            quantity=quantity,
             reason="sale_reversal",
             unit_cost=unit_cost,
             note=f"Order {order.order_number} {order.status}",
@@ -210,7 +229,7 @@ def reverse_for_order(
                 item,
                 account_id=account_id,
                 direction="out",
-                quantity=Decimal(str(sale.quantity)),
+                quantity=quantity,
                 reason="wastage",
                 allow_negative=True,
                 unit_cost=unit_cost,
@@ -220,6 +239,26 @@ def reverse_for_order(
                 now=now,
                 location=location,
             )
+
+
+def release_order_holds(
+    db: Session,
+    order: Order,
+    *,
+    wastage: bool = False,
+    user_id: str | None = None,
+) -> None:
+    """Give back what a cancelled, refunded or deleted order held: its stock and the customer's credit."""
+    if order.stock_deducted:
+        reverse_for_order(db, order, wastage=wastage, user_id=user_id)
+        order.stock_deducted = False
+    credit_due = payment_portion(order, PAYMENT_CREDIT)
+    if credit_due > 0:
+        CustomerService(db).release_credit_for_order(
+            str(order.account_id),
+            phone=order.customer_phone,
+            amount=credit_due,
+        )
 
 
 def adjust_line_quantity(

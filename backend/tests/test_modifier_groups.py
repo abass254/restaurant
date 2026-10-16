@@ -24,7 +24,8 @@ from app.api.v1.menu import (
 from app.api.v1.orders import OrderCreate
 from app.services.inventory_stock_service import restore_stock_for_order
 from app.database import Base
-from app.models import Catalogue, InventoryItem, ModifierOption, OrderItem
+from app.models import Catalogue, ComboComponent, InventoryItem, ModifierGroup, ModifierOption, OrderItem
+from app.services.menu_options import option_availability
 from app.schemas import InventoryItemOut
 
 ACCOUNT = "acct-1"
@@ -126,13 +127,21 @@ def big_mac_meal(db):
     )
     _attach(db, "big-mac", changes.id)
     _attach(db, "meal", size.id, drink.id)
-    menu.replace_combo_components(
-        "meal",
-        ComboComponentsReplace(components=[ComboComponentIn(product_id="big-mac")]),
-        request=None,
-        db=db,
-        session={},
-    )
+    # Legacy combo data: new combos can no longer be created through the API.
+    db.add(ComboComponent(combo_id="meal", component_product_id="big-mac", quantity=1))
+    db.commit()
+
+
+def test_new_combo_components_are_rejected(db):
+    with pytest.raises(HTTPException) as exc:
+        menu.replace_combo_components(
+            "meal",
+            ComboComponentsReplace(components=[ComboComponentIn(product_id="big-mac")]),
+            request=None,
+            db=db,
+            session={},
+        )
+    assert exc.value.status_code == 422
 
 
 def test_group_create_and_patch_replaces_options(db):
@@ -202,6 +211,17 @@ def test_required_group_and_max_are_enforced(db, big_mac_meal):
     assert exc.value.status_code == 422
 
 
+def test_group_shared_by_combo_and_its_dish_counts_one_pick_for_both(db, big_mac_meal):
+    sauce = _create_group(db, "Sauce", 1, 1, ModifierOptionIn(name="Ketchup"))
+    _attach(db, "big-mac", db.query(ModifierGroup).filter(ModifierGroup.name == "Burger changes").one().id, sauce.id)
+    _attach(db, "meal", *[g.id for g in db.query(ModifierGroup).filter(
+        ModifierGroup.name.in_(("Size", "Choose drink"))).all()], sauce.id)
+    body = _order(db, {"inventory_item_id": "inv-meal", "quantity": 1,
+                       "modifier_option_ids": [_option_id(db, "Medium"), _option_id(db, "Coke"),
+                                               _option_id(db, "Ketchup")]})
+    assert body["data"].items[0].product_name.startswith("Big Mac Meal")
+
+
 def test_dish_price_is_computed_on_the_server(db, big_mac_meal):
     body = _order(db, {"inventory_item_id": "inv-big-mac", "quantity": 1, "unit_price": 1,
                        "modifier_option_ids": [_option_id(db, "Extra cheese")],
@@ -235,10 +255,10 @@ def test_raw_material_option_deducts_its_amount(db):
     assert float(db.get(InventoryItem, "inv-cheese").stock_quantity) == pytest.approx(1.85)
 
 
-def test_supply_option_charges_selling_price_per_count(db):
+def test_supply_option_charges_its_own_price_per_count(db):
     group = _create_group(
         db, "Add a drink", 0, 2,
-        ModifierOptionIn(name="Coke", product_id="coke"),
+        ModifierOptionIn(name="Coke", product_id="coke", price_delta=100),
         ModifierOptionIn(name="No ice"),
     )
     assert group.included is False
@@ -318,3 +338,99 @@ def test_combo_line_name_price_and_stock(db, big_mac_meal):
     db.expire_all()
     assert float(db.get(InventoryItem, "inv-coke").stock_quantity) == 8
     assert float(db.get(InventoryItem, "inv-big-mac").stock_quantity) == 3
+
+
+def test_option_sold_out_toggle_survives_group_save_and_blocks_orders(db):
+    group = _create_group(
+        db, "Starch", 1, 1,
+        ModifierOptionIn(name="Rice"),
+        ModifierOptionIn(name="Ugali"),
+    )
+    _attach(db, "fries", group.id)
+    ugali = _option_id(db, "Ugali")
+
+    out = menu.set_modifier_option_active(
+        ugali, menu.OptionActivePatch(is_active=False), request=None, db=db, session={},
+    )["data"]
+    assert out.is_active is False
+
+    other = ModifierGroup(account_id="acct-2", name="Theirs", options=[ModifierOption(name="X")])
+    db.add(other)
+    db.commit()
+    with pytest.raises(HTTPException) as exc:
+        menu.set_modifier_option_active(
+            other.options[0].id, menu.OptionActivePatch(is_active=False), request=None, db=db, session={},
+        )
+    assert exc.value.status_code == 404
+
+    menu.update_modifier_group(
+        group.id,
+        ModifierGroupPatch(name="Starch", options=[
+            ModifierOptionIn(id=_option_id(db, "Rice"), name="Rice"),
+            ModifierOptionIn(id=ugali, name="Ugali"),
+        ]),
+        request=None, db=db, session={},
+    )
+    db.expire_all()
+    assert db.get(ModifierOption, ugali).is_active is False
+
+    with pytest.raises(HTTPException) as exc:
+        _order(db, {"inventory_item_id": "inv-fries", "quantity": 1, "modifier_option_ids": [ugali]})
+    assert exc.value.status_code == 422
+
+
+def test_option_availability_reasons(db):
+    _add_supply(db, "cheese", "Cheese", "kg", 2)
+    db.get(InventoryItem, "inv-cheese").kitchen_quantity = 0.01
+    db.commit()
+    group = _create_group(
+        db, "Extras", 0, 3,
+        ModifierOptionIn(name="Coke", product_id="coke"),
+        ModifierOptionIn(name="Cheese", product_id="cheese", stock_qty=0.05),
+        ModifierOptionIn(name="No onions"),
+    )
+    shop = SimpleNamespace(id=ACCOUNT, store_type="restaurant", kitchen_issuing_enabled=False)
+
+    def reasons():
+        return {row["option_id"]: row for row in option_availability(db, shop)}
+
+    rows = reasons()
+    coke, cheese, onions = (o.id for o in group.options)
+    assert rows[coke]["available"] and rows[coke]["on_hand"] == 10 and rows[coke]["location"] == "store"
+    assert rows[cheese]["available"] and rows[cheese]["location"] == "store"
+    assert rows[onions]["available"] and rows[onions]["on_hand"] is None
+
+    shop.kitchen_issuing_enabled = True
+    rows = reasons()
+    assert rows[cheese]["reason"] == "out_of_stock" and rows[cheese]["location"] == "kitchen"
+    assert rows[coke]["available"]
+
+    db.get(InventoryItem, "inv-coke").stock_quantity = 0
+    db.get(ModifierOption, onions).is_active = False
+    db.commit()
+    rows = reasons()
+    assert rows[coke]["reason"] == "out_of_stock"
+    assert rows[onions]["reason"] == "sold_out" and not rows[onions]["available"]
+
+
+def test_legacy_supply_options_get_their_supply_price(db):
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "migrations" / "2026_10_15_220000_option_prices_explicit.py"
+    spec = importlib.util.spec_from_file_location("option_prices_explicit", path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    paid = _create_group(db, "Add a drink", 0, 2, ModifierOptionIn(name="Coke", product_id="coke"))
+    free = _create_group(
+        db, "Drink", 1, 1, ModifierOptionIn(name="Coke", product_id="coke"), included=True,
+    )
+    size = _create_group(db, "Size", 1, 1, ModifierOptionIn(name="Large", price_delta=60))
+
+    assert migration.copy_supply_prices(db) == 1
+    db.expire_all()
+    assert float(db.get(ModifierOption, paid.options[0].id).price_delta) == 100
+    assert float(db.get(ModifierOption, free.options[0].id).price_delta) == 0
+    assert float(db.get(ModifierOption, size.options[0].id).price_delta) == 60
+    assert migration.copy_supply_prices(db) == 0

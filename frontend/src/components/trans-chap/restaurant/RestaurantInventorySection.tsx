@@ -18,7 +18,7 @@ export function RestaurantInventorySection() {
           </div>
           <div className="rs-row" style={{ gap: "0.5rem" }}>
             <Link
-              href="/trans-chap/purchases/issue?new=1"
+              href="/trans-chap/purchases/issue?new=1&from=store"
               className="rs-btn rs-btn--primary"
               style={{ fontWeight: 700 }}
             >

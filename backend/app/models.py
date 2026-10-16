@@ -1216,7 +1216,7 @@ class InventoryItem(Base):
     id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
     account_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("accounts.id"))
     product_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("catalogue.id"))
-    buying_price: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
+    buying_price: Mapped[Any | None] = mapped_column(Numeric(14, 4), nullable=True)
     selling_price: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
     stock_quantity: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     # Restaurant kitchen issuing: stock_quantity is the store, this is the kitchen.
@@ -1300,7 +1300,7 @@ class StockMovement(Base):
     location: Mapped[str] = mapped_column(String(16), default="store")
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Cost per base unit at the time of the movement.
-    unit_cost: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
+    unit_cost: Mapped[Any | None] = mapped_column(Numeric(14, 4), nullable=True)
     total_cost: Mapped[Any | None] = mapped_column(Numeric(14, 2), nullable=True)
     supplier_id: Mapped[str | None] = mapped_column(
         String(PK_LEN),
@@ -1480,7 +1480,7 @@ class StockTakeLine(Base):
     expected_qty: Mapped[Any | None] = mapped_column(Numeric(12, 3), nullable=True)
     counted_qty: Mapped[Any | None] = mapped_column(Numeric(12, 3), nullable=True)
     variance_qty: Mapped[Any | None] = mapped_column(Numeric(12, 3), nullable=True)
-    unit_cost: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
+    unit_cost: Mapped[Any | None] = mapped_column(Numeric(14, 4), nullable=True)
 
     stock_take: Mapped[StockTake] = relationship(back_populates="lines")
     inventory_item: Mapped[InventoryItem] = relationship()
@@ -1533,7 +1533,7 @@ class KitchenIssueLine(Base):
     requested_qty: Mapped[Any | None] = mapped_column(Numeric(12, 3), nullable=True)
     issued_qty: Mapped[Any | None] = mapped_column(Numeric(12, 3), nullable=True)
     # Average cost per base unit when issued.
-    unit_cost: Mapped[Any | None] = mapped_column(Numeric(12, 2), nullable=True)
+    unit_cost: Mapped[Any | None] = mapped_column(Numeric(14, 4), nullable=True)
 
     kitchen_issue: Mapped[KitchenIssue] = relationship(back_populates="lines")
     inventory_item: Mapped[InventoryItem] = relationship()

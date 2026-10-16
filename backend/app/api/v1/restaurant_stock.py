@@ -253,4 +253,4 @@ def get_profit_report(
 ):
     _, account_id = _shop(db, session, "dashboard", "orders", "inventory")
     begin, finish = _range(start, end, tz_offset_minutes)
-    return {"data": profit_report(db, account_id, begin, finish)}
+    return {"data": profit_report(db, account_id, begin, finish, tz_offset_minutes)}

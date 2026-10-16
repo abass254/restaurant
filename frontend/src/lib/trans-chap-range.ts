@@ -127,6 +127,17 @@ export function rangeLabel(range: DateRange, todayKey: string): string {
   }
 }
 
+/**
+ * UTC instants bounding an inclusive Nairobi range, for API `since`/`until`.
+ * Africa/Nairobi is a fixed UTC+3 zone (no DST).
+ */
+export function rangeBounds(range: DateRange): { since: string; until: string } {
+  return {
+    since: new Date(`${range.from}T00:00:00+03:00`).toISOString(),
+    until: new Date(`${addDays(range.to, 1)}T00:00:00+03:00`).toISOString(),
+  };
+}
+
 export function inRange(when: Date | null, range: DateRange): when is Date {
   if (!when) return false;
   const key = nairobiDateKey(when);

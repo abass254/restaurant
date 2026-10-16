@@ -12,7 +12,7 @@ from app.models import InventoryItem, Order, OrderItem, OrderStatusHistory
 from app.services.inventory_stock_service import InsufficientStockError, deduct_stock
 from app.services.order_stock_service import consume_for_order, restaurant_line_usage
 from app.support.store_type import is_restaurant_account
-from app.services.order_creation import next_order_number
+from app.services.order_creation import insert_order, next_order_number
 from app.support.order_status import (
     FULFILLMENT_DELIVERY,
     PAYMENT_MPESA,
@@ -194,8 +194,7 @@ class IntegrationOrderService:
             created_at=now,
             updated_at=now,
         )
-        self.db.add(order)
-        self.db.flush()
+        insert_order(self.db, order)
 
         restaurant = is_restaurant_account(self.db, account_id)
         order_items: list[OrderItem] = []

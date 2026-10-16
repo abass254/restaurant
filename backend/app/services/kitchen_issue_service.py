@@ -39,6 +39,9 @@ from app.support.store_type import is_restaurant
 NON_STOCK_TYPES = ("meal", "combo", "service")
 
 
+ISSUABLE_ROLES = ("raw_material", "both")
+
+
 class KitchenIssueError(ValueError):
     pass
 
@@ -86,7 +89,7 @@ def kitchen_supplies(db: Session, account_id: str) -> list[InventoryItem]:
             InventoryItem.stock_quantity.isnot(None),
             ~func.lower(func.coalesce(Catalogue.product_type, "retail")).in_(NON_STOCK_TYPES),
             or_(
-                InventoryItem.inventory_role.in_(("raw_material", "both")),
+                InventoryItem.inventory_role.in_(ISSUABLE_ROLES),
                 InventoryItem.kitchen_quantity.isnot(None),
             ),
         )
@@ -143,7 +146,7 @@ def suggest_issue(
 ) -> list[dict[str, Any]]:
     """What to issue today: average daily usage minus what the kitchen already holds."""
     now = now or datetime.utcnow()
-    items = [item for item in kitchen_supplies(db, account_id) if item.inventory_role == "raw_material"]
+    items = [item for item in kitchen_supplies(db, account_id) if item.inventory_role in ISSUABLE_ROLES]
     usage = _daily_kitchen_usage(db, account_id, [item.id for item in items], days=days, now=now)
     out: list[dict[str, Any]] = []
     for item in items:
@@ -239,15 +242,16 @@ def create_issue(
     allowed = {item.id: item for item in kitchen_supplies(db, account.id)}
     missing = [item_id for item_id in wanted if item_id not in allowed]
     if missing:
-        raise KitchenIssueError("Only stock-tracked raw materials can be issued to the kitchen.")
+        raise KitchenIssueError("Only stock-tracked supplies can be issued to the kitchen.")
     non_raw = [
         item.product.name
         for item_id, item in allowed.items()
-        if item_id in wanted and item.inventory_role != "raw_material"
+        if item_id in wanted and item.inventory_role not in ISSUABLE_ROLES
     ]
     if non_raw:
         raise KitchenIssueError(
-            f"Only raw materials can be released to the kitchen. Buy & sell items are sold as they are: {', '.join(non_raw)}"
+            "Only raw materials and items used in cooking can be released to the kitchen. "
+            f"Buy & sell items are sold as they are: {', '.join(non_raw)}"
         )
 
     now = datetime.utcnow()

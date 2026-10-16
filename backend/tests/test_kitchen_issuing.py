@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
 
+from app.api.v1 import settings as settings_api
+from app.api.v1.settings import BusinessProfileUpdate
 from app.models import Account, InventoryItem, KitchenIssue, StockMovement
 from app.services.kitchen_issue_service import (
     KitchenIssueError,
@@ -245,6 +248,26 @@ def test_disable_returns_kitchen_stock_to_store(rdb):
     assert rdb.query(KitchenIssue).filter(KitchenIssue.status == "requested").count() == 0
     _order(rdb, {"inventory_item_id": "inv-chapati", "quantity": 10})
     assert _qty(rdb, "inv-flour") == (pytest.approx(9.0), None)
+
+
+def test_switching_to_retail_returns_kitchen_stock_to_store(rdb, monkeypatch):
+    _enable(rdb)
+    _issue(rdb, flour="4")
+    user = SimpleNamespace(id="owner")
+    monkeypatch.setattr(settings_api, "validate_csrf", lambda *_a, **_k: None)
+    monkeypatch.setattr(settings_api, "require_user", lambda *_a, **_k: user)
+    monkeypatch.setattr(settings_api, "assert_merchant_section_access", lambda *_a, **_k: None)
+    monkeypatch.setattr(settings_api, "require_merchant_account_id", lambda _u: ACCOUNT)
+    monkeypatch.setattr(settings_api, "build_user_out", lambda *_a, **_k: None)
+    settings_api.update_business_profile(
+        BusinessProfileUpdate(business_name="Mama Kitchen", business_category="Electronics", store_type="retail"),
+        request=None,
+        services=SimpleNamespace(db=rdb),
+        session={},
+    )
+    assert _qty(rdb, "inv-flour") == (pytest.approx(10.0), None)
+    account = _account(rdb)
+    assert account.store_type == "retail" and not account.kitchen_issuing_enabled
 
 
 def test_kitchen_count_needs_kitchen_issuing(rdb):

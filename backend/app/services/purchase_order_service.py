@@ -28,11 +28,13 @@ from app.models import (
 from app.services.inventory_stock_service import (
     MONEY,
     QTY,
+    UNIT_COST,
     InsufficientStockError,
     lock_item,
     record_movement,
 )
 from app.services.sell_units import buy_units_for_item
+from app.support.unique_insert import insert_unique
 
 DRAFT = "draft"
 ORDERED = "ordered"
@@ -202,18 +204,26 @@ class PurchaseOrderService:
 
     # --- Writes ------------------------------------------------------------
 
-    def _next_reference(self, account_id: str) -> str:
+    def _next_reference(self, account_id: str, *, after: str | None = None) -> str:
         refs = (
             self.db.query(PurchaseOrder.reference)
             .filter(PurchaseOrder.account_id == account_id)
             .all()
         )
         highest = 0
-        for (ref,) in refs:
+        for (ref,) in [*refs, (after,)]:
             match = _REF_RE.match(ref or "")
             if match:
                 highest = max(highest, int(match.group(1)))
         return f"PO-{highest + 1:05d}"
+
+    def _insert(self, po: PurchaseOrder) -> None:
+        """Add and flush a new PO, taking a later reference if another one just used it."""
+
+        def renumber() -> None:
+            po.reference = self._next_reference(po.account_id, after=po.reference)
+
+        insert_unique(self.db, po, renumber)
 
     def _supplier(self, account_id: str, supplier_id: str | None) -> ShopSupplier | None:
         if not supplier_id:
@@ -331,8 +341,7 @@ class PurchaseOrderService:
         )
         po.lines = self._build_lines(account_id, lines)
         self._recalc(po)
-        self.db.add(po)
-        self.db.flush()
+        self._insert(po)
         return po
 
     def update(
@@ -456,7 +465,7 @@ class PurchaseOrderService:
                 item.stock_quantity = Decimal("0")  # receiving a supply starts tracking it
             factor = Decimal(str(line.unit_factor or 1))
             base_qty = (qty * factor).quantize(QTY)
-            base_cost = (Decimal(str(line.unit_cost or 0)) / factor).quantize(MONEY)
+            base_cost = (Decimal(str(line.unit_cost or 0)) / factor).quantize(UNIT_COST)
             movement = record_movement(
                 self.db,
                 item,

@@ -12,6 +12,13 @@ def as_utc(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc)
 
 
+def naive_utc(value: datetime | None) -> datetime | None:
+    """Convert an API datetime to the naive-UTC form stored in DB columns."""
+    if value is None or value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 def utc_now() -> datetime:
     """Return current UTC time as naive datetime (SQLite-friendly)."""
     return datetime.now(timezone.utc).replace(tzinfo=None)

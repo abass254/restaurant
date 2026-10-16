@@ -92,9 +92,8 @@ def reports_summary(
         order_total = Decimal(str(order.total or 0))
         sales_total += order_total
 
-        order_time = order.paid_at or order.created_at
-        if order_time:
-            sales_by_time.append((order_time + local_offset, order_total))
+        if order.created_at:
+            sales_by_time.append((order.created_at + local_offset, order_total))
 
         if order.payment_method == "split" and order.payment_splits:
             for split in order.payment_splits:

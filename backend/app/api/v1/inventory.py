@@ -76,6 +76,7 @@ from app.services.social_publish_service import (
     require_instagram_publish_account,
 )
 from app.support.barcode import product_matches_barcode
+from app.support.datetime_utils import naive_utc
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
@@ -380,6 +381,8 @@ def list_stock_movements(
     reason: Literal["receive", "adjustment", "damage", "other"] | None = Query(
         default=None,
     ),
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=50, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -393,6 +396,10 @@ def list_stock_movements(
         query = query.filter(StockMovement.direction == direction)
     if reason:
         query = query.filter(StockMovement.reason == reason)
+    if since is not None:
+        query = query.filter(StockMovement.created_at >= naive_utc(since))
+    if until is not None:
+        query = query.filter(StockMovement.created_at < naive_utc(until))
 
     total = query.count()
     rows = (

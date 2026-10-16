@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import Link from "next/link";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiFetchCached, readPageCache, writePageCache } from "@/lib/api";
 import { confirmAction, showError, showInternalError, toastSuccess, internalErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { formatKsh } from "@/lib/trans-chap-receipt";
@@ -33,9 +33,11 @@ import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapProductThumb } from "@/components/trans-chap/TransChapProductThumb";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
+import { RestaurantKitchenRequests } from "@/components/trans-chap/restaurant/RestaurantKitchenRequests";
 import { MotionItem, MotionList } from "@/components/app/MotionList";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { isRestaurantStore } from "@/lib/onboarding";
+import { isKitchenIssuableRole } from "@/lib/restaurant-supplies";
 import { isShopOwner } from "@/lib/merchant-permissions";
 import type {
   InventoryItem,
@@ -48,6 +50,7 @@ type RoleFilter = "all" | InventoryRole;
 type StocksView = "grid" | "list";
 
 const STOCKS_VIEW_KEY = "trans-chap-stocks-view";
+const STOCKS_CACHE_KEY = "trans-chap:stocks";
 
 const BASE_ROLE_FILTERS: { id: RoleFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -117,8 +120,12 @@ export function TransChapStocksList() {
     ? "/trans-chap/purchases/new"
     : "/trans-chap/purchases/unavailable";
   const listId = useId();
-  const [items, setItems] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<InventoryItem[]>(
+    () => readPageCache<InventoryItem[]>(STOCKS_CACHE_KEY) ?? [],
+  );
+  const [loading, setLoading] = useState(
+    () => readPageCache(STOCKS_CACHE_KEY) === undefined,
+  );
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
@@ -140,7 +147,7 @@ export function TransChapStocksList() {
 
   useEffect(() => {
     let cancelled = false;
-    void apiFetch<SettingsResponse>(apiRoutes.settings)
+    void apiFetchCached<SettingsResponse>(apiRoutes.settings)
       .then((data) => {
         if (!cancelled) {
           setAllowQuantityAdjustment(data.allow_item_quantity_adjustment ?? true);
@@ -164,15 +171,15 @@ export function TransChapStocksList() {
   }
 
   const reload = useCallback(async () => {
-    setLoading(true);
+    if (readPageCache(STOCKS_CACHE_KEY) === undefined) setLoading(true);
     try {
       const data = await apiFetch<InventoryResponse>(
         `${apiRoutes.inventory}?active=true`,
       );
       setItems(data.data);
+      writePageCache(STOCKS_CACHE_KEY, data.data);
       setError(null);
     } catch {
-      setItems([]);
       setError(internalErrorMessage());
     } finally {
       setLoading(false);
@@ -328,6 +335,17 @@ export function TransChapStocksList() {
     setSelectedIds(new Set(outOfStockFiltered.map((item) => item.id)));
   }
 
+  const issuableSelectedIds = restaurant
+    ? items
+        .filter(
+          (item) =>
+            selectedIds.has(item.id) &&
+            item.stock_quantity != null &&
+            isKitchenIssuableRole(inventoryRole(item)),
+        )
+        .map((item) => item.id)
+    : [];
+
   async function disableSelected() {
     const targets = filtered.filter(
       (item) => selectedIds.has(item.id) && item.is_active,
@@ -428,15 +446,26 @@ export function TransChapStocksList() {
               {selecting ? "Done" : "Select"}
             </button>
           ) : null}
-          <Link
-            href="/trans-chap/stocks/quotation"
-            className="trans-chap-sales__chip trans-chap-sales__chip--quotation"
-            title="Create quotation and send via WhatsApp"
-            id="stocks-quotation-chip"
-          >
-            <i className="fa-brands fa-whatsapp" style={{ marginRight: "0.35rem", color: "#25D366" }} aria-hidden />
-            Quotation
-          </Link>
+          {restaurant ? (
+            <Link
+              href="/trans-chap/purchases/issue?new=1&from=store"
+              className="trans-chap-sales__chip trans-chap-sales__chip--issue"
+              title="Hand supplies from the store to the kitchen"
+            >
+              <i className="fa-solid fa-dolly" style={{ marginRight: "0.35rem" }} aria-hidden />
+              Issue<span className="trans-chap-sales__chip-extra">&nbsp;to kitchen</span>
+            </Link>
+          ) : (
+            <Link
+              href="/trans-chap/stocks/quotation"
+              className="trans-chap-sales__chip trans-chap-sales__chip--quotation"
+              title="Create quotation and send via WhatsApp"
+              id="stocks-quotation-chip"
+            >
+              <i className="fa-brands fa-whatsapp" style={{ marginRight: "0.35rem", color: "#25D366" }} aria-hidden />
+              Quotation
+            </Link>
+          )}
         </div>
         {!restaurant ? (
           <div className="trans-chap-sales__chips" role="group" aria-label="Stock type">
@@ -464,6 +493,7 @@ export function TransChapStocksList() {
         ) : null}
       </div>
       <div className="trans-chap-sales__list">
+        {restaurant ? <RestaurantKitchenRequests /> : null}
         {loading ? (
           <TransChapListSkeleton />
         ) : error && items.length === 0 ? (
@@ -638,23 +668,25 @@ export function TransChapStocksList() {
                       </td>
                       <td className="trans-chap-stock-table__actions">
                         <div className="trans-chap-stock-table__actions-inner">
-                          <Link
-                            href={`/trans-chap/stocks/quotation?items=${encodeURIComponent(item.id)}`}
-                            className="trans-chap-panel__link"
-                            style={{ color: "#16a34a", fontWeight: 750 }}
-                            title={`Create quote for ${name}`}
-                          >
-                            Quote
-                          </Link>
+                          {restaurant ? null : (
+                            <Link
+                              href={`/trans-chap/stocks/quotation?items=${encodeURIComponent(item.id)}`}
+                              className="trans-chap-panel__link"
+                              style={{ color: "#16a34a", fontWeight: 750 }}
+                              title={`Create quote for ${name}`}
+                            >
+                              Quote
+                            </Link>
+                          )}
                           <Link
                             href={`/trans-chap/stocks/edit?id=${encodeURIComponent(item.id)}`}
                             className="trans-chap-panel__link"
                           >
                             {hotel || item.selling_price != null ? "Edit" : "Set price"}
                           </Link>
-                          {restaurant && inventoryRole(item) === "raw_material" ? (
+                          {restaurant && isKitchenIssuableRole(inventoryRole(item)) ? (
                             <Link
-                              href={`/trans-chap/purchases/issue?new=1&item=${encodeURIComponent(name)}`}
+                              href={`/trans-chap/purchases/issue?new=1&from=store&items=${encodeURIComponent(item.id)}`}
                               className="trans-chap-panel__link"
                               style={{ color: "var(--app-primary)", fontWeight: 700 }}
                             >
@@ -781,23 +813,25 @@ export function TransChapStocksList() {
                 }
                 action={
                   <>
-                    <Link
-                      href={`/trans-chap/stocks/quotation?items=${encodeURIComponent(item.id)}`}
-                      className="trans-chap-panel__link"
-                      style={{ color: "#16a34a", fontWeight: 750 }}
-                      title={`Create quote for ${name}`}
-                    >
-                      Quote
-                    </Link>
+                    {restaurant ? null : (
+                      <Link
+                        href={`/trans-chap/stocks/quotation?items=${encodeURIComponent(item.id)}`}
+                        className="trans-chap-panel__link"
+                        style={{ color: "#16a34a", fontWeight: 750 }}
+                        title={`Create quote for ${name}`}
+                      >
+                        Quote
+                      </Link>
+                    )}
                     <Link
                       href={`/trans-chap/stocks/edit?id=${encodeURIComponent(item.id)}`}
                       className="trans-chap-panel__link"
                     >
                       {hotel || item.selling_price != null ? "Edit" : "Set sell price"}
                     </Link>
-                    {restaurant && inventoryRole(item) === "raw_material" ? (
+                    {restaurant && isKitchenIssuableRole(inventoryRole(item)) ? (
                       <Link
-                        href={`/trans-chap/purchases/issue?new=1&item=${encodeURIComponent(name)}`}
+                        href={`/trans-chap/purchases/issue?new=1&from=store&items=${encodeURIComponent(item.id)}`}
                         className="trans-chap-panel__link"
                         style={{ color: "var(--app-primary)", fontWeight: 750 }}
                       >
@@ -880,19 +914,36 @@ export function TransChapStocksList() {
           >
             Out of stock
           </button>
-          <Link
-            href={
-              selectedIds.size
-                ? `/trans-chap/stocks/quotation?items=${Array.from(selectedIds).join(",")}`
-                : "/trans-chap/stocks/quotation"
-            }
-            className="trans-chap-bulk-bar__quote-btn"
-            id="stocks-bulk-quote-btn"
-            title="Create quotation with selected items"
-          >
-            <i className="fa-brands fa-whatsapp" style={{ marginRight: "0.35rem" }} aria-hidden />
-            Quote{selectedIds.size ? ` (${selectedIds.size})` : ""}
-          </Link>
+          {restaurant ? (
+            <Link
+              href={`/trans-chap/purchases/issue?new=1&from=store&items=${issuableSelectedIds.map(encodeURIComponent).join(",")}`}
+              className={`trans-chap-bulk-bar__issue-btn${issuableSelectedIds.length ? "" : " is-disabled"}`}
+              aria-disabled={!issuableSelectedIds.length}
+              tabIndex={issuableSelectedIds.length ? undefined : -1}
+              title={
+                issuableSelectedIds.length
+                  ? "Issue the selected supplies to the kitchen"
+                  : "Select raw materials or items used in cooking to issue to the kitchen"
+              }
+            >
+              <i className="fa-solid fa-dolly" style={{ marginRight: "0.35rem" }} aria-hidden />
+              Issue{issuableSelectedIds.length ? ` (${issuableSelectedIds.length})` : ""}
+            </Link>
+          ) : (
+            <Link
+              href={
+                selectedIds.size
+                  ? `/trans-chap/stocks/quotation?items=${Array.from(selectedIds).join(",")}`
+                  : "/trans-chap/stocks/quotation"
+              }
+              className="trans-chap-bulk-bar__quote-btn"
+              id="stocks-bulk-quote-btn"
+              title="Create quotation with selected items"
+            >
+              <i className="fa-brands fa-whatsapp" style={{ marginRight: "0.35rem" }} aria-hidden />
+              Quote{selectedIds.size ? ` (${selectedIds.size})` : ""}
+            </Link>
+          )}
           <button
             type="button"
             className="trans-chap-bulk-bar__disable"
@@ -910,7 +961,7 @@ export function TransChapStocksList() {
           {restaurant ? (
             <div className="trans-chap-fab-release-wrap">
               <Link
-                href="/trans-chap/purchases/issue?new=1"
+                href="/trans-chap/purchases/issue?new=1&from=store"
                 className="trans-chap-fab-release"
                 aria-label="Release supply to the kitchen"
                 title="Release supply to the kitchen"
@@ -936,7 +987,7 @@ export function TransChapStocksList() {
                       icon: "fa-chart-pie",
                     },
                     {
-                      href: "/trans-chap/purchases/issue?new=1",
+                      href: "/trans-chap/purchases/issue?new=1&from=store",
                       label: "Release to kitchen",
                       icon: "fa-dolly",
                     },

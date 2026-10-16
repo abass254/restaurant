@@ -2,7 +2,14 @@
 
 import { useId, useMemo, useState } from "react";
 import { formatMoney } from "@/lib/orders";
-import { itemModifierGroups, modifierOptionPrice, modifierRuleLabel } from "@/lib/trans-chap-product";
+import {
+  isOptionAvailable,
+  itemModifierGroups,
+  modifierOptionPrice,
+  modifierRuleLabel,
+  optionUnavailableLabel,
+  type OptionAvailabilityMap,
+} from "@/lib/trans-chap-product";
 import type { InventoryItem, ModifierGroup, ModifierOption, OrderItemModifier } from "@/lib/types";
 
 export type ModifierPickResult = {
@@ -23,8 +30,8 @@ export type TransChapModifierModalProps = {
   initialModifiers?: OrderItemModifier[] | null;
   initialNotes?: string | null;
   currency?: string;
-  /** Shop selling prices by catalogue id; options linked to supplies charge these. */
-  prices: Map<string, number>;
+  /** Sold-out / out-of-stock state per option; unavailable options show but can't be picked. */
+  availability?: OptionAvailabilityMap | null;
   onConfirm: (result: ModifierPickResult) => void;
 };
 
@@ -32,13 +39,13 @@ type Entry = { label: string | null; group: ModifierGroup };
 
 const MAX_COUNT = 20;
 
-function activeOptions(group: ModifierGroup) {
-  return group.options.filter((option) => option.is_active);
+function pickableOptions(group: ModifierGroup, availability: OptionAvailabilityMap | null) {
+  return group.options.filter((option) => isOptionAvailable(option, availability));
 }
 
-/** Charged supplies can be picked several times (2× extra cheese); included and instruction picks can't. */
+/** Paid extras can be picked several times (2× extra cheese); free and single-choice picks can't. */
 function countable(group: ModifierGroup, option: ModifierOption): boolean {
-  return !group.included && !!option.product_id;
+  return !group.included && group.max_select > 1 && modifierOptionPrice(option, group) > 0;
 }
 
 function initialCounts(initialOptionIds: string[] | null | undefined): Record<string, number> {
@@ -47,17 +54,23 @@ function initialCounts(initialOptionIds: string[] | null | undefined): Record<st
   return counts;
 }
 
-function initialSelection(entries: Entry[], initialOptionIds: string[] | null | undefined): string[][] {
+function initialSelection(
+  entries: Entry[],
+  initialOptionIds: string[] | null | undefined,
+  availability: OptionAvailabilityMap | null,
+): string[][] {
   if (initialOptionIds) {
     const picks = entries.map(() => [] as string[]);
     for (const id of new Set(initialOptionIds)) {
-      const index = entries.findIndex((entry) => activeOptions(entry.group).some((o) => o.id === id));
+      const index = entries.findIndex((entry) =>
+        pickableOptions(entry.group, availability).some((o) => o.id === id),
+      );
       if (index >= 0) picks[index].push(id);
     }
     return picks;
   }
   return entries.map(({ group }) =>
-    activeOptions(group)
+    pickableOptions(group, availability)
       .filter((option) => option.is_default)
       .slice(0, Math.max(1, group.max_select))
       .map((option) => option.id),
@@ -72,13 +85,13 @@ export function TransChapModifierModal({
   initialModifiers,
   initialNotes,
   currency = "KES",
-  prices,
+  availability = null,
   onConfirm,
 }: TransChapModifierModalProps) {
   const headingId = useId();
   const entries = useMemo<Entry[]>(() => itemModifierGroups(item), [item]);
   const [selection, setSelection] = useState<string[][]>(() =>
-    initialSelection(entries, initialOptionIds),
+    initialSelection(entries, initialOptionIds, availability),
   );
   const [counts, setCounts] = useState<Record<string, number>>(() => initialCounts(initialOptionIds));
   const [custom, setCustom] = useState<OrderItemModifier[]>(() =>
@@ -97,21 +110,25 @@ export function TransChapModifierModal({
         .flatMap((entry, index) =>
           selection[index].map((id) => ({
             entry,
-            option: activeOptions(entry.group).find((o) => o.id === id)!,
+            option: pickableOptions(entry.group, availability).find((o) => o.id === id)!,
           })),
         )
         .filter((pick) => pick.option)
         .map((pick) => ({
           ...pick,
           count: countable(pick.entry.group, pick.option) ? (counts[pick.option.id] ?? 1) : 1,
-          unitPrice: modifierOptionPrice(pick.option, pick.entry.group, prices),
+          unitPrice: modifierOptionPrice(pick.option, pick.entry.group),
         })),
-    [entries, selection, counts, prices],
+    [entries, selection, counts, availability],
   );
   const optionsTotal = picked.reduce((sum, pick) => sum + pick.unitPrice * pick.count, 0);
   const customTotal = custom.reduce((sum, mod) => sum + (Number(mod.price) || 0), 0);
   const unitTotal = basePrice + optionsTotal + customTotal;
   const missing = entries.filter((entry, index) => selection[index].length < (entry.group.min_select || 0));
+  const exhausted = entries.filter(
+    (entry) => pickableOptions(entry.group, availability).length < (entry.group.min_select || 0),
+  );
+  const entryName = (entry: Entry) => (entry.label ? `${entry.label} ${entry.group.name}` : entry.group.name);
 
   const sizePick =
     item.product?.product_type === "combo"
@@ -186,11 +203,7 @@ export function TransChapModifierModal({
         <header className="pos-modifier-modal__header">
           <div className="pos-modifier-modal__title-row">
             <span className="pos-modifier-modal__badge">
-              <i
-                className={`fa-solid ${item.product?.product_type === "combo" ? "fa-burger" : "fa-utensils"}`}
-                aria-hidden="true"
-              />{" "}
-              {item.product?.product_type === "combo" ? "Meal" : "Dish"}
+              <i className="fa-solid fa-burger" aria-hidden="true" /> Meal
             </span>
             <button
               type="button"
@@ -229,17 +242,18 @@ export function TransChapModifierModal({
                   </span>
                 </div>
                 <div className="pos-modifier-chips">
-                  {activeOptions(group).map((option) => {
+                  {group.options.filter((option) => option.is_active !== false || availability?.has(option.id)).map((option) => {
                     const active = chosen.includes(option.id);
-                    const price = modifierOptionPrice(option, group, prices);
+                    const unavailable = optionUnavailableLabel(option, availability);
+                    const price = modifierOptionPrice(option, group);
                     const count = counts[option.id] ?? 1;
                     return (
                       <span key={option.id} className="pos-modifier-chip-wrap">
                       <button
                         type="button"
-                        className={`pos-modifier-chip${active ? " is-selected" : ""}`}
+                        className={`pos-modifier-chip${active ? " is-selected" : ""}${unavailable ? " is-unavailable" : ""}`}
                         aria-pressed={active}
-                        disabled={!active && full}
+                        disabled={!active && (full || !!unavailable)}
                         onClick={() => toggle(index, option.id)}
                       >
                         <span className="pos-modifier-chip__check">
@@ -258,7 +272,7 @@ export function TransChapModifierModal({
                         </span>
                         <span className="pos-modifier-chip__label">{option.name}</span>
                         <span className="pos-modifier-chip__price">
-                          {price > 0 ? `+${formatMoney(price, currency)}` : "Free"}
+                          {unavailable ?? (price > 0 ? `+${formatMoney(price, currency)}` : "Free")}
                         </span>
                       </button>
                       {active && countable(group, option) ? (
@@ -300,6 +314,7 @@ export function TransChapModifierModal({
                 type="text"
                 placeholder="e.g. Extra gravy"
                 value={customName}
+                maxLength={120}
                 onChange={(e) => setCustomName(e.target.value)}
                 className="pos-modifier-input"
               />
@@ -346,6 +361,7 @@ export function TransChapModifierModal({
               className="pos-modifier-textarea"
               placeholder="e.g. Serve hot, no onions"
               value={notes}
+              maxLength={1000}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
             />
@@ -355,8 +371,10 @@ export function TransChapModifierModal({
         <footer className="pos-modifier-modal__footer">
           <div className="pos-modifier-summary">
             <span className="pos-modifier-summary__breakdown">
-              {missing.length
-                ? `Choose: ${missing.map((entry) => (entry.label ? `${entry.label} ${entry.group.name}` : entry.group.name)).join(", ")}`
+              {exhausted.length
+                ? `No ${exhausted.map(entryName).join(", ")} available`
+                : missing.length
+                ? `Choose: ${missing.map(entryName).join(", ")}`
                 : `Base ${formatMoney(basePrice, currency)}${
                     optionsTotal + customTotal > 0
                       ? ` + extras ${formatMoney(optionsTotal + customTotal, currency)}`

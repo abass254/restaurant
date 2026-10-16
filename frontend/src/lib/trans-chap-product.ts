@@ -13,6 +13,7 @@ import type {
   MealAddon,
   ModifierGroup,
   ModifierOption,
+  OptionAvailability,
   RecipeLine,
   ProductImageUploadResponse,
   StockMovementsResponse,
@@ -87,28 +88,58 @@ export type ModifierGroupInput = {
     name: string;
     price_delta: number;
     product_id?: string | null;
+    stock_qty?: number;
     is_default: boolean;
   }[];
 };
 
-/** Selling price of each of the shop's items, keyed by catalogue id. */
-export function sellingPricesByProduct(items: Iterable<InventoryItem>): Map<string, number> {
-  const prices = new Map<string, number>();
-  for (const item of items) {
-    if (item.selling_price != null) prices.set(item.product_id, Number(item.selling_price));
-  }
-  return prices;
+/** Price of one pick, as the server charges it: included groups are free, otherwise the option's own price. */
+export function modifierOptionPrice(option: ModifierOption, group: Pick<ModifierGroup, "included">): number {
+  if (group.included) return 0;
+  return Number(option.price_delta) || 0;
 }
 
-/** Price of one pick, as the server charges it: included groups are free, supplies charge their selling price. */
-export function modifierOptionPrice(
+export type OptionAvailabilityMap = Map<string, OptionAvailability>;
+
+export async function fetchOptionAvailability(): Promise<OptionAvailabilityMap> {
+  const res = await apiFetch<{ data: OptionAvailability[] }>(apiRoutes.menuOptionAvailability);
+  return new Map(res.data.map((row) => [row.option_id, row]));
+}
+
+export async function setModifierOptionActive(optionId: string, isActive: boolean): Promise<ModifierOption> {
+  const res = await apiFetch<{ data: ModifierOption }>(apiRoutes.menuModifierOption(optionId), {
+    method: "PATCH",
+    body: JSON.stringify({ is_active: isActive }),
+  });
+  return res.data;
+}
+
+/** Options missing from the map (e.g. just created) count as available unless switched off. */
+export function isOptionAvailable(option: ModifierOption, availability: OptionAvailabilityMap | null): boolean {
+  const row = availability?.get(option.id);
+  return row ? row.available : option.is_active !== false;
+}
+
+export function optionUnavailableLabel(
   option: ModifierOption,
-  group: Pick<ModifierGroup, "included">,
-  prices: Map<string, number>,
-): number {
-  if (group.included) return 0;
-  const supplyPrice = option.product_id ? prices.get(option.product_id) : undefined;
-  return supplyPrice ?? (Number(option.price_delta) || 0);
+  availability: OptionAvailabilityMap | null,
+): string | null {
+  if (isOptionAvailable(option, availability)) return null;
+  return availability?.get(option.id)?.reason === "out_of_stock" ? "Out of stock" : "Sold out";
+}
+
+/** First required modifier on a meal with fewer available options than customers must pick. */
+export function mealBlockedBy(
+  item: InventoryItem,
+  availability: OptionAvailabilityMap | null,
+): ModifierGroup | null {
+  for (const group of item.product?.modifier_groups ?? []) {
+    const required = group.min_select ?? 0;
+    if (required <= 0) continue;
+    const available = group.options.filter((option) => isOptionAvailable(option, availability)).length;
+    if (available < required) return group;
+  }
+  return null;
 }
 
 export async function fetchModifierGroups(): Promise<ModifierGroup[]> {

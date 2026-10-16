@@ -12,7 +12,7 @@ import { TransChapFilterChips, type ChipOption } from "@/components/trans-chap/T
 import { MotionItem, MotionList } from "@/components/app/MotionList";
 import { summarizeFailures, useTransChapListView } from "@/lib/trans-chap-list-view";
 import { showError, showInternalError, toastSuccess, promptMpesaReceipt, promptPendingStk, extractErrorMessage } from "@/lib/alerts";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, readPageCache, writePageCache } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { isStoreAdmin } from "@/lib/merchant-permissions";
 import { isRestaurantStore } from "@/lib/onboarding";
@@ -100,14 +100,19 @@ function matchesQuery(order: Order, query: string): boolean {
   return haystack.includes(query);
 }
 
+const SALES_CACHE_KEY = "trans-chap:sales";
+
+type SalesSnapshot = { orders: Order[]; truncated: boolean };
+
 export function TransChapSalesList() {
   const user = useAuthUser();
   const restaurant = isRestaurantStore(user.active_account ?? user.account);
   const listId = useId();
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [cached] = useState(() => readPageCache<SalesSnapshot>(SALES_CACHE_KEY));
+  const [orders, setOrders] = useState<Order[]>(cached?.orders ?? []);
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
-  const [truncated, setTruncated] = useState(false);
+  const [truncated, setTruncated] = useState(cached?.truncated ?? false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [when, setWhen] = useState<WhenFilter>("all");
@@ -128,11 +133,17 @@ export function TransChapSalesList() {
     "DukAI";
 
   const reload = useCallback(async () => {
-    setLoading(true);
+    if (!readPageCache(SALES_CACHE_KEY)) setLoading(true);
     const result = await fetchWalkinOrders();
     setOrders(result.orders);
     setError(result.error);
     setTruncated(result.truncated);
+    if (!result.error) {
+      writePageCache(SALES_CACHE_KEY, {
+        orders: result.orders,
+        truncated: result.truncated,
+      } satisfies SalesSnapshot);
+    }
     setLoading(false);
   }, []);
 

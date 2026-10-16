@@ -6,9 +6,10 @@ from collections import Counter
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
+    Account,
     Catalogue,
     CatalogueModifierGroup,
     ComboComponent,
@@ -17,6 +18,8 @@ from app.models import (
     ModifierOption,
     RecipeLine,
 )
+
+from app.support.store_type import is_restaurant
 
 
 MAX_OPTION_COUNT = 20
@@ -89,32 +92,10 @@ def _stock_item_ids(db: Session, account_id: str, product_ids: set[str]) -> dict
     return {str(product_id): str(item_id) for product_id, item_id in rows}
 
 
-def _supply_prices(db: Session, account_id: str, product_ids: set[str]) -> dict[str, Decimal]:
-    """This shop's selling prices for the given catalogue ids (unpriced supplies are left out)."""
-    if not product_ids:
-        return {}
-    rows = (
-        db.query(InventoryItem.product_id, InventoryItem.selling_price)
-        .filter(
-            InventoryItem.account_id == account_id,
-            InventoryItem.product_id.in_(product_ids),
-            InventoryItem.selling_price.isnot(None),
-        )
-        .all()
-    )
-    return {str(product_id): _money(price) for product_id, price in rows}
-
-
-def option_unit_price(
-    option: ModifierOption,
-    group: ModifierGroup,
-    supply_prices: dict[str, Decimal],
-) -> Decimal:
-    """Included groups are free; a supply charges its selling price, else the option's own price."""
+def option_unit_price(option: ModifierOption, group: ModifierGroup) -> Decimal:
+    """Included groups are free; otherwise each pick charges the option's own price."""
     if group.included:
         return Decimal("0")
-    if option.product_id and str(option.product_id) in supply_prices:
-        return supply_prices[str(option.product_id)]
     return _money(option.price_delta)
 
 
@@ -184,11 +165,13 @@ def resolve_line_options(
             scopes.append((component.component.name if component.component else None, group))
 
     option_scope: dict[str, tuple[int, ModifierOption]] = {}
+    option_scopes: dict[str, list[int]] = {}
     for index, (_, group) in enumerate(scopes):
         for option in group.options or []:
             if option.is_active is False:
                 continue
             option_scope.setdefault(option.id, (index, option))
+            option_scopes.setdefault(option.id, []).append(index)
 
     # A repeated id means "that many of it"; group rules count distinct choices.
     counts: Counter[str] = Counter()
@@ -198,7 +181,7 @@ def resolve_line_options(
         counts[option_id] += 1
     if any(count > MAX_OPTION_COUNT for count in counts.values()):
         raise LineOptionsError(f"{product.name}: at most {MAX_OPTION_COUNT} of one choice.")
-    picks = Counter(option_scope[option_id][0] for option_id in counts)
+    picks = Counter(index for option_id in counts for index in option_scopes[option_id])
 
     for index, (label, group) in enumerate(scopes):
         count = picks[index]
@@ -229,15 +212,10 @@ def resolve_line_options(
         (option_scope[option_id] for option_id in counts),
         key=lambda hit: hit[0],
     )
-    supply_prices = _supply_prices(
-        db,
-        account_id,
-        {str(option.product_id) for _, option in chosen if option.product_id},
-    )
     for index, option in chosen:
         label, group = scopes[index]
         quantity = counts[option.id]
-        price = option_unit_price(option, group, supply_prices) * quantity
+        price = option_unit_price(option, group) * quantity
         result.price_delta += price
         result.chosen.extend([option] * quantity)
         result.modifiers.append(
@@ -252,3 +230,62 @@ def resolve_line_options(
         if label is None and "size" in (group.name or "").lower() and result.size_label is None:
             result.size_label = option.name
     return result
+
+
+def option_availability(db: Session, account: Account | None) -> list[dict]:
+    """Each of the shop's options: sold out by staff, or short of stock for one pick.
+
+    Stock is read where a sale takes it: the kitchen for raw materials when kitchen
+    issuing is on, otherwise the store. Untracked or unlinked options never run out.
+    """
+    if account is None:
+        return []
+    account_id = str(account.id)
+    options = (
+        db.query(ModifierOption)
+        .join(ModifierGroup, ModifierGroup.id == ModifierOption.group_id)
+        .options(joinedload(ModifierOption.product))
+        .filter(ModifierGroup.account_id == account_id)
+        .all()
+    )
+    linked = {str(option.product_id) for option in options if option.product_id}
+    stock = {
+        str(item.product_id): item
+        for item in (
+            db.query(InventoryItem)
+            .filter(InventoryItem.account_id == account_id, InventoryItem.product_id.in_(linked))
+            .all()
+            if linked
+            else []
+        )
+    }
+    kitchen_on = is_restaurant(account) and bool(getattr(account, "kitchen_issuing_enabled", False))
+
+    rows: list[dict] = []
+    for option in options:
+        item = stock.get(str(option.product_id)) if option.product_id else None
+        on_hand: Decimal | None = None
+        location: str | None = None
+        if item is not None and item.stock_quantity is not None:
+            location = "kitchen" if kitchen_on and item.normalized_role() == "raw_material" else "store"
+            raw = item.kitchen_quantity if location == "kitchen" else item.stock_quantity
+            on_hand = Decimal(str(raw or 0))
+        if option.is_active is False:
+            reason = "sold_out"
+        elif on_hand is not None and on_hand < Decimal(str(option.stock_qty or 1)):
+            reason = "out_of_stock"
+        else:
+            reason = None
+        rows.append(
+            {
+                "option_id": option.id,
+                "group_id": option.group_id,
+                "is_active": option.is_active is not False,
+                "available": reason is None,
+                "reason": reason,
+                "on_hand": float(on_hand) if on_hand is not None else None,
+                "location": location,
+                "unit": option.product.unit if option.product else None,
+            }
+        )
+    return rows

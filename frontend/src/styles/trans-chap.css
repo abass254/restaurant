@@ -566,45 +566,6 @@ button.trans-chap-header__icon {
     align-content: start;
 }
 
-@media (max-width: 639px) {
-    .trans-chap-pos-host.fb-app .pos-cards {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        grid-auto-rows: max-content;
-        gap: 0.55rem;
-    }
-
-    .trans-chap-pos-host.fb-app .pos-card {
-        border-radius: 12px;
-    }
-
-    .trans-chap-pos-host.fb-app .pos-card__thumb {
-        height: clamp(68px, 22vw, 90px);
-    }
-
-    .trans-chap-pos-host.fb-app .pos-card__info {
-        gap: 0.2rem;
-        padding: 0.5rem 0.55rem 0.35rem;
-    }
-
-    .trans-chap-pos-host.fb-app .pos-card__name {
-        font-size: 0.8rem;
-        min-height: 2em;
-    }
-
-    .trans-chap-pos-host.fb-app .pos-card__price-amount {
-        font-size: 0.88rem;
-    }
-
-    .trans-chap-pos-host.fb-app .pos-card__action {
-        padding: 0.25rem 0.55rem 0.55rem;
-    }
-
-    .trans-chap-pos-host.fb-app .pos-card__add {
-        height: 36px;
-        border-radius: 10px;
-    }
-}
-
 .trans-chap-pos-host.fb-app .pos-card {
     border-radius: 16px;
     border: 1px solid var(--app-border);
@@ -6610,6 +6571,35 @@ html[data-theme="dark"] .theme-switch:not(.is-on) {
     font-weight: 650;
 }
 
+.trans-chap-slip__sums {
+    display: grid;
+    gap: 0.2rem;
+    margin: 0.55rem 0 0;
+    padding-top: 0.45rem;
+    border-top: 1px dashed var(--slip-rule);
+}
+
+.trans-chap-slip__sums div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.trans-chap-slip__sums dt {
+    margin: 0;
+    color: var(--slip-muted);
+    font-size: 0.76rem;
+    font-weight: 700;
+}
+
+.trans-chap-slip__sums dd {
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+}
+
 .trans-chap-slip__total {
     display: flex;
     align-items: baseline;
@@ -8044,6 +8034,23 @@ html[data-theme="dark"] .trans-chap-receipt {
     padding: 0 0.4rem 0 0.95rem;
 }
 
+.trans-chap-panel--stock.is-picking .trans-chap-panel__head {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding-bottom: 0;
+}
+
+.trans-chap-panel--stock.is-picking .trans-chap-panel__check {
+    grid-row: 1;
+    grid-column: 1;
+    margin: 0 0 0 0.95rem;
+}
+
+.trans-chap-panel--stock.is-picking .trans-chap-panel__toggle {
+    grid-row: 1;
+    grid-column: 2;
+    padding-left: 0.75rem;
+}
+
 .trans-chap-panel--stock .trans-chap-panel__availability {
     grid-column: 2;
     flex-direction: row;
@@ -9266,6 +9273,26 @@ html[data-theme="dark"] .trans-chap-sale__add {
     flex: 1;
 }
 
+.trans-chap-dash__analytics :is(
+    .trans-chap-dash__spotlight-main,
+    .trans-chap-chart,
+    .trans-chap-chart__empty,
+    .trans-chap-dash__totals,
+    .trans-chap-dash__panel
+) {
+    transition: opacity 0.15s ease;
+}
+
+.trans-chap-dash__analytics.is-refreshing :is(
+    .trans-chap-dash__spotlight-main,
+    .trans-chap-chart,
+    .trans-chap-chart__empty,
+    .trans-chap-dash__totals,
+    .trans-chap-dash__panel
+) {
+    opacity: 0.55;
+}
+
 .trans-chap-dash__spotlight {
     display: flex;
     flex-direction: column;
@@ -9690,6 +9717,15 @@ html[data-theme="dark"] .trans-chap-sale__add {
     color: inherit;
     background: color-mix(in srgb, var(--trans-chap-credit) 10%, var(--app-bg));
     border: 1px solid color-mix(in srgb, var(--trans-chap-credit) 30%, var(--app-border));
+}
+
+.trans-chap-dash__owing--supplier {
+    background: color-mix(in srgb, var(--trans-chap-purchase) 10%, var(--app-bg));
+    border-color: color-mix(in srgb, var(--trans-chap-purchase) 30%, var(--app-border));
+}
+
+.trans-chap-dash__owing--supplier .trans-chap-dash__owing-cta {
+    color: var(--trans-chap-purchase);
 }
 
 .trans-chap-dash__owing.is-clear {
@@ -10190,9 +10226,10 @@ html[data-theme="dark"] .trans-chap-sale__add {
         grid-template-areas:
             "spotlight panel"
             "spotlight owing"
+            "spotlight payable"
             "spotlight ."
             "foot foot";
-        grid-template-rows: auto auto 1fr auto;
+        grid-template-rows: auto auto auto 1fr auto;
         align-items: start;
         gap: 0.9rem 1.15rem;
     }
@@ -10223,6 +10260,10 @@ html[data-theme="dark"] .trans-chap-sale__add {
 
     .trans-chap-dash__owing {
         grid-area: owing;
+    }
+
+    .trans-chap-dash__owing--supplier {
+        grid-area: payable;
     }
 
     .trans-chap-dash__foot {
@@ -12035,7 +12076,7 @@ html[data-theme="dark"] .trans-chap-sale__add {
 html[data-trans-chap-machine="tablet"] .trans-chap-root.auth-split {
     --trans-chap-pad: 1.5rem;
     --trans-chap-gutter-x: 1.35rem;
-    --trans-chap-content-max: 1120px;
+    --trans-chap-content-max: none;
     background: var(--app-bg);
 }
 
@@ -12584,7 +12625,7 @@ html[data-trans-chap-machine="tablet"] .trans-chap-reports__toolbar .trans-chap-
 
 html[data-trans-chap-machine="tablet"] .ios-settings,
 html[data-trans-chap-machine="tablet"] .trans-chap-settings {
-    max-width: 760px;
+    max-width: var(--trans-chap-content-max);
     margin-inline: auto;
     width: 100%;
     padding-top: 0.85rem;
@@ -12695,7 +12736,7 @@ html[data-trans-chap-machine="tablet"] .trans-chap-catalog--grid {
     }
 
     html[data-trans-chap-machine="tablet"] .trans-chap-root.auth-split {
-        --trans-chap-content-max: 1280px;
+        --trans-chap-content-max: none;
         --trans-chap-gutter-x: 1.6rem;
     }
 }
@@ -14030,6 +14071,17 @@ html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/mpesa"] 
     border-color: #dc2626;
 }
 
+.tc-group__option-uses {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.9rem;
+}
+
+.tc-group__option-uses .tc-group__uses {
+    flex: none;
+}
+
 .tc-recipe__row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto auto;
@@ -14419,6 +14471,7 @@ html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/mpesa"] 
 .pos-menu-modal__field {
     display: flex;
     flex-direction: column;
+    min-width: 0;
 }
 
 .pos-menu-modal__field > label {
@@ -14568,7 +14621,7 @@ html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/mpesa"] 
 /* Category Selector inside modal */
 .pos-menu-modal__cat-selector {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.45rem;
 }
 
@@ -14647,3 +14700,254 @@ html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/mpesa"] 
 .trans-chap-reports__kpi--opening {
   border-top-color: #14b8a6;
 }
+
+/* Mobile POS: row cards. Must stay after the base .pos-card rules. */
+@media (max-width: 639px) {
+    .trans-chap-pos-host.fb-app .pos-cards {
+        grid-template-columns: minmax(0, 1fr);
+        grid-auto-rows: max-content;
+        gap: 0.55rem;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-card {
+        border-radius: 16px;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-card:hover {
+        transform: none;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-card__hit {
+        flex-direction: row;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.6rem 0.7rem 0.6rem 0.6rem;
+        box-sizing: border-box;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-card__main {
+        flex-direction: row;
+        align-items: center;
+        gap: 0.8rem;
+        min-width: 0;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-card__thumb {
+        flex: 0 0 auto;
+        width: 64px;
+        height: 64px;
+        border-radius: 14px;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-card__thumb-fallback {
+        font-size: 1.3rem;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-card__in-cart-badge {
+        top: 3px;
+        right: 3px;
+        padding: 0.1rem 0.35rem;
+        font-size: 0.62rem;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-card__info {
+        gap: 0.2rem;
+        min-width: 0;
+        padding: 0;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-card__name {
+        font-size: 0.92rem;
+        min-height: 0;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-card__subtitle {
+        display: none;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-card__price {
+        margin-top: 0;
+        padding-top: 0;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-card__price-amount {
+        font-size: 0.95rem;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-card__action {
+        flex: 0 0 auto;
+        width: auto;
+        padding: 0;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-card__add {
+        flex-direction: column;
+        gap: 0;
+        width: 3.4rem;
+        height: 3.4rem;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        line-height: 1.1;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-card__qty {
+        width: 7.4rem;
+        border-radius: 999px;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-card__qty button {
+        width: 32px;
+        height: 32px;
+        border-radius: 999px;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-card__qty input {
+        height: 32px;
+    }
+}
+
+/* Modifier editor: name + price per option, stock link optional. */
+.tc-mod__rules {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+}
+
+.tc-mod__rules .pos-menu-modal__cat-btn {
+    white-space: normal;
+    line-height: 1.2;
+}
+
+.tc-mod__options {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.tc-mod__option {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.5rem;
+    border: 1px solid var(--app-border);
+    border-radius: 12px;
+    background: var(--app-bg);
+    min-width: 0;
+}
+
+.tc-mod__row,
+.tc-mod__stock,
+.tc-mod__meta {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.tc-mod__name,
+.tc-mod__price input,
+.tc-mod__stock input,
+.tc-mod__stock select {
+    min-height: 38px;
+    border: 1px solid var(--app-border);
+    border-radius: 9px;
+    background: var(--app-surface);
+    color: var(--app-text);
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.tc-mod__name {
+    flex: 1;
+    min-width: 0;
+    padding: 0 0.65rem;
+}
+
+.tc-mod__price {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex: none;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--app-text-muted);
+}
+
+.tc-mod__price input {
+    width: 4.6rem;
+    padding: 0 0.5rem;
+}
+
+.tc-mod__price.is-error input,
+.tc-mod__stock input.is-error {
+    border-color: #dc2626;
+}
+
+.tc-mod__stock {
+    font-size: 0.76rem;
+    color: var(--app-text-muted);
+}
+
+.tc-mod__stock input {
+    width: 3.6rem;
+    flex: none;
+    padding: 0 0.45rem;
+}
+
+.tc-mod__stock select {
+    flex: 1;
+    min-width: 0;
+    width: 0;
+    padding: 0 0.4rem;
+    font-size: 0.84rem;
+}
+
+.tc-mod__icon {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--app-text-muted);
+    cursor: pointer;
+}
+
+.tc-mod__icon:hover {
+    background: var(--app-surface);
+    color: var(--app-text);
+}
+
+.tc-mod__meta .tc-group__option-tools {
+    margin-left: auto;
+}
+
+.tc-mod__link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.6rem;
+    border: 1px dashed var(--app-border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--app-text-muted);
+    font-size: 0.74rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.tc-mod__note {
+    font-size: 0.74rem;
+    color: var(--app-text-muted);
+}
+
+.tc-mod__add {
+    align-self: flex-start;
+    margin-top: 0.5rem;
+}
+

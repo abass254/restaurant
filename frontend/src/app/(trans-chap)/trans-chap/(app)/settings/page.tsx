@@ -269,7 +269,7 @@ export default function TransChapSettingsPage() {
 
   async function handleKitchenIssuingToggle(enabled: boolean) {
     if (enabled) {
-      router.push("/trans-chap/purchases?tab=kitchen");
+      router.push("/trans-chap/kitchen");
       return;
     }
     const confirmed = await confirmAction(

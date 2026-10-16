@@ -160,6 +160,9 @@ export const apiRoutes = {
   menuModifierGroups: `${apiUrl}/api/v1/menu/modifier-groups`,
   menuModifierGroup: (id: string) =>
     `${apiUrl}/api/v1/menu/modifier-groups/${encodeURIComponent(id)}`,
+  menuModifierOption: (id: string) =>
+    `${apiUrl}/api/v1/menu/modifier-options/${encodeURIComponent(id)}`,
+  menuOptionAvailability: `${apiUrl}/api/v1/menu/option-availability`,
   inventory: `${apiUrl}/api/v1/inventory`,
   inventoryImport: `${apiUrl}/api/v1/inventory/import`,
   inventoryImportWithMode: (stockMode: "replace" | "add" | "keep" = "replace") =>

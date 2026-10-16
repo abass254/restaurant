@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TransChapSaleCatalog } from "@/components/trans-chap/TransChapSaleCatalog";
 import { useAuthUser } from "@/components/app/AuthProvider";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiFetchCached } from "@/lib/api";
 import { showError, showInternalError, toastInfo, toastSuccess, promptMpesaCheckoutAction, promptMpesaReceipt, extractErrorMessage } from "@/lib/alerts";
 import { findInventoryByBarcode } from "@/lib/barcode";
 import { apiRoutes } from "@/lib/config";
@@ -228,7 +228,7 @@ export function TransChapTransactForm() {
         setPayMode((current) => (current === "mpesa" ? "credit" : current));
       });
 
-    void apiFetch<SettingsResponse>(apiRoutes.settings)
+    void apiFetchCached<SettingsResponse>(apiRoutes.settings)
       .then((data) => {
         setForceMpesaPrompt(data.force_mpesa_prompt ?? true);
       })

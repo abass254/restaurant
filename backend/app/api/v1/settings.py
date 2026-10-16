@@ -29,6 +29,8 @@ from app.services.catalog.inventory_integration import (
     parse_inventory_integration,
 )
 from app.services.instagram_data_purge import InstagramDataPurgeService
+from app.services.kitchen_issue_service import disable_kitchen_issuing
+from app.services.order_stock_service import kitchen_issuing_on
 from app.services.platform_instagram import (
     SUPPORTED_PLATFORMS,
     get_merchant_instagram_account,
@@ -43,6 +45,7 @@ from app.support.merchant_permissions import (
     assert_merchant_section_any_access,
     is_membership_owner,
 )
+from app.support.store_type import RESTAURANT
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -632,6 +635,8 @@ def update_business_profile(
             detail="Choose a valid category for what this merchant sells.",
         )
 
+    if store_type != RESTAURANT and kitchen_issuing_on(account):
+        disable_kitchen_issuing(services.db, account, user_id=user.id)
     account.business_name = name
     account.business_category = category
     account.store_type = store_type
