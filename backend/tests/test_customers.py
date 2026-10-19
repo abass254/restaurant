@@ -518,3 +518,34 @@ def test_customer_tab_attributes_balance_to_newest_sales(monkeypatch) -> None:
     assert data["sales"][0]["items"][0]["name"] == "Sugar 1kg"
     assert data["payments"][0]["amount"] == 450.0
     assert data["payments"][0]["manual"] is True
+
+
+def test_get_or_create_for_sale_phoneless_customer() -> None:
+    db = MagicMock()
+    # Mock query for customer_id
+    customer = MagicMock()
+    customer.id = "cust-no-phone"
+    customer.name = "AERA KITCHENS TERRY"
+    customer.phone = None
+    customer.outstanding_balance = Decimal("0.00")
+    customer.credit_limit = Decimal("50000.00")
+    db.query.return_value.filter.return_value.with_for_update.return_value.first.return_value = customer
+
+    service = CustomerService(db)
+    # Looking up by customer_id
+    found = service.get_or_create_for_sale(
+        "acct-1",
+        customer_id="cust-no-phone",
+        name="AERA KITCHENS TERRY",
+        phone=None,
+    )
+    assert found.id == "cust-no-phone"
+    assert found.name == "AERA KITCHENS TERRY"
+
+    # Looking up by name when no phone
+    found_by_name = service.get_or_create_for_sale(
+        "acct-1",
+        name="AERA KITCHENS TERRY",
+        phone="",
+    )
+    assert found_by_name.id == "cust-no-phone"

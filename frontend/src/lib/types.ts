@@ -1727,6 +1727,7 @@ export type OrderMetaOptionsResponse = {
 export type OrderCreatePayload = {
   source: OrderSource;
   fulfillment_type: OrderFulfillmentType;
+  customer_id?: string | null;
   customer_name?: string | null;
   customer_phone?: string | null;
   customer_email?: string | null;

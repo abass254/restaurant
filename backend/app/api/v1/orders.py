@@ -219,6 +219,7 @@ class OrderCreate(BaseModel):
     fulfillment_type: Literal["pickup", "delivery", "dine_in"]
     table_number: str | None = Field(default=None, max_length=50)
 
+    customer_id: str | None = Field(default=None, max_length=64)
     customer_name: str | None = Field(default=None, max_length=255)
     customer_phone: str | None = Field(default=None, max_length=32)
     customer_email: str | None = Field(default=None, max_length=255)
@@ -1356,6 +1357,7 @@ def create_order(
             customers = CustomerService(db)
             credit_customer = customers.get_or_create_for_sale(
                 str(account_id),
+                customer_id=payload.customer_id,
                 name=payload.customer_name or "",
                 phone=payload.customer_phone or "",
             )

@@ -937,21 +937,21 @@ export function TransChapCustomersList() {
                         </button>
                       ) : null}
 
-                      {customer.phone ? (
-                        <Link
-                          href={`/trans-chap/pos?customer=${customer.id}`}
-                          className={`trans-chap-btn ${
-                            owes ? "trans-chap-btn--ghost" : "trans-chap-btn--primary"
-                          } trans-chap-customer-actions__wide`}
-                        >
-                          <i className="fa-solid fa-cart-shopping" aria-hidden />
-                          <span>Start POS sale</span>
-                        </Link>
-                      ) : (
+                      <Link
+                        href={`/trans-chap/pos?customer=${customer.id}`}
+                        className={`trans-chap-btn ${
+                          owes ? "trans-chap-btn--ghost" : "trans-chap-btn--primary"
+                        } trans-chap-customer-actions__wide`}
+                      >
+                        <i className="fa-solid fa-cart-shopping" aria-hidden />
+                        <span>Start POS sale</span>
+                      </Link>
+
+                      {!customer.phone ? (
                         <p className="trans-chap-mpesa-gate trans-chap-customer-actions__wide">
-                          No phone on file — add one to sell on credit, send M-PESA prompts or WhatsApp reminders.
+                          No phone on file — add one to send M-PESA prompts or WhatsApp reminders.
                         </p>
-                      )}
+                      ) : null}
 
                       {!owes ? (
                         <button

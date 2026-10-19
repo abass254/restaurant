@@ -1487,10 +1487,10 @@ export function PosWorkspace({
       return;
     }
     const customer = customers.find((row) => row.id === customerId);
-    if (!customer?.phone) return;
+    if (!customer) return;
     setSelectedCustomerId(customerId);
     setCustomerName(customer.name);
-    setCustomerPhone(customer.phone);
+    setCustomerPhone(customer.phone || "");
     if (customer.address) {
       setDeliveryAddress(customer.address);
     }
@@ -1629,10 +1629,16 @@ export function PosWorkspace({
                 <strong className="pos-customer-card__name">
                   {selectedCustomer.name}
                 </strong>
-                <span className="pos-customer-card__phone">
-                  <i className="fa-solid fa-phone" aria-hidden />{" "}
-                  {selectedCustomer.phone}
-                </span>
+                {selectedCustomer.phone ? (
+                  <span className="pos-customer-card__phone">
+                    <i className="fa-solid fa-phone" aria-hidden />{" "}
+                    {selectedCustomer.phone}
+                  </span>
+                ) : (
+                  <span className="pos-customer-card__phone">
+                    No phone on file
+                  </span>
+                )}
               </div>
             </div>
             <button
@@ -1794,8 +1800,8 @@ export function PosWorkspace({
                   : "Walk-in (optional)"}
               </option>
               {customers.map((customer) => (
-                <option key={customer.id} value={customer.id} disabled={!customer.phone}>
-                  {customer.name} · {customer.phone ?? "no phone — add one to sell"}
+                <option key={customer.id} value={customer.id}>
+                  {customer.name}{customer.phone ? ` · ${customer.phone}` : ""}
                 </option>
               ))}
             </select>
@@ -2059,13 +2065,6 @@ export function PosWorkspace({
       );
       return;
     }
-    if (usesCredit && !customerPhone.trim()) {
-      await showError(
-        "Customer phone required",
-        "The selected customer needs a phone number on file.",
-      );
-      return;
-    }
     setSubmitting(true);
     try {
       const payload: OrderCreatePayload = {
@@ -2075,6 +2074,7 @@ export function PosWorkspace({
           orderFulfillment === "dine_in"
             ? (tableNumber.trim() || "Table 1")
             : (tableNumber.trim() || null),
+        customer_id: selectedCustomerId || null,
         customer_name: customerName.trim() || null,
         customer_phone: customerPhone.trim() || null,
         delivery_address: orderFulfillment === "delivery" ? deliveryAddress.trim() || null : null,

@@ -400,19 +400,46 @@ class CustomerService:
         self,
         account_id: str,
         *,
+        customer_id: str | None = None,
         name: str,
-        phone: str,
+        phone: str | None = None,
     ) -> ShopCustomer:
-        """Find a customer by phone, or create one, without committing."""
+        """Find a customer by id, phone, or name, or create one, without committing."""
+        if customer_id:
+            existing = (
+                self.db.query(ShopCustomer)
+                .filter(
+                    ShopCustomer.account_id == account_id,
+                    ShopCustomer.id == customer_id,
+                )
+                .with_for_update()
+                .first()
+            )
+            if existing is not None:
+                return existing
+
         clean_name = (name or "").strip()
-        clean_phone = normalize_phone(phone)
+        clean_phone = normalize_phone(phone) if phone else None
         if not clean_name:
             raise CustomerServiceError("Customer name is required for credit sales.")
-        if not clean_phone:
-            raise CustomerServiceError("Customer phone is required for credit sales.")
-        existing = self._locked_by_phone(account_id, clean_phone)
-        if existing is not None:
-            return existing
+
+        if clean_phone:
+            existing = self._locked_by_phone(account_id, clean_phone)
+            if existing is not None:
+                return existing
+
+        existing_by_name = (
+            self.db.query(ShopCustomer)
+            .filter(
+                ShopCustomer.account_id == account_id,
+                func.lower(ShopCustomer.name) == clean_name.lower(),
+            )
+            .with_for_update()
+            .first()
+        )
+        if existing_by_name is not None:
+            return existing_by_name
+
         now = utc_now()
         customer = ShopCustomer(
             account_id=account_id,
@@ -474,12 +501,34 @@ class CustomerService:
         self,
         account_id: str,
         *,
-        phone: str | None,
+        phone: str | None = None,
+        name: str | None = None,
+        customer_id: str | None = None,
         amount: object,
     ) -> None:
-        if not phone:
-            return
-        customer = self._locked_by_phone(account_id, phone)
+        customer = None
+        if customer_id:
+            customer = (
+                self.db.query(ShopCustomer)
+                .filter(
+                    ShopCustomer.account_id == account_id,
+                    ShopCustomer.id == customer_id,
+                )
+                .with_for_update()
+                .first()
+            )
+        if customer is None and phone:
+            customer = self._locked_by_phone(account_id, phone)
+        if customer is None and name:
+            customer = (
+                self.db.query(ShopCustomer)
+                .filter(
+                    ShopCustomer.account_id == account_id,
+                    func.lower(ShopCustomer.name) == name.strip().lower(),
+                )
+                .with_for_update()
+                .first()
+            )
         if customer is None:
             return
         self.release_credit(customer, amount)
@@ -493,22 +542,67 @@ class CustomerService:
         phone: str | None,
         name: str | None,
         amount: object,
+        customer_id: str | None = None,
+        previous_name: str | None = None,
     ) -> None:
         """After an order edit, charge or release the change in what it puts on credit."""
         before = _money(previous_amount, field="Sale total")
         after = _money(amount, field="Sale total")
-        if normalize_phone(previous_phone or "") == normalize_phone(phone or ""):
+        is_same_customer = (
+            (previous_phone and phone and normalize_phone(previous_phone) == normalize_phone(phone))
+            or (not previous_phone and not phone and (previous_name or "").strip().lower() == (name or "").strip().lower())
+        )
+        if is_same_customer:
             change = after - before
             if change < 0:
-                self.release_credit_for_order(account_id, phone=phone, amount=-change)
+                if phone:
+                    self.release_credit_for_order(account_id, phone=phone, amount=-change)
+                else:
+                    self.release_credit_for_order(
+                        account_id,
+                        name=name,
+                        customer_id=customer_id,
+                        amount=-change,
+                    )
             elif change > 0:
-                customer = self.get_or_create_for_sale(account_id, name=name or "", phone=phone or "")
+                if customer_id:
+                    customer = self.get_or_create_for_sale(
+                        account_id,
+                        customer_id=customer_id,
+                        name=name or "",
+                        phone=phone or "",
+                    )
+                else:
+                    customer = self.get_or_create_for_sale(
+                        account_id,
+                        name=name or "",
+                        phone=phone or "",
+                    )
                 self.charge_credit(customer, change)
             return
         if before > 0:
-            self.release_credit_for_order(account_id, phone=previous_phone, amount=before)
+            if previous_phone:
+                self.release_credit_for_order(account_id, phone=previous_phone, amount=before)
+            else:
+                self.release_credit_for_order(
+                    account_id,
+                    name=previous_name,
+                    amount=before,
+                )
         if after > 0:
-            customer = self.get_or_create_for_sale(account_id, name=name or "", phone=phone or "")
+            if customer_id:
+                customer = self.get_or_create_for_sale(
+                    account_id,
+                    customer_id=customer_id,
+                    name=name or "",
+                    phone=phone or "",
+                )
+            else:
+                customer = self.get_or_create_for_sale(
+                    account_id,
+                    name=name or "",
+                    phone=phone or "",
+                )
             self.charge_credit(customer, after)
 
     def delete_customer(self, account_id: str, customer_id: str) -> None:
