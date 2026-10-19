@@ -176,3 +176,18 @@ def test_order_out_serializes_tax() -> None:
     out = OrderOut.from_model(order, include_history=False, include_workflow=False)
     assert out.tax == 128.00
 
+
+def test_order_create_credit_without_phone() -> None:
+    payload = OrderCreate(
+        source="walkin",
+        fulfillment_type="pickup",
+        payment_method="credit",
+        customer_id="cust-123",
+        customer_name="AERA KITCHENS TERRY",
+        customer_phone=None,
+        items=[{"product_name": "Item", "unit_price": 800, "quantity": 1}],
+    )
+    assert payload.customer_id == "cust-123"
+    assert payload.customer_name == "AERA KITCHENS TERRY"
+    assert payload.customer_phone is None
+

@@ -941,24 +941,13 @@ def create_order(
         )
 
     if uses_credit:
-        if not (payload.customer_name and payload.customer_name.strip()):
+        if not (payload.customer_id or (payload.customer_name and payload.customer_name.strip())):
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={
                     "errors": {
                         "customer_name": [
                             "Customer name is required for credit sales.",
-                        ],
-                    },
-                },
-            )
-        if not (payload.customer_phone and payload.customer_phone.strip()):
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={
-                    "errors": {
-                        "customer_phone": [
-                            "Customer phone is required for credit sales.",
                         ],
                     },
                 },
