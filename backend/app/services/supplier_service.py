@@ -327,13 +327,21 @@ class SupplierService:
         supplier_id: str,
         *,
         amount: float,
+        payment_method: str | None = "mpesa",
         reference: str | None = None,
+        cheque_maturity_date: date | None = None,
         notes: str | None = None,
         paid_at: datetime | None = None,
         created_by: str | None = None,
     ) -> tuple[ShopSupplier, ShopSupplierPayment]:
         if amount is None or amount <= 0:
             raise SupplierServiceError("Payment amount must be greater than zero.")
+        normalized_method = (payment_method or "mpesa").strip().lower()
+        if normalized_method not in ("cash", "mpesa", "cheque"):
+            normalized_method = "mpesa"
+
+        actual_maturity = cheque_maturity_date if normalized_method == "cheque" else None
+
         supplier = self.get_supplier(account_id, supplier_id)
         current_bal = float(supplier.balance or 0.0)
         supplier.balance = round(current_bal - float(amount), 2)
@@ -344,7 +352,9 @@ class SupplierService:
             account_id=account_id,
             supplier_id=supplier_id,
             amount=round(float(amount), 2),
+            payment_method=normalized_method,
             reference=(reference or "").strip() or None,
+            cheque_maturity_date=actual_maturity,
             notes=(notes or "").strip() or None,
             paid_at=paid_at or now,
             created_by=created_by,

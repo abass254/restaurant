@@ -3917,6 +3917,811 @@ html[data-trans-chap-machine="tablet"] .trans-chap-purchase-new__panel--products
     color: var(--app-text);
 }
 
+/* ==========================================================================
+   Trans Chap Product Edit - Modern 2-Column Desktop Experience
+   ========================================================================== */
+
+@media (min-width: 900px) {
+    .trans-chap-app:has(.trans-chap-product-edit) {
+        max-width: none;
+        width: 100%;
+    }
+}
+
+.trans-chap-app__content:has(.trans-chap-product-edit) {
+    padding-inline: 0;
+    background: var(--app-bg);
+}
+
+.trans-chap-product-edit {
+    width: 100%;
+    max-width: 1140px;
+    margin-inline: auto;
+    padding: 1.25rem 1.5rem 3.5rem;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 1.35rem;
+}
+
+@media (max-width: 768px) {
+    .trans-chap-product-edit {
+        padding: 0.85rem 1rem 2.5rem;
+        gap: 1rem;
+    }
+}
+
+/* Top bar: Breadcrumb & quick actions */
+.trans-chap-product-edit__topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.trans-chap-product-edit__breadcrumbs {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.84rem;
+    font-weight: 650;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-product-edit__back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--app-text-secondary);
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
+.trans-chap-product-edit__back-btn:hover {
+    color: var(--app-primary);
+}
+
+.trans-chap-product-edit__sep {
+    opacity: 0.4;
+}
+
+.trans-chap-product-edit__current {
+    color: var(--app-text);
+    font-weight: 700;
+    max-width: 320px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.trans-chap-product-edit__top-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+/* Hero section */
+.trans-chap-product-edit__hero {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--app-border);
+}
+
+.trans-chap-product-edit__hero-title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.65rem 0.85rem;
+}
+
+.trans-chap-product-edit__title {
+    margin: 0;
+    font-size: 1.45rem;
+    font-weight: 850;
+    color: var(--app-text);
+    letter-spacing: -0.02em;
+}
+
+.trans-chap-product-edit__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: var(--app-surface-elevated, var(--app-surface));
+    border: 1px solid var(--app-border);
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-product-edit__badge.is-both {
+    background: color-mix(in srgb, #0284c7 12%, transparent);
+    border-color: color-mix(in srgb, #0284c7 35%, transparent);
+    color: #38bdf8;
+}
+
+.trans-chap-product-edit__badge.is-for_sale {
+    background: color-mix(in srgb, var(--app-primary) 12%, transparent);
+    border-color: color-mix(in srgb, var(--app-primary) 35%, transparent);
+    color: var(--app-primary);
+}
+
+.trans-chap-product-edit__badge.is-raw_material {
+    background: color-mix(in srgb, #0f766e 14%, transparent);
+    border-color: color-mix(in srgb, #0f766e 35%, transparent);
+    color: #2dd4bf;
+}
+
+.trans-chap-product-edit__badge.is-hotel {
+    background: color-mix(in srgb, #f59e0b 12%, transparent);
+    border-color: color-mix(in srgb, #f59e0b 35%, transparent);
+    color: #fbbf24;
+}
+
+.trans-chap-product-edit__subtitle {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--app-text-secondary);
+    line-height: 1.45;
+}
+
+/* Tabs Navigation */
+.trans-chap-product-edit__tabs {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding: 0.35rem 0.15rem;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.trans-chap-product-edit__tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.trans-chap-tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-height: 42px;
+    padding: 0.45rem 1.05rem;
+    border-radius: 999px;
+    border: 1px solid var(--app-border);
+    background: var(--app-surface);
+    color: var(--app-text-secondary);
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+
+.trans-chap-tab-btn:hover {
+    background: var(--app-surface-hover);
+    color: var(--app-text);
+    border-color: color-mix(in srgb, var(--app-primary) 35%, var(--app-border));
+}
+
+.trans-chap-tab-btn.is-active {
+    background: color-mix(in srgb, var(--app-primary) 12%, var(--app-surface));
+    border-color: var(--app-primary);
+    color: var(--app-primary);
+    box-shadow: 0 0 0 1px var(--app-primary);
+}
+
+.trans-chap-tab-btn i {
+    font-size: 0.85rem;
+    opacity: 0.85;
+}
+
+.trans-chap-tab-btn.is-active i {
+    opacity: 1;
+}
+
+.trans-chap-tab-btn__badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    background: var(--app-bg);
+    color: var(--app-text-secondary);
+    border: 1px solid var(--app-border);
+}
+
+.trans-chap-tab-btn.is-active .trans-chap-tab-btn__badge {
+    background: var(--app-primary);
+    color: #ffffff;
+    border-color: transparent;
+}
+
+.trans-chap-tab-btn__badge.is-margin {
+    background: color-mix(in srgb, #10b981 18%, transparent);
+    color: #10b981;
+    border-color: color-mix(in srgb, #10b981 30%, transparent);
+}
+
+.trans-chap-tab-btn.is-active .trans-chap-tab-btn__badge.is-margin {
+    background: #10b981;
+    color: #ffffff;
+    border-color: transparent;
+}
+
+/* 2-Column Grid */
+.trans-chap-product-edit__grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1.35rem;
+    width: 100%;
+}
+
+@media (min-width: 900px) {
+    .trans-chap-product-edit__grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.75fr) minmax(320px, 1fr);
+        gap: 1.5rem;
+        align-items: start;
+    }
+}
+
+.trans-chap-product-edit__col-main,
+.trans-chap-product-edit__col-side {
+    display: flex;
+    flex-direction: column;
+    gap: 1.35rem;
+    min-width: 0;
+}
+
+.trans-chap-edit-card--sticky {
+    position: sticky;
+    top: 1.25rem;
+}
+
+/* Cards */
+.trans-chap-edit-card {
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
+    border-radius: 18px;
+    padding: 1.35rem 1.45rem;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+    transition: border-color 0.15s ease;
+}
+
+.trans-chap-edit-card:hover {
+    border-color: color-mix(in srgb, var(--app-border) 70%, var(--app-primary) 30%);
+}
+
+.trans-chap-edit-card__head {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding-bottom: 0.85rem;
+    border-bottom: 1px solid var(--app-border);
+}
+
+.trans-chap-edit-card__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--app-primary) 12%, transparent);
+    color: var(--app-primary);
+    font-size: 0.95rem;
+    flex-shrink: 0;
+}
+
+.trans-chap-edit-card__icon.is-pricing {
+    background: color-mix(in srgb, #10b981 14%, transparent);
+    color: #10b981;
+}
+
+.trans-chap-edit-card__icon.is-inventory {
+    background: color-mix(in srgb, #0284c7 14%, transparent);
+    color: #0284c7;
+}
+
+.trans-chap-edit-card__icon.is-photo {
+    background: color-mix(in srgb, #8b5cf6 14%, transparent);
+    color: #8b5cf6;
+}
+
+.trans-chap-edit-card__icon.is-action {
+    background: color-mix(in srgb, #f59e0b 14%, transparent);
+    color: #f59e0b;
+}
+
+.trans-chap-edit-card__head h3 {
+    margin: 0;
+    font-size: 1.02rem;
+    font-weight: 750;
+    color: var(--app-text);
+}
+
+.trans-chap-edit-card__head p {
+    margin: 0.12rem 0 0;
+    font-size: 0.77rem;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-edit-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: 1.15rem;
+}
+
+/* Fields & Inputs */
+.trans-chap-edit-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.trans-chap-edit-field label,
+.trans-chap-edit-field__label {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--app-text);
+}
+
+.trans-chap-edit-field__required {
+    color: var(--app-primary);
+    font-size: 0.9rem;
+}
+
+.trans-chap-edit-field__hint {
+    font-size: 0.74rem;
+    color: var(--app-text-secondary);
+    line-height: 1.35;
+}
+
+.trans-chap-edit-field__note {
+    margin: 0;
+    padding: 0.75rem 0.9rem;
+    border-radius: 12px;
+    background: var(--app-bg);
+    border: 1px dashed var(--app-border);
+    font-size: 0.8rem;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-edit-input {
+    width: 100%;
+    min-height: 48px;
+    height: 48px;
+    padding: 0.65rem 0.95rem;
+    border: 1px solid var(--app-border) !important;
+    border-radius: 12px;
+    background: var(--app-bg) !important;
+    color: var(--app-text) !important;
+    font: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    box-sizing: border-box;
+    outline: none;
+    transition: all 0.15s ease;
+}
+
+.trans-chap-edit-input:focus {
+    border-color: var(--app-primary) !important;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-primary) 22%, transparent);
+}
+
+.trans-chap-edit-input--sm {
+    min-height: 38px;
+    height: 38px;
+    padding: 0.4rem 0.7rem;
+    font-size: 0.86rem;
+    border-radius: 10px;
+}
+
+/* Role Selector Radio Group */
+.trans-chap-role-picker {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.65rem;
+}
+
+.trans-chap-role-picker__btn {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+    padding: 0.75rem 0.9rem;
+    border-radius: 12px;
+    border: 1px solid var(--app-border);
+    background: var(--app-bg);
+    color: var(--app-text-secondary);
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s ease;
+}
+
+.trans-chap-role-picker__btn:hover {
+    border-color: color-mix(in srgb, var(--app-primary) 40%, var(--app-border));
+    background: var(--app-surface-hover);
+}
+
+.trans-chap-role-picker__btn.is-active {
+    border-color: var(--app-primary);
+    background: color-mix(in srgb, var(--app-primary) 8%, var(--app-surface));
+    box-shadow: 0 0 0 1px var(--app-primary);
+}
+
+.trans-chap-role-picker__title {
+    font-size: 0.86rem;
+    font-weight: 750;
+    color: var(--app-text);
+}
+
+.trans-chap-role-picker__btn.is-active .trans-chap-role-picker__title {
+    color: var(--app-primary);
+}
+
+.trans-chap-role-picker__desc {
+    font-size: 0.72rem;
+    line-height: 1.35;
+    color: var(--app-text-secondary);
+}
+
+/* Pricing Row */
+.trans-chap-pricing-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+
+@media (min-width: 600px) {
+    .trans-chap-pricing-row {
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    }
+}
+
+.trans-chap-price-input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.trans-chap-price-prefix {
+    position: absolute;
+    left: 1rem;
+    font-size: 0.85rem;
+    font-weight: 750;
+    color: var(--app-text-secondary);
+    pointer-events: none;
+}
+
+.trans-chap-edit-input--price {
+    padding-left: 3.5rem;
+    font-size: 1.15rem;
+    font-weight: 750;
+}
+
+.trans-chap-cost-display {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 48px;
+    padding: 0.45rem 0.95rem;
+    border-radius: 12px;
+    background: var(--app-bg);
+    border: 1px solid var(--app-border);
+}
+
+.trans-chap-cost-display__amount {
+    font-size: 1.12rem;
+    font-weight: 800;
+    color: var(--app-text);
+}
+
+.trans-chap-cost-display__hint {
+    font-size: 0.7rem;
+    color: var(--app-text-secondary);
+}
+
+/* Live Profit Margin Widget */
+.trans-chap-margin-calc {
+    margin-top: 0.25rem;
+    padding: 1rem 1.15rem;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--app-primary) 4%, var(--app-bg));
+    border: 1px solid color-mix(in srgb, var(--app-primary) 18%, var(--app-border));
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.trans-chap-margin-calc__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.trans-chap-margin-calc__head span {
+    font-size: 0.72rem;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-margin-calc__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 0.75rem;
+}
+
+.trans-chap-margin-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: 10px;
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
+}
+
+.trans-chap-margin-tile__label {
+    font-size: 0.7rem;
+    font-weight: 650;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-margin-tile__value {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--app-text);
+}
+
+.trans-chap-margin-tile__value.is-positive {
+    color: #10b981;
+}
+
+.trans-chap-margin-tile__value.is-negative {
+    color: #ef4444;
+}
+
+.trans-chap-margin-tile__sub {
+    font-size: 0.68rem;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-margin-calc__tip {
+    margin: 0;
+    font-size: 0.76rem;
+    color: var(--app-text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+/* Stock level metric box */
+.trans-chap-stock-level-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding: 1rem 1.15rem;
+    border-radius: 14px;
+    background: var(--app-bg);
+    border: 1px solid var(--app-border);
+}
+
+.trans-chap-stock-level-box__stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.trans-chap-stock-level-box__label {
+    font-size: 0.72rem;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-stock-level-box__value-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+}
+
+.trans-chap-stock-level-box__value {
+    font-size: 1.65rem;
+    font-weight: 850;
+    color: var(--app-text);
+}
+
+.trans-chap-stock-level-box__unit {
+    font-size: 0.95rem;
+    font-weight: 650;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-stock-level-box__info {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    max-width: 340px;
+    color: var(--app-text-secondary);
+    font-size: 0.77rem;
+    line-height: 1.4;
+}
+
+.trans-chap-stock-level-box__info i {
+    margin-top: 0.2rem;
+    color: var(--app-primary);
+}
+
+/* Packs section */
+.trans-chap-packs-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    margin-top: 0.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--app-border);
+}
+
+.trans-chap-packs-section__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.trans-chap-packs-section__head h4 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 750;
+    color: var(--app-text);
+}
+
+.trans-chap-packs-section__head p {
+    margin: 0.15rem 0 0;
+    font-size: 0.76rem;
+    color: var(--app-text-secondary);
+    line-height: 1.35;
+}
+
+.trans-chap-packs-table {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    border: 1px solid var(--app-border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--app-bg);
+}
+
+.trans-chap-packs-table__header {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1fr) 40px;
+    gap: 0.5rem;
+    padding: 0.55rem 0.85rem;
+    background: var(--app-surface-elevated, var(--app-surface));
+    font-size: 0.68rem;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--app-text-secondary);
+    border-bottom: 1px solid var(--app-border);
+}
+
+.trans-chap-packs-table__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1fr) 40px;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.45rem 0.85rem;
+    border-bottom: 1px solid var(--app-border);
+}
+
+.trans-chap-packs-table__row:last-child {
+    border-bottom: 0;
+}
+
+.trans-chap-packs-table__equiv {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--app-text);
+}
+
+.trans-chap-packs-table__equiv small {
+    font-size: 0.7rem;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-packs-table__remove-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 0;
+    background: transparent;
+    color: var(--app-text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.trans-chap-packs-table__remove-btn:hover {
+    background: color-mix(in srgb, #ef4444 15%, transparent);
+    color: #ef4444;
+}
+
+.trans-chap-packs-empty {
+    padding: 1.15rem;
+    text-align: center;
+    border-radius: 12px;
+    background: var(--app-bg);
+    border: 1px dashed var(--app-border);
+    font-size: 0.8rem;
+    color: var(--app-text-secondary);
+}
+
+/* Sidebar Summary & Action styling */
+.trans-chap-edit-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    padding: 0.85rem;
+    border-radius: 12px;
+    background: var(--app-bg);
+    border: 1px solid var(--app-border);
+}
+
+.trans-chap-edit-summary__item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-edit-summary__item strong {
+    color: var(--app-text);
+    font-weight: 700;
+}
+
+.trans-chap-edit-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    margin-top: 0.5rem;
+}
+
+.trans-chap-btn--block {
+    width: 100%;
+    justify-content: center;
+    min-height: 48px;
+}
+
 .trans-chap-catalog__units {
     display: flex;
     flex-wrap: wrap;
@@ -7561,12 +8366,30 @@ html[data-theme="dark"] .trans-chap-receipt {
 }
 
 .trans-chap-stock-table--cards tbody tr.trans-chap-stock-table__detail td {
-    padding: 1rem 1.25rem;
+    padding: 1.25rem 1.5rem;
     box-shadow: inset 4px 0 0 var(--panel-head);
 }
 
 .trans-chap-stock-table__detail .trans-chap-form__block {
-    max-width: 40rem;
+    max-width: 100% !important;
+    width: 100%;
+}
+
+.trans-chap-stock-table tbody tr.is-clickable {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.trans-chap-stock-table tbody tr.is-clickable:hover td {
+    background: var(--app-surface-hover);
+}
+
+.trans-chap-stock-table--cards tbody tr.is-clickable:hover td {
+    background: color-mix(in srgb, var(--app-primary) 6%, var(--app-surface));
+}
+
+.trans-chap-stock-table--cards tbody tr.is-clickable.is-picked:hover td {
+    background: color-mix(in srgb, var(--app-primary) 12%, var(--app-surface));
 }
 
 .trans-chap-stock-table--cards th {
@@ -8172,6 +8995,82 @@ html[data-theme="dark"] .trans-chap-receipt {
     display: flex;
     flex-direction: column;
     gap: 0.85rem;
+    width: 100%;
+}
+
+.trans-chap-customer-detail__top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 0.65rem;
+    border-bottom: 1px solid var(--app-border);
+}
+
+.trans-chap-customer-detail__title h4 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 750;
+    color: var(--app-text);
+}
+
+.trans-chap-customer-detail__title p {
+    margin: 0.15rem 0 0;
+    font-size: 0.76rem;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-customer-detail__close-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 34px;
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    border: 1px solid var(--app-border);
+    background: var(--app-surface);
+    color: var(--app-text-secondary);
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.trans-chap-customer-detail__close-btn:hover {
+    background: var(--app-surface-hover);
+    color: var(--app-text);
+    border-color: var(--app-primary);
+}
+
+.trans-chap-customer-detail__grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    width: 100%;
+}
+
+.trans-chap-customer-detail__col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    min-width: 0;
+}
+
+@media (min-width: 860px) {
+    .trans-chap-stock-table__detail .trans-chap-customer-detail__grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+        gap: 1.25rem;
+        align-items: start;
+        width: 100%;
+    }
+}
+
+.trans-chap-customer-detail__footer {
+    display: flex;
+    justify-content: center;
+    padding-top: 0.5rem;
 }
 
 .trans-chap-customer-section-label {
@@ -8358,6 +9257,62 @@ html[data-theme="dark"] .trans-chap-receipt {
     box-sizing: border-box;
 }
 
+.trans-chap-customer-manual__field--full {
+    grid-column: 1 / -1 !important;
+}
+
+.trans-chap-pay-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.trans-chap-pay-picker__label {
+    font-size: 0.7rem;
+    font-weight: 650;
+    color: var(--app-text-secondary);
+}
+
+.trans-chap-pay-picker__options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.45rem;
+}
+
+.trans-chap-pay-picker__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    min-height: 40px;
+    padding: 0.4rem 0.6rem;
+    border-radius: 10px;
+    border: 1px solid var(--app-border);
+    background: var(--app-surface);
+    color: var(--app-text-secondary);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 650;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.trans-chap-pay-picker__btn:hover {
+    background: var(--app-surface-hover);
+    color: var(--app-text);
+}
+
+.trans-chap-pay-picker__btn.is-active {
+    border-color: var(--app-primary);
+    background: color-mix(in srgb, var(--app-primary) 12%, var(--app-surface));
+    color: var(--app-primary);
+    box-shadow: 0 0 0 1px var(--app-primary);
+}
+
+.trans-chap-pay-picker__btn i {
+    font-size: 0.88rem;
+}
+
 .trans-chap-customer-manual .trans-chap-btn {
     min-height: 44px;
 }
@@ -8479,6 +9434,34 @@ html[data-theme="dark"] .trans-chap-receipt {
 .trans-chap-customer-tab__pill.is-paid {
     background: rgba(16, 185, 129, 0.16);
     color: #10b981 !important;
+}
+
+.trans-chap-customer-tab__pill--cheque {
+    background: rgba(168, 85, 247, 0.16) !important;
+    color: #c084fc !important;
+}
+
+.trans-chap-customer-tab__pill--cash {
+    background: rgba(56, 189, 248, 0.16) !important;
+    color: #38bdf8 !important;
+}
+
+.trans-chap-customer-tab__pill--mpesa {
+    background: rgba(16, 185, 129, 0.16) !important;
+    color: #10b981 !important;
+}
+
+.trans-chap-customer-tab__cheque-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+    color: #c084fc;
+    margin-top: 0.2rem;
+}
+
+.trans-chap-customer-tab__cheque-info i {
+    font-size: 0.7rem;
 }
 
 .trans-chap-customer-tab__items {

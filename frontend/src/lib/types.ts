@@ -1953,11 +1953,16 @@ export type ShopSupplierMutationResponse = {
   data: ShopSupplier;
 };
 
+export type SupplierPaymentMethod = "cash" | "mpesa" | "cheque";
+
 export type ShopSupplierPayment = {
   id: string;
   supplier_id: string;
   amount: number;
+  payment_method?: SupplierPaymentMethod | string | null;
   reference?: string | null;
+  cheque_maturity_date?: string | null;
+  maturity_date?: string | null;
   notes?: string | null;
   paid_at: string;
   created_at?: string | null;

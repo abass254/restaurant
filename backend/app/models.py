@@ -495,7 +495,9 @@ class ShopSupplierPayment(Base):
         String(PK_LEN), ForeignKey("shop_suppliers.id", ondelete="CASCADE")
     )
     amount: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
+    payment_method: Mapped[str | None] = mapped_column(String(32), nullable=True, default="mpesa")
     reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    cheque_maturity_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     paid_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     created_by: Mapped[str | None] = mapped_column(

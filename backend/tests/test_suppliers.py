@@ -120,15 +120,66 @@ def test_record_payment_decreases_supplier_balance() -> None:
         "acct-1",
         "sup-1",
         amount=2500.0,
+        payment_method="mpesa",
         reference="QGH123ABC",
         notes="Deposit for milk",
     )
 
     assert sup.balance == 7500.0
     assert payment.amount == 2500.0
+    assert payment.payment_method == "mpesa"
     assert payment.reference == "QGH123ABC"
     assert payment.notes == "Deposit for milk"
     db.commit.assert_called_once()
+
+
+def test_record_payment_cheque_with_maturity_date() -> None:
+    from datetime import date
+    db = MagicMock()
+    supplier = MagicMock()
+    supplier.id = "sup-1"
+    supplier.balance = 50000.00
+    db.query.return_value.filter.return_value.first.return_value = supplier
+
+    service = SupplierService(db)
+    maturity = date(2026, 11, 15)
+    sup, payment = service.record_payment(
+        "acct-1",
+        "sup-1",
+        amount=15000.0,
+        payment_method="cheque",
+        reference="CHQ-889900",
+        cheque_maturity_date=maturity,
+        notes="Post-dated cheque for stock",
+    )
+
+    assert sup.balance == 35000.0
+    assert payment.payment_method == "cheque"
+    assert payment.reference == "CHQ-889900"
+    assert payment.cheque_maturity_date == maturity
+
+
+def test_record_payment_cash_clears_maturity_date() -> None:
+    from datetime import date
+    db = MagicMock()
+    supplier = MagicMock()
+    supplier.id = "sup-1"
+    supplier.balance = 10000.00
+    db.query.return_value.filter.return_value.first.return_value = supplier
+
+    service = SupplierService(db)
+    sup, payment = service.record_payment(
+        "acct-1",
+        "sup-1",
+        amount=2000.0,
+        payment_method="cash",
+        reference="REC-001",
+        cheque_maturity_date=date(2026, 11, 15),
+    )
+
+    assert sup.balance == 8000.0
+    assert payment.payment_method == "cash"
+    assert payment.cheque_maturity_date is None
 
 
 def test_record_payment_rejects_non_positive_amount() -> None:
@@ -138,5 +189,6 @@ def test_record_payment_rejects_non_positive_amount() -> None:
         service.record_payment("acct-1", "sup-1", amount=0)
     with pytest.raises(SupplierServiceError, match="greater than zero"):
         service.record_payment("acct-1", "sup-1", amount=-50)
+
 
 

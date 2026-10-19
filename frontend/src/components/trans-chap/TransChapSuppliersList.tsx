@@ -39,6 +39,7 @@ import type {
   ShopSupplierPaymentsResponse,
   ShopSupplierRecordPaymentResponse,
   SupplierImportResponse,
+  SupplierPaymentMethod,
 } from "@/lib/types";
 
 type SupplierForm = {
@@ -56,17 +57,47 @@ type SupplierForm = {
   notes: string;
 };
 
+type SupplierPaymentValues = {
+  amount: string;
+  method: SupplierPaymentMethod;
+  reference: string;
+  maturityDate: string;
+  notes: string;
+};
+
+const EMPTY_PAYMENT: SupplierPaymentValues = {
+  amount: "",
+  method: "mpesa",
+  reference: "",
+  maturityDate: "",
+  notes: "",
+};
+
+function paymentMethodLabel(method?: string | null): string {
+  switch (method) {
+    case "cash":
+      return "Cash";
+    case "mpesa":
+      return "M-PESA";
+    case "cheque":
+      return "Cheque";
+    default:
+      return method ? method.toUpperCase() : "Sent";
+  }
+}
+
 type View = "list" | "create" | "import";
 type SupplierLayoutView = "grid" | "list";
 
 const SUPPLIERS_VIEW_KEY = "trans-chap-suppliers-view";
 
 function readSuppliersView(): SupplierLayoutView {
-  if (typeof window === "undefined") return "grid";
+  if (typeof window === "undefined") return "list";
   try {
-    return window.localStorage.getItem(SUPPLIERS_VIEW_KEY) === "list" ? "list" : "grid";
+    const val = window.localStorage.getItem(SUPPLIERS_VIEW_KEY);
+    return val === "grid" ? "grid" : "list";
   } catch {
-    return "grid";
+    return "list";
   }
 }
 
@@ -179,8 +210,8 @@ export function TransChapSuppliersList() {
   const listId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<View>("list");
-  const [storedLayoutView, setLayoutView] = useState<SupplierLayoutView>("grid");
-  const layoutView: SupplierLayoutView = useTransChapIsPhone() ? "grid" : storedLayoutView;
+  const [storedLayoutView, setLayoutView] = useState<SupplierLayoutView>("list");
+  const layoutView: SupplierLayoutView = storedLayoutView;
 
   useEffect(() => {
     setLayoutView(readSuppliersView());
@@ -211,9 +242,7 @@ export function TransChapSuppliersList() {
   const [limitValues, setLimitValues] = useState<Record<string, string>>({});
   const [savingLimitId, setSavingLimitId] = useState<string | null>(null);
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
-  const [paymentValues, setPaymentValues] = useState<
-    Record<string, { amount: string; reference: string; notes: string }>
-  >({});
+  const [paymentValues, setPaymentValues] = useState<Record<string, SupplierPaymentValues>>({});
   const [recordingPaymentId, setRecordingPaymentId] = useState<string | null>(null);
   const [supplierPayments, setSupplierPayments] = useState<Record<string, ShopSupplierPayment[]>>({});
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -444,11 +473,20 @@ export function TransChapSuppliersList() {
   }
 
   async function handleRecordPayment(supplier: ShopSupplier) {
-    const cur = paymentValues[supplier.id] ?? { amount: "", reference: "", notes: "" };
+    const cur = paymentValues[supplier.id] ?? EMPTY_PAYMENT;
     const raw = cur.amount.trim().replace(/,/g, "");
     const amt = Number(raw);
     if (!raw || !Number.isFinite(amt) || amt <= 0) {
       await showError("Invalid amount", "Please enter a valid amount greater than zero.");
+      return;
+    }
+
+    const method = cur.method || "mpesa";
+    if (method === "cheque" && !cur.maturityDate.trim()) {
+      await showError(
+        "Date of maturity needed",
+        "Please select the date of maturity for the cheque payment.",
+      );
       return;
     }
 
@@ -460,7 +498,10 @@ export function TransChapSuppliersList() {
           method: "POST",
           body: JSON.stringify({
             amount: amt,
+            payment_method: method,
             reference: cur.reference.trim() || null,
+            cheque_maturity_date:
+              method === "cheque" && cur.maturityDate.trim() ? cur.maturityDate.trim() : null,
             notes: cur.notes.trim() || null,
           }),
         },
@@ -474,9 +515,11 @@ export function TransChapSuppliersList() {
       }));
       setPaymentValues((prev) => ({
         ...prev,
-        [supplier.id]: { amount: "", reference: "", notes: "" },
+        [supplier.id]: { ...EMPTY_PAYMENT },
       }));
-      await toastSuccess(`Payment of ${formatKsh(amt)} sent to ${supplier.name} recorded!`);
+      await toastSuccess(
+        `Payment of ${formatKsh(amt)} (${paymentMethodLabel(method)}) sent to ${supplier.name} recorded!`,
+      );
     } catch (err) {
       await showError("Could not record payment", extractErrorMessage(err));
     } finally {
@@ -1062,6 +1105,21 @@ export function TransChapSuppliersList() {
     if (editingSupplierId === supplier.id) {
       return (
         <div className="trans-chap-form__block trans-chap-customer-detail">
+          <div className="trans-chap-customer-detail__top-bar">
+            <div className="trans-chap-customer-detail__title">
+              <h4>Edit {supplier.name}</h4>
+              <p>Update supplier contact info, location or credit limit</p>
+            </div>
+            <button
+              type="button"
+              className="trans-chap-customer-detail__close-btn"
+              onClick={() => setEditingSupplierId(null)}
+              title="Cancel editing"
+            >
+              <i className="fa-solid fa-xmark" aria-hidden="true" />
+              <span>Cancel</span>
+            </button>
+          </div>
           {renderEditForm(supplier, panelId, true)}
           <button
             type="button"
@@ -1092,385 +1150,575 @@ export function TransChapSuppliersList() {
 
     return (
       <div className="trans-chap-form__block trans-chap-customer-detail">
-        <section
-          className={`trans-chap-customer-balance${owes ? " is-owes" : " is-clear"}`}
-        >
-          <div className="trans-chap-customer-balance__top">
-            <div>
-              <span className="trans-chap-customer-balance__label">
-                {owes ? "Balance owed" : "Balance"}
-              </span>
-              <strong className="trans-chap-customer-balance__amount">
-                {owes
-                  ? formatKsh(bal)
-                  : bal < 0
-                  ? `Advance ${formatKsh(Math.abs(bal))}`
-                  : "All paid up"}
-              </strong>
+        <div className="trans-chap-customer-detail__top-bar">
+          <div className="trans-chap-customer-detail__title">
+            <h4>{supplier.name}</h4>
+            <p>
+              {supplier.phone ? supplier.phone : "No phone on file"}
+              {supplier.city ? ` • ${supplier.city}` : ""}
+              {supplier.pin_number ? ` • PIN: ${supplier.pin_number}` : ""}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="trans-chap-customer-detail__close-btn"
+            onClick={() => setOpenId(null)}
+            title="Close details"
+          >
+            <i className="fa-solid fa-xmark" aria-hidden="true" />
+            <span>Close</span>
+          </button>
+        </div>
+
+        <div className="trans-chap-customer-detail__grid">
+          <div className="trans-chap-customer-detail__col trans-chap-customer-detail__col--main">
+            <section
+              className={`trans-chap-customer-balance${owes ? " is-owes" : " is-clear"}`}
+            >
+              <div className="trans-chap-customer-balance__top">
+                <div>
+                  <span className="trans-chap-customer-balance__label">
+                    {owes ? "Balance owed" : "Balance"}
+                  </span>
+                  <strong className="trans-chap-customer-balance__amount">
+                    {owes
+                      ? formatKsh(bal)
+                      : bal < 0
+                      ? `Advance ${formatKsh(Math.abs(bal))}`
+                      : "All paid up"}
+                  </strong>
+                </div>
+                {supplier.balance_due_date && owes ? (
+                  <span className="trans-chap-customer-balance__due">
+                    <i className="fa-regular fa-calendar" aria-hidden />
+                    Due {formatDueDate(supplier.balance_due_date)}
+                  </span>
+                ) : null}
+              </div>
+
+              {hasCredit ? (
+                <div className="trans-chap-customer-balance__limit">
+                  <div className="trans-chap-customer-credit-card__meter">
+                    <div
+                      className={`trans-chap-customer-credit-card__meter-bar${
+                        availableCredit <= 0
+                          ? " is-exceeded"
+                          : creditPct <= 25
+                          ? " is-low"
+                          : ""
+                      }`}
+                      style={{ width: `${creditPct}%` }}
+                    />
+                  </div>
+                  <p>
+                    <strong>{formatKsh(availableCredit)}</strong> of{" "}
+                    {formatKsh(creditLimit)} credit available
+                  </p>
+                </div>
+              ) : (
+                <p className="trans-chap-customer-balance__note">
+                  {owes
+                    ? "No credit limit set — this tab has no cap."
+                    : "Cash only — no credit limit set."}
+                </p>
+              )}
+            </section>
+
+            <div className="trans-chap-customer-actions">
+              {supplier.phone ? (
+                <>
+                  {cleanPhone ? (
+                    <a
+                      href={`https://wa.me/${cleanPhone}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="trans-chap-btn trans-chap-btn--ghost"
+                    >
+                      <i className="fa-brands fa-whatsapp" aria-hidden />
+                      <span>WhatsApp</span>
+                    </a>
+                  ) : null}
+                  <a
+                    href={`tel:${supplier.phone}`}
+                    className="trans-chap-btn trans-chap-btn--ghost"
+                  >
+                    <i className="fa-solid fa-phone" aria-hidden />
+                    <span>Call</span>
+                  </a>
+                </>
+              ) : (
+                <p className="trans-chap-mpesa-gate trans-chap-customer-actions__wide">
+                  No phone on file — add one to sell on credit, send M-PESA prompts or WhatsApp reminders.
+                </p>
+              )}
+
+              {!owes ? (
+                <button
+                  type="button"
+                  className="trans-chap-btn trans-chap-btn--ghost trans-chap-customer-actions__wide trans-chap-customer-actions__danger"
+                  disabled={removingId === supplier.id}
+                  onClick={() => void removeSupplier(supplier)}
+                >
+                  <i className="fa-solid fa-trash-can" aria-hidden />
+                  <span>{removingId === supplier.id ? "Removing…" : "Remove supplier"}</span>
+                </button>
+              ) : null}
             </div>
-            {supplier.balance_due_date && owes ? (
-              <span className="trans-chap-customer-balance__due">
-                <i className="fa-regular fa-calendar" aria-hidden />
-                Due {formatDueDate(supplier.balance_due_date)}
-              </span>
+
+            {(() => {
+              const curPay = paymentValues[supplier.id] ?? EMPTY_PAYMENT;
+              const method = curPay.method || "mpesa";
+              return (
+                <form
+                  className="trans-chap-customer-manual"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void handleRecordPayment(supplier);
+                  }}
+                >
+                  <div className="trans-chap-customer-manual__head">
+                    <span className="trans-chap-customer-section-label">Record amount sent</span>
+                    <p>
+                      {bal > 0
+                        ? `Record payment sent to pay down the ${formatKsh(bal)} balance owed.`
+                        : "Record payment or advance deposit sent to this supplier."}
+                    </p>
+                  </div>
+
+                  <div className="trans-chap-pay-picker">
+                    <span className="trans-chap-pay-picker__label">Payment method</span>
+                    <div
+                      className="trans-chap-pay-picker__options"
+                      role="radiogroup"
+                      aria-label="Payment method"
+                    >
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={method === "cash"}
+                        className={`trans-chap-pay-picker__btn${method === "cash" ? " is-active" : ""}`}
+                        onClick={() =>
+                          setPaymentValues((prev) => ({
+                            ...prev,
+                            [supplier.id]: {
+                              amount: prev[supplier.id]?.amount ?? "",
+                              method: "cash",
+                              reference: prev[supplier.id]?.reference ?? "",
+                              maturityDate: prev[supplier.id]?.maturityDate ?? "",
+                              notes: prev[supplier.id]?.notes ?? "",
+                            },
+                          }))
+                        }
+                      >
+                        <i className="fa-solid fa-money-bill-wave" aria-hidden="true" />
+                        <span>Cash</span>
+                      </button>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={method === "mpesa"}
+                        className={`trans-chap-pay-picker__btn${method === "mpesa" ? " is-active" : ""}`}
+                        onClick={() =>
+                          setPaymentValues((prev) => ({
+                            ...prev,
+                            [supplier.id]: {
+                              amount: prev[supplier.id]?.amount ?? "",
+                              method: "mpesa",
+                              reference: prev[supplier.id]?.reference ?? "",
+                              maturityDate: prev[supplier.id]?.maturityDate ?? "",
+                              notes: prev[supplier.id]?.notes ?? "",
+                            },
+                          }))
+                        }
+                      >
+                        <i className="fa-solid fa-mobile-screen-button" aria-hidden="true" />
+                        <span>M-Pesa</span>
+                      </button>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={method === "cheque"}
+                        className={`trans-chap-pay-picker__btn${method === "cheque" ? " is-active" : ""}`}
+                        onClick={() =>
+                          setPaymentValues((prev) => ({
+                            ...prev,
+                            [supplier.id]: {
+                              amount: prev[supplier.id]?.amount ?? "",
+                              method: "cheque",
+                              reference: prev[supplier.id]?.reference ?? "",
+                              maturityDate: prev[supplier.id]?.maturityDate ?? "",
+                              notes: prev[supplier.id]?.notes ?? "",
+                            },
+                          }))
+                        }
+                      >
+                        <i className="fa-solid fa-money-check" aria-hidden="true" />
+                        <span>Cheque</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="trans-chap-customer-manual__fields">
+                    <label htmlFor={`${panelId}-payment-amount`}>
+                      <span>Amount (KES)</span>
+                      <input
+                        id={`${panelId}-payment-amount`}
+                        type="text"
+                        inputMode="decimal"
+                        required
+                        className="auth-split__input"
+                        placeholder={bal > 0 ? formatKsh(bal) : "e.g. 5,000"}
+                        value={curPay.amount}
+                        onChange={(event) =>
+                          setPaymentValues((prev) => ({
+                            ...prev,
+                            [supplier.id]: {
+                              amount: event.target.value,
+                              method: prev[supplier.id]?.method ?? "mpesa",
+                              reference: prev[supplier.id]?.reference ?? "",
+                              maturityDate: prev[supplier.id]?.maturityDate ?? "",
+                              notes: prev[supplier.id]?.notes ?? "",
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+                    <label htmlFor={`${panelId}-payment-ref`}>
+                      <span>
+                        {method === "cash"
+                          ? "Receipt / Ref (optional)"
+                          : method === "cheque"
+                            ? "Cheque no. / Ref (optional)"
+                            : "M-PESA / Ref (optional)"}
+                      </span>
+                      <input
+                        id={`${panelId}-payment-ref`}
+                        type="text"
+                        autoComplete="off"
+                        className="auth-split__input"
+                        placeholder={
+                          method === "cash"
+                            ? "e.g. REC-1029"
+                            : method === "cheque"
+                              ? "e.g. CHQ-00123"
+                              : "e.g. QGH7ABC123"
+                        }
+                        value={curPay.reference}
+                        onChange={(event) =>
+                          setPaymentValues((prev) => ({
+                            ...prev,
+                            [supplier.id]: {
+                              amount: prev[supplier.id]?.amount ?? "",
+                              method: prev[supplier.id]?.method ?? "mpesa",
+                              reference: event.target.value,
+                              maturityDate: prev[supplier.id]?.maturityDate ?? "",
+                              notes: prev[supplier.id]?.notes ?? "",
+                            },
+                          }))
+                        }
+                      />
+                    </label>
+
+                    {method === "cheque" ? (
+                      <label
+                        htmlFor={`${panelId}-payment-maturity`}
+                        className="trans-chap-customer-manual__field--full"
+                      >
+                        <span>Date of maturity (cheque maturity)</span>
+                        <input
+                          id={`${panelId}-payment-maturity`}
+                          type="date"
+                          required
+                          className="auth-split__input"
+                          value={curPay.maturityDate}
+                          onChange={(event) =>
+                            setPaymentValues((prev) => ({
+                              ...prev,
+                              [supplier.id]: {
+                                amount: prev[supplier.id]?.amount ?? "",
+                                method: prev[supplier.id]?.method ?? "mpesa",
+                                reference: prev[supplier.id]?.reference ?? "",
+                                maturityDate: event.target.value,
+                                notes: prev[supplier.id]?.notes ?? "",
+                              },
+                            }))
+                          }
+                        />
+                      </label>
+                    ) : null}
+                  </div>
+
+                  <div className="trans-chap-customer-limit__row">
+                    <label htmlFor={`${panelId}-payment-notes`} className="sr-only">
+                      Notes (optional)
+                    </label>
+                    <input
+                      id={`${panelId}-payment-notes`}
+                      type="text"
+                      className="auth-split__input"
+                      placeholder="Notes / description (optional, e.g. milk shipment)"
+                      value={curPay.notes}
+                      onChange={(event) =>
+                        setPaymentValues((prev) => ({
+                          ...prev,
+                          [supplier.id]: {
+                            amount: prev[supplier.id]?.amount ?? "",
+                            method: prev[supplier.id]?.method ?? "mpesa",
+                            reference: prev[supplier.id]?.reference ?? "",
+                            maturityDate: prev[supplier.id]?.maturityDate ?? "",
+                            notes: event.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="trans-chap-btn trans-chap-btn--secondary"
+                    disabled={
+                      recordingPaymentId === supplier.id ||
+                      !curPay.amount.trim() ||
+                      (method === "cheque" && !curPay.maturityDate.trim())
+                    }
+                  >
+                    {recordingPaymentId === supplier.id
+                      ? "Recording payment…"
+                      : method === "cheque"
+                        ? "Record cheque sent"
+                        : method === "cash"
+                          ? "Record cash sent"
+                          : "Record amount sent"}
+                  </button>
+                </form>
+              );
+            })()}
+
+            {supplierPayments[supplier.id]?.length ? (
+              <div className="trans-chap-customer-tab">
+                <span className="trans-chap-customer-section-label">Recent amounts sent</span>
+                <ul className="trans-chap-customer-tab__sales">
+                  {supplierPayments[supplier.id].map((payment) => (
+                    <li key={payment.id} className="trans-chap-customer-tab__sale">
+                      <div className="trans-chap-customer-tab__sale-head">
+                        <div>
+                          <strong>{formatKsh(payment.amount)} sent</strong>
+                          <span>
+                            {formatPaymentDateTime(payment.paid_at)}
+                            {payment.payment_method ? ` • ${paymentMethodLabel(payment.payment_method)}` : ""}
+                            {payment.reference ? ` • Ref: ${payment.reference}` : ""}
+                          </span>
+                          {payment.payment_method === "cheque" &&
+                          (payment.cheque_maturity_date || payment.maturity_date) ? (
+                            <span className="trans-chap-customer-tab__cheque-info">
+                              <i className="fa-solid fa-calendar-check" aria-hidden="true" />
+                              <span>
+                                Maturity:{" "}
+                                <strong>
+                                  {formatDueDate(
+                                    payment.cheque_maturity_date || payment.maturity_date!,
+                                  )}
+                                </strong>
+                              </span>
+                            </span>
+                          ) : null}
+                          {payment.notes ? <span>{payment.notes}</span> : null}
+                        </div>
+                        <div className="trans-chap-customer-tab__sale-amt">
+                          <span
+                            className={`trans-chap-customer-tab__pill is-paid trans-chap-customer-tab__pill--${payment.payment_method || "mpesa"}`}
+                          >
+                            {paymentMethodLabel(payment.payment_method)}
+                          </span>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : null}
           </div>
 
-          {hasCredit ? (
-            <div className="trans-chap-customer-balance__limit">
-              <div className="trans-chap-customer-credit-card__meter">
-                <div
-                  className={`trans-chap-customer-credit-card__meter-bar${
-                    availableCredit <= 0
-                      ? " is-exceeded"
-                      : creditPct <= 25
-                      ? " is-low"
-                      : ""
-                  }`}
-                  style={{ width: `${creditPct}%` }}
-                />
+          <div className="trans-chap-customer-detail__col trans-chap-customer-detail__col--side">
+            <form
+              className="trans-chap-customer-manual trans-chap-customer-limit"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleSaveLimit(supplier);
+              }}
+            >
+              <div className="trans-chap-customer-manual__head">
+                <span className="trans-chap-customer-section-label">Credit limit</span>
+                <p>
+                  {hasCredit
+                    ? `Currently ${formatKsh(creditLimit)}. Set 0 for no cap.`
+                    : "No limit set. Cap how much can be owed to this supplier."}
+                </p>
               </div>
-              <p>
-                <strong>{formatKsh(availableCredit)}</strong> of{" "}
-                {formatKsh(creditLimit)} credit available
-              </p>
-            </div>
-          ) : (
-            <p className="trans-chap-customer-balance__note">
-              {owes
-                ? "No credit limit set — this tab has no cap."
-                : "Cash only — no credit limit set."}
-            </p>
-          )}
-        </section>
-
-        <div className="trans-chap-customer-actions">
-          {supplier.phone ? (
-            <>
-              {cleanPhone ? (
-                <a
-                  href={`https://wa.me/${cleanPhone}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="trans-chap-btn trans-chap-btn--ghost"
-                >
-                  <i className="fa-brands fa-whatsapp" aria-hidden />
-                  <span>WhatsApp</span>
-                </a>
-              ) : null}
-              <a
-                href={`tel:${supplier.phone}`}
-                className="trans-chap-btn trans-chap-btn--ghost"
-              >
-                <i className="fa-solid fa-phone" aria-hidden />
-                <span>Call</span>
-              </a>
-            </>
-          ) : (
-            <p className="trans-chap-mpesa-gate trans-chap-customer-actions__wide">
-              No phone on file — add one to sell on credit, send M-PESA prompts or WhatsApp reminders.
-            </p>
-          )}
-
-          {!owes ? (
-            <button
-              type="button"
-              className="trans-chap-btn trans-chap-btn--ghost trans-chap-customer-actions__wide trans-chap-customer-actions__danger"
-              disabled={removingId === supplier.id}
-              onClick={() => void removeSupplier(supplier)}
-            >
-              <i className="fa-solid fa-trash-can" aria-hidden />
-              <span>{removingId === supplier.id ? "Removing…" : "Remove supplier"}</span>
-            </button>
-          ) : null}
-        </div>
-
-        <form
-          className="trans-chap-customer-manual"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void handleRecordPayment(supplier);
-          }}
-        >
-          <div className="trans-chap-customer-manual__head">
-            <span className="trans-chap-customer-section-label">Record amount sent</span>
-            <p>
-              {bal > 0
-                ? `Record payment sent to pay down the ${formatKsh(bal)} balance owed.`
-                : "Record payment or advance deposit sent to this supplier."}
-            </p>
-          </div>
-          <div className="trans-chap-customer-manual__fields">
-            <label htmlFor={`${panelId}-payment-amount`}>
-              <span>Amount (KES)</span>
-              <input
-                id={`${panelId}-payment-amount`}
-                type="text"
-                inputMode="decimal"
-                required
-                className="auth-split__input"
-                placeholder={bal > 0 ? formatKsh(bal) : "e.g. 5,000"}
-                value={paymentValues[supplier.id]?.amount ?? ""}
-                onChange={(event) =>
-                  setPaymentValues((prev) => ({
-                    ...prev,
-                    [supplier.id]: {
-                      amount: event.target.value,
-                      reference: prev[supplier.id]?.reference ?? "",
-                      notes: prev[supplier.id]?.notes ?? "",
-                    },
-                  }))
-                }
-              />
-            </label>
-            <label htmlFor={`${panelId}-payment-ref`}>
-              <span>M-PESA / Ref (optional)</span>
-              <input
-                id={`${panelId}-payment-ref`}
-                type="text"
-                autoComplete="off"
-                className="auth-split__input"
-                placeholder="e.g. QGH7ABC123"
-                value={paymentValues[supplier.id]?.reference ?? ""}
-                onChange={(event) =>
-                  setPaymentValues((prev) => ({
-                    ...prev,
-                    [supplier.id]: {
-                      amount: prev[supplier.id]?.amount ?? "",
-                      reference: event.target.value,
-                      notes: prev[supplier.id]?.notes ?? "",
-                    },
-                  }))
-                }
-              />
-            </label>
-          </div>
-          <div className="trans-chap-customer-limit__row">
-            <label htmlFor={`${panelId}-payment-notes`} className="sr-only">
-              Notes (optional)
-            </label>
-            <input
-              id={`${panelId}-payment-notes`}
-              type="text"
-              className="auth-split__input"
-              placeholder="Notes / description (optional, e.g. milk shipment)"
-              value={paymentValues[supplier.id]?.notes ?? ""}
-              onChange={(event) =>
-                setPaymentValues((prev) => ({
-                  ...prev,
-                  [supplier.id]: {
-                    amount: prev[supplier.id]?.amount ?? "",
-                    reference: prev[supplier.id]?.reference ?? "",
-                    notes: event.target.value,
-                  },
-                }))
-              }
-            />
-          </div>
-          <button
-            type="submit"
-            className="trans-chap-btn trans-chap-btn--secondary"
-            disabled={
-              recordingPaymentId === supplier.id ||
-              !(paymentValues[supplier.id]?.amount ?? "").trim()
-            }
-          >
-            {recordingPaymentId === supplier.id ? "Recording payment…" : "Record amount sent"}
-          </button>
-        </form>
-
-        {supplierPayments[supplier.id]?.length ? (
-          <div className="trans-chap-customer-tab">
-            <span className="trans-chap-customer-section-label">Recent amounts sent</span>
-            <ul className="trans-chap-customer-tab__sales">
-              {supplierPayments[supplier.id].map((payment) => (
-                <li key={payment.id} className="trans-chap-customer-tab__sale">
-                  <div className="trans-chap-customer-tab__sale-head">
-                    <div>
-                      <strong>{formatKsh(payment.amount)} sent</strong>
-                      <span>
-                        {formatPaymentDateTime(payment.paid_at)}
-                        {payment.reference ? ` • Ref: ${payment.reference}` : ""}
-                      </span>
-                      {payment.notes ? <span>{payment.notes}</span> : null}
-                    </div>
-                    <div className="trans-chap-customer-tab__sale-amt">
-                      <span className="trans-chap-customer-tab__pill is-paid">Sent</span>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        <form
-          className="trans-chap-customer-manual trans-chap-customer-limit"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void handleSaveLimit(supplier);
-          }}
-        >
-          <div className="trans-chap-customer-manual__head">
-            <span className="trans-chap-customer-section-label">Credit limit</span>
-            <p>
-              {hasCredit
-                ? `Currently ${formatKsh(creditLimit)}. Set 0 for no cap.`
-                : "No limit set. Cap how much this customer can take on credit."}
-            </p>
-          </div>
-          <div className="trans-chap-customer-limit__row">
-            <label htmlFor={`${panelId}-credit-limit`} className="sr-only">
-              New credit limit (KES)
-            </label>
-            <input
-              id={`${panelId}-credit-limit`}
-              type="text"
-              inputMode="decimal"
-              className="auth-split__input"
-              placeholder={
-                hasCredit
-                  ? formatKsh(creditLimit)
-                  : owes
-                  ? `At least ${formatKsh(bal)}`
-                  : "e.g. 1000"
-              }
-              value={limitValues[supplier.id] ?? ""}
-              onChange={(event) =>
-                setLimitValues((prev) => ({
-                  ...prev,
-                  [supplier.id]: event.target.value,
-                }))
-              }
-            />
-            <button
-              type="submit"
-              className="trans-chap-btn trans-chap-btn--secondary"
-              disabled={
-                savingLimitId === supplier.id ||
-                !(limitValues[supplier.id] ?? "").trim()
-              }
-            >
-              {savingLimitId === supplier.id ? "Saving…" : "Save"}
-            </button>
-          </div>
-          {hasCredit ? (
-            <button
-              type="button"
-              className="trans-chap-customer-limit__clear"
-              disabled={savingLimitId === supplier.id}
-              onClick={() => void handleSaveLimit(supplier, 0)}
-            >
-              Remove limit
-            </button>
-          ) : null}
-        </form>
-
-        <span className="trans-chap-customer-section-label">Details</span>
-        <div className="trans-chap-customer-contact">
-          <div className="trans-chap-customer-contact__item">
-            <span className="trans-chap-customer-contact__label">Contact</span>
-            {supplier.phone ? (
-              <div className="trans-chap-customer-contact__val">
-                <a
-                  href={`tel:${supplier.phone}`}
-                  className="trans-chap-customer-contact__link"
-                  title="Call supplier"
-                >
-                  <i className="fa-solid fa-phone" aria-hidden />
-                  <span>{supplier.phone}</span>
-                </a>
-                {cleanPhone ? (
-                  <a
-                    href={`https://wa.me/${cleanPhone}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="trans-chap-customer-contact__icon-btn"
-                    title="Chat on WhatsApp"
-                  >
-                    <i className="fa-brands fa-whatsapp" aria-hidden />
-                  </a>
-                ) : null}
+              <div className="trans-chap-customer-limit__row">
+                <label htmlFor={`${panelId}-credit-limit`} className="sr-only">
+                  New credit limit (KES)
+                </label>
+                <input
+                  id={`${panelId}-credit-limit`}
+                  type="text"
+                  inputMode="decimal"
+                  className="auth-split__input"
+                  placeholder={
+                    hasCredit
+                      ? formatKsh(creditLimit)
+                      : owes
+                      ? `At least ${formatKsh(bal)}`
+                      : "e.g. 1000"
+                  }
+                  value={limitValues[supplier.id] ?? ""}
+                  onChange={(event) =>
+                    setLimitValues((prev) => ({
+                      ...prev,
+                      [supplier.id]: event.target.value,
+                    }))
+                  }
+                />
                 <button
-                  type="button"
-                  className="trans-chap-customer-contact__icon-btn"
-                  title="Copy phone number"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(supplier.phone ?? "");
-                    void toastSuccess("Phone copied!");
-                  }}
+                  type="submit"
+                  className="trans-chap-btn trans-chap-btn--secondary"
+                  disabled={
+                    savingLimitId === supplier.id ||
+                    !(limitValues[supplier.id] ?? "").trim()
+                  }
                 >
-                  <i className="fa-solid fa-copy" aria-hidden />
+                  {savingLimitId === supplier.id ? "Saving…" : "Save"}
                 </button>
               </div>
-            ) : (
-              <div className="trans-chap-customer-contact__val">No phone on file</div>
-            )}
-          </div>
-
-          {supplier.address || supplier.city ? (
-            <div className="trans-chap-customer-contact__item">
-              <span className="trans-chap-customer-contact__label">Location</span>
-              <div className="trans-chap-customer-contact__val">
-                <i className="fa-solid fa-location-dot" aria-hidden />
-                <span>{[supplier.address, supplier.city].filter(Boolean).join(", ")}</span>
-              </div>
-            </div>
-          ) : null}
-
-          {supplier.pin_number ? (
-            <div className="trans-chap-customer-contact__item">
-              <span className="trans-chap-customer-contact__label">KRA PIN</span>
-              <div className="trans-chap-customer-contact__val">
-                <span>{supplier.pin_number}</span>
-              </div>
-            </div>
-          ) : null}
-
-          {supplier.email ? (
-            <div className="trans-chap-customer-contact__item">
-              <span className="trans-chap-customer-contact__label">Email</span>
-              <div className="trans-chap-customer-contact__val">
-                <a
-                  href={`mailto:${supplier.email}`}
-                  className="trans-chap-customer-contact__link"
+              {hasCredit ? (
+                <button
+                  type="button"
+                  className="trans-chap-customer-limit__clear"
+                  disabled={savingLimitId === supplier.id}
+                  onClick={() => void handleSaveLimit(supplier, 0)}
                 >
-                  <i className="fa-solid fa-envelope" aria-hidden />
-                  <span>{supplier.email}</span>
-                </a>
-              </div>
-            </div>
-          ) : null}
+                  Remove limit
+                </button>
+              ) : null}
+            </form>
 
-          {supplier.balance_due_date && !owes ? (
-            <div className="trans-chap-customer-contact__item">
-              <span className="trans-chap-customer-contact__label">Date to pay</span>
-              <div className="trans-chap-customer-contact__val">
-                <i className="fa-regular fa-calendar-check" aria-hidden />
-                <span>{formatDueDate(supplier.balance_due_date)}</span>
+            <span className="trans-chap-customer-section-label">Details</span>
+            <div className="trans-chap-customer-contact">
+              <div className="trans-chap-customer-contact__item">
+                <span className="trans-chap-customer-contact__label">Contact</span>
+                {supplier.phone ? (
+                  <div className="trans-chap-customer-contact__val">
+                    <a
+                      href={`tel:${supplier.phone}`}
+                      className="trans-chap-customer-contact__link"
+                      title="Call supplier"
+                    >
+                      <i className="fa-solid fa-phone" aria-hidden />
+                      <span>{supplier.phone}</span>
+                    </a>
+                    {cleanPhone ? (
+                      <a
+                        href={`https://wa.me/${cleanPhone}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="trans-chap-customer-contact__icon-btn"
+                        title="Chat on WhatsApp"
+                      >
+                        <i className="fa-brands fa-whatsapp" aria-hidden />
+                      </a>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="trans-chap-customer-contact__icon-btn"
+                      title="Copy phone number"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(supplier.phone ?? "");
+                        void toastSuccess("Phone copied!");
+                      }}
+                    >
+                      <i className="fa-solid fa-copy" aria-hidden />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="trans-chap-customer-contact__val">No phone on file</div>
+                )}
               </div>
-            </div>
-          ) : null}
 
-          {supplier.notes ? (
-            <div className="trans-chap-customer-contact__notes">
-              <span className="trans-chap-customer-contact__label">Notes</span>
-              <p>{supplier.notes}</p>
+              {supplier.address || supplier.city ? (
+                <div className="trans-chap-customer-contact__item">
+                  <span className="trans-chap-customer-contact__label">Location</span>
+                  <div className="trans-chap-customer-contact__val">
+                    <i className="fa-solid fa-location-dot" aria-hidden />
+                    <span>{[supplier.address, supplier.city].filter(Boolean).join(", ")}</span>
+                  </div>
+                </div>
+              ) : null}
+
+              {supplier.pin_number ? (
+                <div className="trans-chap-customer-contact__item">
+                  <span className="trans-chap-customer-contact__label">KRA PIN</span>
+                  <div className="trans-chap-customer-contact__val">
+                    <span>{supplier.pin_number}</span>
+                  </div>
+                </div>
+              ) : null}
+
+              {supplier.email ? (
+                <div className="trans-chap-customer-contact__item">
+                  <span className="trans-chap-customer-contact__label">Email</span>
+                  <div className="trans-chap-customer-contact__val">
+                    <a
+                      href={`mailto:${supplier.email}`}
+                      className="trans-chap-customer-contact__link"
+                    >
+                      <i className="fa-solid fa-envelope" aria-hidden />
+                      <span>{supplier.email}</span>
+                    </a>
+                  </div>
+                </div>
+              ) : null}
+
+              {supplier.balance_due_date && !owes ? (
+                <div className="trans-chap-customer-contact__item">
+                  <span className="trans-chap-customer-contact__label">Date to pay</span>
+                  <div className="trans-chap-customer-contact__val">
+                    <i className="fa-regular fa-calendar-check" aria-hidden />
+                    <span>{formatDueDate(supplier.balance_due_date)}</span>
+                  </div>
+                </div>
+              ) : null}
+
+              {supplier.notes ? (
+                <div className="trans-chap-customer-contact__notes">
+                  <span className="trans-chap-customer-contact__label">Notes</span>
+                  <p>{supplier.notes}</p>
+                </div>
+              ) : null}
             </div>
-          ) : null}
+
+            <button
+              type="button"
+              className="trans-chap-btn trans-chap-btn--ghost trans-chap-customer-actions__wide"
+              onClick={() => {
+                setEditForm(formFromSupplier(supplier));
+                setEditingSupplierId(supplier.id);
+              }}
+            >
+              <i className="fa-solid fa-pen-to-square" aria-hidden />
+              <span>Edit supplier details</span>
+            </button>
+          </div>
         </div>
 
-        <button
-          type="button"
-          className="trans-chap-btn trans-chap-btn--ghost trans-chap-customer-actions__wide"
-          onClick={() => {
-            setEditForm(formFromSupplier(supplier));
-            setEditingSupplierId(supplier.id);
-          }}
-        >
-          <i className="fa-solid fa-pen-to-square" aria-hidden />
-          <span>Edit supplier details</span>
-        </button>
+        <div className="trans-chap-customer-detail__footer">
+          <button
+            type="button"
+            className="trans-chap-customer-detail__close-btn"
+            onClick={() => setOpenId(null)}
+          >
+            <i className="fa-solid fa-chevron-up" aria-hidden="true" />
+            <span>Close supplier details</span>
+          </button>
+        </div>
       </div>
     );
   }
@@ -1570,7 +1818,29 @@ export function TransChapSuppliersList() {
                   const due = dueStatus(supplier);
                   return (
                     <Fragment key={supplier.id}>
-                      <tr className={open ? "is-picked" : ""}>
+                      <tr
+                        className={`is-clickable ${open ? "is-picked" : ""}`}
+                        title={open ? "Click to close details" : "Click to view details"}
+                        tabIndex={0}
+                        role="button"
+                        aria-expanded={open}
+                        aria-controls={`${panelId}-edit`}
+                        onClick={(e) => {
+                          if ((e.target as HTMLElement).closest("a, button, input, select, textarea")) {
+                            return;
+                          }
+                          toggle(supplier);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            if ((e.target as HTMLElement).closest("a, button, input, select, textarea")) {
+                              return;
+                            }
+                            e.preventDefault();
+                            toggle(supplier);
+                          }
+                        }}
+                      >
                         <td className="trans-chap-stock-table__product">{supplier.name}</td>
                         <td className="trans-chap-stock-table__mono">{supplier.phone || "—"}</td>
                         <td className="trans-chap-stock-table__wrap">{supplier.city || "—"}</td>
@@ -1609,7 +1879,10 @@ export function TransChapSuppliersList() {
                               className="trans-chap-panel__link"
                               aria-expanded={open}
                               aria-controls={`${panelId}-edit`}
-                              onClick={() => toggle(supplier)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggle(supplier);
+                              }}
                             >
                               {open ? "Close" : "View"}
                             </button>

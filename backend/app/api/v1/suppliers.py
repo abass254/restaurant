@@ -83,7 +83,10 @@ class SupplierOut(BaseModel):
 
 class SupplierPaymentCreateRequest(BaseModel):
     amount: float = Field(gt=0, le=99_999_999.99)
+    payment_method: Literal["cash", "mpesa", "cheque"] | str | None = "mpesa"
     reference: str | None = Field(default=None, max_length=100)
+    cheque_maturity_date: date | None = None
+    maturity_date: date | None = None
     notes: str | None = Field(default=None, max_length=2000)
     paid_at: datetime | None = None
 
@@ -92,7 +95,10 @@ class SupplierPaymentOut(BaseModel):
     id: str
     supplier_id: str
     amount: float
+    payment_method: str | None = "mpesa"
     reference: str | None = None
+    cheque_maturity_date: str | None = None
+    maturity_date: str | None = None
     notes: str | None = None
     paid_at: str | None = None
     created_at: str | None = None
@@ -104,11 +110,19 @@ def _iso(dt) -> str | None:
 
 
 def _payment_out(payment: ShopSupplierPayment) -> SupplierPaymentOut:
+    maturity_str = (
+        payment.cheque_maturity_date.isoformat()
+        if getattr(payment, "cheque_maturity_date", None)
+        else None
+    )
     return SupplierPaymentOut(
         id=payment.id,
         supplier_id=payment.supplier_id,
         amount=float(payment.amount),
+        payment_method=getattr(payment, "payment_method", None) or "mpesa",
         reference=payment.reference,
+        cheque_maturity_date=maturity_str,
+        maturity_date=maturity_str,
         notes=payment.notes,
         paid_at=_iso(payment.paid_at),
         created_at=_iso(payment.created_at),
@@ -384,11 +398,14 @@ def record_supplier_payment(
     assert_merchant_section_access(user, "supplier")
     account_id = require_merchant_account_id(user)
     try:
+        maturity = payload.cheque_maturity_date or payload.maturity_date
         supplier, payment = SupplierService(db).record_payment(
             account_id,
             supplier_id,
             amount=payload.amount,
+            payment_method=payload.payment_method,
             reference=payload.reference,
+            cheque_maturity_date=maturity,
             notes=payload.notes,
             paid_at=payload.paid_at,
             created_by=user.id,
