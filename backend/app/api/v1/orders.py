@@ -31,11 +31,13 @@ from app.models import (
     MpesaTransaction,
     Order,
     OrderItem,
+    OrderReturn,
+    OrderReturnItem,
     OrderStatusHistory,
     Rider,
     User,
 )
-from app.schemas import OrderOut, attach_order_mpesa_settlement
+from app.schemas import OrderOut, OrderReturnCreate, attach_order_mpesa_settlement
 from app.support.mpesa_order_link import (
     link_mpesa_transaction_to_order,
     confirm_mpesa_receipt_for_order,
@@ -144,6 +146,7 @@ def _get_owned_order(
     if eager:
         query = query.options(
             selectinload(Order.items).selectinload(OrderItem.inventory_item),
+            selectinload(Order.returns).selectinload(OrderReturn.items),
             selectinload(Order.status_history),
             selectinload(Order.mpesa_transaction),
             selectinload(Order.mpesa_transactions),
@@ -367,15 +370,20 @@ def list_orders(
         trip_service.repair_cancelled_hails_with_active_rider(account_id)
         trip_service.expire_stale_rider_searches(account_id)
 
+    order_options = [
+        joinedload(Order.placed_by),
+        joinedload(Order.mpesa_transaction),
+        selectinload(Order.mpesa_transactions),
+    ]
+    if source == "walkin":
+        order_options.append(selectinload(Order.items))
+    else:
+        order_options.append(selectinload(Order.items).selectinload(OrderItem.inventory_item))
+        order_options.append(joinedload(Order.assigned_rider))
+
     query = (
         db.query(Order)
-        .options(
-            selectinload(Order.items).selectinload(OrderItem.inventory_item),
-            joinedload(Order.assigned_rider),
-            joinedload(Order.placed_by),
-            joinedload(Order.mpesa_transaction),
-            selectinload(Order.mpesa_transactions),
-        )
+        .options(*order_options)
         .filter(Order.account_id == account_id)
         .order_by(
             Order.created_at.is_(None),
@@ -1795,6 +1803,210 @@ def transition_order(
 
     return {
         "message": f"Order moved to {target}.",
+        "data": OrderOut.from_model(
+            order,
+            allowed_next=allowed_next_statuses(order.status, order.fulfillment_type),
+        ),
+    }
+
+
+@router.post("/{order_id}/returns")
+def record_order_return(
+    order_id: str,
+    payload: OrderReturnCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Record goods on return for an order (partial or full).
+
+    Restocks returned items (unless marked damaged/waste), adjusts customer credit
+    tab when applicable, records audit history and updates order totals.
+    """
+    validate_csrf(request, session)
+    user = _auth_orders_user(db, session, pos_ok=True)
+    account_id = _require_shop(user)
+
+    order = _get_owned_order(db, account_id, order_id)
+
+    if order.status == CANCELLED:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail="Cannot record returns on a cancelled order.",
+        )
+
+    order_items_by_id = {item.id: item for item in (order.items or [])}
+    if not order_items_by_id:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Order has no items to return.",
+        )
+
+    return_lines_data: list[tuple[OrderItem, int, str]] = []
+    calculated_total = Decimal("0.00")
+    for req_line in payload.items:
+        item = order_items_by_id.get(req_line.order_item_id)
+        if not item:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Order item {req_line.order_item_id} not found on this order.",
+            )
+        already_returned = int(getattr(item, "returned_quantity", 0) or 0)
+        available = item.quantity - already_returned
+        if req_line.quantity > available:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Cannot return {req_line.quantity} of '{item.product_name}'. "
+                    f"Only {available} remaining to return."
+                ),
+            )
+        return_lines_data.append((item, req_line.quantity, req_line.condition))
+        line_refund = (Decimal(str(item.unit_price)) * Decimal(str(req_line.quantity))).quantize(Decimal("0.01"))
+        calculated_total += line_refund
+
+    refund_amount = (
+        Decimal(str(payload.refund_amount)).quantize(Decimal("0.01"))
+        if payload.refund_amount is not None
+        else calculated_total
+    )
+
+    now = datetime.utcnow()
+    existing_returns_count = len(getattr(order, "returns", []) or [])
+    return_number = f"RET-{order.order_number}-{existing_returns_count + 1}"
+
+    order_return = OrderReturn(
+        account_id=account_id,
+        order_id=order.id,
+        return_number=return_number,
+        total_refunded=refund_amount,
+        refund_payment_method=payload.refund_payment_method,
+        reason=payload.reason.strip(),
+        notes=payload.notes.strip() if payload.notes else None,
+        created_by_user_id=user.id,
+        created_at=now,
+    )
+    db.add(order_return)
+    db.flush()
+
+    account = db.get(Account, account_id)
+    is_resto = is_restaurant(account)
+
+    summary_items: list[str] = []
+    for item, qty, condition in return_lines_data:
+        item.returned_quantity = (getattr(item, "returned_quantity", 0) or 0) + qty
+        line_refund = (Decimal(str(item.unit_price)) * Decimal(str(qty))).quantize(Decimal("0.01"))
+
+        return_item = OrderReturnItem(
+            order_return_id=order_return.id,
+            order_item_id=item.id,
+            inventory_item_id=item.inventory_item_id,
+            product_name=item.product_name,
+            quantity=qty,
+            unit_price=item.unit_price,
+            refund_amount=line_refund,
+            restock=(condition == "restock"),
+            condition_name="good" if condition == "restock" else condition,
+            created_at=now,
+        )
+        db.add(return_item)
+        summary_items.append(f"{qty}x {item.product_name}")
+
+        # Stock restoration
+        if condition == "restock":
+            if is_resto:
+                from app.services.order_stock_service import adjust_line_quantity
+
+                adjust_line_quantity(db, order, item, delta=-qty, user_id=user.id)
+            else:
+                if item.inventory_item_id:
+                    from app.services.inventory_stock_service import _locked_item, record_movement
+
+                    inv_item = _locked_item(db, item.inventory_item_id, account_id=account_id)
+                    if inv_item is not None and inv_item.stock_quantity is not None:
+                        unit_factor = Decimal(str(getattr(item, "unit_factor", None) or 1))
+                        qty_to_restore = Decimal(str(qty)) * unit_factor
+                        inv_item.stock_quantity += qty_to_restore
+                        inv_item.updated_at = now
+                        record_movement(
+                            db,
+                            inv_item,
+                            account_id=account_id,
+                            direction="in",
+                            quantity=qty_to_restore,
+                            reason="sale_reversal",
+                            note=f"Goods on return: Order {order.order_number} · {payload.reason}"[:500],
+                            user_id=user.id,
+                            links={"order_id": order.id, "order_item_id": item.id},
+                            now=now,
+                        )
+        else:
+            # Damaged / wastage: recorded as damage movement so write-off is tracked
+            if item.inventory_item_id:
+                from app.services.inventory_stock_service import _locked_item, record_movement
+
+                inv_item = _locked_item(db, item.inventory_item_id, account_id=account_id)
+                if inv_item is not None:
+                    unit_factor = Decimal(str(getattr(item, "unit_factor", None) or 1))
+                    qty_damaged = Decimal(str(qty)) * unit_factor
+                    record_movement(
+                        db,
+                        inv_item,
+                        account_id=account_id,
+                        direction="out",
+                        quantity=qty_damaged,
+                        reason="damage",
+                        allow_negative=True,
+                        note=f"Goods on return (damaged): Order {order.order_number} · {payload.reason}"[:500],
+                        user_id=user.id,
+                        links={"order_id": order.id, "order_item_id": item.id},
+                        now=now,
+                    )
+
+    # Adjust credit tab if refund is to credit or order used credit
+    if payload.refund_payment_method == "credit" or (
+        order.payment_method == PAYMENT_CREDIT and payload.refund_payment_method not in ("cash", "mpesa")
+    ):
+        try:
+            CustomerService(db).release_credit_for_order(
+                account_id,
+                phone=order.customer_phone,
+                name=order.customer_name,
+                amount=refund_amount,
+            )
+        except Exception:
+            logger.warning("Could not adjust customer credit for order %s return", order.id)
+
+    order.returned_total = (Decimal(str(order.returned_total or 0)) + refund_amount).quantize(Decimal("0.01"))
+    order.updated_at = now
+
+    # If all items are returned, move order status to refunded
+    all_returned = all(
+        (getattr(i, "returned_quantity", 0) or 0) >= i.quantity
+        for i in order.items
+    )
+    previous_status = order.status
+    if all_returned and order.status != REFUNDED:
+        order.status = REFUNDED
+
+    items_summary_str = ", ".join(summary_items)
+    db.add(
+        OrderStatusHistory(
+            order_id=order.id,
+            from_status=previous_status,
+            to_status=order.status,
+            changed_by_user_id=user.id,
+            note=f"Goods on return recorded ({return_number}): {items_summary_str}. Refund KES {refund_amount:.2f} via {payload.refund_payment_method}. Reason: {payload.reason}"[:500],
+            created_at=now,
+        ),
+    )
+
+    db.commit()
+    db.refresh(order)
+    db.refresh(order, attribute_names=["items", "status_history", "returns"])
+
+    return {
+        "message": f"Goods on return recorded ({return_number}).",
         "data": OrderOut.from_model(
             order,
             allowed_next=allowed_next_statuses(order.status, order.fulfillment_type),

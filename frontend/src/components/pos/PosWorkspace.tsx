@@ -46,6 +46,7 @@ import {
   transChapReceiptHref,
 } from "@/lib/trans-chap-receipt";
 import { TransChapReceiptPrint } from "@/components/trans-chap/TransChapReceiptSlip";
+import { TransChapCustomerQuickAdd } from "@/components/trans-chap/TransChapCustomerQuickAdd";
 import { findInventoryByBarcode } from "@/lib/barcode";
 import { packUnits } from "@/lib/sell-units";
 import { formatCategoryLabel } from "@/lib/product-categories";
@@ -522,6 +523,7 @@ export function PosWorkspace({
   const [creditDueDate, setCreditDueDate] = useState("");
   const [customers, setCustomers] = useState<ShopCustomer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [addCustomerOpen, setAddCustomerOpen] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryCoords, setDeliveryCoords] = useState<{ lat: number; lng: number } | null>(
     null,
@@ -1496,6 +1498,22 @@ export function PosWorkspace({
     }
   }
 
+  /** Called by the quick-add modal; the new row isn't in `customers` yet, so select it directly. */
+  function handleCustomerCreated(customer: ShopCustomer) {
+    setCustomers((prev) =>
+      [customer, ...prev.filter((row) => row.id !== customer.id)].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+    );
+    setSelectedCustomerId(customer.id);
+    setCustomerName(customer.name);
+    setCustomerPhone(customer.phone || "");
+    if (customer.address) {
+      setDeliveryAddress(customer.address);
+    }
+    setAddCustomerOpen(false);
+  }
+
   const itemCount = useMemo(
     () => cart.reduce((sum, c) => sum + c.quantity, 0),
     [cart],
@@ -1776,39 +1794,55 @@ export function PosWorkspace({
         </div>
       ) : (
         <>
-          <label className="pos-customer-pick">
-            <span className="pos-label">
+          <div className="pos-customer-pick">
+            <label className="pos-label" htmlFor="pos-customer-select">
               Customer
               {creditNeedsCustomer ? " (required)" : ""}
-            </span>
-            <select
-              value={selectedCustomerId}
-              onChange={(event) => applyCustomer(event.target.value)}
-              aria-label="Customer"
-              aria-required={creditNeedsCustomer}
-              className={
-                creditNeedsCustomer && !selectedCustomerId
-                  ? "pos-input--required"
-                  : undefined
-              }
-            >
-              <option value="">
-                {creditNeedsCustomer
-                  ? customers.length > 0
-                    ? "Select a customer…"
-                    : "No customers saved yet"
-                  : "Walk-in (optional)"}
-              </option>
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name}{customer.phone ? ` · ${customer.phone}` : ""}
+            </label>
+            <div className="pos-customer-pick__row">
+              <select
+                id="pos-customer-select"
+                value={selectedCustomerId}
+                onChange={(event) => applyCustomer(event.target.value)}
+                aria-label="Customer"
+                aria-required={creditNeedsCustomer}
+                className={
+                  creditNeedsCustomer && !selectedCustomerId
+                    ? "pos-input--required"
+                    : undefined
+                }
+              >
+                <option value="">
+                  {creditNeedsCustomer
+                    ? customers.length > 0
+                      ? "Select a customer…"
+                      : "No customers saved yet"
+                    : "Walk-in (optional)"}
                 </option>
-              ))}
-            </select>
-          </label>
+                {customers.map((customer) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.name}{customer.phone ? ` · ${customer.phone}` : ""}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                id="pos-customer-add"
+                className="pos-customer-pick__add"
+                aria-label="Add new customer"
+                aria-haspopup="dialog"
+                aria-expanded={addCustomerOpen}
+                title="Add new customer"
+                onClick={() => setAddCustomerOpen(true)}
+              >
+                <i className="fa-solid fa-user-plus" aria-hidden />
+              </button>
+            </div>
+          </div>
           {creditNeedsCustomer && customers.length === 0 ? (
             <p className="pos-customer-credit">
-              Add customers under Customers before selling on credit.
+              Tap <i className="fa-solid fa-user-plus" aria-hidden /> to add a customer before
+              selling on credit.
             </p>
           ) : null}
           {showWalkInPhone ? (
@@ -3813,6 +3847,14 @@ export function PosWorkspace({
           onConfirm={handleConfirmModifiers}
         />
       ) : null}
+
+      <TransChapCustomerQuickAdd
+        open={addCustomerOpen}
+        customers={customers}
+        initialPhone={customerPhone}
+        onClose={() => setAddCustomerOpen(false)}
+        onCreated={handleCustomerCreated}
+      />
     </section>
   );
 }

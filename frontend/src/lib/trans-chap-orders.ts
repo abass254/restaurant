@@ -7,18 +7,32 @@ import {
 } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { orderHasSuccessfulMpesa, orderUsesPayment } from "@/lib/orders";
-import { fetchAllPages, timeWindowQuery, type TimeWindow } from "@/lib/paged-fetch";
+import {
+  fetchAllPages,
+  timeWindowQuery,
+  type PageProgressMeta,
+  type TimeWindow,
+} from "@/lib/paged-fetch";
 import type { Order, OrderMutationResponse, OrdersListResponse } from "@/lib/types";
 
 const MAX_PAGES = 20;
 
+export type WalkinOrdersProgressCallback = (
+  orders: Order[],
+  meta: PageProgressMeta,
+) => void;
+
 export async function fetchWalkinOrders(
-  options?: { maxPages?: number } & TimeWindow,
+  options?: {
+    maxPages?: number;
+    onProgress?: WalkinOrdersProgressCallback;
+  } & TimeWindow,
 ): Promise<{ orders: Order[]; error: string | null; truncated: boolean }> {
   const window = timeWindowQuery(options);
   const result = await fetchAllPages<OrdersListResponse["data"][number]>(
     (page) => `${apiRoutes.orders}?source=walkin&per_page=100&page=${page}${window}`,
     options?.maxPages ?? MAX_PAGES,
+    options?.onProgress,
   );
   return {
     orders: result.rows,

@@ -198,6 +198,7 @@ export const apiRoutes = {
   orderRetryRiderSearch: (id: string) =>
     `${apiUrl}/api/v1/deliveries/${encodeURIComponent(id)}/retry-rider-search`,
   orderTransition: (id: string) => `${apiUrl}/api/v1/orders/${id}/transition`,
+  orderReturns: (id: string) => `${apiUrl}/api/v1/orders/${id}/returns`,
   orderMpesaStkPush: (id: string) =>
     `${apiUrl}/api/v1/orders/${id}/mpesa-stk-push`,
   orderMpesaCheck: (id: string) =>

@@ -1325,6 +1325,35 @@ html[data-theme="dark"] .fb-app .pos-picker.is-active {
   outline: none;
 }
 
+.fb-app .pos-customer-pick__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.fb-app .pos-customer-pick__add {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  min-height: 32px;
+  border: 1px solid var(--app-border-light, #d1d5db);
+  border-radius: 8px;
+  background: var(--app-surface-subtle, #f8fafc);
+  color: var(--app-primary, #e8412a);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.fb-app .pos-customer-pick__add:hover {
+  background: var(--app-primary, #e8412a);
+  border-color: var(--app-primary, #e8412a);
+  color: #fff;
+}
+
 .fb-app .pos-customer-pick select.pos-input--required {
   border-color: color-mix(in srgb, var(--app-danger, #b42318) 55%, var(--app-border-light));
 }

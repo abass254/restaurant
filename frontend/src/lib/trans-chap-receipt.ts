@@ -38,6 +38,7 @@ export type TransChapReceipt = {
   deliveryFee?: number | null;
   discount?: number | null;
   tax?: number | null;
+  returnedTotal?: number | null;
   tableNumber?: string | null;
   currency: string;
   payMode: TransChapPayMode;
@@ -177,6 +178,7 @@ export function loadTransChapReceipt(): TransChapReceipt | null {
       deliveryFee: optionalAmount(parsed.deliveryFee),
       discount: optionalAmount(parsed.discount),
       tax: optionalAmount(parsed.tax),
+      returnedTotal: optionalAmount(parsed.returnedTotal),
       tableNumber: typeof parsed.tableNumber === "string" ? parsed.tableNumber : null,
       currency: parsed.currency || "KES",
       payMode,
@@ -290,6 +292,7 @@ export function receiptFromOrder(
     deliveryFee: order.delivery_fee ?? null,
     discount: order.discount ?? null,
     tax: order.tax ?? null,
+    returnedTotal: order.returned_total != null ? Number(order.returned_total) : null,
     tableNumber: order.table_number?.trim() || null,
     currency: order.currency || "KES",
     payMode,

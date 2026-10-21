@@ -1507,12 +1507,51 @@ export type OrderItem = {
   product_name: string;
   product_sku: string | null;
   quantity: number;
+  returned_quantity?: number;
   unit_price: number;
   line_total: number;
   notes: string | null;
   modifiers?: OrderItemModifier[] | null;
   /** Current on-hand stock for the linked inventory item, when known. */
   stock_quantity?: number | null;
+};
+
+export type OrderReturnItem = {
+  id: string;
+  order_item_id: string;
+  inventory_item_id?: string | null;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+  refund_amount: number;
+  restock: boolean;
+  condition_name: string;
+  created_at?: string | null;
+};
+
+export type OrderReturn = {
+  id: string;
+  order_id: string;
+  return_number: string;
+  total_refunded: number;
+  refund_payment_method?: string | null;
+  reason: string;
+  notes?: string | null;
+  created_by_user_id?: string | null;
+  created_at?: string | null;
+  items?: OrderReturnItem[];
+};
+
+export type OrderReturnPayload = {
+  items: Array<{
+    order_item_id: string;
+    quantity: number;
+    condition?: "restock" | "damaged" | "waste";
+  }>;
+  reason: string;
+  notes?: string | null;
+  refund_payment_method?: "cash" | "mpesa" | "credit" | "none";
+  refund_amount?: number | null;
 };
 
 export type OrderStatusEvent = {
@@ -1649,6 +1688,7 @@ export type Order = {
   tax?: number | null;
   discount: number;
   total: number;
+  returned_total?: number;
   currency: string;
   payment_method: OrderPaymentMethod | null;
   payment_splits?: OrderPaymentSplit[] | null;
@@ -1672,6 +1712,7 @@ export type Order = {
   created_at: string | null;
   updated_at: string | null;
   items?: OrderItem[];
+  returns?: OrderReturn[];
   status_history?: OrderStatusEvent[];
   items_count?: number | null;
   allowed_next_statuses?: OrderStatus[] | null;

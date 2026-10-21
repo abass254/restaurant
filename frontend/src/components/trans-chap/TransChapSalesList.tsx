@@ -37,6 +37,7 @@ import {
   transChapReceiptHref,
   transChapReceiptPayLabel,
 } from "@/lib/trans-chap-receipt";
+import { TransChapGoodsOnReturnModal } from "@/components/trans-chap/TransChapGoodsOnReturnModal";
 import type { Order, OrderMutationResponse } from "@/lib/types";
 
 type WhenFilter = "all" | "today" | "week";
@@ -101,6 +102,8 @@ function matchesQuery(order: Order, query: string): boolean {
 }
 
 const SALES_CACHE_KEY = "trans-chap:sales";
+const INITIAL_VISIBLE_COUNT = 50;
+const VISIBLE_INCREMENT = 50;
 
 type SalesSnapshot = { orders: Order[]; truncated: boolean };
 
@@ -111,22 +114,39 @@ export function TransChapSalesList() {
   const [cached] = useState(() => readPageCache<SalesSnapshot>(SALES_CACHE_KEY));
   const [orders, setOrders] = useState<Order[]>(cached?.orders ?? []);
   const [loading, setLoading] = useState(!cached);
+  const [backgroundSyncing, setBackgroundSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(cached?.truncated ?? false);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   const [openId, setOpenId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [when, setWhen] = useState<WhenFilter>("all");
+  const [when, setWhen] = useState<WhenFilter>(() => {
+    if (typeof window !== "undefined") {
+      const value = new URLSearchParams(window.location.search).get("when");
+      if (value === "all" || value === "today" || value === "week") {
+        return value;
+      }
+    }
+    return "today";
+  });
   const [method, setMethod] = useState<MethodFilter>("all");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [undoingId, setUndoingId] = useState<string | null>(null);
   const [stkBusyId, setStkBusyId] = useState<string | null>(null);
+  const [returnOrder, setReturnOrder] = useState<Order | null>(null);
   const [view, setView] = useTransChapListView("trans-chap-sales-view");
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [bulkUndoing, setBulkUndoing] = useState(false);
   const canVoid = isStoreAdmin(user);
   const undoActionFor = (order: Order) => (canVoid ? walkinUndoAction(order) : null);
+  const canReturnGoods = (order: Order) => {
+    if (order.status === "cancelled") return false;
+    const items = order.items ?? [];
+    if (!items.length) return false;
+    return items.some((i) => i.quantity - (i.returned_quantity || 0) > 0);
+  };
   const shopName =
     user.active_account?.business_name ||
     user.account?.business_name ||
@@ -134,10 +154,21 @@ export function TransChapSalesList() {
 
   const reload = useCallback(async () => {
     if (!readPageCache(SALES_CACHE_KEY)) setLoading(true);
-    const result = await fetchWalkinOrders();
+    const result = await fetchWalkinOrders({
+      onProgress: (progressiveOrders, meta) => {
+        setOrders(progressiveOrders);
+        if (meta.isFirstPage) {
+          setLoading(false);
+          if (!meta.done) {
+            setBackgroundSyncing(true);
+          }
+        }
+      },
+    });
     setOrders(result.orders);
     setError(result.error);
     setTruncated(result.truncated);
+    setBackgroundSyncing(false);
     if (!result.error) {
       writePageCache(SALES_CACHE_KEY, {
         orders: result.orders,
@@ -153,9 +184,11 @@ export function TransChapSalesList() {
 
   useEffect(() => {
     const value = new URLSearchParams(window.location.search).get("when");
-    if (value === "today" || value === "week") {
+    if (value === "all" || value === "today" || value === "week") {
       setWhen(value);
-      setFiltersOpen(true);
+      if (value !== "today") {
+        setFiltersOpen(true);
+      }
     }
   }, []);
 
@@ -248,6 +281,15 @@ export function TransChapSalesList() {
       return isWithinLastDays(key, 7, todayKey);
     });
   }, [method, orders, query, status, todayKey, when]);
+
+  useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE_COUNT);
+  }, [query, when, method, status]);
+
+  const displayedOrders = useMemo(() => {
+    if (selecting) return filtered;
+    return filtered.slice(0, visibleCount);
+  }, [filtered, visibleCount, selecting]);
 
   const activeFilterCount =
     Number(when !== "all") + Number(method !== "all") + Number(status !== "all");
@@ -378,6 +420,16 @@ export function TransChapSalesList() {
                 : "Void sale"}
           </button>
         ) : null}
+        {canReturnGoods(order) ? (
+          <button
+            type="button"
+            className="trans-chap-panel__link"
+            disabled={busy}
+            onClick={() => setReturnOrder(order)}
+          >
+            Return goods
+          </button>
+        ) : null}
         <Link
           href={transChapReceiptHref(order.id)}
           className="trans-chap-panel__link"
@@ -415,6 +467,23 @@ export function TransChapSalesList() {
             {activeFilterCount ? <em>{activeFilterCount}</em> : null}
           </button>
           <TransChapViewToggle view={view} onChange={setView} label="Sales layout" />
+          {backgroundSyncing ? (
+            <span
+              className="trans-chap-sales__chip"
+              style={{
+                cursor: "default",
+                opacity: 0.85,
+                fontSize: "0.78rem",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.35rem",
+              }}
+              title="Earlier sales are loading in the background"
+            >
+              <i className="fa-solid fa-circle-notch fa-spin" aria-hidden style={{ fontSize: "0.75rem" }} />
+              Syncing…
+            </span>
+          ) : null}
           {orders.some((order) => undoActionFor(order) !== null) ? (
             <button
               type="button"
@@ -468,11 +537,25 @@ export function TransChapSalesList() {
             No sales yet.
           </TransChapStatus>
         ) : filtered.length === 0 ? (
-          <p className="trans-chap-sales__empty">
-            {filtersOn
-              ? "No sales match these filters."
-              : "No sales yet."}
-          </p>
+          <div style={{ textAlign: "center", padding: "1.5rem 1rem" }}>
+            <p className="trans-chap-sales__empty" style={{ margin: "0 0 0.75rem" }}>
+              {when === "today" && activeFilterCount === 1 && !query.trim()
+                ? "No sales recorded today."
+                : filtersOn
+                  ? "No sales match these filters."
+                  : "No sales yet."}
+            </p>
+            {when === "today" && orders.length > 0 && !query.trim() && activeFilterCount === 1 ? (
+              <button
+                type="button"
+                className="trans-chap-sales__chip"
+                onClick={() => setWhen("all")}
+                style={{ padding: "0.5rem 1rem", fontSize: "0.85rem", cursor: "pointer" }}
+              >
+                View all sales
+              </button>
+            ) : null}
+          </div>
         ) : view === "list" ? (
           <div className="trans-chap-stock-table-wrap trans-chap-stock-table-wrap--cards">
             <table className="trans-chap-stock-table trans-chap-stock-table--cards trans-chap-stock-table--sale">
@@ -493,7 +576,7 @@ export function TransChapSalesList() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((order) => {
+                {displayedOrders.map((order) => {
                   const items = order.items ?? [];
                   const product = items[0]?.product_name || "Sale";
                   const extra = items.length > 1 ? ` +${items.length - 1}` : "";
@@ -512,7 +595,25 @@ export function TransChapSalesList() {
                           {renderCheck(order, `${product}${extra}`)}
                         </td>
                       ) : null}
-                      <td className="trans-chap-stock-table__product">{`${product}${extra}`}</td>
+                      <td className="trans-chap-stock-table__product">
+                        <div>{`${product}${extra}`}</div>
+                        {Number(order.returned_total || 0) > 0 ? (
+                          <span
+                            style={{
+                              display: "inline-block",
+                              marginTop: "2px",
+                              padding: "1px 6px",
+                              borderRadius: "4px",
+                              fontSize: "0.7rem",
+                              fontWeight: 700,
+                              background: "rgba(245, 158, 11, 0.14)",
+                              color: "#b45309",
+                            }}
+                          >
+                            Returned {formatKsh(order.returned_total || 0)}
+                          </span>
+                        ) : null}
+                      </td>
                       <td className="trans-chap-stock-table__mono">{receipt.orderNumber}</td>
                       <td className="trans-chap-stock-table__mono">{qty}</td>
                       <td className="trans-chap-stock-table__strong">{formatKsh(order.total)}</td>
@@ -542,8 +643,12 @@ export function TransChapSalesList() {
             </table>
           </div>
         ) : (
-          <MotionList as="div" className="trans-chap-sales__stagger">
-            {filtered.map((order) => {
+          <MotionList
+            as="div"
+            className="trans-chap-sales__stagger"
+            staggerChildren={displayedOrders.length > 20 ? 0.02 : 0.045}
+          >
+            {displayedOrders.map((order) => {
             const product = order.items?.[0]?.product_name || "Sale";
             const extra = (order.items?.length ?? 0) > 1
               ? ` +${(order.items?.length ?? 0) - 1}`
@@ -619,11 +724,43 @@ export function TransChapSalesList() {
                       <span>
                         {line.product_name}
                         {line.quantity > 1 ? ` × ${line.quantity}` : ""}
+                        {Number(line.returned_quantity || 0) > 0 ? (
+                          <em style={{ fontStyle: "normal", color: "#b45309", fontSize: "0.74rem", marginLeft: 6 }}>
+                            ({line.returned_quantity} returned)
+                          </em>
+                        ) : null}
                       </span>
                       <em>{formatKsh(line.line_total)}</em>
                     </li>
                   ))}
                 </ul>
+                {Number(order.returned_total || 0) > 0 || (order.returns && order.returns.length > 0) ? (
+                  <div
+                    style={{
+                      margin: "0.6rem 0",
+                      padding: "0.6rem 0.75rem",
+                      background: "rgba(245, 158, 11, 0.08)",
+                      borderRadius: "8px",
+                      border: "1px dashed rgba(245, 158, 11, 0.35)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <strong style={{ fontSize: "0.82rem", color: "#92400e" }}>
+                        <i className="fa-solid fa-arrow-rotate-left" style={{ marginRight: 6 }} aria-hidden />
+                        Goods on return recorded
+                      </strong>
+                      <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "#b45309" }}>
+                        -{formatKsh(order.returned_total || 0)}
+                      </span>
+                    </div>
+                    {order.returns?.map((ret) => (
+                      <div key={ret.id} style={{ fontSize: "0.74rem", color: "#78350f", marginTop: "0.25rem" }}>
+                        {ret.return_number}: {ret.reason} (
+                        {ret.items?.map((i) => `${i.quantity}x ${i.product_name}`).join(", ")})
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <dl className="trans-chap-panel__facts">
                   <div>
                     <dt>Ref</dt>
@@ -654,6 +791,20 @@ export function TransChapSalesList() {
           })}
           </MotionList>
         )}
+        {!selecting && filtered.length > displayedOrders.length ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: "1rem 0" }}>
+            <button
+              type="button"
+              className="trans-chap-sales__chip"
+              onClick={() =>
+                setVisibleCount((prev) => Math.min(prev + VISIBLE_INCREMENT, filtered.length))
+              }
+              style={{ padding: "0.55rem 1.25rem", fontSize: "0.85rem", cursor: "pointer" }}
+            >
+              Showing {displayedOrders.length} of {filtered.length} · Load more
+            </button>
+          </div>
+        ) : null}
         {truncated ? (
           <p className="trans-chap-sales__empty">Showing the most recent 2,000 sales.</p>
         ) : null}
@@ -678,6 +829,14 @@ export function TransChapSalesList() {
       ) : (
         <TransChapFab label="New sale" href="/trans-chap/pos" />
       )}
+      <TransChapGoodsOnReturnModal
+        order={returnOrder}
+        open={Boolean(returnOrder)}
+        onClose={() => setReturnOrder(null)}
+        onSuccess={(updated) => {
+          setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+        }}
+      />
     </div>
   );
 }

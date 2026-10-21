@@ -15,13 +15,19 @@ export function timeWindowQuery(window?: TimeWindow): string {
 /** Kept low so one list load cannot exhaust the API's small DB connection pool. */
 const PAGE_CONCURRENCY = 3;
 
+export type PageProgressMeta = { isFirstPage: boolean; done: boolean; totalPages: number };
+export type PageProgressCallback<T> = (rows: T[], meta: PageProgressMeta) => void;
+
 /**
  * Load every page of a paginated list: page 1 first (to learn `last_page`), then
  * the rest in parallel. On failure, returns the contiguous pages loaded so far.
+ * If `onProgress` is supplied, it is called as soon as page 1 arrives so callers
+ * can render the first batch immediately without blocking on the whole fetch.
  */
 export async function fetchAllPages<T>(
   pageUrl: (page: number) => string,
   maxPages: number,
+  onProgress?: PageProgressCallback<T>,
 ): Promise<{ rows: T[]; failed: boolean; truncated: boolean }> {
   let first: PagedResponse<T>;
   try {
@@ -33,6 +39,17 @@ export async function fetchAllPages<T>(
   const lastPage = Math.min(first.meta.last_page, maxPages);
   const truncated = first.meta.last_page > maxPages;
   const pages: (T[] | undefined)[] = [first.data];
+
+  onProgress?.(first.data, {
+    isFirstPage: true,
+    done: lastPage <= 1,
+    totalPages: lastPage,
+  });
+
+  if (lastPage <= 1) {
+    return { rows: first.data, failed: false, truncated };
+  }
+
   let failed = false;
   let next = 2;
 
@@ -58,5 +75,12 @@ export async function fetchAllPages<T>(
     if (!page) break;
     rows.push(...page);
   }
+
+  onProgress?.(rows, {
+    isFirstPage: false,
+    done: true,
+    totalPages: lastPage,
+  });
+
   return { rows, failed, truncated: failed ? false : truncated };
 }

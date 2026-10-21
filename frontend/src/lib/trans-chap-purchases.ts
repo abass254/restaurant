@@ -1,7 +1,12 @@
 import { apiFetch } from "@/lib/api";
 import { extractErrorMessage, internalErrorMessage, promptVoidReason } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
-import { fetchAllPages, timeWindowQuery, type TimeWindow } from "@/lib/paged-fetch";
+import {
+  fetchAllPages,
+  timeWindowQuery,
+  type PageProgressMeta,
+  type TimeWindow,
+} from "@/lib/paged-fetch";
 import {
   findInventoryByName,
   inventoryProductName,
@@ -116,8 +121,17 @@ function supplierLabelFromNote(note: string | null | undefined): string | null {
   return first;
 }
 
+export type PurchasesProgressCallback = (
+  purchases: TransChapPurchase[],
+  meta: PageProgressMeta,
+) => void;
+
 export async function fetchTransChapPurchases(
-  options?: { maxPages?: number; accountId?: string } & TimeWindow,
+  options?: {
+    maxPages?: number;
+    accountId?: string;
+    onProgress?: PurchasesProgressCallback;
+  } & TimeWindow,
 ): Promise<{ purchases: TransChapPurchase[]; error: string | null; truncated: boolean }> {
   if (options?.accountId) {
     await migrateLegacyTransChapPurchases(options.accountId);
@@ -127,6 +141,13 @@ export async function fetchTransChapPurchases(
     (page) =>
       `${apiRoutes.inventoryStockMovements}?direction=in&reason=receive&per_page=100&page=${page}${window}`,
     options?.maxPages ?? MAX_PAGES,
+    options?.onProgress
+      ? (rows, meta) =>
+          options.onProgress!(
+            rows.map((movement) => purchaseFromMovement(movement)),
+            meta,
+          )
+      : undefined,
   );
   return {
     purchases: result.rows.map((movement) => purchaseFromMovement(movement)),

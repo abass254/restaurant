@@ -25,6 +25,33 @@ export async function fetchShopCustomers(): Promise<ShopCustomer[]> {
   return res.data;
 }
 
+export type ShopCustomerCreateInput = {
+  name: string;
+  phone: string;
+  email?: string | null;
+  address?: string | null;
+  physical_location?: string | null;
+  notes?: string | null;
+  credit_limit?: number;
+};
+
+/** Create a customer with full contact details (used by the POS "Add customer" modal). */
+export async function createShopCustomer(input: ShopCustomerCreateInput): Promise<ShopCustomer> {
+  const res = await apiFetch<ShopCustomerMutationResponse>(apiRoutes.customers, {
+    method: "POST",
+    body: JSON.stringify({
+      name: input.name.trim(),
+      phone: input.phone.trim(),
+      email: input.email?.trim() || null,
+      address: input.address?.trim() || null,
+      physical_location: input.physical_location?.trim() || null,
+      notes: input.notes?.trim() || null,
+      credit_limit: input.credit_limit ?? 0,
+    }),
+  });
+  return res.data;
+}
+
 export async function ensureShopCustomer(
   name: string,
   phone: string,

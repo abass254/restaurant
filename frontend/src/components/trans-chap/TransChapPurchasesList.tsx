@@ -121,6 +121,8 @@ export function groupPurchasesIntoBatches(purchases: TransChapPurchase[]): Purch
 }
 
 const PURCHASES_CACHE_KEY = "trans-chap:purchases";
+const INITIAL_VISIBLE_COUNT = 50;
+const VISIBLE_INCREMENT = 50;
 
 type PurchasesSnapshot = { purchases: TransChapPurchase[]; truncated: boolean };
 
@@ -137,7 +139,15 @@ export function TransChapPurchasesList() {
   const [purchases, setPurchases] = useState<TransChapPurchase[]>(cached?.purchases ?? []);
   const [query, setQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [when, setWhen] = useState<WhenFilter>("all");
+  const [when, setWhen] = useState<WhenFilter>(() => {
+    if (typeof window !== "undefined") {
+      const urlWhen = new URLSearchParams(window.location.search).get("when");
+      if (urlWhen === "all" || urlWhen === "today" || urlWhen === "week" || urlWhen === "month") {
+        return urlWhen;
+      }
+    }
+    return "today";
+  });
   const [status, setStatus] = useState<StatusFilter>("all");
   const [role, setRole] = useState<RoleFilter>("all");
   const [supplier, setSupplier] = useState<string>("all");
@@ -148,8 +158,10 @@ export function TransChapPurchasesList() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [bulkVoiding, setBulkVoiding] = useState(false);
   const [loading, setLoading] = useState(!cached);
+  const [backgroundSyncing, setBackgroundSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(cached?.truncated ?? false);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   const [draftSummary, setDraftSummary] = useState<{
     itemCount: number;
     lineCount: number;
@@ -158,11 +170,24 @@ export function TransChapPurchasesList() {
   useEffect(() => {
     let alive = true;
     if (!readPageCache(PURCHASES_CACHE_KEY)) setLoading(true);
-    void fetchTransChapPurchases({ accountId }).then((result) => {
+    void fetchTransChapPurchases({
+      accountId,
+      onProgress: (progressivePurchases, meta) => {
+        if (!alive) return;
+        setPurchases(progressivePurchases);
+        if (meta.isFirstPage) {
+          setLoading(false);
+          if (!meta.done) {
+            setBackgroundSyncing(true);
+          }
+        }
+      },
+    }).then((result) => {
       if (!alive) return;
       setPurchases(result.purchases);
       setError(result.error);
       setTruncated(result.truncated);
+      setBackgroundSyncing(false);
       if (!result.error) {
         writePageCache(PURCHASES_CACHE_KEY, {
           purchases: result.purchases,
@@ -175,6 +200,16 @@ export function TransChapPurchasesList() {
       alive = false;
     };
   }, [accountId]);
+
+  useEffect(() => {
+    const value = new URLSearchParams(window.location.search).get("when");
+    if (value === "all" || value === "today" || value === "week" || value === "month") {
+      setWhen(value);
+      if (value !== "today") {
+        setFiltersOpen(true);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     function refreshDraft() {
@@ -285,6 +320,20 @@ export function TransChapPurchasesList() {
   }, [searched, selectedCategory]);
 
   const batches = useMemo(() => groupPurchasesIntoBatches(filtered), [filtered]);
+
+  useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE_COUNT);
+  }, [query, selectedCategory, when, status, role, supplier]);
+
+  const displayedBatches = useMemo(() => {
+    if (selecting) return batches;
+    return batches.slice(0, visibleCount);
+  }, [batches, visibleCount, selecting]);
+
+  const displayedItems = useMemo(() => {
+    if (selecting) return filtered;
+    return filtered.slice(0, visibleCount);
+  }, [filtered, visibleCount, selecting]);
 
   const totals = useMemo(() => {
     const received = filtered.filter((row) => !row.voidedAt);
@@ -542,6 +591,23 @@ export function TransChapPurchasesList() {
               </button>
             </div>
             <TransChapViewToggle view={view} onChange={setView} label="Purchases layout" />
+            {backgroundSyncing ? (
+              <span
+                className="trans-chap-sales__chip"
+                style={{
+                  cursor: "default",
+                  opacity: 0.85,
+                  fontSize: "0.78rem",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.35rem",
+                }}
+                title="Earlier purchases are loading in the background"
+              >
+                <i className="fa-solid fa-circle-notch fa-spin" aria-hidden style={{ fontSize: "0.75rem" }} />
+                Syncing…
+              </span>
+            ) : null}
           </div>
           {canVoid && purchases.some((row) => !row.voidedAt) ? (
             <button
@@ -666,26 +732,38 @@ export function TransChapPurchasesList() {
               : "No purchases yet."}
           </TransChapStatus>
         ) : filtered.length === 0 ? (
-          <p className="trans-chap-sales__empty">
-            {restaurant
-              ? "No kitchen supplies match these filters."
-              : "No purchases match these filters."}
-            {activeFilterCount || selectedCategory !== "all" ? (
-              <>
-                {" "}
-                <button
-                  type="button"
-                  className="trans-chap-sales__chip trans-chap-sales__chip--clear"
-                  onClick={() => {
-                    clearFilters();
-                    setSelectedCategory("all");
-                  }}
-                >
-                  Clear filters
-                </button>
-              </>
+          <div style={{ textAlign: "center", padding: "1.5rem 1rem" }}>
+            <p className="trans-chap-sales__empty" style={{ margin: "0 0 0.75rem" }}>
+              {when === "today" && activeFilterCount === 1 && selectedCategory === "all" && !query.trim()
+                ? restaurant
+                  ? "No kitchen supplies or purchases recorded today."
+                  : "No purchases recorded today."
+                : restaurant
+                  ? "No kitchen supplies match these filters."
+                  : "No purchases match these filters."}
+            </p>
+            {when === "today" && purchases.length > 0 && selectedCategory === "all" && !query.trim() && activeFilterCount === 1 ? (
+              <button
+                type="button"
+                className="trans-chap-sales__chip"
+                onClick={() => setWhen("all")}
+                style={{ padding: "0.5rem 1rem", fontSize: "0.85rem", cursor: "pointer" }}
+              >
+                View all purchases
+              </button>
+            ) : activeFilterCount || selectedCategory !== "all" ? (
+              <button
+                type="button"
+                className="trans-chap-sales__chip trans-chap-sales__chip--clear"
+                onClick={() => {
+                  clearFilters();
+                  setSelectedCategory("all");
+                }}
+              >
+                Clear filters
+              </button>
             ) : null}
-          </p>
+          </div>
         ) : view === "list" ? (
           groupMode === "batches" ? (
             <div className="trans-chap-stock-table-wrap trans-chap-stock-table-wrap--cards">
@@ -707,7 +785,7 @@ export function TransChapPurchasesList() {
                   </tr>
                 </thead>
                 <tbody>
-                  {batches.map((batch) => {
+                  {displayedBatches.map((batch) => {
                     const batchVoided = batch.isAllVoided;
                     const activeItemIds = batch.items.filter((i) => !i.voidedAt).map((i) => i.id);
                     const picked = activeItemIds.length > 0 && activeItemIds.every((id) => selectedIds.has(id));
@@ -790,7 +868,7 @@ export function TransChapPurchasesList() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((row) => {
+                  {displayedItems.map((row) => {
                     const voided = Boolean(row.voidedAt);
                     const picked = selectedIds.has(row.id);
                     return (
@@ -844,8 +922,12 @@ export function TransChapPurchasesList() {
             </div>
           )
         ) : groupMode === "batches" ? (
-          <MotionList as="div" className="trans-chap-sales__stagger">
-            {batches.map((batch) => {
+          <MotionList
+            as="div"
+            className="trans-chap-sales__stagger"
+            staggerChildren={displayedBatches.length > 20 ? 0.02 : 0.045}
+          >
+            {displayedBatches.map((batch) => {
               const open = !selecting && openId === batch.id;
               const panelId = `${listId}-${batch.id}`;
               const batchVoided = batch.isAllVoided;
@@ -985,8 +1067,12 @@ export function TransChapPurchasesList() {
             })}
           </MotionList>
         ) : (
-          <MotionList as="div" className="trans-chap-sales__stagger">
-          {filtered.map((row) => {
+          <MotionList
+            as="div"
+            className="trans-chap-sales__stagger"
+            staggerChildren={displayedItems.length > 20 ? 0.02 : 0.045}
+          >
+          {displayedItems.map((row) => {
             const open = !selecting && openId === row.id;
             const panelId = `${listId}-${row.id}`;
             const voided = Boolean(row.voidedAt);
@@ -1069,6 +1155,29 @@ export function TransChapPurchasesList() {
           })}
           </MotionList>
         )}
+        {!selecting &&
+        (groupMode === "batches"
+          ? batches.length > displayedBatches.length
+          : filtered.length > displayedItems.length) ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: "1rem 0" }}>
+            <button
+              type="button"
+              className="trans-chap-sales__chip"
+              onClick={() =>
+                setVisibleCount((prev) =>
+                  Math.min(
+                    prev + VISIBLE_INCREMENT,
+                    groupMode === "batches" ? batches.length : filtered.length,
+                  ),
+                )
+              }
+              style={{ padding: "0.55rem 1.25rem", fontSize: "0.85rem", cursor: "pointer" }}
+            >
+              Showing {groupMode === "batches" ? displayedBatches.length : displayedItems.length} of{" "}
+              {groupMode === "batches" ? batches.length : filtered.length} · Load more
+            </button>
+          </div>
+        ) : null}
         {truncated ? (
           <p className="trans-chap-sales__empty">Showing the most recent 2,000 purchases.</p>
         ) : null}

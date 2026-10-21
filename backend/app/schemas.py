@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 def _optional_float(value: Any) -> float | None:
@@ -575,6 +575,7 @@ class OrderItemOut(BaseModel):
     product_name: str
     product_sku: str | None
     quantity: int
+    returned_quantity: int = 0
     unit_price: float
     line_total: float
     sell_unit: str | None = None
@@ -599,6 +600,7 @@ class OrderItemOut(BaseModel):
             product_name=item.product_name,
             product_sku=item.product_sku,
             quantity=item.quantity,
+            returned_quantity=int(getattr(item, "returned_quantity", 0) or 0),
             unit_price=float(item.unit_price),
             line_total=float(item.line_total),
             sell_unit=getattr(item, "sell_unit", None),
@@ -608,6 +610,50 @@ class OrderItemOut(BaseModel):
             stock_quantity=float(stock) if stock is not None else None,
             cost_total=_optional_float(getattr(item, "cost_total", None)),
         )
+
+
+class OrderReturnItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    order_item_id: str
+    inventory_item_id: str | None = None
+    product_name: str
+    quantity: int
+    unit_price: float
+    refund_amount: float
+    restock: bool = True
+    condition_name: str = "good"
+    created_at: datetime | None = None
+
+
+class OrderReturnOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    order_id: str
+    return_number: str
+    total_refunded: float
+    refund_payment_method: str | None = None
+    reason: str
+    notes: str | None = None
+    created_by_user_id: str | None = None
+    created_at: datetime | None = None
+    items: list[OrderReturnItemOut] = []
+
+
+class OrderReturnLineIn(BaseModel):
+    order_item_id: str
+    quantity: int = Field(gt=0, description="Quantity to return")
+    condition: Literal["restock", "damaged", "waste"] = "restock"
+
+
+class OrderReturnCreate(BaseModel):
+    items: list[OrderReturnLineIn] = Field(min_length=1)
+    reason: str = Field(min_length=1, max_length=255)
+    notes: str | None = None
+    refund_payment_method: Literal["cash", "mpesa", "credit", "none"] = "cash"
+    refund_amount: float | None = None
 
 
 class OrderStatusEventOut(BaseModel):
@@ -692,6 +738,7 @@ class OrderOut(BaseModel):
     tax: float = 0
     discount: float
     total: float
+    returned_total: float = 0
     currency: str
 
     payment_method: str | None
@@ -717,6 +764,7 @@ class OrderOut(BaseModel):
     updated_at: datetime | None
 
     items: list[OrderItemOut] | None = None
+    returns: list[OrderReturnOut] | None = None
     status_history: list[OrderStatusEventOut] | None = None
     items_count: int | None = None
     allowed_next_statuses: list[str] | None = None
@@ -773,6 +821,7 @@ class OrderOut(BaseModel):
             tax=float(getattr(order, "tax", 0) or 0),
             discount=float(order.discount or 0),
             total=float(order.total or 0),
+            returned_total=float(getattr(order, "returned_total", 0) or 0),
             currency=order.currency,
             payment_method=order.payment_method,
             payment_splits=getattr(order, "payment_splits", None),
@@ -816,6 +865,10 @@ class OrderOut(BaseModel):
             ]
         if include_items:
             out.items = [OrderItemOut.from_model(i) for i in (order.items or [])]
+        if getattr(order, "returns", None) is not None:
+            out.returns = [
+                OrderReturnOut.model_validate(r) for r in order.returns
+            ]
         if include_history:
             out.status_history = [
                 OrderStatusEventOut.model_validate(h)

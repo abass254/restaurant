@@ -42,6 +42,7 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
       { label: "Delivery fee", amount: receipt.deliveryFee ?? 0, negative: false },
       { label: "Discount", amount: receipt.discount ?? 0, negative: true },
       { label: "Tax (16%)", amount: receipt.tax ?? 0, negative: false },
+      { label: "Goods on return", amount: receipt.returnedTotal ?? 0, negative: true },
     ].filter((row) => row.amount > 0);
     const creditPart = receipt.paymentSplits?.find((p) => p.method === "credit");
     const note = closed
@@ -160,8 +161,8 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
           </dl>
         ) : null}
         <p className="trans-chap-slip__total">
-          <span>Total</span>
-          <strong>{formatKesDigits(receipt.amount)}</strong>
+          <span>{receipt.returnedTotal ? "Net total" : "Total"}</span>
+          <strong>{formatKesDigits(Math.max(0, receipt.amount - (receipt.returnedTotal ?? 0)))}</strong>
         </p>
 
         <dl className="trans-chap-slip__meta">

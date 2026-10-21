@@ -1560,6 +1560,13 @@ class Order(Base):
             "fulfillment_type",
         ),
         Index("orders_account_id_created_at_index", "account_id", "created_at"),
+        Index(
+            "orders_account_id_source_created_at_index",
+            "account_id",
+            "source",
+            "created_at",
+            "id",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
@@ -1592,6 +1599,7 @@ class Order(Base):
     tax: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
     discount: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
     total: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
+    returned_total: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
     currency: Mapped[str] = mapped_column(String(8), default="KES")
 
     payment_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -1648,6 +1656,11 @@ class Order(Base):
         back_populates="order",
         cascade="all, delete-orphan",
         order_by="OrderItem.id.asc()",
+    )
+    returns: Mapped[list[OrderReturn]] = relationship(
+        back_populates="order",
+        cascade="all, delete-orphan",
+        order_by="OrderReturn.created_at.desc()",
     )
     status_history: Mapped[list[OrderStatusHistory]] = relationship(
         back_populates="order",
@@ -1769,6 +1782,7 @@ class OrderItem(Base):
     product_name: Mapped[str] = mapped_column(String(255))
     product_sku: Mapped[str | None] = mapped_column(String(120), nullable=True)
     quantity: Mapped[int] = mapped_column(Integer)
+    returned_quantity: Mapped[int] = mapped_column(Integer, default=0)
     unit_price: Mapped[Any] = mapped_column(Numeric(12, 2))
     line_total: Mapped[Any] = mapped_column(Numeric(12, 2))
     # Stock deduction is quantity * unit_factor in the inventory base unit.
@@ -1786,6 +1800,70 @@ class OrderItem(Base):
     order: Mapped[Order] = relationship(back_populates="items")
     inventory_item: Mapped[InventoryItem | None] = relationship()
     product: Mapped[Product | None] = relationship()
+
+
+class OrderReturn(Base):
+    """Record of returned goods for an order."""
+
+    __tablename__ = "order_returns"
+    __table_args__ = (
+        Index("order_returns_account_id_index", "account_id"),
+        Index("order_returns_order_id_index", "order_id"),
+        Index("order_returns_created_at_index", "account_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    account_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("accounts.id"))
+    order_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("orders.id"))
+    return_number: Mapped[str] = mapped_column(String(32))
+    total_refunded: Mapped[Any] = mapped_column(Numeric(12, 2), default=0)
+    refund_payment_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    reason: Mapped[str] = mapped_column(String(255))
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    order: Mapped[Order] = relationship(back_populates="returns")
+    items: Mapped[list[OrderReturnItem]] = relationship(
+        back_populates="order_return",
+        cascade="all, delete-orphan",
+        order_by="OrderReturnItem.id.asc()",
+    )
+    created_by: Mapped[User | None] = relationship()
+
+
+class OrderReturnItem(Base):
+    """Single item line within an order return."""
+
+    __tablename__ = "order_return_items"
+    __table_args__ = (
+        Index("order_return_items_order_return_id_index", "order_return_id"),
+        Index("order_return_items_order_item_id_index", "order_item_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    order_return_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("order_returns.id"))
+    order_item_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("order_items.id"))
+    inventory_item_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("inventory_items.id"),
+        nullable=True,
+    )
+    product_name: Mapped[str] = mapped_column(String(255))
+    quantity: Mapped[int] = mapped_column(Integer)
+    unit_price: Mapped[Any] = mapped_column(Numeric(12, 2))
+    refund_amount: Mapped[Any] = mapped_column(Numeric(12, 2))
+    restock: Mapped[bool] = mapped_column(Boolean, default=True)
+    condition_name: Mapped[str] = mapped_column(String(32), default="good")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    order_return: Mapped[OrderReturn] = relationship(back_populates="items")
+    order_item: Mapped[OrderItem] = relationship()
+    inventory_item: Mapped[InventoryItem | None] = relationship()
 
 
 class OrderStatusHistory(Base):

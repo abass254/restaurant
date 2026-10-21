@@ -17,6 +17,7 @@ import {
   toastSuccess,
 } from "@/lib/alerts";
 import { Skeleton } from "@/components/app/Skeleton";
+import { TransChapGoodsOnReturnModal } from "@/components/trans-chap/TransChapGoodsOnReturnModal";
 import {
   FULFILLMENT_ICONS,
   FULFILLMENT_LABELS,
@@ -87,6 +88,7 @@ export default function OrderDetailPage() {
   const [riders, setRiders] = useState<RiderSummary[]>([]);
   const [assigningRider, setAssigningRider] = useState(false);
   const [emailingReceipt, setEmailingReceipt] = useState(false);
+  const [returnModalOpen, setReturnModalOpen] = useState(false);
   const orderRef = useRef<Order | null>(null);
 
   orderRef.current = order;
@@ -478,6 +480,15 @@ export default function OrderDetailPage() {
     return true;
   });
   const missingDeliveryFields = orderMissingDeliveryFields(order);
+  const canReturnGoods = Boolean(
+    order &&
+    order.status !== "cancelled" &&
+    order.status !== "refunded" &&
+    (order.items ?? []).some((line) => {
+      const returned = line.returned_quantity ?? 0;
+      return line.quantity - returned > 0;
+    })
+  );
 
   return (
     <section className="app-panel orders-detail">
@@ -519,6 +530,23 @@ export default function OrderDetailPage() {
               <i className="fa-solid fa-envelope" aria-hidden="true" />
               {emailingReceipt ? "Sending…" : "Email receipt"}
             </button>
+            {canReturnGoods ? (
+              <button
+                type="button"
+                className="btn btn-sm"
+                style={{
+                  backgroundColor: "#fff7ed",
+                  borderColor: "#fed7aa",
+                  color: "#c2410c",
+                  fontWeight: 600,
+                }}
+                onClick={() => setReturnModalOpen(true)}
+                disabled={actingOn !== null}
+              >
+                <i className="fa-solid fa-rotate-left" aria-hidden="true" />
+                Record goods on return
+              </button>
+            ) : null}
           </div>
           {order.tracking_url ? (
             <div className="orders-detail__transitions">
@@ -683,7 +711,14 @@ export default function OrderDetailPage() {
                         <div className="app-muted">{line.notes}</div>
                       ) : null}
                     </td>
-                    <td>{line.quantity}</td>
+                    <td>
+                      {line.quantity}
+                      {line.returned_quantity && line.returned_quantity > 0 ? (
+                        <div style={{ fontSize: "0.75rem", color: "#c2410c", fontWeight: 600, marginTop: "2px" }}>
+                          ({line.returned_quantity} returned)
+                        </div>
+                      ) : null}
+                    </td>
                     <td>{formatMoney(line.unit_price, order.currency)}</td>
                     <td>
                       <strong>
@@ -726,9 +761,136 @@ export default function OrderDetailPage() {
                     </strong>
                   </td>
                 </tr>
+                {Number(order.returned_total ?? 0) > 0 ? (
+                  <>
+                    <tr>
+                      <td colSpan={3} style={{ color: "#c2410c", fontWeight: 500 }}>
+                        Goods on return
+                      </td>
+                      <td style={{ color: "#c2410c", fontWeight: 600 }}>
+                        −{formatMoney(order.returned_total!, order.currency)}
+                      </td>
+                    </tr>
+                    <tr className="orders-detail__items-grand" style={{ borderTop: "1px dashed #fed7aa" }}>
+                      <td colSpan={3}>
+                        <strong>Net total</strong>
+                      </td>
+                      <td>
+                        <strong>
+                          {formatMoney(
+                            Math.max(0, Number(order.total) - Number(order.returned_total!)),
+                            order.currency,
+                          )}
+                        </strong>
+                      </td>
+                    </tr>
+                  </>
+                ) : null}
               </tfoot>
             </table>
           </div>
+
+          {order.returns && order.returns.length > 0 ? (
+            <div className="orders-detail__card">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
+                <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <i className="fa-solid fa-rotate-left" style={{ color: "#ea580c" }} aria-hidden="true" />
+                  Goods on Return ({order.returns.length})
+                </h3>
+                <span style={{ fontSize: "0.875rem", fontWeight: 700, color: "#c2410c" }}>
+                  Total refunded: {formatMoney(order.returned_total ?? 0, order.currency)}
+                </span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
+                {order.returns.map((ret) => (
+                  <div
+                    key={ret.id}
+                    style={{
+                      border: "1px solid #ffedd5",
+                      borderRadius: "0.625rem",
+                      backgroundColor: "#fffaf5",
+                      padding: "0.875rem 1rem",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem", flexWrap: "wrap", gap: "0.5rem" }}>
+                      <div>
+                        <strong style={{ fontSize: "0.9375rem", color: "#1c1917" }}>{ret.return_number}</strong>
+                        <span style={{ fontSize: "0.8125rem", color: "#78716c", marginLeft: "0.5rem" }}>
+                          {formatDateTime(ret.created_at ?? null)}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            padding: "0.15rem 0.5rem",
+                            borderRadius: "0.375rem",
+                            fontSize: "0.75rem",
+                            fontWeight: 600,
+                            backgroundColor: ret.refund_payment_method === "none" ? "#f5f5f4" : "#e0f2fe",
+                            color: ret.refund_payment_method === "none" ? "#78716c" : "#0369a1",
+                            textTransform: "capitalize",
+                          }}
+                        >
+                          Refund: {ret.refund_payment_method === "mpesa" ? "M-PESA" : ret.refund_payment_method === "credit" ? "Credit Tab" : ret.refund_payment_method ?? "Cash"}
+                        </span>
+                        <strong style={{ fontSize: "0.9375rem", color: "#c2410c" }}>
+                          {formatMoney(ret.total_refunded, order.currency)}
+                        </strong>
+                      </div>
+                    </div>
+                    {ret.reason ? (
+                      <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.8125rem", color: "#57534e" }}>
+                        <strong>Reason:</strong> {ret.reason}
+                      </p>
+                    ) : null}
+                    {ret.notes ? (
+                      <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.8125rem", color: "#78716c", fontStyle: "italic" }}>
+                        Notes: {ret.notes}
+                      </p>
+                    ) : null}
+                    <div style={{ borderTop: "1px dashed #fed7aa", paddingTop: "0.5rem" }}>
+                      <table style={{ width: "100%", fontSize: "0.8125rem" }}>
+                        <thead>
+                          <tr style={{ color: "#78716c", textAlign: "left" }}>
+                            <th style={{ paddingBottom: "0.25rem" }}>Item</th>
+                            <th style={{ paddingBottom: "0.25rem", textAlign: "center" }}>Qty</th>
+                            <th style={{ paddingBottom: "0.25rem", textAlign: "center" }}>Condition</th>
+                            <th style={{ paddingBottom: "0.25rem", textAlign: "right" }}>Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(ret.items ?? []).map((item) => (
+                            <tr key={item.id} style={{ borderTop: "1px solid #fef3c7" }}>
+                              <td style={{ padding: "0.25rem 0" }}>{item.product_name}</td>
+                              <td style={{ padding: "0.25rem 0", textAlign: "center" }}>{item.quantity}</td>
+                              <td style={{ padding: "0.25rem 0", textAlign: "center" }}>
+                                <span
+                                  style={{
+                                    padding: "0.1rem 0.4rem",
+                                    borderRadius: "0.25rem",
+                                    fontSize: "0.6875rem",
+                                    fontWeight: 600,
+                                    backgroundColor: item.condition_name === "damaged" ? "#fee2e2" : "#dcfce7",
+                                    color: item.condition_name === "damaged" ? "#b91c1c" : "#15803d",
+                                  }}
+                                >
+                                  {item.condition_name === "damaged" ? "Damaged (waste)" : "Restocked"}
+                                </span>
+                              </td>
+                              <td style={{ padding: "0.25rem 0", textAlign: "right", fontWeight: 600 }}>
+                                {formatMoney(item.refund_amount, order.currency)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="orders-detail__card">
             <h3>Status timeline</h3>
@@ -1140,6 +1302,16 @@ export default function OrderDetailPage() {
           </tfoot>
         </table>
       </section>
+
+      <TransChapGoodsOnReturnModal
+        order={order}
+        open={returnModalOpen}
+        onClose={() => setReturnModalOpen(false)}
+        onSuccess={(updated) => {
+          setOrder(updated);
+          void toastSuccess("Goods on return recorded successfully");
+        }}
+      />
     </section>
   );
 }

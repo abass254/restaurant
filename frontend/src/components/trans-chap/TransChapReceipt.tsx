@@ -20,7 +20,8 @@ import {
   type TransChapReceipt,
 } from "@/lib/trans-chap-receipt";
 import { buildTransChapReceiptPdf, saveReceiptFile } from "@/lib/trans-chap-receipt-pdf";
-import type { OrderDetailResponse, OrderMutationResponse } from "@/lib/types";
+import type { Order, OrderDetailResponse, OrderMutationResponse } from "@/lib/types";
+import { TransChapGoodsOnReturnModal } from "@/components/trans-chap/TransChapGoodsOnReturnModal";
 
 const ORDER_POLL_MS = 4_000;
 
@@ -32,6 +33,8 @@ export function TransChapReceiptView() {
     user.account?.business_name ||
     "DukAI";
   const [receipt, setReceipt] = useState<TransChapReceipt | null>(null);
+  const [order, setOrder] = useState<Order | null>(null);
+  const [returnOpen, setReturnOpen] = useState(false);
   const [missing, setMissing] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [openingWhatsApp, setOpeningWhatsApp] = useState(false);
@@ -55,6 +58,7 @@ export function TransChapReceiptView() {
         try {
           const data = await apiFetch<OrderDetailResponse>(apiRoutes.order(orderId));
           if (cancelled) return;
+          setOrder(data.data);
           applyReceipt(receiptFromOrder(data.data, shopName));
           return;
         } catch {
@@ -79,7 +83,19 @@ export function TransChapReceiptView() {
         }
         return;
       }
-      if (!cancelled) applyReceipt(stored);
+      if (!cancelled) {
+        applyReceipt(stored);
+        if (stored.orderId) {
+          void apiFetch<OrderDetailResponse>(apiRoutes.order(stored.orderId))
+            .then((res) => {
+              if (!cancelled) {
+                setOrder(res.data);
+                applyReceipt(receiptFromOrder(res.data, shopName));
+              }
+            })
+            .catch(() => {});
+        }
+      }
     }
 
     void load();
@@ -100,6 +116,7 @@ export function TransChapReceiptView() {
       try {
         const data = await apiFetch<OrderDetailResponse>(apiRoutes.order(orderId));
         if (cancelled) return;
+        setOrder(data.data);
         const next = receiptFromOrder(data.data, currentShop);
         let becamePaid = false;
         setReceipt((current) => {
@@ -363,6 +380,16 @@ export function TransChapReceiptView() {
         allowed_next_statuses: receipt.allowedNextStatuses,
       })
     : null;
+  const canReturnGoods = Boolean(
+    order &&
+    order.status !== "cancelled" &&
+    order.status !== "refunded" &&
+    (order.items ?? []).some((line) => {
+      const returned = line.returned_quantity ?? 0;
+      return line.quantity - returned > 0;
+    })
+  );
+
   return (
     <div className="trans-chap-receipt">
       <TransChapReceiptSlip ref={slipRef} receipt={receipt} />
@@ -419,6 +446,32 @@ export function TransChapReceiptView() {
             {resending ? "Working…" : "Complete M-PESA"}
           </button>
         )}
+        {canReturnGoods ? (
+          <button
+            type="button"
+            className="trans-chap-slip__return-btn"
+            onClick={() => setReturnOpen(true)}
+            disabled={openingWhatsApp || sendingEmail || downloading || undoing || resending}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.5rem",
+              padding: "0.625rem 1rem",
+              borderRadius: "0.5rem",
+              border: "1px solid #fed7aa",
+              backgroundColor: "#fff7ed",
+              color: "#c2410c",
+              fontWeight: 600,
+              fontSize: "0.875rem",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <i className="fa-solid fa-rotate-left" aria-hidden="true" />
+            Record goods on return
+          </button>
+        ) : null}
         {undo && !closed ? (
           <button
             type="button"
@@ -433,6 +486,17 @@ export function TransChapReceiptView() {
           Make another sale
         </Link>
       </div>
+
+      <TransChapGoodsOnReturnModal
+        order={order}
+        open={returnOpen}
+        onClose={() => setReturnOpen(false)}
+        onSuccess={(updated) => {
+          setOrder(updated);
+          applyReceipt(receiptFromOrder(updated, receipt.shopName));
+          void toastSuccess("Goods on return recorded successfully");
+        }}
+      />
     </div>
   );
 }
