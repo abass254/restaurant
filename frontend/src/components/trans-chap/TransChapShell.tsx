@@ -33,6 +33,7 @@ const PHONE_HIDDEN_NAV_HREFS = new Set([
   "/trans-chap/settings",
   "/trans-chap/mpesa",
   "/trans-chap/kitchen",
+  "/trans-chap/menus",
 ]);
 
 type NavDef = {
@@ -498,6 +499,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                 <h1>{title}</h1>
               </div>
               <div className="trans-chap-header__side trans-chap-header__side--end">
+                <FullscreenToggle className="trans-chap-header__icon" />
                 <ThemeToggle />
                 <button
                   type="button"

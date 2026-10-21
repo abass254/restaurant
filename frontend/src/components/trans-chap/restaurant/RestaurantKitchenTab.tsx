@@ -71,7 +71,7 @@ export function RestaurantKitchenTab() {
   return <KitchenBoard stock={stock} openCount={openCount} onStock={setStock} />;
 }
 
-function KitchenSetup({ onEnabled }: { onEnabled: (stock: KitchenStock) => void }) {
+export function KitchenSetup({ onEnabled }: { onEnabled: (stock: KitchenStock) => void }) {
   const user = useAuthUser();
   const canEnable = isStoreAdmin(user);
   const [items, setItems] = useState<SupplyItem[]>([]);

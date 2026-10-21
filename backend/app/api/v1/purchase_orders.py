@@ -41,6 +41,7 @@ class LineIn(BaseModel):
     quantity: Decimal = Field(gt=0, le=1_000_000, decimal_places=3)
     unit_cost: Decimal = Field(ge=0, le=99_999_999.99, decimal_places=2)
     purchase_unit: str | None = Field(default=None, max_length=64)
+    unit_factor: Decimal | None = Field(default=None, gt=0, le=1_000_000, decimal_places=4)
 
 
 class PurchaseOrderCreate(BaseModel):
@@ -107,6 +108,7 @@ def _line_inputs(lines: list[LineIn]) -> list[LineInput]:
             quantity=line.quantity,
             unit_cost=line.unit_cost,
             purchase_unit=line.purchase_unit,
+            unit_factor=line.unit_factor,
         )
         for line in lines
     ]

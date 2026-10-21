@@ -98,7 +98,7 @@ export function RestaurantSuppliesHub() {
   if (tab === "purchases") {
     return (
       <>
-        <div className="rs" style={{ paddingBottom: 0 }}>
+        <div className="rs rs--tabs-only">
           {tabs}
         </div>
         <TransChapPurchasesList />

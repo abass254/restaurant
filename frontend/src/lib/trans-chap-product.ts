@@ -516,12 +516,14 @@ export async function addLiteInventoryProduct(
     sku?: string | null;
     product_code?: string | null;
     category?: string | null;
+    unit?: string | null;
     inventory_role?: InventoryRole;
   },
 ): Promise<InventoryItem> {
   const sku = extras?.sku?.trim() || undefined;
   const productCode = extras?.product_code?.trim() || undefined;
   const category = extras?.category?.trim() || undefined;
+  const unit = extras?.unit?.trim() || undefined;
   const created = await apiFetch<CatalogProductMutationResponse>(
     apiRoutes.products,
     {
@@ -532,6 +534,7 @@ export async function addLiteInventoryProduct(
         ...(sku ? { sku } : {}),
         ...(productCode ? { product_code: productCode } : {}),
         ...(category ? { category } : {}),
+        ...(unit ? { unit } : {}),
       }),
     },
   );

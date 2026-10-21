@@ -12,6 +12,35 @@
     color: var(--app-text);
 }
 
+/* .rs scrolls itself so the FAB anchors above the bottom nav, not over it. */
+.trans-chap-app__content:has(> .rs) {
+    position: relative;
+    overflow: hidden;
+    padding-inline: 0;
+}
+
+.trans-chap-app__content > .rs {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* .rs fills the screen height; keep children (e.g. flex:1 search boxes) at their content height. */
+.rs > * {
+    flex-shrink: 0;
+}
+
+.rs > .trans-chap-sales__search {
+    flex: none;
+}
+
+.trans-chap-app__content > .rs.rs--tabs-only {
+    flex: 0 0 auto;
+    overflow: visible;
+    padding-bottom: 0;
+}
+
 .rs-tabs {
     display: flex;
     gap: 0.35rem;
@@ -323,34 +352,169 @@ button.rs-card {
     text-align: center;
 }
 
-.rs-picker {
+.rs-issue-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.rs-issue-toolbar > .trans-chap-sales__search {
+    flex: 1 1 16rem;
+}
+
+.rs-issue-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.rs-issue-filters__count {
+    margin-left: 0.2rem;
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+}
+
+.rs-issue-list {
     display: flex;
     flex-direction: column;
-    max-height: 18rem;
-    overflow-y: auto;
-    border: 1px solid var(--app-border);
-    border-radius: 12px;
+    gap: 0.45rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.rs-issue-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 0.85rem;
+    border: 1px solid var(--app-border-light, var(--app-border));
+    border-radius: 14px;
     background: var(--app-surface);
 }
 
-.rs-picker button {
+.rs-issue-row.is-picked {
+    border-color: color-mix(in srgb, var(--app-primary) 40%, var(--app-border));
+    background: color-mix(in srgb, var(--app-primary) 4%, var(--app-surface));
+}
+
+.rs-issue-row__main {
     display: flex;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.6rem 0.75rem;
-    border: 0;
-    border-bottom: 1px solid var(--app-border-light, var(--app-border));
-    background: transparent;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.rs-issue-row__name {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 750;
+}
+
+.rs-issue-row__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem 0.9rem;
+    margin: 0;
+    color: var(--app-text-secondary);
+    font-size: 0.76rem;
+    font-weight: 600;
+}
+
+.rs-issue-row__meta strong {
     color: var(--app-text);
+    font-weight: 750;
+}
+
+.rs-issue-row__warn {
+    margin: 0;
+    color: var(--app-danger, #dc2626);
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.rs-issue-row__suggest {
+    align-self: flex-start;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--app-primary);
     font: inherit;
-    font-size: 0.85rem;
-    font-weight: 650;
-    text-align: left;
+    font-size: 0.74rem;
+    font-weight: 750;
     cursor: pointer;
 }
 
-.rs-picker button:hover {
-    background: var(--app-surface-hover, rgba(0, 0, 0, 0.03));
+.rs-issue-stepper {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.rs-issue-stepper button {
+    display: grid;
+    place-items: center;
+    width: 2.1rem;
+    height: 2.1rem;
+    border: 1px solid var(--app-border);
+    border-radius: 50%;
+    background: var(--app-surface);
+    color: var(--app-primary);
+    cursor: pointer;
+}
+
+.rs-issue-stepper button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.rs-issue-stepper input {
+    width: 4.2rem;
+    height: 2.1rem;
+    border: 1px solid var(--app-border);
+    border-radius: 10px;
+    background: var(--app-surface);
+    color: var(--app-text);
+    font: inherit;
+    font-weight: 750;
+    text-align: center;
+}
+
+.rs-issue-stepper__unit {
+    min-width: 2.5rem;
+    color: var(--app-text-secondary);
+    font-size: 0.74rem;
+    font-weight: 650;
+}
+
+@media (max-width: 560px) {
+    .rs-issue-row {
+        flex-wrap: wrap;
+    }
+
+    .rs-issue-stepper {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
+
+.rs-new-supply {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 0.85rem;
+    border: 1px dashed color-mix(in srgb, var(--app-primary) 45%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--app-primary) 4%, var(--app-surface));
+}
+
+.rs-new-supply__fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+    gap: 0.6rem;
 }
 
 .rs-line {

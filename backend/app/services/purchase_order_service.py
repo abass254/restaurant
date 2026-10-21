@@ -66,6 +66,8 @@ class LineInput:
     quantity: Decimal
     unit_cost: Decimal
     purchase_unit: str | None = None
+    # Base units per purchase unit for a bulk size the item doesn't have yet.
+    unit_factor: Decimal | None = None
 
 
 @dataclass
@@ -263,6 +265,8 @@ class PurchaseOrderService:
             units = buy_units_for_item(item)
             wanted = (line.purchase_unit or "").strip().lower()
             unit = next((u for u in units if u["name"].strip().lower() == wanted), None) if wanted else units[0]
+            if unit is None and line.unit_factor is not None and line.unit_factor > 1:
+                unit = self._add_buy_unit(item, line.purchase_unit or "", line.unit_factor, unit_cost)
             if unit is None:
                 raise PurchaseOrderError(
                     f"{item.product.name}: unknown unit “{line.purchase_unit}”."
@@ -281,6 +285,22 @@ class PurchaseOrderService:
                 )
             )
         return built
+
+    @staticmethod
+    def _add_buy_unit(
+        item: InventoryItem, name: str, factor: Decimal, unit_cost: Decimal
+    ) -> dict[str, Any]:
+        """Remember a new bulk size (e.g. "Pack of 24") so it is offered next time."""
+        name = name.strip()[:64]
+        factor_value = round(float(factor), 4)
+        if not name or factor_value > 1_000_000:
+            raise PurchaseOrderError(f"{item.product.name}: enter a valid bulk size.")
+        attrs = dict(item.attributes or {})
+        existing = attrs.get("buy_units") if isinstance(attrs.get("buy_units"), list) else []
+        unit = {"name": name, "factor": factor_value, "buying_price": float(unit_cost)}
+        attrs["buy_units"] = [*existing, unit]
+        item.attributes = attrs
+        return unit
 
     def _recalc(self, po: PurchaseOrder) -> None:
         subtotal = sum((Decimal(str(line.line_total or 0)) for line in po.lines), Decimal("0"))
@@ -664,11 +684,29 @@ def purchase_order_out(po: PurchaseOrder, *, receipts: list[StockMovement] | Non
     return out
 
 
+_VIDEO_SUFFIXES = (".mp4", ".mov", ".webm", ".m4v")
+
+
+def _supply_image_url(item: InventoryItem) -> str | None:
+    """Newest photo on the shop's item, else the catalogue image (matches inventoryCoverUrl)."""
+    for media in reversed(item.media if isinstance(item.media, list) else []):
+        if not isinstance(media, dict) or not media.get("url"):
+            continue
+        content_type = str(media.get("content_type") or "").lower()
+        url = str(media["url"])
+        if content_type.startswith("video/") or url.lower().split("?")[0].endswith(_VIDEO_SUFFIXES):
+            continue
+        return url
+    product = item.product
+    return product.image_url if product is not None else None
+
+
 def supply_item_out(item: InventoryItem) -> dict[str, Any]:
     product = item.product
     return {
         "id": item.id,
         "name": product.name if product is not None else "Item",
+        "image_url": _supply_image_url(item),
         "base_unit": (product.unit if product is not None else None) or "Piece",
         "inventory_role": item.normalized_role(),
         "stock_quantity": float(item.stock_quantity) if item.stock_quantity is not None else None,

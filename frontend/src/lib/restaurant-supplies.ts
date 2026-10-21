@@ -17,6 +17,7 @@ export type BuyUnit = { name: string; factor: number; buying_price?: number | nu
 export type SupplyItem = {
   id: string;
   name: string;
+  image_url?: string | null;
   base_unit: string;
   inventory_role: "for_sale" | "raw_material" | "both";
   stock_quantity: number | null;
@@ -93,6 +94,7 @@ export type PurchaseOrderLineInput = {
   quantity: number;
   unit_cost: number;
   purchase_unit: string | null;
+  unit_factor?: number | null;
 };
 
 export type PurchaseOrderCreateInput = {

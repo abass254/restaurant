@@ -70,6 +70,7 @@ import type {
   InventoryResponse,
   InventoryRole,
   SettingsResponse,
+  StockMovementsListResponse,
 } from "@/lib/types";
 
 type BasketLine = {
@@ -120,6 +121,8 @@ const STATUS_OPTIONS: { id: PurchaseStatus; label: string; icon: string }[] = [
 ];
 
 const QUICK_ADD_QTY_STORAGE_KEY = "purchase:quick_add_qty";
+const RECENT_LIMIT = 15;
+const CATALOG_SEARCH_DELAY_MS = 300;
 
 function nameInitial(name: string | null | undefined): string {
   if (!name) return "?";
@@ -272,7 +275,8 @@ export function TransChapPurchaseForm() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
   const [inventoryLoading, setInventoryLoading] = useState(true);
-  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [recentItemIds, setRecentItemIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [basket, setBasket] = useState<BasketLine[]>([]);
   const [mobileScreen, setMobileScreen] = useState<"catalog" | "supplier">(
@@ -376,10 +380,18 @@ export function TransChapPurchaseForm() {
     [inventory],
   );
 
+  const searchNeedle = search.trim().toLowerCase();
+
   const filteredShop = useMemo(() => {
     const needle = search.trim().toLowerCase();
+    if (!needle) {
+      const byId = new Map(shopItems.map((item) => [item.id, item]));
+      return recentItemIds
+        .map((id) => byId.get(id))
+        .filter((item): item is InventoryItem => Boolean(item))
+        .slice(0, RECENT_LIMIT);
+    }
     return shopItems.filter((item) => {
-      if (!needle) return true;
       const name = inventoryProductName(item).toLowerCase();
       const sku = (item.product?.sku ?? "").toLowerCase();
       const code = (item.product?.product_code ?? "").toLowerCase();
@@ -391,14 +403,14 @@ export function TransChapPurchaseForm() {
         category.includes(needle)
       );
     });
-  }, [shopItems, search]);
+  }, [shopItems, search, recentItemIds]);
 
   const filteredCatalog = useMemo(() => {
     const needle = search.trim().toLowerCase();
+    if (!needle) return [];
     return catalog.filter((product) => {
       if (!canPurchaseCatalogProduct(product)) return false;
       if (inventoryByProductId.has(product.id)) return false;
-      if (!needle) return true;
       const name = product.name.toLowerCase();
       const sku = (product.sku ?? "").toLowerCase();
       const code = (product.product_code ?? "").toLowerCase();
@@ -412,7 +424,10 @@ export function TransChapPurchaseForm() {
     });
   }, [catalog, inventoryByProductId, search]);
 
-  const catalogPending = inventoryLoading || catalogLoading;
+  // Shop matches show straight away; only wait on the catalog when nothing else matched.
+  const catalogPending =
+    inventoryLoading ||
+    (Boolean(searchNeedle) && catalogLoading && filteredShop.length === 0);
 
   useEffect(() => {
     inventoryRef.current = inventory;
@@ -508,22 +523,48 @@ export function TransChapPurchaseForm() {
 
   useEffect(() => {
     let alive = true;
-    fetchPurchasableCatalogProducts(undefined, { retailOnly: !restaurant })
-      .then((rows) => {
+    apiFetch<StockMovementsListResponse>(
+      `${apiRoutes.inventoryStockMovements}?direction=in&reason=receive&per_page=100&page=1`,
+    )
+      .then((res) => {
         if (!alive) return;
-        setCatalog(rows);
+        const ids: string[] = [];
+        for (const movement of res.data) {
+          const id = movement.inventory_item_id;
+          if (!id || movement.voided_at || ids.includes(id)) continue;
+          ids.push(id);
+        }
+        setRecentItemIds(ids);
       })
       .catch(() => {
-        if (!alive) return;
-        setCatalog([]);
-      })
-      .finally(() => {
-        if (alive) setCatalogLoading(false);
+        if (alive) setRecentItemIds([]);
       });
     return () => {
       alive = false;
     };
-  }, [restaurant]);
+  }, []);
+
+  useEffect(() => {
+    if (!searchNeedle) return;
+    let alive = true;
+    const timer = window.setTimeout(() => {
+      setCatalogLoading(true);
+      fetchPurchasableCatalogProducts(searchNeedle, { retailOnly: !restaurant })
+        .then((rows) => {
+          if (alive) setCatalog(rows);
+        })
+        .catch(() => {
+          if (alive) setCatalog([]);
+        })
+        .finally(() => {
+          if (alive) setCatalogLoading(false);
+        });
+    }, CATALOG_SEARCH_DELAY_MS);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [restaurant, searchNeedle]);
 
   function patchPurchaseMeta(patch: Partial<PurchaseMeta>) {
     setPurchaseMeta((prev) => {
@@ -1116,6 +1157,9 @@ export function TransChapPurchaseForm() {
               </div>
             </header>
 
+            {!searchNeedle && !catalogPending && !emptyCatalog ? (
+              <p className="pos-po-hint">Recently purchased · search to find more</p>
+            ) : null}
             <AnimatePresence mode="wait">
               {catalogPending ? (
                 <CatalogSkeleton key="purchase-catalog-skeleton" />
@@ -1131,16 +1175,17 @@ export function TransChapPurchaseForm() {
                     ease: easeOutExpressive,
                   }}
                 >
-                  <i className="fa-solid fa-boxes-stacked" aria-hidden="true" />
+                  <i
+                    className={`fa-solid ${search.trim() ? "fa-boxes-stacked" : "fa-magnifying-glass"}`}
+                    aria-hidden="true"
+                  />
                   <h3>
-                    {shopItems.length === 0 && !search.trim()
-                      ? "No products to buy yet"
-                      : "No items match your search"}
+                    {search.trim() ? "No items match your search" : "Search for a product to buy"}
                   </h3>
                   <p>
-                    {shopItems.length === 0 && !search.trim()
-                      ? "Add stock products, or tap + to buy something new."
-                      : "Try a different search, or buy it as a new product."}
+                    {search.trim()
+                      ? "Try a different search, or buy it as a new product."
+                      : "Your recent purchases show here. Search, scan a barcode, or tap + to buy something new."}
                   </p>
                   {search.trim() ? (
                     <button
@@ -1507,32 +1552,9 @@ export function TransChapPurchaseForm() {
                               : { opacity: 0, scale: 0.96, x: 8 }
                           }
                           transition={springSoft}
-                          className="pos-line pos-line--purchase"
+                          className="pos-line pos-line--purchase pos-line--po"
                         >
                           <div className="pos-line__purchase-top">
-                            <div className="pos-line__thumb" aria-hidden="true">
-                              {line.imageUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={resolveAssetUrl(line.imageUrl)}
-                                  alt=""
-                                  onError={(e) => {
-                                    e.currentTarget.style.display = "none";
-                                    const fallback = e.currentTarget.parentElement?.querySelector(
-                                      ".pos-line__thumb-fallback",
-                                    );
-                                    if (fallback) (fallback as HTMLElement).style.display = "flex";
-                                  }}
-                                />
-                              ) : null}
-                              <span
-                                className="pos-line__thumb-fallback"
-                                style={{ display: line.imageUrl ? "none" : "flex" }}
-                              >
-                                {nameInitial(line.productName)}
-                              </span>
-                            </div>
-
                             <div className="pos-line__purchase-main">
                               <div className="pos-line__purchase-title-row">
                                 <strong

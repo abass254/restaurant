@@ -17,6 +17,7 @@ type Props = {
   placeholder?: string;
   onChange: (value: string) => void;
   onAddressChange?: (address: string) => void;
+  onCreated?: (supplier: ShopSupplier) => void;
 };
 
 export function TransChapSupplierField({
@@ -27,6 +28,7 @@ export function TransChapSupplierField({
   placeholder = "Please select or type a name",
   onChange,
   onAddressChange,
+  onCreated,
 }: Props) {
   const autoId = useId();
   const fieldId = id ?? `supplier-${autoId}`;
@@ -122,6 +124,7 @@ export function TransChapSupplierField({
           a.name.localeCompare(b.name),
         ),
       );
+      onCreated?.(created);
       onChange(created.name);
       const address = created.notes?.trim() || "";
       lastAddressRef.current = address;

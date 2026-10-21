@@ -146,7 +146,11 @@ def suggest_issue(
 ) -> list[dict[str, Any]]:
     """What to issue today: average daily usage minus what the kitchen already holds."""
     now = now or datetime.utcnow()
-    items = [item for item in kitchen_supplies(db, account_id) if item.inventory_role in ISSUABLE_ROLES]
+    items = [
+        item
+        for item in kitchen_supplies(db, account_id)
+        if item.is_active and item.inventory_role in ISSUABLE_ROLES
+    ]
     usage = _daily_kitchen_usage(db, account_id, [item.id for item in items], days=days, now=now)
     out: list[dict[str, Any]] = []
     for item in items:

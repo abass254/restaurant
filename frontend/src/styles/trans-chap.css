@@ -24,7 +24,7 @@ html:has(.trans-chap-app):has(.fb-app) {
     --color-text: var(--app-text);
     --color-text-muted: var(--app-text-secondary);
     --color-text-subtle: var(--app-text-secondary);
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     height: 100dvh;
     min-height: 100dvh;
     overflow: hidden;
@@ -1992,6 +1992,132 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-title__icon {
     display: grid;
     grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
     gap: 6px;
+}
+
+.trans-chap-pos-host.fb-app .pos-search input::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.trans-chap-pos-host.fb-app .pos-fields--po {
+    grid-template-columns: 1fr 1fr;
+}
+
+.trans-chap-pos-host.fb-app .pos-fields--po > .pos-po-full {
+    grid-column: 1 / -1;
+}
+
+.trans-chap-pos-host.fb-app .pos-po-field {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.trans-chap-pos-host.fb-app .pos-po-hint {
+    margin: 0 0 0.5rem;
+    color: var(--app-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.trans-chap-pos-host.fb-app .pos-cart__body .pos-po-hint {
+    margin: 0;
+}
+
+.trans-chap-pos-host.fb-app .pos-po-hint a {
+    color: var(--app-primary);
+    font-weight: 750;
+}
+
+.trans-chap-pos-host.fb-app .pos-po-stock.is-ok {
+    color: var(--app-success, #15803d);
+}
+
+.trans-chap-pos-host.fb-app .pos-po-stock.is-low {
+    color: var(--app-danger, #dc2626);
+}
+
+.trans-chap-pos-host.fb-app .pos-po-line-meta {
+    color: var(--app-text-secondary);
+    font-size: 0.7rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.trans-chap-pos-host.fb-app .pos-line--purchase.pos-line--po {
+    flex-direction: row !important;
+    align-items: center;
+    gap: 12px !important;
+}
+
+.trans-chap-pos-host.fb-app .pos-line--po .pos-line__purchase-top {
+    display: contents;
+}
+
+.trans-chap-pos-host.fb-app .pos-line--po .pos-line__purchase-main {
+    order: 1;
+}
+
+.trans-chap-pos-host.fb-app .pos-line--po .pos-line__purchase-bottom {
+    order: 2;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+    padding-top: 0;
+    border-top: 0;
+    gap: 12px;
+}
+
+.trans-chap-pos-host.fb-app .pos-line--po .pos-line__purchase-end {
+    order: 3;
+    margin-left: 0;
+}
+
+.trans-chap-pos-host.fb-app .pos-line--po .pos-line__purchase-total {
+    min-width: 5.5rem;
+    text-align: right;
+}
+
+@media (max-width: 640px) {
+    .trans-chap-pos-host.fb-app .pos-line--purchase.pos-line--po {
+        flex-wrap: wrap;
+    }
+
+    .trans-chap-pos-host.fb-app .pos-line--po .pos-line__purchase-main {
+        flex-basis: calc(100% - 9rem);
+    }
+
+    .trans-chap-pos-host.fb-app .pos-line--po .pos-line__purchase-bottom {
+        order: 4;
+        flex-basis: 100%;
+        justify-content: space-between;
+    }
+}
+
+.trans-chap-pos-host.fb-app .pos-po-draft {
+    width: 100%;
+    min-height: 36px;
+    margin-top: 0.4rem;
+    border: 1px solid var(--app-border);
+    border-radius: 10px;
+    background: var(--app-surface);
+    color: var(--app-text);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.trans-chap-pos-host.fb-app .pos-po-draft:hover:not(:disabled) {
+    background: var(--app-surface-hover);
+}
+
+.trans-chap-pos-host.fb-app .pos-po-draft:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.trans-chap-pos-host.fb-app .pos-catalog > .rs-new-supply {
+    margin-top: 0.25rem;
 }
 
 .trans-chap-pos-host.fb-app .pos-purchase-pay-term select {
@@ -14316,10 +14442,28 @@ html[data-trans-chap-machine="tablet"] .trans-chap-app--nav-collapsed .mobile-na
 
 /* 3. Computer Desktop Multi-Column Dashboard & Polish */
 html[data-trans-chap-machine="tablet"] .trans-chap-dash__hero {
+    display: flex;
     flex-direction: row;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
+    gap: 1rem 1.25rem;
     padding: 0.85rem 0.2rem 1rem;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__hero-main {
+    flex: 1 1 16rem;
+    min-width: 0;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__hero-shop {
+    max-width: none;
+    text-align: left;
+}
+
+html[data-trans-chap-machine="tablet"] .trans-chap-dash__quick-actions {
+    flex: 0 1 auto;
+    justify-content: flex-end;
 }
 
 html[data-trans-chap-machine="tablet"] .trans-chap-dash__analytics {

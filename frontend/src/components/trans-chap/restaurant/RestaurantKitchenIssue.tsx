@@ -10,6 +10,7 @@ import {
   cancelKitchenIssue,
   createKitchenIssue,
   fetchKitchenIssue,
+  fetchKitchenStock,
   fetchKitchenSuggestion,
   formatQty,
   isKitchenIssuableRole,
@@ -19,7 +20,7 @@ import {
   type KitchenSuggestion,
 } from "@/lib/restaurant-supplies";
 import { formatKsh } from "@/lib/trans-chap-receipt";
-import { issueStatusTone } from "./RestaurantKitchenTab";
+import { KitchenSetup, issueStatusTone } from "./RestaurantKitchenTab";
 
 function parseQty(value: string): number | null {
   const trimmed = value.trim();
@@ -35,14 +36,19 @@ export function RestaurantKitchenIssue() {
   return <NewIssue />;
 }
 
+type Filter = "needed" | "selected" | "all";
+
 function NewIssue() {
   const router = useRouter();
+  const [enabled, setEnabled] = useState<boolean | null>(null);
   const [rows, setRows] = useState<KitchenSuggestion[]>([]);
   const [qty, setQty] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState("");
   const [notes, setNotes] = useState("");
+  const [filter, setFilter] = useState<Filter>("needed");
+  const [reloadKey, setReloadKey] = useState(0);
 
   const params = useSearchParams();
   const preselected = [params.get("items"), params.get("item")]
@@ -58,20 +64,29 @@ function NewIssue() {
 
   useEffect(() => {
     let alive = true;
-    fetchKitchenSuggestion()
-      .then((data) => {
+    const isPicked = (row: KitchenSuggestion) => picks.has(row.inventory_item_id) || picks.has(row.name);
+    fetchKitchenStock()
+      .then(async (stock) => {
+        if (!alive) return;
+        setEnabled(stock.enabled);
+        if (!stock.enabled) return;
+        const data = await fetchKitchenSuggestion();
         if (!alive) return;
         setRows(data);
         const filled: Record<string, string> = {};
         for (const row of data) {
           if (picks.size) {
-            if (!picks.has(row.inventory_item_id) && !picks.has(row.name)) continue;
+            if (!isPicked(row)) continue;
             filled[row.inventory_item_id] = String(row.suggested_qty > 0 ? row.suggested_qty : 1);
           } else if (row.suggested_qty > 0) {
             filled[row.inventory_item_id] = String(row.suggested_qty);
           }
         }
         setQty(filled);
+        const needed = data.some(
+          (row) => isKitchenIssuableRole(row.inventory_role) && (row.suggested_qty > 0 || isPicked(row)),
+        );
+        setFilter(needed ? "needed" : "all");
       })
       .catch((err) => {
         if (alive) void showError("Could not load kitchen supplies", extractErrorMessage(err));
@@ -82,28 +97,50 @@ function NewIssue() {
     return () => {
       alive = false;
     };
-  }, [picks]);
+  }, [picks, reloadKey]);
+
+  const issuable = useMemo(() => rows.filter((row) => isKitchenIssuableRole(row.inventory_role)), [rows]);
+  const wantedOf = (row: KitchenSuggestion) => parseQty(qty[row.inventory_item_id] ?? "") ?? 0;
+  const isPicked = (row: KitchenSuggestion) => picks.has(row.inventory_item_id) || picks.has(row.name);
+  const isNeeded = (row: KitchenSuggestion) => row.suggested_qty > 0 || isPicked(row);
+
+  const lines = issuable
+    .map((row) => ({ row, quantity: wantedOf(row) }))
+    .filter((line) => line.quantity > 0);
+  const short = lines.filter((line) => line.quantity > line.row.store_quantity);
+  const neededCount = issuable.filter(isNeeded).length;
+  const suggestedRows = issuable.filter((row) => row.suggested_qty > 0);
 
   const needle = query.trim().toLowerCase();
-  const visible = useMemo(() => {
-    const picked = (row: KitchenSuggestion) =>
-      picks.has(row.inventory_item_id) || picks.has(row.name) ? 1 : 0;
-    return [...rows]
-      .filter(
-        (row) =>
-          (!needle || row.name.toLowerCase().includes(needle)) &&
-          isKitchenIssuableRole(row.inventory_role),
-      )
-      .sort(
-        (a, b) =>
-          picked(b) - picked(a) || b.daily_usage - a.daily_usage || a.name.localeCompare(b.name),
-      );
-  }, [rows, needle, picks]);
-  const lines = rows
-    .map((row) => ({ row, quantity: parseQty(qty[row.inventory_item_id] ?? "") ?? 0 }))
-    .filter((line) => line.quantity > 0);
-  const value = lines.reduce((sum, line) => sum + line.quantity * (line.row.average_cost ?? 0), 0);
-  const short = lines.filter((line) => line.quantity > line.row.store_quantity);
+  const visible = issuable
+    .filter((row) => {
+      if (needle) return row.name.toLowerCase().includes(needle);
+      if (filter === "needed") return isNeeded(row) || wantedOf(row) > 0;
+      if (filter === "selected") return wantedOf(row) > 0;
+      return true;
+    })
+    .sort(
+      (a, b) =>
+        Number(isPicked(b)) - Number(isPicked(a)) ||
+        b.daily_usage - a.daily_usage ||
+        a.name.localeCompare(b.name),
+    );
+
+  function setRowQty(row: KitchenSuggestion, value: string) {
+    setQty((prev) => ({ ...prev, [row.inventory_item_id]: value }));
+  }
+
+  function stepRow(row: KitchenSuggestion, delta: number) {
+    setRowQty(row, String(Math.max(0, roundQty(wantedOf(row) + delta))));
+  }
+
+  function fillSuggested() {
+    setQty((prev) => {
+      const next = { ...prev };
+      for (const row of suggestedRows) next[row.inventory_item_id] = String(row.suggested_qty);
+      return next;
+    });
+  }
 
   async function submit(issueNow: boolean) {
     if (!lines.length) return;
@@ -132,83 +169,186 @@ function NewIssue() {
   }
 
   if (loading) return <div className="rs"><p className="rs-empty">Loading kitchen supplies…</p></div>;
+  if (enabled === false) {
+    return (
+      <div className="rs">
+        <KitchenSetup
+          onEnabled={() => {
+            setLoading(true);
+            setReloadKey((key) => key + 1);
+          }}
+        />
+      </div>
+    );
+  }
+
+  const title =
+    from === "kitchen"
+      ? "Request supplies from the store"
+      : from === "store"
+        ? "Issue supplies to the kitchen"
+        : "Issue to kitchen";
+  const intro =
+    from === "kitchen"
+      ? "Enter what the kitchen needs. The store sees your request and issues what it hands over."
+      : from === "store"
+        ? "Enter what you are handing over. Stock moves from the store to the kitchen when you tap Issue now."
+        : "Issue now if you are handing supplies over, or send a request for the store to fill.";
+  const filters: { id: Filter; label: string; count: number }[] = [
+    { id: "needed", label: "Needed today", count: neededCount },
+    { id: "selected", label: "Selected", count: lines.length },
+    { id: "all", label: "All", count: issuable.length },
+  ];
 
   return (
     <div className="rs">
-      {from === "kitchen" ? (
-        <p className="rs-card__meta">
-          Enter what the kitchen needs and send the request. The store sees it under Inventory and issues what it hands
-          over.
-        </p>
-      ) : from === "store" ? (
-        <p className="rs-card__meta">
-          Enter what you are handing to the kitchen now. Stock moves from the store to the kitchen as soon as you tap
-          Issue now.
-        </p>
-      ) : null}
-      <p className="rs-card__meta">
-        Raw materials and items used in cooking are released to the kitchen. Items set as buy &amp; sell only (drinks,
-        snacks) are sold directly as they are at the counter.
-      </p>
-      <label className="trans-chap-sales__search">
-        <i className="fa-solid fa-magnifying-glass" aria-hidden />
-        <input
-          type="search"
-          value={query}
-          placeholder="Search supplies…"
-          aria-label="Search supplies"
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </label>
-      <div className="rs-table-wrap">
-        <table className="rs-table">
-          <thead>
-            <tr>
-              <th>Supply</th>
-              <th className="rs-num">Uses / day</th>
-              <th className="rs-num">Kitchen</th>
-              <th className="rs-num">Store</th>
-              <th className="rs-num">Issue</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((row) => {
-              const wanted = parseQty(qty[row.inventory_item_id] ?? "") ?? 0;
-              return (
-                <tr key={row.inventory_item_id}>
-                  <td>
-                    {row.name}
-                    <div className="rs-muted">{row.unit}</div>
-                  </td>
-                  <td className="rs-num">{row.daily_usage ? formatQty(row.daily_usage) : "—"}</td>
-                  <td className={`rs-num ${row.kitchen_quantity < 0 ? "rs-neg" : ""}`}>{formatQty(row.kitchen_quantity)}</td>
-                  <td className={`rs-num ${wanted > row.store_quantity ? "rs-neg" : ""}`}>{formatQty(row.store_quantity)}</td>
-                  <td className="rs-num">
-                    <input
-                      className="rs-input rs-input--qty"
-                      inputMode="decimal"
-                      placeholder="0"
-                      value={qty[row.inventory_item_id] ?? ""}
-                      aria-label={`Issue ${row.name}`}
-                      onChange={(e) => setQty((prev) => ({ ...prev, [row.inventory_item_id]: e.target.value }))}
-                    />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="rs-card">
+        <p className="rs-card__title">{title}</p>
+        <p className="rs-card__meta">{intro}</p>
       </div>
+
+      <div className="rs-issue-toolbar">
+        <label className="trans-chap-sales__search">
+          <i className="fa-solid fa-magnifying-glass" aria-hidden />
+          <input
+            type="search"
+            value={query}
+            placeholder="Search supplies…"
+            aria-label="Search supplies"
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </label>
+        <div className="rs-issue-filters" role="tablist" aria-label="Show supplies">
+          {filters.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="tab"
+              aria-selected={!needle && filter === option.id}
+              className={`trans-chap-sales__chip${!needle && filter === option.id ? " is-active" : ""}`}
+              onClick={() => {
+                setQuery("");
+                setFilter(option.id);
+              }}
+            >
+              {option.label} <span className="rs-issue-filters__count">{option.count}</span>
+            </button>
+          ))}
+        </div>
+        <div className="rs-row">
+          {suggestedRows.length ? (
+            <button type="button" className="rs-btn rs-btn--small" onClick={fillSuggested}>
+              <i className="fa-solid fa-wand-magic-sparkles" aria-hidden />
+              Fill suggested
+            </button>
+          ) : null}
+          {lines.length ? (
+            <button type="button" className="rs-btn rs-btn--small" onClick={() => setQty({})}>
+              Clear all
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {!issuable.length ? (
+        <div className="rs-empty">
+          No ingredients to issue yet. Mark supplies as raw materials in Inventory, or buy them through a purchase
+          order.
+        </div>
+      ) : !visible.length ? (
+        <div className="rs-empty">
+          {needle
+            ? `No supply matches “${query.trim()}”.`
+            : filter === "needed"
+              ? "Nothing is running low in the kitchen. Use All to issue something else."
+              : "Nothing selected yet. Set a quantity on a supply to add it."}
+        </div>
+      ) : (
+        <ul className="rs-issue-list">
+          {visible.map((row) => {
+            const wanted = wantedOf(row);
+            const shortRow = wanted > row.store_quantity;
+            return (
+              <li key={row.inventory_item_id} className={`rs-issue-row${wanted > 0 ? " is-picked" : ""}`}>
+                <div className="rs-issue-row__main">
+                  <p className="rs-issue-row__name">{row.name}</p>
+                  <p className="rs-issue-row__meta">
+                    <span>
+                      Kitchen{" "}
+                      <strong className={row.kitchen_quantity < 0 ? "rs-neg" : undefined}>
+                        {formatQty(row.kitchen_quantity, row.unit)}
+                      </strong>
+                    </span>
+                    <span>
+                      Store{" "}
+                      <strong className={shortRow ? "rs-neg" : undefined}>
+                        {formatQty(row.store_quantity, row.unit)}
+                      </strong>
+                    </span>
+                    {row.daily_usage ? <span>Uses about {formatQty(row.daily_usage, row.unit)} a day</span> : null}
+                  </p>
+                  {shortRow ? (
+                    <p className="rs-issue-row__warn">
+                      The store only has {formatQty(row.store_quantity, row.unit)}.
+                    </p>
+                  ) : row.suggested_qty > 0 && wanted !== row.suggested_qty ? (
+                    <button
+                      type="button"
+                      className="rs-issue-row__suggest"
+                      onClick={() => setRowQty(row, String(row.suggested_qty))}
+                    >
+                      Suggested {formatQty(row.suggested_qty, row.unit)} · use it
+                    </button>
+                  ) : null}
+                </div>
+                <div className="rs-issue-stepper" role="group" aria-label={`${row.name} quantity`}>
+                  <button type="button" aria-label="Less" disabled={wanted <= 0} onClick={() => stepRow(row, -1)}>
+                    <i className="fa-solid fa-minus" aria-hidden />
+                  </button>
+                  <input
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={qty[row.inventory_item_id] ?? ""}
+                    aria-label={`${canIssueNow ? "Issue" : "Request"} ${row.name}`}
+                    onChange={(e) => setRowQty(row, e.target.value)}
+                  />
+                  <button type="button" aria-label="More" onClick={() => stepRow(row, 1)}>
+                    <i className="fa-solid fa-plus" aria-hidden />
+                  </button>
+                  <span className="rs-issue-stepper__unit">{row.unit}</span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <p className="rs-card__meta">
+        Only ingredients are listed. Buy &amp; sell items (drinks, snacks) are sold straight from the store.
+      </p>
+
       <label className="rs-field">
         <span>Note (optional)</span>
-        <input className="rs-input" value={notes} maxLength={2000} onChange={(e) => setNotes(e.target.value)} />
+        <input
+          className="rs-input"
+          value={notes}
+          maxLength={2000}
+          placeholder="e.g. For the evening shift"
+          onChange={(e) => setNotes(e.target.value)}
+        />
       </label>
+
       <div className="rs-total-bar">
         <div>
-          <p className="rs-card__meta">
+          <p className="rs-card__meta">{canIssueNow ? "To issue" : "To request"}</p>
+          <strong className="rs-card__amount">
             {lines.length} {lines.length === 1 ? "supply" : "supplies"}
-          </p>
-          <strong className="rs-card__amount">{formatKsh(value)}</strong>
+          </strong>
+          {short.length && canIssueNow ? (
+            <p className="rs-issue-row__warn">
+              {short.length} {short.length === 1 ? "is" : "are"} more than the store has
+            </p>
+          ) : null}
         </div>
         <div className="rs-row">
           {canRequest ? (
