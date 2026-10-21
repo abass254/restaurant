@@ -48,7 +48,7 @@ import {
 import { TransChapReceiptPrint } from "@/components/trans-chap/TransChapReceiptSlip";
 import { TransChapCustomerQuickAdd } from "@/components/trans-chap/TransChapCustomerQuickAdd";
 import { findInventoryByBarcode } from "@/lib/barcode";
-import { packUnits } from "@/lib/sell-units";
+import { normalizeUnitName, packUnits } from "@/lib/sell-units";
 import { formatCategoryLabel } from "@/lib/product-categories";
 import {
   inventoryCoverUrl,
@@ -127,6 +127,7 @@ type CartLine = {
   sku: string | null;
   unit_price: number;
   base_price?: number;
+  buying_price?: number | null;
   quantity: number;
   image_url: string | null;
   modifiers?: OrderItemModifier[] | null;
@@ -257,6 +258,65 @@ type SplitDraft = { method: SplitMethod; amount: string };
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function getLineBuyingPrice(
+  line: CartLine,
+  stockItem?: InventoryItem | null,
+): number | null {
+  const item = stockItem;
+  if (item && line.sellUnit) {
+    const packs = packUnits(item);
+    const matchedPack = packs.find(
+      (p) => normalizeUnitName(p.name) === normalizeUnitName(line.sellUnit),
+    );
+    if (
+      matchedPack?.buying_price != null &&
+      Number.isFinite(matchedPack.buying_price) &&
+      matchedPack.buying_price > 0
+    ) {
+      return matchedPack.buying_price;
+    }
+  }
+
+  const baseBuyingPrice =
+    item?.buying_price ??
+    (line.buying_price != null && Number.isFinite(line.buying_price)
+      ? line.buying_price
+      : null);
+
+  if (
+    baseBuyingPrice == null ||
+    !Number.isFinite(baseBuyingPrice) ||
+    baseBuyingPrice <= 0
+  ) {
+    return null;
+  }
+
+  const factor = line.unitFactor || 1;
+  return roundMoney(baseBuyingPrice * factor);
+}
+
+function isLinePriceBelowBuying(
+  line: CartLine,
+  stockItem?: InventoryItem | null,
+  draftPrice?: string,
+): boolean {
+  const buyingPrice = getLineBuyingPrice(line, stockItem);
+  if (buyingPrice == null) return false;
+
+  let currentPrice = line.unit_price;
+  if (draftPrice !== undefined) {
+    if (draftPrice === "" || draftPrice === ".") {
+      currentPrice = 0;
+    } else {
+      const parsed = Number(draftPrice);
+      if (Number.isFinite(parsed)) {
+        currentPrice = parsed;
+      }
+    }
+  }
+  return roundMoney(currentPrice) < roundMoney(buyingPrice);
 }
 
 function parseSplitDrafts(value: unknown): SplitDraft[] | undefined {
@@ -847,6 +907,7 @@ export function PosWorkspace({
           sku: item.product?.sku ?? null,
           unit_price: (item.selling_price ?? 0) * initialUnitFactor,
           base_price: item.selling_price ?? 0,
+          buying_price: item.buying_price ?? null,
           quantity: addAmount,
           image_url: item.product?.image_url ?? null,
           autoPackFactor,
@@ -1073,6 +1134,7 @@ export function PosWorkspace({
           product_id: item.product_id,
           sku: item.product?.sku ?? null,
           base_price: item.selling_price ?? 0,
+          buying_price: item.buying_price ?? null,
           quantity: quickAddQty || 1,
           image_url: item.product?.image_url ?? null,
           ...picked,
@@ -1987,10 +2049,25 @@ export function PosWorkspace({
   const splitIncomplete =
     isSplit && (new Set(splitParts.map((p) => p.method)).size < 2 || splitRemaining !== 0);
 
+  const hasPriceBelowBuyingPrice = cart.some((line) => {
+    const lineKey = line.lineId || line.inventoryItemId;
+    const stockItem = itemsById.get(line.inventoryItemId);
+    return isLinePriceBelowBuying(line, stockItem, priceDrafts[lineKey]);
+  });
+
+  const belowBuyingItem = hasPriceBelowBuyingPrice
+    ? cart.find((line) => {
+        const lineKey = line.lineId || line.inventoryItemId;
+        const stockItem = itemsById.get(line.inventoryItemId);
+        return isLinePriceBelowBuying(line, stockItem, priceDrafts[lineKey]);
+      })
+    : null;
+
   const placeDisabled =
     cart.length === 0 ||
     submitting ||
     splitIncomplete ||
+    hasPriceBelowBuyingPrice ||
     (isTransChapSale &&
       usesMpesa &&
       !operationsSettingsLoaded) ||
@@ -2025,6 +2102,11 @@ export function PosWorkspace({
           ? `Over by ${formatMoney(-splitRemaining)}`
           : "Use at least two methods";
     }
+    if (hasPriceBelowBuyingPrice) {
+      return belowBuyingItem
+        ? `Price below buying (${belowBuyingItem.name})`
+        : "Price below buying price";
+    }
     if (isTransChapSale) {
       if (usesMpesa) {
         const amount = isSplit ? ` (${formatMoney(mpesaDue)})` : "";
@@ -2041,6 +2123,21 @@ export function PosWorkspace({
 
   async function placeOrder() {
     if (cart.length === 0) return;
+    if (hasPriceBelowBuyingPrice) {
+      const stockItem = belowBuyingItem
+        ? itemsById.get(belowBuyingItem.inventoryItemId)
+        : null;
+      const buyingPrice = belowBuyingItem
+        ? getLineBuyingPrice(belowBuyingItem, stockItem)
+        : null;
+      await showError(
+        "Selling price below buying price",
+        belowBuyingItem && buyingPrice !== null
+          ? `The selling price for "${belowBuyingItem.name}" (${formatMoney(belowBuyingItem.unit_price)}) cannot be less than its buying price (${formatMoney(buyingPrice)}). Adjust the selling price to proceed.`
+          : "One or more items have a selling price lower than the buying price. Adjust the price before completing this sale.",
+      );
+      return;
+    }
     const orderSource = isTransChapSale ? "walkin" : source;
     const orderFulfillment = isTransChapSale
       ? isRestaurant
@@ -2783,6 +2880,12 @@ export function PosWorkspace({
                       const lineKey = line.lineId || line.inventoryItemId;
                       const lineTotal = line.unit_price * line.quantity;
                       const stockItem = itemsById.get(line.inventoryItemId);
+                      const lineBuyingPrice = getLineBuyingPrice(line, stockItem);
+                      const isBelowBuying = isLinePriceBelowBuying(
+                        line,
+                        stockItem,
+                        priceDrafts[lineKey],
+                      );
                       const fractionalUnits = fractionalSellUnits(stockItem);
                       const isHotelDish = stockItem ? isHotelMenuItem(stockItem) : false;
                       const stockCap = stockItem ? maxCartQty(stockItem) : null;
@@ -2857,6 +2960,12 @@ export function PosWorkspace({
                                 />
                               ) : null}
                             </div>
+                            {isTransChapSale && isBelowBuying && lineBuyingPrice !== null ? (
+                              <div className="pos-line__price-alert" role="alert">
+                                <i className="fa-solid fa-triangle-exclamation" aria-hidden="true" />
+                                <span>Selling price cannot be less than buying price ({formatMoney(lineBuyingPrice)})</span>
+                              </div>
+                            ) : null}
                             {line.modifiers && line.modifiers.length > 0 ? (
                               <div className="pos-cart__line-mods">
                                 {line.modifiers.map((m, mIdx) => (
@@ -2911,22 +3020,30 @@ export function PosWorkspace({
                             ) : null}
                           </div>
                           {showLinePriceEdit ? (
-                            <label className="pos-line__price-edit">
-                              <span className="pos-line__price-label">Price</span>
-                              <input
-                                type="number"
-                                min={0}
-                                step="0.01"
-                                value={line.unit_price}
-                                onChange={(e) =>
-                                  setUnitPrice(
-                                    lineKey,
-                                    e.target.value,
-                                  )
-                                }
-                                aria-label={`Unit price for ${line.name}`}
-                              />
-                            </label>
+                            <div className="pos-line__price-block">
+                              <label className={`pos-line__price-edit${isBelowBuying ? " has-error" : ""}`}>
+                                <span className="pos-line__price-label">Price</span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="0.01"
+                                  value={line.unit_price}
+                                  onChange={(e) =>
+                                    setUnitPrice(
+                                      lineKey,
+                                      e.target.value,
+                                    )
+                                  }
+                                  aria-label={`Unit price for ${line.name}`}
+                                />
+                              </label>
+                              {isBelowBuying && lineBuyingPrice !== null ? (
+                                <div className="pos-line__price-alert" role="alert">
+                                  <i className="fa-solid fa-triangle-exclamation" aria-hidden="true" />
+                                  <span>Price cannot be less than buying price ({formatMoney(lineBuyingPrice)})</span>
+                                </div>
+                              ) : null}
+                            </div>
                           ) : null}
                           <div className="pos-line__qty-wrap">
                             {fractionalUnits.length > 0 ? (
@@ -3044,7 +3161,7 @@ export function PosWorkspace({
                               <input
                                 type="text"
                                 inputMode="decimal"
-                                className="pos-line__bulk-price"
+                                className={`pos-line__bulk-price${isBelowBuying ? " has-error" : ""}`}
                                 value={
                                   priceDrafts[lineKey] ??
                                   (Number.isFinite(line.unit_price)
@@ -3635,6 +3752,13 @@ export function PosWorkspace({
                 <dd>{formatMoney(total)}</dd>
               </div>
             </dl>
+
+            {hasPriceBelowBuyingPrice ? (
+              <div className="pos-totals__price-warning" role="alert">
+                <i className="fa-solid fa-triangle-exclamation" aria-hidden="true" />
+                <span>Selling price cannot be less than buying price. Adjust price to enable sale.</span>
+              </div>
+            ) : null}
 
             <button
               type="button"

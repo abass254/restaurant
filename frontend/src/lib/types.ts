@@ -1370,6 +1370,62 @@ export type InventoryItemDetailResponse = {
   data: InventoryItem;
 };
 
+export type InventoryTimelineActivityType =
+  | "bought"
+  | "sold"
+  | "sale_reversal"
+  | "adjustment"
+  | "damage"
+  | "wastage"
+  | "transfer"
+  | "other";
+
+export type InventoryTimelineActivity = {
+  id: string;
+  activity_type: InventoryTimelineActivityType;
+  direction: "in" | "out";
+  title: string;
+  quantity: number;
+  unit: string | null;
+  quantity_before: number | null;
+  quantity_after: number | null;
+  unit_cost: number | null;
+  unit_price: number | null;
+  total_amount: number | null;
+  reason: string;
+  reference_type: string | null;
+  reference_id: string | null;
+  reference_code: string | null;
+  party_name: string | null;
+  user_name: string | null;
+  location: string | null;
+  note: string | null;
+  created_at: string | null;
+  voided_at: string | null;
+  void_reason: string | null;
+};
+
+export type InventoryTimelineSummary = {
+  total_bought: number;
+  total_bought_cost: number;
+  total_sold: number;
+  total_sold_revenue: number;
+  total_adjusted: number;
+  current_stock: number | null;
+  unit: string | null;
+};
+
+export type InventoryTimelineResponse = {
+  summary: InventoryTimelineSummary;
+  activities: InventoryTimelineActivity[];
+  meta: {
+    total: number;
+    page: number;
+    per_page: number;
+    last_page: number;
+  };
+};
+
 export type ProductUploadTokenResponse = {
   token: string;
   upload_url: string;
@@ -1512,6 +1568,9 @@ export type OrderItem = {
   line_total: number;
   notes: string | null;
   modifiers?: OrderItemModifier[] | null;
+  unit_factor?: number | null;
+  sell_unit?: string | null;
+  cost_total?: number | null;
   /** Current on-hand stock for the linked inventory item, when known. */
   stock_quantity?: number | null;
 };
@@ -2429,3 +2488,24 @@ export type StoreStatusResponse = {
   message?: string;
   data: StoreStatus;
 };
+
+export type ShopExpense = {
+  id: string;
+  account_id: string;
+  user_id?: string | null;
+  user_name?: string | null;
+  title: string;
+  category: string;
+  amount: number;
+  payment_method: string;
+  spent_at: string;
+  notes?: string | null;
+  created_at?: string | null;
+};
+
+export type ExpenseListResponse = {
+  data: ShopExpense[];
+  total_amount: number;
+  count: number;
+};
+

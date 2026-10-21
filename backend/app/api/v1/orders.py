@@ -1210,6 +1210,29 @@ def create_order(
             else None
         )
 
+        if inv_item:
+            pack_buy = (resolved_unit or {}).get("buying_price")
+            buying_cost = (
+                Decimal(str(pack_buy))
+                if pack_buy is not None
+                else (
+                    (Decimal(str(inv_item.buying_price)) * unit_factor).quantize(Decimal("0.01"))
+                    if inv_item.buying_price is not None
+                    else None
+                )
+            )
+            if buying_cost is not None and buying_cost > Decimal("0") and price < buying_cost:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "errors": {
+                            f"items.{idx}.unit_price": [
+                                f"Selling price ({price}) cannot be less than buying price ({buying_cost}).",
+                            ],
+                        },
+                    },
+                )
+
         resolved_lines.append(
             (line, inv_item, price, name, sku, sell_unit_label, unit_factor),
         )

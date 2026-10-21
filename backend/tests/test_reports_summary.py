@@ -185,6 +185,18 @@ def test_reports_summary_single_day(db):
     assert total_bucket_sales == 1000.0
     assert total_bucket_purchases == 1000.0
 
+    # Products sold with mark up
+    assert "products_sold" in summary
+    assert len(summary["products_sold"]) == 1
+    burger = summary["products_sold"][0]
+    assert burger["name"] == "Burger"
+    assert burger["qty"] == 2
+    assert burger["selling_amount"] == 1000.0
+    assert burger["buying_amount"] == 600.0
+    assert burger["markup"] == 400.0
+    assert burger["selling_price"] == 500.0
+    assert burger["buying_price"] == 300.0
+
 
 def test_daily_buckets_use_creation_time_like_the_range_filter(db):
     order = db.get(Order, "ord-1")
@@ -204,3 +216,118 @@ def test_reports_range_is_capped_at_a_year(monkeypatch):
             start=date(2025, 1, 1), end=date(2026, 6, 1), tz_offset_minutes=180, source=None, db=None, session={},
         )
     assert exc.value.status_code == 422
+
+
+def test_reports_summary_bulk_sale_multiplies_cost_by_bulk_qty(db):
+    # inv-2 has buying_price = 100.0 (per piece).
+    # Customer buys 2 crates of soda; each crate has unit_factor = 24 pieces.
+    # Total pieces = 2 * 24 = 48 pcs.
+    # Total buying cost = 48 * 100.0 = 4800.0.
+    # Total selling price = 3000.0 per crate = 6000.0.
+    # Expected mark up = 6000.0 - 4800.0 = 1200.0.
+    bulk_order = Order(
+        id="ord-bulk",
+        order_number="ORD-BULK",
+        account_id=ACCOUNT_ID,
+        source="walkin",
+        status="completed",
+        fulfillment_type="pickup",
+        total=6000.0,
+        payment_method="cash",
+        created_at=datetime(2026, 10, 18, 10, 0, 0),
+        paid_at=datetime(2026, 10, 18, 10, 0, 0),
+    )
+    bulk_item = OrderItem(
+        id="item-bulk",
+        order_id="ord-bulk",
+        product_name="Soda Crate",
+        product_id="prod-2",
+        inventory_item_id="inv-2",
+        quantity=2,
+        unit_price=3000.0,
+        line_total=6000.0,
+        unit_factor=24,
+        sell_unit="Crate (24 pcs)",
+    )
+    db.add_all([bulk_order, bulk_item])
+    db.commit()
+
+    summary = reports_summary(db, ACCOUNT_ID, date(2026, 10, 18), date(2026, 10, 18), tz_offset_minutes=180)
+    assert summary["sales_total"] == 6000.0
+    assert summary["cogs"] == 4800.0  # 100 per pc * 2 crates * 24 pcs/crate
+    assert summary["gross_profit"] == 1200.0  # 6000 - 4800
+
+    assert len(summary["products_sold"]) == 1
+    p = summary["products_sold"][0]
+    assert p["name"] == "Soda Crate"
+    assert p["qty"] == 2
+    assert p["total_pcs"] == 48.0
+    assert p["unit_factor"] == 24.0
+    assert p["selling_amount"] == 6000.0
+    assert p["buying_amount"] == 4800.0
+    assert p["markup"] == 1200.0
+    assert p["buying_price"] == 100.0  # cost per piece
+    assert p["selling_price"] == 3000.0  # selling price per crate
+
+
+def test_reports_summary_infers_pack_factor_from_item_attributes(db):
+    # inv-rice has buying_price = 120.80 (per kg).
+    # Pack: 25KG BAG, factor = 25, buying_price = 3020.0, selling_price = 3600.0.
+    # Customer buys 40 bags at 3400.0 with unit_factor=1 (legacy/unselected dropdown).
+    # Reports should infer pack factor = 25 and pack cost = 3020.0 per bag.
+    prod_rice = Product(id="prod-rice", name="KANGORE BASMATI 25KG", slug="kangore-basmati-25kg", unit="Kg")
+    inv_rice = InventoryItem(
+        id="inv-rice",
+        account_id=ACCOUNT_ID,
+        product_id="prod-rice",
+        buying_price=120.80,
+        selling_price=3600.0,
+        attributes={"sell_units": [{"name": "25KG BAG", "factor": 25, "buying_price": 3020.0, "selling_price": 3600.0}]},
+        stock_quantity=1000.0,
+    )
+    order_rice = Order(
+        id="ord-rice",
+        order_number="ORD-RICE",
+        account_id=ACCOUNT_ID,
+        source="walkin",
+        status="completed",
+        fulfillment_type="pickup",
+        total=136000.0,
+        payment_method="cash",
+        created_at=datetime(2026, 10, 19, 10, 0, 0),
+        paid_at=datetime(2026, 10, 19, 10, 0, 0),
+    )
+    item_rice = OrderItem(
+        id="item-rice",
+        order_id="ord-rice",
+        product_name="KANGORE BASMATI 25KG",
+        product_id="prod-rice",
+        inventory_item_id="inv-rice",
+        quantity=40,
+        unit_price=3400.0,
+        line_total=136000.0,
+        unit_factor=1.0,
+        sell_unit=None,
+    )
+    db.add_all([prod_rice, inv_rice, order_rice, item_rice])
+    db.commit()
+
+    summary = reports_summary(db, ACCOUNT_ID, date(2026, 10, 19), date(2026, 10, 19), tz_offset_minutes=180)
+    assert summary["sales_total"] == 136000.0
+    assert summary["cogs"] == 120800.0  # 40 * 3020.0
+    assert summary["gross_profit"] == 15200.0  # 136000 - 120800
+
+    p = summary["products_sold"][0]
+    assert p["name"] == "KANGORE BASMATI 25KG"
+    assert p["qty"] == 40
+    assert p["total_pcs"] == 1000.0
+    assert p["unit_factor"] == 25.0
+    assert p["sell_unit"] == "25KG BAG"
+    assert p["selling_amount"] == 136000.0
+    assert p["buying_amount"] == 120800.0
+    assert p["markup"] == 15200.0
+    assert p["buying_price"] == 120.8  # per kg
+    assert p["unit_buying_price"] == 3020.0  # per bag
+    assert p["selling_price"] == 3400.0  # per bag
+    assert p["markup_percent"] == 12.6
+

@@ -17,6 +17,8 @@ export type ChartBucket = {
   label: string;
   sales: number;
   purchases: number;
+  expenses?: number;
+  markup?: number;
 };
 
 export const RANGE_PRESET_LABELS: Record<RangePreset, string> = {
@@ -149,18 +151,30 @@ export function buildChartBuckets(
   range: DateRange,
   sales: { when: Date; total: number }[],
   purchases: { when: Date; total: number }[],
+  expenses?: { when: Date; total: number }[],
+  markups?: { when: Date; total: number }[],
 ): ChartBucket[] {
+  const expList = expenses ?? [];
+  const markupList = markups ?? [];
   if (range.from === range.to) {
     const hourOf = (d: Date) => Number(hourFormat.format(d)) % 24;
-    const hours = [...sales, ...purchases].map((row) => hourOf(row.when));
+    const hours = [...sales, ...purchases, ...expList, ...markupList].map((row) => hourOf(row.when));
     const start = Math.min(8, ...hours);
     const end = Math.max(18, ...hours);
     const buckets: ChartBucket[] = [];
     for (let h = start; h <= end; h += 1) {
-      buckets.push({ key: String(h), label: hourLabel(h), sales: 0, purchases: 0 });
+      buckets.push({ key: String(h), label: hourLabel(h), sales: 0, purchases: 0, expenses: 0, markup: 0 });
     }
     for (const row of sales) buckets[hourOf(row.when) - start].sales += row.total;
     for (const row of purchases) buckets[hourOf(row.when) - start].purchases += row.total;
+    for (const row of expList) {
+      const idx = hourOf(row.when) - start;
+      if (buckets[idx]) buckets[idx].expenses = (buckets[idx].expenses ?? 0) + row.total;
+    }
+    for (const row of markupList) {
+      const idx = hourOf(row.when) - start;
+      if (buckets[idx]) buckets[idx].markup = (buckets[idx].markup ?? 0) + row.total;
+    }
     return buckets;
   }
 
@@ -171,11 +185,13 @@ export function buildChartBuckets(
   for (let day = range.from; day <= range.to; day = addDays(day, 1)) {
     const key = keyOf(day);
     if (index.has(key)) continue;
-    const bucket = {
+    const bucket: ChartBucket = {
       key,
       label: monthly ? monthLabel(key) : dayLabel(key),
       sales: 0,
       purchases: 0,
+      expenses: 0,
+      markup: 0,
     };
     buckets.push(bucket);
     index.set(key, bucket);
@@ -188,5 +204,14 @@ export function buildChartBuckets(
     const bucket = index.get(keyOf(nairobiDateKey(row.when)));
     if (bucket) bucket.purchases += row.total;
   }
+  for (const row of expList) {
+    const bucket = index.get(keyOf(nairobiDateKey(row.when)));
+    if (bucket) bucket.expenses = (bucket.expenses ?? 0) + row.total;
+  }
+  for (const row of markupList) {
+    const bucket = index.get(keyOf(nairobiDateKey(row.when)));
+    if (bucket) bucket.markup = (bucket.markup ?? 0) + row.total;
+  }
   return buckets;
 }
+

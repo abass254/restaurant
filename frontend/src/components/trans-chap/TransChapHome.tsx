@@ -1,5 +1,5 @@
 "use client";
-
+import { useState } from "react";
 import Link from "next/link";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { TransChapHomePies } from "@/components/trans-chap/TransChapHomePies";
@@ -23,6 +23,7 @@ function todayLabel(): string {
 
 export function TransChapHome() {
   const user = useAuthUser();
+  const [expenseModalOpen, setExpenseModalOpen] = useState(false);
   const restaurant = isRestaurantStore(user.active_account ?? user.account);
   const name = firstName(user.name);
   const shop =
@@ -99,6 +100,14 @@ export function TransChapHome() {
                   <span>Buy Supplies</span>
                 </Link>
               ) : null}
+              <button
+                type="button"
+                onClick={() => setExpenseModalOpen(true)}
+                className="trans-chap-btn trans-chap-btn--secondary"
+              >
+                <i className="fa-solid fa-receipt" aria-hidden />
+                <span>+ Errand</span>
+              </button>
             </>
           ) : (
             <>
@@ -114,13 +123,25 @@ export function TransChapHome() {
                   <span>Restock</span>
                 </Link>
               ) : null}
+              <button
+                type="button"
+                onClick={() => setExpenseModalOpen(true)}
+                className="trans-chap-btn trans-chap-btn--secondary"
+              >
+                <i className="fa-solid fa-receipt" aria-hidden />
+                <span>+ Errand</span>
+              </button>
             </>
           )}
         </div>
       </section>
 
-      <TransChapHomePies />
+      <TransChapHomePies
+        expenseModalOpen={expenseModalOpen}
+        setExpenseModalOpen={setExpenseModalOpen}
+      />
     </div>
   );
 }
+
 

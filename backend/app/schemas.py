@@ -563,6 +563,47 @@ class StockMovementOut(BaseModel):
         )
 
 
+class InventoryTimelineActivityOut(BaseModel):
+    id: str
+    activity_type: str
+    direction: str
+    title: str
+    quantity: float
+    unit: str | None = None
+    quantity_before: float | None = None
+    quantity_after: float | None = None
+    unit_cost: float | None = None
+    unit_price: float | None = None
+    total_amount: float | None = None
+    reason: str
+    reference_type: str | None = None
+    reference_id: str | None = None
+    reference_code: str | None = None
+    party_name: str | None = None
+    user_name: str | None = None
+    location: str | None = None
+    note: str | None = None
+    created_at: datetime | None = None
+    voided_at: datetime | None = None
+    void_reason: str | None = None
+
+
+class InventoryTimelineSummaryOut(BaseModel):
+    total_bought: float = 0.0
+    total_bought_cost: float = 0.0
+    total_sold: float = 0.0
+    total_sold_revenue: float = 0.0
+    total_adjusted: float = 0.0
+    current_stock: float | None = None
+    unit: str | None = None
+
+
+class InventoryTimelineResponse(BaseModel):
+    summary: InventoryTimelineSummaryOut
+    activities: list[InventoryTimelineActivityOut]
+    meta: dict[str, int]
+
+
 # --- Orders ----------------------------------------------------------------
 
 
@@ -958,3 +999,42 @@ class QaAssigneeOut(BaseModel):
 
 class QaAssigneesListResponse(BaseModel):
     data: list[QaAssigneeOut] = []
+
+
+class ExpenseCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    amount: float = Field(..., gt=0)
+    category: str = Field(default="errand", max_length=64)
+    payment_method: str = Field(default="cash", max_length=32)
+    spent_at: datetime | None = None
+    notes: str | None = None
+
+
+class ExpenseUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    amount: float | None = Field(default=None, gt=0)
+    category: str | None = Field(default=None, max_length=64)
+    payment_method: str | None = Field(default=None, max_length=32)
+    spent_at: datetime | None = None
+    notes: str | None = None
+
+
+class ExpenseOut(BaseModel):
+    id: str
+    account_id: str
+    user_id: str | None = None
+    user_name: str | None = None
+    title: str
+    category: str
+    amount: float
+    payment_method: str
+    spent_at: str
+    notes: str | None = None
+    created_at: str | None = None
+
+
+class ExpenseListResponse(BaseModel):
+    data: list[ExpenseOut] = []
+    total_amount: float = 0.0
+    count: int = 0
+

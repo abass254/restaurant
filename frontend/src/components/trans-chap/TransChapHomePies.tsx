@@ -12,6 +12,9 @@ import { readPageCache, writePageCache } from "@/lib/api";
 import { isShopOwner, userCanAccessSection } from "@/lib/merchant-permissions";
 import { fetchWalkinOrders, isCountedWalkinSale } from "@/lib/trans-chap-orders";
 import { fetchTransChapPurchases, type TransChapPurchase } from "@/lib/trans-chap-purchases";
+import { fetchTransChapExpenses } from "@/lib/trans-chap-expenses";
+import { RecordExpenseModal } from "@/components/trans-chap/RecordExpenseModal";
+import { TransChapMarkupModal, type ProductSoldItem } from "@/components/trans-chap/TransChapMarkupModal";
 import { internalErrorMessage } from "@/lib/alerts";
 import { fetchOwingCustomers } from "@/lib/trans-chap-credit";
 import { fetchShopSuppliers } from "@/lib/trans-chap-suppliers";
@@ -30,7 +33,7 @@ import {
   type DateRange,
   type RangePreset,
 } from "@/lib/trans-chap-range";
-import type { Order } from "@/lib/types";
+import type { Order, ShopExpense } from "@/lib/types";
 
 type Slice = {
   name: string;
@@ -44,9 +47,14 @@ export type ReportsSummary = {
   units: number;
   purchase_total: number;
   purchase_count: number;
+  expense_total?: number;
+  expense_count?: number;
+  net_profit_after_expenses?: number;
   net_profit: number;
   cogs: number;
   gross_profit: number;
+  gross_markup_percent?: number;
+  gross_margin_percent?: number;
   payment_methods: {
     mpesa: number;
     cash: number;
@@ -55,6 +63,7 @@ export type ReportsSummary = {
   };
   buckets: ChartBucket[];
   top_products: Array<{ name: string; qty: number; amount: number }>;
+  products_sold?: ProductSoldItem[];
   owing_total: number;
   owing_count: number;
 };
@@ -68,11 +77,20 @@ function homeCacheKey(range: DateRange): string {
 type HomeSnapshot = {
   orders: Order[];
   purchases: TransChapPurchase[];
+  expenses: ShopExpense[];
+  expenseTotal: number;
+  expenseCount: number;
+  grossProfit?: number;
+  cogs?: number;
+  markupPercent?: number;
+  productsSold?: ProductSoldItem[];
   owingTotal: number;
   owingCount: number;
   payableTotal: number;
   payableCount: number;
 };
+
+
 
 async function fetchSupplierPayables(): Promise<{
   payableTotal: number;
@@ -109,7 +127,13 @@ function Money({ amount }: { amount: number }) {
   );
 }
 
-export function TransChapHomePies() {
+export function TransChapHomePies({
+  expenseModalOpen: externalModalOpen,
+  setExpenseModalOpen: setExternalModalOpen,
+}: {
+  expenseModalOpen?: boolean;
+  setExpenseModalOpen?: (open: boolean) => void;
+} = {}) {
   const user = useAuthUser();
   const accountId = user.active_account?.id || user.account?.id;
   const owner = isShopOwner(user);
@@ -125,8 +149,13 @@ export function TransChapHomePies() {
   });
   const [refreshing, setRefreshing] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [internalModalOpen, setInternalModalOpen] = useState(false);
+  const [markupModalOpen, setMarkupModalOpen] = useState(false);
+  const isModalOpen = externalModalOpen !== undefined ? externalModalOpen : internalModalOpen;
+  const setModalOpen = setExternalModalOpen ?? setInternalModalOpen;
   const latestRequest = useRef(0);
   const rangeRef = useRef(range);
+
 
   const loadData = useCallback(
     async (targetRange: DateRange) => {
@@ -145,6 +174,13 @@ export function TransChapHomePies() {
           setData((current) => ({
             orders: [],
             purchases: [],
+            expenses: [],
+            expenseTotal: summaryRes.data.expense_total ?? 0,
+            expenseCount: summaryRes.data.expense_count ?? 0,
+            grossProfit: summaryRes.data.gross_profit ?? 0,
+            cogs: summaryRes.data.cogs ?? 0,
+            markupPercent: summaryRes.data.gross_markup_percent ?? 0,
+            productsSold: summaryRes.data.products_sold ?? [],
             owingTotal: summaryRes.data.owing_total,
             owingCount: summaryRes.data.owing_count,
             payableTotal: payables.payableTotal,
@@ -168,11 +204,12 @@ export function TransChapHomePies() {
       setSummary(null);
       const window = rangeBounds(targetRange);
       try {
-        const [sales, bought, owing, payables] = await Promise.all([
+        const [sales, bought, expensesRes, owing, payables] = await Promise.all([
           fetchWalkinOrders(window),
           canInventory
             ? fetchTransChapPurchases({ accountId, ...window })
             : Promise.resolve({ purchases: [], error: null as string | null, truncated: false }),
+          fetchTransChapExpenses({ from: targetRange.from, to: targetRange.to }),
           canCustomers
             ? fetchOwingCustomers()
             : Promise.resolve({
@@ -185,16 +222,55 @@ export function TransChapHomePies() {
             : Promise.resolve({ payableTotal: 0, payableCount: 0, error: null as string | null }),
         ]);
         if (requestId !== latestRequest.current) return;
+
+        const countedOrders = sales.orders.filter(isCountedWalkinSale);
+        const prodMap = new Map<string, ProductSoldItem>();
+        for (const ord of countedOrders) {
+          for (const item of ord.items ?? []) {
+            const name = item.product_name || "Item";
+            const qty = item.quantity || 1;
+            const factor = Number(item.unit_factor || 1);
+            const totalPcs = qty * factor;
+            const sellingAmount = item.line_total ?? (item.unit_price * qty);
+            const entry = prodMap.get(name) || {
+              name,
+              sku: item.product_sku || undefined,
+              qty: 0,
+              total_pcs: 0,
+              sell_unit: item.sell_unit || undefined,
+              unit_factor: factor,
+              selling_amount: 0,
+              buying_amount: 0,
+              markup: 0,
+              selling_price: item.unit_price || (sellingAmount / qty),
+              buying_price: 0,
+            };
+            entry.qty += qty;
+            entry.total_pcs = (entry.total_pcs || 0) + totalPcs;
+            entry.selling_amount += sellingAmount;
+            entry.markup = entry.selling_amount - entry.buying_amount;
+            prodMap.set(name, entry);
+          }
+        }
+        const fallbackProductsSold = Array.from(prodMap.values()).sort((a, b) => b.markup - a.markup);
+
         const fresh: HomeSnapshot = {
-          orders: sales.orders.filter(isCountedWalkinSale),
+          orders: countedOrders,
           purchases: bought.purchases.filter((row) => !row.voidedAt),
+          expenses: expensesRes.expenses,
+          expenseTotal: expensesRes.totalAmount,
+          expenseCount: expensesRes.count,
+          grossProfit: 0,
+          cogs: 0,
+          markupPercent: 0,
+          productsSold: fallbackProductsSold,
           owingTotal: owing.owingTotal,
           owingCount: owing.customers?.length ?? 0,
           payableTotal: payables.payableTotal,
           payableCount: payables.payableCount,
         };
         setData({ ...fresh, range: targetRange });
-        const failure = sales.error || bought.error || owing.error || payables.error;
+        const failure = sales.error || bought.error || expensesRes.error || owing.error || payables.error;
         setError(failure);
         if (!failure) writePageCache(homeCacheKey(targetRange), fresh);
       } catch (fallbackErr) {
@@ -208,6 +284,7 @@ export function TransChapHomePies() {
     },
     [accountId, canCustomers, canInventory, canSuppliers],
   );
+
 
   useEffect(() => {
     void loadData(rangeRef.current);
@@ -241,10 +318,16 @@ export function TransChapHomePies() {
         salesCount: summary.data.sales_count,
         purchaseTotal: summary.data.purchase_total,
         purchaseCount: summary.data.purchase_count,
+        expenseTotal: summary.data.expense_total ?? 0,
+        expenseCount: summary.data.expense_count ?? 0,
+        grossProfit: summary.data.gross_profit ?? 0,
+        cogs: summary.data.cogs ?? 0,
+        markupPercent: summary.data.gross_markup_percent ?? 0,
         mpesaTotal: summary.data.payment_methods.mpesa,
         creditTotal: summary.data.payment_methods.credit,
         cashTotal: summary.data.payment_methods.cash,
         buckets: summary.data.buckets,
+        productsSold: summary.data.products_sold ?? [],
         owingTotal: summary.data.owing_total,
         owingCount: summary.data.owing_count,
       };
@@ -255,6 +338,9 @@ export function TransChapHomePies() {
       .filter((row): row is { order: Order; when: Date } => inRange(row.when, dataRange));
     const purchaseRows = purchases
       .map((row) => ({ when: parseIso(row.paidAt), total: row.total }))
+      .filter((row): row is { when: Date; total: number } => inRange(row.when, dataRange));
+    const expenseRows = (data?.expenses ?? [])
+      .map((exp) => ({ when: parseIso(exp.spent_at), total: exp.amount }))
       .filter((row): row is { when: Date; total: number } => inRange(row.when, dataRange));
 
     const sumBy = (method: (m: string | null | undefined) => boolean) =>
@@ -276,6 +362,11 @@ export function TransChapHomePies() {
       salesCount: salesRows.length,
       purchaseTotal: purchaseRows.reduce((sum, row) => sum + row.total, 0),
       purchaseCount: purchaseRows.length,
+      expenseTotal: (data?.expenseTotal ?? 0) || expenseRows.reduce((sum, row) => sum + row.total, 0),
+      expenseCount: (data?.expenseCount ?? 0) || expenseRows.length,
+      grossProfit: data?.grossProfit ?? 0,
+      cogs: data?.cogs ?? 0,
+      markupPercent: data?.markupPercent ?? 0,
       mpesaTotal: sumBy((m) => m === "mpesa"),
       creditTotal: sumBy((m) => m === "credit"),
       cashTotal: sumBy((m) => m !== "mpesa" && m !== "credit"),
@@ -283,14 +374,27 @@ export function TransChapHomePies() {
         dataRange,
         salesRows.map((row) => ({ when: row.when, total: row.order.total })),
         purchaseRows,
+        expenseRows,
       ),
+      productsSold: data?.productsSold ?? [],
       owingTotal: displayOwingTotal,
       owingCount: displayOwingCount,
     };
-  }, [summary, range, orders, purchases, dataRange, displayOwingTotal, displayOwingCount]);
+  }, [summary, range, orders, purchases, data, dataRange, displayOwingTotal, displayOwingCount]);
 
-  const { salesTotal, salesCount, purchaseTotal, purchaseCount, owingTotal, owingCount } = stats;
-  const profit = salesTotal - purchaseTotal;
+  const {
+    salesTotal,
+    salesCount,
+    expenseTotal,
+    expenseCount,
+    grossProfit,
+    cogs,
+    markupPercent,
+    productsSold,
+    owingTotal,
+    owingCount,
+  } = stats;
+  const profit = salesTotal - expenseTotal;
   const period = rangeLabel(dataRange, todayKey);
   const paySlices = useMemo<Slice[]>(
     () => [
@@ -332,7 +436,10 @@ export function TransChapHomePies() {
             </span>
             <Money amount={profit} />
             <p>
-              Sales {formatKsh(salesTotal)} − Purchases {formatKsh(purchaseTotal)}
+              Sales {formatKsh(salesTotal)} − Expenses {formatKsh(expenseTotal)}
+              {grossProfit !== 0 || cogs > 0
+                ? ` · Mark up ${formatKsh(grossProfit)}${cogs > 0 ? ` (+${markupPercent}%)` : ""}`
+                : ""}
             </p>
           </div>
           <i
@@ -343,7 +450,9 @@ export function TransChapHomePies() {
 
         <TransChapSalesChart
           buckets={stats.buckets}
-          emptyText={`No sales or purchases ${period}.`}
+          emptyText={`No sales or daily errands ${period}.`}
+          secondaryKey="expenses"
+          secondaryLabel="Expenses"
         />
 
         <div className="trans-chap-dash__totals">
@@ -358,19 +467,69 @@ export function TransChapHomePies() {
                 : `${salesCount} sale${salesCount === 1 ? "" : "s"}`}
             </em>
           </div>
-          <div className="trans-chap-dash__total is-purchase">
-            <span>
-              <i aria-hidden /> Purchases
+          <div
+            className="trans-chap-dash__total is-markup"
+            style={{ cursor: "pointer" }}
+            onClick={() => setMarkupModalOpen(true)}
+            role="button"
+            tabIndex={0}
+            title="Click to view products sold and mark up for this date"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setMarkupModalOpen(true);
+              }
+            }}
+          >
+            <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>
+                <i aria-hidden /> Mark up
+              </span>
+              <span style={{ fontSize: "0.68rem", color: "var(--trans-chap-markup, #10b981)", fontWeight: 700 }}>
+                View list
+              </span>
             </span>
-            <Money amount={purchaseTotal} />
+            <Money amount={grossProfit} />
             <em>
-              {purchaseCount === 0
-                ? "No restock"
-                : `${purchaseCount} purchase${purchaseCount === 1 ? "" : "s"}`}
+              {cogs > 0
+                ? `+${markupPercent}% · (selling − buying) × qty`
+                : salesCount > 0
+                  ? "(selling − buying) × qty"
+                  : "No sales yet"}
+            </em>
+          </div>
+          <div
+            className="trans-chap-dash__total is-expense"
+            style={{ cursor: "pointer" }}
+            onClick={() => setModalOpen(true)}
+            role="button"
+            tabIndex={0}
+            title="Click to record a daily errand or expense"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setModalOpen(true);
+              }
+            }}
+          >
+            <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>
+                <i aria-hidden /> Expenses
+              </span>
+              <span style={{ fontSize: "0.68rem", color: "var(--trans-chap-expense, #f59e0b)", fontWeight: 700 }}>
+                + Record
+              </span>
+            </span>
+            <Money amount={expenseTotal} />
+            <em>
+              {expenseCount === 0
+                ? "No errands recorded"
+                : `${expenseCount} errand${expenseCount === 1 ? "" : "s"}`}
             </em>
           </div>
         </div>
       </article>
+
 
       <section className="trans-chap-dash__panel" aria-labelledby="trans-chap-pay-heading">
         <header className="trans-chap-dash__panel-head">
@@ -473,9 +632,26 @@ export function TransChapHomePies() {
       {owner ? (
         <p className="trans-chap-dash__foot">
           <Link href="/trans-chap/reports">Full reports</Link>
-          <span>Profit is sales minus restock. Credit stays on the tab.</span>
+          <span>Profit is sales minus daily errands. Stock purchases tracked in reports & restock.</span>
         </p>
       ) : null}
+
+      <RecordExpenseModal
+        isOpen={isModalOpen}
+        onClose={() => setModalOpen(false)}
+        onCreated={() => void loadData(range)}
+      />
+
+      <TransChapMarkupModal
+        isOpen={markupModalOpen}
+        onClose={() => setMarkupModalOpen(false)}
+        period={period}
+        totalMarkup={grossProfit}
+        totalSales={salesTotal}
+        totalCogs={cogs}
+        products={productsSold}
+      />
     </MotionFade>
+
   );
 }

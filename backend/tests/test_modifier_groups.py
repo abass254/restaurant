@@ -434,3 +434,23 @@ def test_legacy_supply_options_get_their_supply_price(db):
     assert float(db.get(ModifierOption, free.options[0].id).price_delta) == 0
     assert float(db.get(ModifierOption, size.options[0].id).price_delta) == 60
     assert migration.copy_supply_prices(db) == 0
+
+
+def test_order_rejects_selling_price_below_buying_price(db):
+    from decimal import Decimal
+    from fastapi import HTTPException
+
+    coke = db.get(InventoryItem, "inv-coke")
+    coke.buying_price = Decimal("80.00")
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        _order(db, {"inventory_item_id": "inv-coke", "quantity": 1, "unit_price": 50})
+    assert exc.value.status_code == 422
+    assert "Selling price" in str(exc.value.detail)
+    assert "less than buying price" in str(exc.value.detail)
+
+    res = _order(db, {"inventory_item_id": "inv-coke", "quantity": 1, "unit_price": 85})
+    assert "data" in res
+    assert res["data"].total == Decimal("85.00")
+

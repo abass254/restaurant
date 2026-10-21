@@ -40,12 +40,21 @@ from app.models import (
     Account,
     InventoryItem,
     MealAddon,
+    Order,
+    OrderItem,
     Product,
+    PurchaseOrder,
     ShopSupplier,
     StockMovement,
     User,
 )
-from app.schemas import InventoryItemOut, StockMovementOut
+from app.schemas import (
+    InventoryItemOut,
+    InventoryTimelineActivityOut,
+    InventoryTimelineResponse,
+    InventoryTimelineSummaryOut,
+    StockMovementOut,
+)
 from app.services.inventory_import_service import (
     generate_inventory_template,
     import_inventory_from_excel,
@@ -76,7 +85,7 @@ from app.services.social_publish_service import (
     require_instagram_publish_account,
 )
 from app.support.barcode import product_matches_barcode
-from app.support.datetime_utils import naive_utc
+from app.support.datetime_utils import naive_utc, sortable_datetime
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
@@ -381,6 +390,7 @@ def list_stock_movements(
     reason: Literal["receive", "adjustment", "damage", "other"] | None = Query(
         default=None,
     ),
+    inventory_item_id: str | None = Query(default=None),
     since: datetime | None = Query(default=None),
     until: datetime | None = Query(default=None),
     page: int = Query(default=1, ge=1),
@@ -392,6 +402,8 @@ def list_stock_movements(
     account_id = _require_shop(user)
 
     query = db.query(StockMovement).filter(StockMovement.account_id == account_id)
+    if inventory_item_id:
+        query = query.filter(StockMovement.inventory_item_id == inventory_item_id)
     if direction:
         query = query.filter(StockMovement.direction == direction)
     if reason:
@@ -570,6 +582,241 @@ def get_inventory_item(
     account_id = _require_shop(user)
     item = _get_owned_item(db, account_id, item_id)
     return {"data": InventoryItemOut.from_model(item)}
+
+
+@router.get("/{item_id}/timeline", response_model=InventoryTimelineResponse)
+def get_inventory_item_timeline(
+    item_id: str,
+    activity_type: Literal["all", "bought", "sold", "adjustments"] | None = Query(default="all"),
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    user = _auth_inventory_user(db, session, pos_read_ok=True)
+    account_id = _require_shop(user)
+    item = _get_owned_item(db, account_id, item_id)
+
+    movements = (
+        db.query(StockMovement)
+        .options(
+            joinedload(StockMovement.supplier),
+            joinedload(StockMovement.order),
+            joinedload(StockMovement.purchase_order),
+        )
+        .filter(
+            StockMovement.account_id == account_id,
+            StockMovement.inventory_item_id == item_id,
+        )
+        .all()
+    )
+
+    user_ids = {m.created_by for m in movements if m.created_by}
+    user_map: dict[str, str] = {}
+    if user_ids:
+        users = db.query(User).filter(User.id.in_(user_ids)).all()
+        user_map = {u.id: (u.name or u.email or "Staff") for u in users}
+
+    tracked_order_item_ids = {m.order_item_id for m in movements if m.order_item_id}
+    tracked_order_ids_for_sales = {
+        m.order_id for m in movements if m.order_id and m.reason in ("sale", "sale_reversal")
+    }
+
+    order_items = (
+        db.query(OrderItem)
+        .join(Order, Order.id == OrderItem.order_id)
+        .options(joinedload(OrderItem.order))
+        .filter(
+            Order.account_id == account_id,
+            OrderItem.inventory_item_id == item_id,
+            Order.status != "cancelled",
+        )
+        .all()
+    )
+
+    all_activities: list[InventoryTimelineActivityOut] = []
+
+    for m in movements:
+        if m.reason in ("receive", "purchase") or (m.direction == "in" and m.reason not in ("sale_reversal", "adjustment", "kitchen_return")):
+            act_type = "bought"
+            title = "Stock Received" if m.reason == "receive" else "Stock Bought"
+        elif m.reason == "sale" or (m.direction == "out" and m.reason == "sale"):
+            act_type = "sold"
+            title = "Sale"
+        elif m.reason == "sale_reversal":
+            act_type = "sale_reversal"
+            title = "Customer Return"
+        elif m.reason in ("damage", "wastage"):
+            act_type = m.reason
+            title = "Damaged Goods" if m.reason == "damage" else "Wastage"
+        elif m.reason in ("adjustment", "count_variance"):
+            act_type = "adjustment"
+            title = "Stock Count Adjustment" if m.reason == "count_variance" else ("Stock Added (Adjustment)" if m.direction == "in" else "Stock Removed (Adjustment)")
+        elif m.reason in ("issue", "kitchen_return"):
+            act_type = "transfer"
+            title = "Issued to Kitchen" if m.reason == "issue" else "Returned from Kitchen"
+        else:
+            act_type = "other"
+            title = m.reason.replace("_", " ").title()
+
+        ref_type = None
+        ref_id = None
+        ref_code = None
+        party = None
+
+        if m.purchase_order_id:
+            ref_type = "purchase_order"
+            ref_id = m.purchase_order_id
+            if m.purchase_order:
+                ref_code = m.purchase_order.reference or f"PO-{m.purchase_order.id[:6]}"
+                party = m.purchase_order.supplier_name
+        elif m.order_id:
+            ref_type = "order"
+            ref_id = m.order_id
+            if m.order:
+                ref_code = f"#{m.order.order_number}" if m.order.order_number else f"#{m.order.id[:6]}"
+                party = m.order.customer_name
+        elif m.stock_take_id:
+            ref_type = "stock_take"
+            ref_id = m.stock_take_id
+            ref_code = "Stock Take"
+        elif m.supplier_id:
+            ref_type = "supplier"
+            ref_id = m.supplier_id
+            if m.supplier:
+                party = m.supplier.name
+
+        if not party and m.supplier:
+            party = m.supplier.name
+
+        unit_cost = float(m.unit_cost) if m.unit_cost is not None else None
+        total_cost = float(m.total_cost) if m.total_cost is not None else None
+        if total_cost is None and unit_cost is not None and m.quantity:
+            total_cost = round(unit_cost * float(m.quantity), 2)
+
+        all_activities.append(
+            InventoryTimelineActivityOut(
+                id=f"mov_{m.id}",
+                activity_type=act_type,
+                direction=m.direction,
+                title=title,
+                quantity=float(m.quantity),
+                unit=item.product.unit if item.product else None,
+                quantity_before=float(m.quantity_before) if m.quantity_before is not None else None,
+                quantity_after=float(m.quantity_after) if m.quantity_after is not None else None,
+                unit_cost=unit_cost,
+                unit_price=None,
+                total_amount=total_cost,
+                reason=m.reason,
+                reference_type=ref_type,
+                reference_id=ref_id,
+                reference_code=ref_code,
+                party_name=party,
+                user_name=user_map.get(m.created_by),
+                location=m.location or "store",
+                note=m.note,
+                created_at=m.created_at,
+                voided_at=m.voided_at,
+                void_reason=m.void_reason,
+            )
+        )
+
+    for oi in order_items:
+        if oi.id in tracked_order_item_ids or (oi.order_id in tracked_order_ids_for_sales):
+            continue
+        factor = float(oi.unit_factor or 1)
+        qty = float(oi.quantity) * factor
+        unit_p = float(oi.unit_price) if oi.unit_price is not None else None
+        tot = float(oi.line_total) if oi.line_total is not None else ((unit_p * float(oi.quantity)) if unit_p else None)
+        ord_num = oi.order.order_number if oi.order else None
+        ref_code = f"#{ord_num}" if ord_num else None
+        created = oi.created_at or (oi.order.created_at if oi.order else None)
+
+        all_activities.append(
+            InventoryTimelineActivityOut(
+                id=f"oi_{oi.id}",
+                activity_type="sold",
+                direction="out",
+                title="Sale",
+                quantity=qty,
+                unit=oi.sell_unit or (item.product.unit if item.product else None),
+                quantity_before=None,
+                quantity_after=None,
+                unit_cost=None,
+                unit_price=unit_p,
+                total_amount=tot,
+                reason="sale",
+                reference_type="order",
+                reference_id=oi.order_id,
+                reference_code=ref_code,
+                party_name=oi.order.customer_name if oi.order else None,
+                user_name=None,
+                location="store",
+                note=f"Order {ref_code}" if ref_code else "Retail sale",
+                created_at=created,
+                voided_at=None,
+                void_reason=None,
+            )
+        )
+
+    total_bought = sum(a.quantity for a in all_activities if a.activity_type == "bought" and not a.voided_at)
+    total_bought_cost = sum(a.total_amount or 0.0 for a in all_activities if a.activity_type == "bought" and not a.voided_at)
+    total_sold_qty = sum(a.quantity for a in all_activities if a.activity_type == "sold" and not a.voided_at)
+    total_returned_qty = sum(a.quantity for a in all_activities if a.activity_type == "sale_reversal" and not a.voided_at)
+    net_sold = max(0.0, total_sold_qty - total_returned_qty)
+    total_sold_revenue = sum(a.total_amount or 0.0 for a in all_activities if a.activity_type == "sold" and not a.voided_at)
+    total_adjusted = sum(
+        (a.quantity if a.direction == "in" else -a.quantity)
+        for a in all_activities
+        if a.activity_type in ("adjustment", "damage", "wastage") and not a.voided_at
+    )
+
+    summary = InventoryTimelineSummaryOut(
+        total_bought=round(total_bought, 3),
+        total_bought_cost=round(total_bought_cost, 2),
+        total_sold=round(net_sold, 3),
+        total_sold_revenue=round(total_sold_revenue, 2),
+        total_adjusted=round(total_adjusted, 3),
+        current_stock=float(item.stock_quantity) if item.stock_quantity is not None else None,
+        unit=item.product.unit if item.product else None,
+    )
+
+    filtered = all_activities
+    if activity_type and activity_type != "all":
+        if activity_type == "bought":
+            filtered = [a for a in filtered if a.activity_type == "bought"]
+        elif activity_type == "sold":
+            filtered = [a for a in filtered if a.activity_type in ("sold", "sale_reversal")]
+        elif activity_type == "adjustments":
+            filtered = [a for a in filtered if a.activity_type in ("adjustment", "damage", "wastage", "transfer", "other")]
+
+    if since is not None:
+        since_naive = naive_utc(since)
+        filtered = [a for a in filtered if a.created_at and naive_utc(a.created_at) >= since_naive]
+
+    if until is not None:
+        until_naive = naive_utc(until)
+        filtered = [a for a in filtered if a.created_at and naive_utc(a.created_at) < until_naive]
+
+    filtered.sort(key=lambda a: (sortable_datetime(a.created_at), a.id), reverse=True)
+
+    total_count = len(filtered)
+    offset = (page - 1) * per_page
+    paginated = filtered[offset : offset + per_page]
+    last_page = max(1, (total_count + per_page - 1) // per_page)
+
+    return InventoryTimelineResponse(
+        summary=summary,
+        activities=paginated,
+        meta={
+            "total": total_count,
+            "page": page,
+            "per_page": per_page,
+            "last_page": last_page,
+        },
+    )
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

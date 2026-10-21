@@ -58,6 +58,8 @@ html[data-theme="dark"] .trans-chap-root.auth-split {
     --trans-chap-credit: #c2410c;
     --trans-chap-mpesa: #00a651;
     --trans-chap-purchase: #0f766e;
+    --trans-chap-expense: #f59e0b;
+    --trans-chap-markup: #10b981;
     --trans-chap-stock: #57534e;
     --trans-chap-social: #7c3aed;
     --trans-chap-records: var(--color-primary);
@@ -10599,8 +10601,27 @@ html[data-theme="dark"] .trans-chap-sale__add {
 
 .trans-chap-dash__totals {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.6rem;
+}
+
+@media (max-width: 560px) {
+    .trans-chap-dash__totals {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.4rem;
+    }
+    .trans-chap-dash__total {
+        padding: 0.6rem 0.5rem;
+    }
+    .trans-chap-dash__total strong {
+        font-size: 0.95rem;
+    }
+}
+
+@media (max-width: 360px) {
+    .trans-chap-dash__totals {
+        grid-template-columns: 1fr;
+    }
 }
 
 .trans-chap-dash__total {
@@ -10635,9 +10656,19 @@ html[data-theme="dark"] .trans-chap-sale__add {
     background: var(--trans-chap-sale);
 }
 
+.trans-chap-dash__total.is-markup > span i {
+    background: var(--trans-chap-markup, #10b981);
+}
+
 .trans-chap-dash__total.is-purchase > span i {
     background: var(--trans-chap-purchase);
 }
+
+.trans-chap-dash__total.is-expense > span i {
+    background: var(--trans-chap-expense);
+}
+
+
 
 .trans-chap-dash__total strong {
     display: flex;
@@ -16077,4 +16108,232 @@ html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/mpesa"] 
     align-self: flex-start;
     margin-top: 0.5rem;
 }
+
+/* --------------------------------------------------------------------------
+   TransChap Modal & Errand / Expense Form
+   -------------------------------------------------------------------------- */
+
+.trans-chap-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    animation: posBackdropFadeIn 0.2s ease-out;
+}
+
+.trans-chap-modal {
+    position: relative;
+    width: 100%;
+    max-width: 480px;
+    background: var(--app-surface, #18181b);
+    border: 1px solid var(--app-border, rgba(255, 255, 255, 0.1));
+    border-radius: 20px;
+    box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+    animation: posModalPopIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.trans-chap-modal__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.25rem 1.25rem 1rem;
+    border-bottom: 1px solid var(--app-border, rgba(255, 255, 255, 0.08));
+}
+
+.trans-chap-modal__header h3 {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--app-text, #ffffff);
+}
+
+.trans-chap-modal__header p {
+    margin: 0.25rem 0 0;
+    font-size: 0.8rem;
+    color: var(--app-text-secondary, #a1a1aa);
+}
+
+.trans-chap-modal__close {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    border: 0;
+    background: color-mix(in srgb, var(--app-text) 8%, transparent);
+    color: var(--app-text-secondary, #a1a1aa);
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.trans-chap-modal__close:hover {
+    background: color-mix(in srgb, var(--app-text) 16%, transparent);
+    color: var(--app-text, #ffffff);
+}
+
+.trans-chap-modal__form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1.25rem;
+}
+
+.trans-chap-form__alert-error {
+    padding: 0.65rem 0.85rem;
+    border-radius: 10px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.trans-chap-form__field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.trans-chap-form__field label {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--app-text-secondary, #a1a1aa);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.trans-chap-form__amount-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.85rem;
+    background: color-mix(in srgb, var(--app-bg) 75%, transparent);
+    border: 1px solid var(--app-border, rgba(255, 255, 255, 0.12));
+    border-radius: 12px;
+}
+
+.trans-chap-form__amount-wrap:focus-within {
+    border-color: var(--trans-chap-expense, #f59e0b);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--trans-chap-expense, #f59e0b) 25%, transparent);
+}
+
+.trans-chap-form__currency {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--trans-chap-expense, #f59e0b);
+}
+
+.trans-chap-form__amount-input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--app-text, #ffffff);
+    font-size: 1.35rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    outline: none;
+}
+
+.trans-chap-form__input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.65rem 0.85rem;
+    background: color-mix(in srgb, var(--app-bg) 75%, transparent);
+    border: 1px solid var(--app-border, rgba(255, 255, 255, 0.12));
+    border-radius: 12px;
+    color: var(--app-text, #ffffff);
+    font: inherit;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.trans-chap-form__input:focus {
+    border-color: var(--app-primary, #6366f1);
+}
+
+.trans-chap-form__quick-pills {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.trans-chap-form__quick-pills span {
+    font-size: 0.7rem;
+    color: var(--app-text-muted, #71717a);
+    font-weight: 600;
+}
+
+.trans-chap-form__pills-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.trans-chap-pill-btn {
+    appearance: none;
+    padding: 0.3rem 0.65rem;
+    border: 1px solid var(--app-border, rgba(255, 255, 255, 0.08));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-bg) 60%, transparent);
+    color: var(--app-text-secondary, #a1a1aa);
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.trans-chap-pill-btn:hover {
+    background: color-mix(in srgb, var(--trans-chap-expense, #f59e0b) 14%, transparent);
+    border-color: color-mix(in srgb, var(--trans-chap-expense, #f59e0b) 40%, transparent);
+    color: var(--trans-chap-expense, #f59e0b);
+}
+
+.trans-chap-form__toggle-group {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+}
+
+.trans-chap-form__toggle-btn {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.6rem 0.8rem;
+    border-radius: 10px;
+    border: 1px solid var(--app-border, rgba(255, 255, 255, 0.1));
+    background: color-mix(in srgb, var(--app-bg) 60%, transparent);
+    color: var(--app-text-secondary, #a1a1aa);
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.trans-chap-form__toggle-btn.is-active {
+    background: color-mix(in srgb, var(--app-primary, #6366f1) 20%, transparent);
+    border-color: var(--app-primary, #6366f1);
+    color: var(--app-text, #ffffff);
+}
+
+.trans-chap-modal__actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.65rem;
+    margin-top: 0.5rem;
+}
+
 

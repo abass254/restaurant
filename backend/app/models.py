@@ -512,6 +512,34 @@ class ShopSupplierPayment(Base):
     supplier: Mapped[ShopSupplier] = relationship()
 
 
+class ShopExpense(Base):
+    """Daily shop expense / errand made by the merchant."""
+
+    __tablename__ = "shop_expenses"
+    __table_args__ = (
+        Index("ix_shop_expenses_account_spent_at", "account_id", "spent_at"),
+        Index("ix_shop_expenses_account_created", "account_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    account_id: Mapped[str] = mapped_column(String(PK_LEN), ForeignKey("accounts.id"))
+    user_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(64), default="errand")
+    amount: Mapped[Any] = mapped_column(Numeric(14, 2), nullable=False)
+    payment_method: Mapped[str] = mapped_column(String(32), default="cash")
+    spent_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    account: Mapped[Account] = relationship()
+    user: Mapped[User | None] = relationship()
+
 
 class ShopSupplier(Base):
     """Vendor / wholesaler contact for a shop."""

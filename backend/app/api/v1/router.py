@@ -47,6 +47,7 @@ from app.api.v1 import (
     reports,
     sms_tools,
     whatsapp_tools,
+    expenses,
 )
 
 router = APIRouter(prefix="/api/v1")
@@ -96,4 +97,6 @@ router.include_router(kitchen_issues.router)
 router.include_router(admin.router)
 router.include_router(admin_whatsapp.router)
 router.include_router(reports.router)
+router.include_router(expenses.router)
 router.include_router(meta.router)
+

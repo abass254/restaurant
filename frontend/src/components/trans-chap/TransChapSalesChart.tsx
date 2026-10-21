@@ -16,6 +16,9 @@ type Props = {
   buckets: ChartBucket[];
   emptyText: string;
   height?: number;
+  secondaryKey?: "purchases" | "expenses";
+  secondaryLabel?: string;
+  secondaryFill?: string;
 };
 
 function compactKsh(value: number): string {
@@ -24,8 +27,21 @@ function compactKsh(value: number): string {
   return String(Math.round(value));
 }
 
-export function TransChapSalesChart({ buckets, emptyText, height = 170 }: Props) {
-  const hasData = buckets.some((b) => b.sales > 0 || b.purchases > 0);
+export function TransChapSalesChart({
+  buckets,
+  emptyText,
+  height = 170,
+  secondaryKey = "purchases",
+  secondaryLabel,
+  secondaryFill,
+}: Props) {
+  const hasData = buckets.some((b) => b.sales > 0 || (Number(b[secondaryKey]) || 0) > 0);
+  const label = secondaryLabel || (secondaryKey === "expenses" ? "Expenses" : "Purchases");
+  const fill =
+    secondaryFill ||
+    (secondaryKey === "expenses"
+      ? "var(--trans-chap-expense, #f59e0b)"
+      : "var(--trans-chap-purchase)");
 
   return (
     <div className="trans-chap-chart" style={{ minHeight: height }}>
@@ -55,21 +71,51 @@ export function TransChapSalesChart({ buckets, emptyText, height = 170 }: Props)
             />
             <Tooltip
               cursor={{ fill: "color-mix(in srgb, var(--app-text) 6%, transparent)" }}
-              formatter={(value: number, name: string) => [
-                formatKsh(value),
-                name === "sales" ? "Sales" : "Purchases",
-              ]}
-              contentStyle={{
-                background: "var(--app-surface)",
-                border: "1px solid var(--app-border)",
-                borderRadius: 10,
-                fontSize: 12,
+              content={({ active, payload, label: xLabel }) => {
+                if (!active || !payload || !payload.length) return null;
+                const bucket = (payload[0]?.payload || {}) as ChartBucket;
+                const salesAmt = Number(bucket.sales || 0);
+                const secondaryAmt = Number(bucket[secondaryKey] || 0);
+                const markupAmt = bucket.markup !== undefined ? Number(bucket.markup) : null;
+                return (
+                  <div
+                    style={{
+                      background: "var(--app-surface)",
+                      border: "1px solid var(--app-border)",
+                      borderRadius: 10,
+                      padding: "8px 12px",
+                      fontSize: 12,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
+                      boxShadow: "0 4px 16px rgba(0, 0, 0, 0.12)",
+                    }}
+                  >
+                    <div style={{ color: "var(--app-text)", fontWeight: 750, marginBottom: 2 }}>
+                      {xLabel || bucket.label}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 14 }}>
+                      <span style={{ color: "var(--app-text-secondary)" }}>Sales:</span>
+                      <strong style={{ color: "var(--trans-chap-sale)" }}>{formatKsh(salesAmt)}</strong>
+                    </div>
+                    {markupAmt !== null ? (
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 14 }}>
+                        <span style={{ color: "var(--app-text-secondary)" }}>Mark up:</span>
+                        <strong style={{ color: "var(--trans-chap-markup, #10b981)" }}>
+                          {formatKsh(markupAmt)}
+                        </strong>
+                      </div>
+                    ) : null}
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 14 }}>
+                      <span style={{ color: "var(--app-text-secondary)" }}>{label}:</span>
+                      <strong style={{ color: fill }}>{formatKsh(secondaryAmt)}</strong>
+                    </div>
+                  </div>
+                );
               }}
-              labelStyle={{ color: "var(--app-text)", fontWeight: 700 }}
-              itemStyle={{ color: "var(--app-text)" }}
             />
             <Bar dataKey="sales" fill="var(--trans-chap-sale)" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="purchases" fill="var(--trans-chap-purchase)" radius={[4, 4, 0, 0]} />
+            <Bar dataKey={secondaryKey} fill={fill} radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       ) : (

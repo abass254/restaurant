@@ -175,6 +175,16 @@ export const apiRoutes = {
   inventoryStockMovementVoid: (id: string) =>
     `${apiUrl}/api/v1/inventory/stock-movements/${id}/void`,
   inventoryItem: (id: string) => `${apiUrl}/api/v1/inventory/${id}`,
+  inventoryItemTimeline: (id: string, params?: Record<string, string | number>) => {
+    const base = `${apiUrl}/api/v1/inventory/${encodeURIComponent(id)}/timeline`;
+    if (!params) return base;
+    const sp = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") sp.set(k, String(v));
+    });
+    const qs = sp.toString();
+    return qs ? `${base}?${qs}` : base;
+  },
   inventoryMedia: (id: string) => `${apiUrl}/api/v1/inventory/${id}/media`,
   inventoryMediaPost: (id: string) =>
     `${apiUrl}/api/v1/inventory/${id}/media/post`,
@@ -282,6 +292,16 @@ export const apiRoutes = {
     const qs = params.toString();
     return `${apiUrl}/api/v1/reports/summary${qs ? `?${qs}` : ""}`;
   },
+  expenses: (start?: string, end?: string, category?: string) => {
+    const params = new URLSearchParams();
+    if (start) params.set("start", start);
+    if (end) params.set("end", end);
+    if (category) params.set("category", category);
+    const qs = params.toString();
+    return `${apiUrl}/api/v1/expenses${qs ? `?${qs}` : ""}`;
+  },
+  expense: (id: string) => `${apiUrl}/api/v1/expenses/${encodeURIComponent(id)}`,
+
   kitchenIssues: `${apiUrl}/api/v1/kitchen-issues`,
   kitchenStock: `${apiUrl}/api/v1/kitchen-issues/stock`,
   kitchenSuggest: `${apiUrl}/api/v1/kitchen-issues/suggest`,
