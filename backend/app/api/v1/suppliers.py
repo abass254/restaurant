@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.session import require_user, validate_csrf
 from app.database import get_db
 from app.dependencies import get_request_session
-from app.models import ShopSupplier, ShopSupplierPayment
+from app.models import Account, ShopSupplier, ShopSupplierPayment
 from app.services.platform_instagram import require_merchant_account_id
 from app.services.supplier_import_service import (
     generate_supplier_template,
@@ -28,6 +28,18 @@ from app.support.merchant_permissions import (
 router = APIRouter(prefix="/suppliers", tags=["suppliers"])
 
 TILL_SUPPLIER_SECTIONS = ("supplier", "inventory", "dashboard")
+
+
+def _outstanding_adjustment_allowed(db: Session, account_id: str) -> bool:
+    account = db.get(Account, account_id)
+    return bool(account and getattr(account, "allow_outstanding_adjustment", False))
+
+
+def _reject_outstanding_adjustment() -> None:
+    raise HTTPException(
+        status.HTTP_403_FORBIDDEN,
+        detail="Turn on Adjust Supplier/Customer Outstanding amounts in Settings to change a balance.",
+    )
 
 
 class SupplierCreateRequest(BaseModel):
@@ -207,6 +219,8 @@ def create_supplier(
     user = require_user(db, session)
     assert_merchant_section_any_access(user, *TILL_SUPPLIER_SECTIONS)
     account_id = require_merchant_account_id(user)
+    if (payload.balance or 0) > 0 and not _outstanding_adjustment_allowed(db, account_id):
+        _reject_outstanding_adjustment()
     p_code = payload.postal_code or payload.postalcode
     try:
         supplier = SupplierService(db).create_supplier(
@@ -323,6 +337,12 @@ def update_supplier(
     assert_merchant_section_access(user, "supplier")
     account_id = require_merchant_account_id(user)
     data = payload.model_dump(exclude_unset=True)
+    if "balance" in data and not _outstanding_adjustment_allowed(db, account_id):
+        current = db.get(ShopSupplier, supplier_id)
+        current_balance = float(current.balance or 0) if current is not None else 0.0
+        if abs(float(data.get("balance") or 0) - current_balance) > 0.009:
+            _reject_outstanding_adjustment()
+        data.pop("balance", None)
     p_code = data.get("postal_code") or data.get("postalcode")
     try:
         supplier = SupplierService(db).update_supplier(

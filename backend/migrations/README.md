@@ -15,7 +15,11 @@ Python script that:
 
 Deploy note: the `2026_08_29_*` deliveries / QA / login-code scripts must run
 before shipping the current `Delivery` / `QaIssue` models. `scripts/backend-migrate.sh`
-runs every file in filename order.
+runs every file in filename order. Run `2026_10_21_160000_kitchen_shift_sessions.py`
+before deploying kitchen clock-in and stock-confirmed clock-out. Run
+`2026_10_22_043000_recipe_serving_units.py` before deploying menu serving-unit
+recipe configuration. Run `2026_10_22_100000_kitchen_equivalence_units.py`
+before deploying Kitchen equivalence-measure configuration.
 
 ## Why not Alembic?
 

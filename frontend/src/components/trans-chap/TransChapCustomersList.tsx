@@ -3,6 +3,7 @@
 import {
   ChangeEvent,
   FormEvent,
+  Fragment,
   useCallback,
   useEffect,
   useId,
@@ -39,6 +40,7 @@ import type {
   ContactImportMode,
   ManualCreditCollectRequest,
   ManualCreditCollectResponse,
+  SettingsOperationsResponse,
   CustomerImportResponse,
   ShopCustomer,
   ShopCustomerMutationResponse,
@@ -49,6 +51,7 @@ type CustomerForm = {
   phone: string;
   physical_location: string;
   credit_limit: string;
+  outstanding_balance: string;
   notes: string;
 };
 
@@ -71,6 +74,7 @@ const EMPTY_FORM: CustomerForm = {
   phone: "+254",
   physical_location: "",
   credit_limit: "1000",
+  outstanding_balance: "",
   notes: "",
 };
 
@@ -122,6 +126,7 @@ export function TransChapCustomersList() {
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [owingOnly, setOwingOnly] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
   const [tabOpenId, setTabOpenId] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState<CustomerForm>(EMPTY_FORM);
@@ -141,6 +146,23 @@ export function TransChapCustomersList() {
   >({});
   const [limitValues, setLimitValues] = useState<Record<string, string>>({});
   const [savingLimitId, setSavingLimitId] = useState<string | null>(null);
+  const [allowOutstandingAdjustment, setAllowOutstandingAdjustment] = useState(false);
+  const [outstandingValues, setOutstandingValues] = useState<Record<string, string>>({});
+  const [savingOutstandingId, setSavingOutstandingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void apiFetch<SettingsOperationsResponse>(apiRoutes.settingsOperations)
+      .then((data) => {
+        if (!cancelled) setAllowOutstandingAdjustment(Boolean(data.allow_outstanding_adjustment));
+      })
+      .catch(() => {
+        if (!cancelled) setAllowOutstandingAdjustment(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const createPhoneCheck = useMemo(
     () => checkKenyanPhone(createForm.phone),
@@ -259,20 +281,15 @@ export function TransChapCustomersList() {
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return customers;
-    return customers.filter((row) =>
-      [
-        row.name,
-        row.phone,
-        row.physical_location ?? "",
-        row.address ?? "",
-        row.notes ?? "",
-      ]
+    return customers.filter((row) => {
+      if (owingOnly && !(row.outstanding_balance > 0)) return false;
+      if (!needle) return true;
+      return [row.name, row.phone, row.physical_location ?? "", row.address ?? "", row.notes ?? ""]
         .join(" ")
         .toLowerCase()
-        .includes(needle),
-    );
-  }, [customers, query]);
+        .includes(needle);
+    });
+  }, [customers, owingOnly, query]);
 
   const owingCount = useMemo(
     () => customers.filter((row) => row.outstanding_balance > 0).length,
@@ -309,15 +326,106 @@ export function TransChapCustomersList() {
     if (!name) throw new Error("Enter the customer's name.");
     if (!phone) throw new Error("Enter a phone number.");
     const loc = form.physical_location.trim() || null;
+    let outstanding = 0;
+    if (allowOutstandingAdjustment) {
+      const raw = form.outstanding_balance.trim().replace(/,/g, "");
+      if (raw) {
+        outstanding = Number(raw);
+        if (!Number.isFinite(outstanding) || outstanding < 0) {
+          throw new Error("Enter an outstanding amount of 0 or more.");
+        }
+      }
+    }
     return {
       name,
       phone,
       credit_limit: creditLimit,
+      ...(allowOutstandingAdjustment ? { outstanding_balance: outstanding } : {}),
       physical_location: loc,
       address: loc,
       notes: form.notes.trim() || null,
       email: null,
     };
+  }
+
+  async function saveTableOutstanding(customer: ShopCustomer) {
+    if (!allowOutstandingAdjustment || savingOutstandingId === customer.id) return;
+    const raw = (outstandingValues[customer.id] ?? String(customer.outstanding_balance ?? 0))
+      .trim()
+      .replace(/,/g, "");
+    const amount = raw ? Number(raw) : 0;
+    if (!Number.isFinite(amount) || amount < 0) {
+      await showError("Check amount", "Enter an outstanding amount of 0 or more.");
+      setOutstandingValues((prev) => {
+        const next = { ...prev };
+        delete next[customer.id];
+        return next;
+      });
+      return;
+    }
+    if (customer.credit_limit > 0 && amount > customer.credit_limit) {
+      await showError(
+        "Amount too high",
+        `Outstanding cannot be higher than the ${formatKsh(customer.credit_limit)} credit limit.`,
+      );
+      return;
+    }
+    if (Math.abs(amount - Number(customer.outstanding_balance || 0)) < 0.009) {
+      setOutstandingValues((prev) => {
+        const next = { ...prev };
+        delete next[customer.id];
+        return next;
+      });
+      return;
+    }
+    setSavingOutstandingId(customer.id);
+    try {
+      const res = await apiFetch<ShopCustomerMutationResponse>(
+        apiRoutes.customerUpdate(customer.id),
+        { method: "POST", body: JSON.stringify({ outstanding_balance: amount }) },
+      );
+      setCustomers((prev) => prev.map((row) => (row.id === customer.id ? res.data : row)));
+      setOutstandingValues((prev) => {
+        const next = { ...prev };
+        delete next[customer.id];
+        return next;
+      });
+      await toastSuccess(`Outstanding set to ${formatKsh(amount)}`);
+    } catch (err) {
+      await showError("Could not update outstanding", extractErrorMessage(err));
+    } finally {
+      setSavingOutstandingId(null);
+    }
+  }
+
+  async function handleSaveOutstanding(customer: ShopCustomer) {
+    const raw = (outstandingValues[customer.id] ?? "").trim().replace(/,/g, "");
+    const amount = Number(raw);
+    if (!raw || !Number.isFinite(amount) || amount < 0) {
+      await showError("Check amount", "Enter an outstanding amount of 0 or more.");
+      return;
+    }
+    if (customer.credit_limit > 0 && amount > customer.credit_limit) {
+      await showError(
+        "Amount too high",
+        `Outstanding cannot be higher than the ${formatKsh(customer.credit_limit)} credit limit.`,
+      );
+      return;
+    }
+    setSavingOutstandingId(customer.id);
+    try {
+      const res = await apiFetch<ShopCustomerMutationResponse>(
+        apiRoutes.customerUpdate(customer.id),
+        { method: "POST", body: JSON.stringify({ outstanding_balance: amount }) },
+      );
+      setCustomers((prev) => prev.map((row) => (row.id === customer.id ? res.data : row)));
+      setOutstandingValues((prev) => ({ ...prev, [customer.id]: "" }));
+      await toastSuccess(`Outstanding set to ${formatKsh(amount)}`);
+    } catch (err) {
+      await showError("Could not update outstanding", extractErrorMessage(err));
+    } finally {
+      setSavingOutstandingId(null);
+    }
   }
 
   async function handleCreate(event: FormEvent) {
@@ -540,6 +648,24 @@ export function TransChapCustomersList() {
               />
             </div>
           </div>
+          {allowOutstandingAdjustment ? (
+          <div className="auth-split__field">
+            <label htmlFor="trans-chap-customer-outstanding">Outstanding amount (KES)</label>
+            <div className="trans-chap-input">
+              <input
+                id="trans-chap-customer-outstanding"
+                type="text"
+                inputMode="decimal"
+                className="auth-split__input"
+                placeholder="0.00"
+                value={createForm.outstanding_balance}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, outstanding_balance: e.target.value }))
+                }
+              />
+            </div>
+          </div>
+          ) : null}
           <div className="auth-split__field">
             <label htmlFor="trans-chap-customer-notes">Notes (optional)</label>
             <div className="trans-chap-input">
@@ -751,6 +877,15 @@ export function TransChapCustomersList() {
           </button>
           <button
             type="button"
+            className={`trans-chap-chip${owingOnly ? " trans-chap-chip--primary" : ""}`}
+            aria-pressed={owingOnly}
+            onClick={() => setOwingOnly((on) => !on)}
+          >
+            <i className="fa-solid fa-scale-unbalanced" aria-hidden />
+            <span>{owingOnly ? "Owing you" : "All customers"}</span>
+          </button>
+          <button
+            type="button"
             className="trans-chap-chip"
             onClick={openImport}
           >
@@ -778,7 +913,129 @@ export function TransChapCustomersList() {
           No customers yet. Tap + to add people you sell to, or import from Excel or CSV.
         </TransChapStatus>
       ) : filtered.length === 0 ? (
-        <p className="trans-chap-sales__empty">No names match this search.</p>
+        <p className="trans-chap-sales__empty">
+          {owingOnly && !query.trim()
+            ? "No customers owe you right now. Show all customers to see everyone."
+            : "No names match this search."}
+        </p>
+      ) : layoutView === "list" ? (
+        <div className="trans-chap-sales__list">
+          <div className="trans-chap-stock-table-wrap trans-chap-stock-table-wrap--cards">
+            <table className="trans-chap-stock-table trans-chap-stock-table--cards trans-chap-stock-table--supplier">
+              <thead>
+                <tr>
+                  <th scope="col">Customer</th>
+                  <th scope="col">Phone</th>
+                  <th scope="col">Location</th>
+                  <th scope="col">Balance owed</th>
+                  <th scope="col">Pay by</th>
+                  <th className="trans-chap-stock-table__actions" scope="col">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((customer) => {
+                  const open = openId === customer.id;
+                  const panelId = `${listId}-${customer.id}`;
+                  const owed = Number(customer.outstanding_balance || 0);
+                  return (
+                    <Fragment key={customer.id}>
+                      <tr
+                        className={`is-clickable ${open ? "is-picked" : ""}`}
+                        title={open ? "Click to close details" : "Click to view details"}
+                        tabIndex={0}
+                        role="button"
+                        aria-expanded={open}
+                        onClick={(event) => {
+                          if ((event.target as HTMLElement).closest("a, button, input, select, textarea")) {
+                            return;
+                          }
+                          toggle(customer);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            if ((event.target as HTMLElement).closest("a, button, input, select, textarea")) {
+                              return;
+                            }
+                            event.preventDefault();
+                            toggle(customer);
+                          }
+                        }}
+                      >
+                        <td className="trans-chap-stock-table__product">{customer.name}</td>
+                        <td className="trans-chap-stock-table__mono">{customer.phone || "—"}</td>
+                        <td className="trans-chap-stock-table__wrap">
+                          {customer.physical_location || customer.address || "—"}
+                        </td>
+                        <td className="trans-chap-stock-table__strong">
+                          <label className="trans-chap-panel__qty-edit">
+                            <span className="sr-only">Balance owed</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={
+                                allowOutstandingAdjustment
+                                  ? (outstandingValues[customer.id] ?? String(owed))
+                                  : owed > 0
+                                    ? formatKsh(owed)
+                                    : "—"
+                              }
+                              disabled={!allowOutstandingAdjustment || savingOutstandingId === customer.id}
+                              aria-label={`Balance owed for ${customer.name}`}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setOutstandingValues((prev) => ({ ...prev, [customer.id]: value }));
+                              }}
+                              onBlur={() => void saveTableOutstanding(customer)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                                if (event.key === "Escape") {
+                                  setOutstandingValues((prev) => {
+                                    const next = { ...prev };
+                                    delete next[customer.id];
+                                    return next;
+                                  });
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                              }}
+                            />
+                          </label>
+                        </td>
+                        <td>
+                          {customer.date_to_pay && owed > 0 ? (
+                            formatNairobiDate(customer.date_to_pay)
+                          ) : (
+                            <span className="trans-chap-stock-table__muted">—</span>
+                          )}
+                        </td>
+                        <td className="trans-chap-stock-table__actions">
+                          <div className="trans-chap-stock-table__actions-inner">
+                            <button
+                              type="button"
+                              className="trans-chap-panel__link"
+                              aria-expanded={open}
+                              aria-controls={`${panelId}-edit`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                toggle(customer);
+                              }}
+                            >
+                              {open ? "Close" : "View"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
         <MotionList className="trans-chap-sales__list" as="div">
           {filtered.map((customer) => {
@@ -831,9 +1088,41 @@ export function TransChapCustomersList() {
                           <span className="trans-chap-customer-balance__label">
                             {owes ? "Balance owed" : "Balance"}
                           </span>
-                          <strong className="trans-chap-customer-balance__amount">
-                            {owes ? formatKsh(customer.outstanding_balance) : "All paid up"}
-                          </strong>
+                          <label className="trans-chap-panel__qty-edit">
+                            <span className="sr-only">Balance owed</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={
+                                allowOutstandingAdjustment
+                                  ? (outstandingValues[customer.id] ?? String(customer.outstanding_balance ?? 0))
+                                  : owes
+                                    ? formatKsh(customer.outstanding_balance)
+                                    : "All paid up"
+                              }
+                              disabled={!allowOutstandingAdjustment || savingOutstandingId === customer.id}
+                              aria-label={`Balance owed for ${customer.name}`}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setOutstandingValues((prev) => ({ ...prev, [customer.id]: value }));
+                              }}
+                              onBlur={() => void saveTableOutstanding(customer)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                                if (event.key === "Escape") {
+                                  setOutstandingValues((prev) => {
+                                    const next = { ...prev };
+                                    delete next[customer.id];
+                                    return next;
+                                  });
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                              }}
+                            />
+                          </label>
                         </div>
                         {customer.date_to_pay && owes ? (
                           <span className="trans-chap-customer-balance__due">
@@ -1030,6 +1319,52 @@ export function TransChapCustomersList() {
                           {manualCollectingId === customer.id ? "Recording…" : "Record payment"}
                         </button>
                       </form>
+                    ) : null}
+
+                    {allowOutstandingAdjustment ? (
+                    <form
+                      className="trans-chap-customer-manual trans-chap-customer-limit"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void handleSaveOutstanding(customer);
+                      }}
+                    >
+                      <div className="trans-chap-customer-manual__head">
+                        <span className="trans-chap-customer-section-label">Outstanding amount</span>
+                        <p>
+                          Currently {formatKsh(customer.outstanding_balance)}. Set the balance owed.
+                        </p>
+                      </div>
+                      <div className="trans-chap-customer-limit__row">
+                        <label htmlFor={`${panelId}-outstanding`} className="sr-only">
+                          Outstanding amount (KES)
+                        </label>
+                        <input
+                          id={`${panelId}-outstanding`}
+                          type="text"
+                          inputMode="decimal"
+                          className="auth-split__input"
+                          placeholder={formatKsh(customer.outstanding_balance)}
+                          value={outstandingValues[customer.id] ?? ""}
+                          onChange={(event) =>
+                            setOutstandingValues((prev) => ({
+                              ...prev,
+                              [customer.id]: event.target.value,
+                            }))
+                          }
+                        />
+                        <button
+                          type="submit"
+                          className="trans-chap-btn trans-chap-btn--secondary"
+                          disabled={
+                            savingOutstandingId === customer.id ||
+                            !(outstandingValues[customer.id] ?? "").trim()
+                          }
+                        >
+                          {savingOutstandingId === customer.id ? "Saving…" : "Save"}
+                        </button>
+                      </div>
+                    </form>
                     ) : null}
 
                     <form

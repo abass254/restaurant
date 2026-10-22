@@ -6,6 +6,7 @@ from typing import Any, Literal
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
+from app.services.kitchen_menu_service import supports_recipe
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -25,6 +26,7 @@ class AccountOut(BaseModel):
     business_category: str
     store_type: str = "retail"
     logo_url: str | None = None
+    receipt_descriptions: list[str] | None = None
     latitude: float | None = None
     longitude: float | None = None
 
@@ -401,6 +403,7 @@ class ProductOut(BaseModel):
     modifier_groups: list[ModifierGroupOut] | None = None
     combo_components: list[ComboComponentOut] | None = None
     recipe: list[RecipeLineOut] | None = None
+    recipe_serving_unit: str = "servings"
     is_active: bool = True
     created_at: datetime | None
     updated_at: datetime | None
@@ -480,6 +483,7 @@ def _inventory_product_out(product, account_id: str | None = None) -> ProductOut
         return None
     out = ProductOut.model_validate(product)
     product_type = getattr(product, "product_type", None)
+    recipe_supported = supports_recipe(product_type, getattr(product, "category", None))
     if product_type == "meal":
         links = sorted(
             product.available_addons or [],
@@ -488,8 +492,16 @@ def _inventory_product_out(product, account_id: str | None = None) -> ProductOut
         out.addons = [MealAddonOut.model_validate(link) for link in links]
     if product_type in ("meal", "combo"):
         out.modifier_groups = modifier_groups_for(product, account_id)
-    if product_type == "meal":
+    if recipe_supported:
         out.recipe = recipe_for(product, account_id)
+        out.recipe_serving_unit = next(
+            (
+                setting.serving_unit
+                for setting in product.recipe_serving_units or []
+                if setting.account_id == account_id
+            ),
+            "servings",
+        )
     if product_type == "combo":
         out.combo_components = combo_components_for(product, account_id)
     return out
@@ -1037,4 +1049,3 @@ class ExpenseListResponse(BaseModel):
     data: list[ExpenseOut] = []
     total_amount: float = 0.0
     count: int = 0
-

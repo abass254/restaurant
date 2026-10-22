@@ -3,6 +3,7 @@
 import {
   FormEvent,
   type RefObject,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -59,7 +60,6 @@ type Editor = {
   price: string;
   section: string;
   groupIds: string[];
-  recipe: RecipeDraft[];
 };
 
 type GroupEditorState = { group: ModifierGroup | null; attach: boolean };
@@ -85,7 +85,7 @@ function stockLine(costing: MenuCosting | undefined) {
   }
   return (
     <span className={`tc-menu__card-stock${left <= 5 ? " is-warn" : ""}`}>
-      {left} {left === 1 ? "portion" : "portions"} left{more}
+      {left} {costing.serving_unit || "servings"} left{more}
     </span>
   );
 }
@@ -112,16 +112,6 @@ function itemRecipe(item: InventoryItem | null | undefined): { productId: string
   }));
 }
 
-function sameRecipe(
-  a: { productId: string; quantity: number }[],
-  b: { productId: string; quantity: number }[],
-): boolean {
-  return (
-    a.length === b.length &&
-    a.every((line, index) => line.productId === b[index].productId && line.quantity === b[index].quantity)
-  );
-}
-
 function sameIds(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((id, index) => id === b[index]);
 }
@@ -137,6 +127,9 @@ export function TransChapMenuForm() {
   const [costing, setCosting] = useState<Map<string, MenuCosting>>(new Map());
   const [search, setSearch] = useState("");
   const [editor, setEditor] = useState<Editor | null>(null);
+  const [recipeEditor, setRecipeEditor] = useState<InventoryItem | null>(null);
+  const [recipeDraft, setRecipeDraft] = useState<RecipeDraft[]>([]);
+  const [recipeServingUnit, setRecipeServingUnit] = useState("servings");
   const [groupEditor, setGroupEditor] = useState<GroupEditorState | null>(null);
   const [showGroups, setShowGroups] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -145,7 +138,7 @@ export function TransChapMenuForm() {
 
   useEffect(() => {
     let alive = true;
-    apiFetch<InventoryResponse>(`${apiRoutes.inventory}?active=true`)
+    apiFetch<InventoryResponse>(apiRoutes.inventory)
       .then((data) => {
         if (alive) setItems(data.data);
       })
@@ -264,21 +257,27 @@ export function TransChapMenuForm() {
       price: "",
       section: menuSections[0]?.id ?? "mains",
       groupIds: [],
-      recipe: [],
     });
     focusField(name ? priceRef : nameRef);
   }
 
-  function openExisting(item: InventoryItem) {
+  const openExisting = useCallback((item: InventoryItem) => {
     setEditor({
       item,
       name: inventoryProductName(item),
       price: item.selling_price != null ? String(item.selling_price) : "",
       section: menuSection(item, menuSections),
       groupIds: itemGroupIds(item).filter((id) => !groups.length || groupsById.has(id)),
-      recipe: itemRecipe(item).map((line) => ({ productId: line.productId, qty: String(line.quantity) })),
     });
-  }
+  }, [groups.length, groupsById, menuSections]);
+
+  const openRecipeEditor = useCallback((item: InventoryItem) => {
+    setRecipeEditor(item);
+    setRecipeServingUnit(item.product?.recipe_serving_unit || "servings");
+    setRecipeDraft(
+      itemRecipe(item).map((line) => ({ productId: line.productId, qty: String(line.quantity) })),
+    );
+  }, []);
 
   function patchEditor(patch: Partial<Editor>) {
     setEditor((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -323,8 +322,6 @@ export function TransChapMenuForm() {
 
     const input = { name, price, productType: "meal" as const, section: editor.section };
     const priorGroups = itemGroupIds(current);
-    const priorRecipe = itemRecipe(current);
-    const recipeLines = recipeDraftLines(editor.recipe);
     const catalogueChanged =
       !!current?.product &&
       (!sameName(current.product.name, name) ||
@@ -354,13 +351,6 @@ export function TransChapMenuForm() {
         const attached = await saveItemModifierGroups(saved.product_id, editor.groupIds);
         if (saved.product) saved = { ...saved, product: { ...saved.product, modifier_groups: attached } };
       }
-      if (!sameRecipe(sameProduct ? priorRecipe : [], recipeLines)) {
-        const recipe = await saveRecipe(
-          saved.product_id,
-          recipeLines.map((line) => ({ product_id: line.productId, quantity: line.quantity })),
-        );
-        if (saved.product) saved = { ...saved, product: { ...saved.product, recipe } };
-      }
 
       setItems((prev) => [
         saved,
@@ -376,6 +366,48 @@ export function TransChapMenuForm() {
       await toastSuccess(current ? `"${name}" updated` : `"${name}" added to the menu`);
     } catch (err) {
       await showError("Could not save", extractErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSaveRecipe() {
+    if (!recipeEditor || saving) return;
+    if (!recipeServingUnit.trim()) {
+      await showError("Enter a serving unit", "Name what one unit of this menu item is called, such as plates or sticks.");
+      return;
+    }
+    if (recipeDraft.some((row) => row.productId && parseRecipeQty(row.qty) == null)) {
+      await showError("Check recipe quantities", "Enter a valid amount greater than zero for each selected supply.");
+      return;
+    }
+    const lines = recipeDraftLines(recipeDraft);
+    setSaving(true);
+    try {
+      const saved = await saveRecipe(
+        recipeEditor.product_id,
+        lines.map((line) => ({ product_id: line.productId, quantity: line.quantity })),
+        recipeServingUnit.trim(),
+      );
+      setItems((previous) =>
+        previous.map((item) =>
+          item.id === recipeEditor.id && item.product
+            ? {
+                ...item,
+                product: {
+                  ...item.product,
+                  recipe: saved.lines,
+                  recipe_serving_unit: saved.servingUnit,
+                },
+              }
+            : item,
+        ),
+      );
+      await toastSuccess(`Recipe saved for "${inventoryProductName(recipeEditor)}"`);
+      setRecipeEditor(null);
+      setRecipeDraft([]);
+    } catch (err) {
+      await showError("Could not save recipe", extractErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -410,9 +442,8 @@ export function TransChapMenuForm() {
     !saving &&
     !!editor.name.trim() &&
     editorPrice != null &&
-    editorPrice > 0 &&
-    (editor.recipe.every((row) => !row.productId || parseRecipeQty(row.qty) != null));
-  const overlayOpen = !!editor || !!groupEditor || showGroups;
+    editorPrice > 0;
+  const overlayOpen = !!editor || !!recipeEditor || !!groupEditor || showGroups;
 
   return (
     <div className="tc-menu">
@@ -504,6 +535,14 @@ export function TransChapMenuForm() {
                         {stockLine(costing.get(item.id))}
                       </span>
                     </button>
+                    <button
+                      type="button"
+                      className="tc-menu__recipe-action"
+                      onClick={() => openRecipeEditor(item)}
+                    >
+                      <i className="fa-solid fa-list-check" aria-hidden="true" />
+                      {item.product?.recipe?.length ? "Edit recipe" : "Set recipe"}
+                    </button>
                   </li>
                 );
               })}
@@ -530,6 +569,74 @@ export function TransChapMenuForm() {
           onNew={() => setGroupEditor({ group: null, attach: false })}
           onEdit={(group) => setGroupEditor({ group, attach: false })}
         />
+      ) : null}
+
+      {recipeEditor ? (
+        <div
+          className="pos-menu-modal-backdrop"
+          onClick={() => !saving && setRecipeEditor(null)}
+          role="presentation"
+        >
+          <div
+            className="pos-menu-modal tc-menu__recipe-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="recipe-editor-title"
+          >
+            <div className="pos-menu-modal__drag-handle" />
+            <header className="pos-menu-modal__header">
+              <div className="pos-menu-modal__title-row">
+                <div>
+                  <h2 id="recipe-editor-title" className="pos-menu-modal__title">Recipe setup</h2>
+                  <p className="pos-menu-modal__label-hint">{inventoryProductName(recipeEditor)}</p>
+                </div>
+                <button
+                  type="button"
+                  className="pos-menu-modal__close-btn"
+                  onClick={() => setRecipeEditor(null)}
+                  disabled={saving}
+                  aria-label="Close recipe setup"
+                >
+                  <i className="fa-solid fa-xmark" aria-hidden="true" />
+                </button>
+              </div>
+            </header>
+            <div className="pos-menu-modal__body">
+              <RecipeField
+                label="Ingredients per serving"
+                supplies={supplies}
+                rows={recipeDraft}
+                price={recipeEditor.selling_price}
+                servingUnit={recipeServingUnit}
+                onServingUnitChange={setRecipeServingUnit}
+                onChange={setRecipeDraft}
+              />
+              <footer className="pos-menu-modal__footer tc-menu__footer tc-menu__recipe-footer">
+                <button
+                  type="button"
+                  className="rs-btn"
+                  onClick={() => setRecipeEditor(null)}
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    saving ||
+                    !recipeServingUnit.trim() ||
+                    recipeDraft.some((row) => row.productId && parseRecipeQty(row.qty) == null)
+                  }
+                  className="pos-menu-modal__submit-btn"
+                  onClick={() => void handleSaveRecipe()}
+                >
+                  {saving ? "Saving…" : "Save recipe"}
+                </button>
+              </footer>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {editor ? (
@@ -622,14 +729,6 @@ export function TransChapMenuForm() {
                   ))}
                 </div>
               </div>
-
-              <RecipeField
-                label="Always in this meal"
-                supplies={supplies}
-                rows={editor.recipe}
-                price={editorPrice}
-                onChange={(recipe) => patchEditor({ recipe })}
-              />
 
               <MenuOptionsField
                 label="Modifiers"

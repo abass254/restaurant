@@ -42,6 +42,7 @@ import {
 import {
   paymentStatusFromOrder,
   receiptFromOrder,
+  receiptHeaderLines,
   saveTransChapReceipt,
   transChapReceiptHref,
 } from "@/lib/trans-chap-receipt";
@@ -3839,7 +3840,12 @@ export function PosWorkspace({
       </div>
 
       {completeInPlace && receiptOrder && isTransChapSale ? (
-        <TransChapReceiptPrint receipt={receiptFromOrder(receiptOrder, receiptShopName)} />
+        <TransChapReceiptPrint
+          receipt={{
+            ...receiptFromOrder(receiptOrder, receiptShopName),
+            headerLines: receiptHeaderLines(authUser?.active_account ?? authUser?.account),
+          }}
+        />
       ) : completeInPlace && receiptOrder ? (
         <section className="orders-receipt-print" aria-hidden="true">
           <header className="orders-receipt-print__head">

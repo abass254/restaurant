@@ -90,6 +90,7 @@ export const apiRoutes = {
   settingsBusiness: `${apiUrl}/api/v1/settings/business`,
   settingsBusinessLocation: `${apiUrl}/api/v1/settings/business-location`,
   settingsOpeningAmount: `${apiUrl}/api/v1/settings/opening-amount`,
+  settingsReceiptDescriptions: `${apiUrl}/api/v1/settings/receipt-descriptions`,
   settingsOpeningStock: `${apiUrl}/api/v1/settings/opening-stock`,
   settingsOperations: `${apiUrl}/api/v1/settings/operations`,
   settingsMenuSections: `${apiUrl}/api/v1/settings/menu-sections`,
@@ -304,6 +305,10 @@ export const apiRoutes = {
 
   kitchenIssues: `${apiUrl}/api/v1/kitchen-issues`,
   kitchenStock: `${apiUrl}/api/v1/kitchen-issues/stock`,
+  kitchenEquivalenceUnits: `${apiUrl}/api/v1/kitchen-issues/equivalence-units`,
+  kitchenShift: `${apiUrl}/api/v1/kitchen-sessions`,
+  kitchenShiftAction: (action: "clock-in" | "clock-out") =>
+    `${apiUrl}/api/v1/kitchen-sessions/${action}`,
   kitchenSuggest: `${apiUrl}/api/v1/kitchen-issues/suggest`,
   kitchenReturn: `${apiUrl}/api/v1/kitchen-issues/return`,
   kitchenUsed: `${apiUrl}/api/v1/kitchen-issues/used`,

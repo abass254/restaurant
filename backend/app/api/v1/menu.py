@@ -21,6 +21,7 @@ from app.models import (
     ModifierOption,
     Product,
     RecipeLine,
+    RecipeServingUnit,
     User,
 )
 from app.schemas import (
@@ -30,6 +31,7 @@ from app.schemas import (
     recipe_for,
 )
 from app.services.menu_options import option_availability
+from app.services.kitchen_menu_service import supports_recipe
 from app.support.merchant_permissions import (
     active_account_id,
     assert_merchant_section_any_access,
@@ -81,6 +83,7 @@ class RecipeLineIn(BaseModel):
 
 class RecipeReplace(BaseModel):
     lines: list[RecipeLineIn] = Field(default_factory=list, max_length=40)
+    serving_unit: str | None = Field(default=None, min_length=1, max_length=32)
 
 
 class ComboComponentIn(BaseModel):
@@ -392,7 +395,7 @@ def replace_recipe(
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
 ):
-    """Set how much of each supply one portion of a dish uses. Recipes belong to this shop only."""
+    """Set a dish's per-serving ingredient quantities and serving unit for this shop."""
     validate_csrf(request, session)
     _, account_id = _menu_user(db, session, write=True)
     dish = (
@@ -404,8 +407,11 @@ def replace_recipe(
     )
     if dish is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Dish not found on your menu.")
-    if dish.product_type != "meal":
-        raise _unprocessable("product_id", "Recipes are set on dishes; meals use their dishes' recipes.")
+    if not supports_recipe(dish.product_type, dish.category):
+        raise _unprocessable("product_id", "Recipes can only be set on meals or food menu items.")
+    serving_unit = payload.serving_unit.strip() if payload.serving_unit is not None else None
+    if payload.serving_unit is not None and not serving_unit:
+        raise _unprocessable("serving_unit", "Enter what one portion of this meal is called.")
 
     ids = [row.product_id for row in payload.lines]
     if len(set(ids)) != len(ids):
@@ -440,6 +446,23 @@ def replace_recipe(
         line.sort_order = index
         keep.append(line)
     dish.recipe_lines = keep
+    serving = (
+        db.query(RecipeServingUnit)
+        .filter(
+            RecipeServingUnit.account_id == account_id,
+            RecipeServingUnit.product_id == product_id,
+        )
+        .first()
+    )
+    if serving is None and serving_unit is not None:
+        serving = RecipeServingUnit(
+            account_id=account_id,
+            product_id=product_id,
+            serving_unit=serving_unit,
+        )
+        db.add(serving)
+    elif serving is not None and serving_unit is not None:
+        serving.serving_unit = serving_unit
     db.commit()
 
     db.expire_all()
@@ -449,7 +472,10 @@ def replace_recipe(
         .filter(Product.id == product_id)
         .first()
     )
-    return {"data": [line.model_dump() for line in recipe_for(dish, account_id)]}
+    return {
+        "data": [line.model_dump() for line in recipe_for(dish, account_id)],
+        "serving_unit": serving.serving_unit if serving is not None else "servings",
+    }
 
 
 @router.put("/products/{product_id}/combo-components")

@@ -38,7 +38,7 @@ function receiptLines(receipt: TransChapReceipt): TransChapReceiptLine[] {
 function statusLabel(receipt: TransChapReceipt): string {
   if (receipt.orderStatus === "cancelled") return "VOIDED";
   if (receipt.orderStatus === "refunded") return "REFUNDED";
-  if (receipt.payMode === "credit") return "ON CREDIT";
+  if (receipt.payMode === "credit") return "INVOICE";
   if (isTransChapReceiptPaid(receipt)) return "PAID";
   if (receipt.paymentStatus === "pending") return "WAITING";
   return "FAILED";
@@ -47,7 +47,7 @@ function statusLabel(receipt: TransChapReceipt): string {
 function statusColor(receipt: TransChapReceipt): [number, number, number] {
   const label = statusLabel(receipt);
   if (label === "PAID") return PAID;
-  if (label === "ON CREDIT") return CREDIT;
+  if (label === "INVOICE") return CREDIT;
   if (label === "WAITING") return WAIT;
   return FAIL;
 }
@@ -67,6 +67,7 @@ function estimateHeight(receipt: TransChapReceipt): number {
     height += line.name.length > 28 ? 12 : 7;
     if (line.quantity > 1) height += 4;
   }
+  height += (receipt.headerLines?.length ?? 0) * 4;
   if (receipt.mpesaReceiptNumber) height += 16;
   height += 8;
   height += 7 * (3 + (receipt.customerPhone ? 1 : 0));
@@ -95,10 +96,23 @@ export function buildTransChapReceiptPdf(receipt: TransChapReceipt): File {
   doc.text(shop, mid, y, { align: "center" });
   y += shop.length * 5.2 + 2;
 
+  const headerLines = receipt.headerLines ?? [];
+  if (headerLines.length) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...INK);
+    for (const line of headerLines) {
+      const wrapped = doc.splitTextToSize(line, width);
+      doc.text(wrapped, mid, y, { align: "center" });
+      y += wrapped.length * 3.6 + 0.6;
+    }
+    y += 1.4;
+  }
+
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(...MUTED);
-  doc.text("TILL RECEIPT", mid, y, { align: "center" });
+  doc.text(receipt.payMode === "credit" ? "INVOICE" : "TILL RECEIPT", mid, y, { align: "center" });
   y += 8;
 
   const stamp = statusLabel(receipt);

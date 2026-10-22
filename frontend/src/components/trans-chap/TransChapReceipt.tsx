@@ -16,6 +16,7 @@ import {
   isTransChapReceiptPaid,
   loadTransChapReceipt,
   receiptFromOrder,
+  receiptHeaderLines,
   saveTransChapReceipt,
   type TransChapReceipt,
 } from "@/lib/trans-chap-receipt";
@@ -390,10 +391,15 @@ export function TransChapReceiptView() {
     })
   );
 
+  const shownReceipt = {
+    ...receipt,
+    headerLines: receiptHeaderLines(user.active_account ?? user.account),
+  };
+
   return (
     <div className="trans-chap-receipt">
-      <TransChapReceiptSlip ref={slipRef} receipt={receipt} />
-      <TransChapReceiptPrint receipt={receipt} />
+      <TransChapReceiptSlip ref={slipRef} receipt={shownReceipt} />
+      <TransChapReceiptPrint receipt={shownReceipt} />
 
       <div className="trans-chap-slip__actions">
         {closed ? null : paid || onCredit ? (

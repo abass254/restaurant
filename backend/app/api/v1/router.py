@@ -17,6 +17,7 @@ from app.api.v1 import (
     integrations,
     inventory,
     kitchen_issues,
+    kitchen_sessions,
     kra,
     login_codes,
     mapbox,
@@ -94,9 +95,9 @@ router.include_router(suppliers.router)
 router.include_router(purchase_orders.router)
 router.include_router(restaurant_stock.router)
 router.include_router(kitchen_issues.router)
+router.include_router(kitchen_sessions.router)
 router.include_router(admin.router)
 router.include_router(admin_whatsapp.router)
 router.include_router(reports.router)
 router.include_router(expenses.router)
 router.include_router(meta.router)
-

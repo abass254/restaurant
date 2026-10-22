@@ -9,9 +9,10 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1 import settings as settings_api
+from app.api.v1 import kitchen_issues, settings as settings_api
 from app.api.v1.settings import BusinessProfileUpdate
-from app.models import Account, InventoryItem, KitchenIssue, StockMovement
+from app.api.v1.kitchen_issues import EquivalenceUnitsReplace
+from app.models import Account, Catalogue, InventoryItem, KitchenEquivalenceUnit, KitchenIssue, RecipeServingUnit, StockMovement
 from app.services.kitchen_issue_service import (
     KitchenIssueError,
     cancel_issue,
@@ -23,6 +24,8 @@ from app.services.kitchen_issue_service import (
     record_kitchen_used,
     suggest_issue,
 )
+from app.services.kitchen_menu_service import deactivate_restaurant_menus
+from app.services.kitchen_shift_service import KitchenShiftError, clock_in, clock_out
 from app.services.purchase_order_service import (
     LineInput,
     PurchaseOrderService,
@@ -64,6 +67,31 @@ def _qty(db, item_id: str) -> tuple[float, float | None]:
     return float(item.stock_quantity), kitchen
 
 
+def test_kitchen_equivalence_measures_are_account_scoped_and_normalized(rdb, monkeypatch):
+    user = SimpleNamespace(id="u1")
+    monkeypatch.setattr(kitchen_issues, "validate_csrf", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(kitchen_issues, "require_user", lambda *_args, **_kwargs: user)
+    monkeypatch.setattr(kitchen_issues, "active_account_id", lambda _user: ACCOUNT)
+    monkeypatch.setattr(kitchen_issues, "assert_merchant_section_any_access", lambda *_args, **_kwargs: None)
+
+    result = kitchen_issues.replace_equivalence_units(
+        EquivalenceUnitsReplace(units=[" plates ", "Sticks", "PLATES", ""]),
+        request=None,
+        db=rdb,
+        session={},
+    )
+
+    assert result["data"] == ["plates", "Sticks"]
+    stored = (
+        rdb.query(KitchenEquivalenceUnit)
+        .filter(KitchenEquivalenceUnit.account_id == ACCOUNT)
+        .order_by(KitchenEquivalenceUnit.sort_order)
+        .all()
+    )
+    assert [unit.name for unit in stored] == ["plates", "Sticks"]
+    assert kitchen_issues.get_equivalence_units(db=rdb, session={})["data"] == ["plates", "Sticks"]
+
+
 def _enable(db, **opening: str):
     enable_kitchen_issuing(
         db,
@@ -92,6 +120,70 @@ def test_off_by_default_everything_stays_in_store(rdb):
     assert {m.location for m in rdb.query(StockMovement).all()} == {"store"}
     with pytest.raises(KitchenIssueError):
         create_issue(rdb, _account(rdb), [("inv-flour", Decimal("1"))], user_id="u1")
+
+
+def test_daily_menu_reset_pauses_only_active_restaurant_menu_items(rdb, retail_db):
+    rdb.add(
+        Catalogue(
+            id="category-dish",
+            name="Soup",
+            slug="soup",
+            product_type="retail",
+            category="Food & Beverage",
+        )
+    )
+    rdb.add(
+        InventoryItem(
+            id="inv-category-dish",
+            account_id=ACCOUNT,
+            product_id="category-dish",
+            is_active=True,
+        )
+    )
+    rdb.commit()
+
+    assert deactivate_restaurant_menus(rdb) == 2
+    assert rdb.get(InventoryItem, "inv-chapati").is_active is False
+    assert rdb.get(InventoryItem, "inv-category-dish").is_active is False
+    assert rdb.get(InventoryItem, "inv-flour").is_active is True
+    assert deactivate_restaurant_menus(rdb) == 0
+    assert deactivate_restaurant_menus(retail_db) == 0
+    assert retail_db.get(InventoryItem, "inv-chapati").is_active is True
+
+
+def test_kitchen_shift_requires_stock_handover_and_full_closing_count(rdb):
+    _enable(rdb, flour="3", oil="1", eggs="2")
+    supplies = {
+        item.id: Decimal(str(item.kitchen_quantity or 0))
+        for item in rdb.query(InventoryItem).filter(InventoryItem.kitchen_quantity.isnot(None)).all()
+    }
+    with pytest.raises(KitchenShiftError, match="does not match kitchen stock"):
+        clock_in(rdb, _account(rdb), "u1", {**supplies, "inv-flour": Decimal("2")})
+    with pytest.raises(KitchenShiftError, match="confirm every kitchen item"):
+        clock_in(rdb, _account(rdb), "u1", {})
+
+    session = clock_in(rdb, _account(rdb), "u1", supplies)
+    rdb.commit()
+    assert session.status == "active"
+    with pytest.raises(KitchenShiftError, match="already active"):
+        clock_in(rdb, _account(rdb), "u1", supplies)
+
+    with pytest.raises(KitchenShiftError, match="Count every kitchen item"):
+        clock_out(rdb, ACCOUNT, "u1", {}, None, True)
+    with pytest.raises(KitchenShiftError, match="Finish or hand over"):
+        clock_out(rdb, ACCOUNT, "u1", supplies, None, False)
+    changed_counts = {item_id: qty for item_id, qty in supplies.items()}
+    changed_counts["inv-flour"] = Decimal("2")
+    with pytest.raises(KitchenShiftError, match="note explaining"):
+        clock_out(rdb, ACCOUNT, "u1", changed_counts, None, True)
+
+    closed = clock_out(rdb, ACCOUNT, "u1", changed_counts, "One kg used for staff meal", True)
+    rdb.commit()
+    assert closed.status == "closed"
+    assert closed.closing_note == "One kg used for staff meal"
+    assert closed.stock_take_id is not None
+    assert _qty(rdb, "inv-flour")[1] == pytest.approx(2)
+    assert clock_in(rdb, _account(rdb), "u1", changed_counts).status == "active"
 
 
 def test_enable_moves_opening_kitchen_count(rdb):
@@ -235,6 +327,23 @@ def test_suggestion_and_menu_portions_use_kitchen(rdb):
     _issue(rdb, oil="1")
     chapati = next(row for row in menu_costing(rdb, ACCOUNT) if row["name"] == "Chapati")
     assert chapati["portions_available"] == 5  # 0.5kg in the kitchen / 0.1kg
+    chapati_item = rdb.get(InventoryItem, "inv-chapati")
+    assert chapati_item is not None
+    serving_unit = (
+        rdb.query(RecipeServingUnit)
+        .filter(
+            RecipeServingUnit.account_id == ACCOUNT,
+            RecipeServingUnit.product_id == chapati_item.product_id,
+        )
+        .one_or_none()
+    )
+    if serving_unit is None:
+        serving_unit = RecipeServingUnit(account_id=ACCOUNT, product_id=chapati_item.product_id)
+        rdb.add(serving_unit)
+    serving_unit.serving_unit = "chapatis"
+    rdb.commit()
+    chapati = next(row for row in menu_costing(rdb, ACCOUNT) if row["name"] == "Chapati")
+    assert chapati["serving_unit"] == "chapatis"
     assert chapati["portions_with_store"] == 30  # 3kg in total
 
 
@@ -419,4 +528,3 @@ def test_post_used_api(rdb, monkeypatch):
     assert res["message"] == "Recorded kitchen usage."
     items = {item["inventory_item_id"]: item for item in res["data"]["items"]}
     assert items["inv-flour"]["kitchen_quantity"] == pytest.approx(2.5)
-

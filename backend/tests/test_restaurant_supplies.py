@@ -30,6 +30,7 @@ from app.models import (
     ShopSupplier,
     StockMovement,
 )
+from app.schemas import _inventory_product_out
 from app.services.catalog.catalog_types import CatalogItem
 from app.services.inventory_stock_service import weighted_average_cost
 from app.services.order_creation import build_catalog_order
@@ -364,6 +365,54 @@ def test_menu_costing(rdb):
     assert chapati["food_cost_percent"] == pytest.approx(43.3)
     assert chapati["portions_available"] == 100
     assert chapati["limiting_ingredient"] == "Flour"
+
+
+def test_food_category_retail_item_supports_recipe_and_menu_yield(rdb):
+    rdb.add(
+        Catalogue(
+            id="tea",
+            name="Masala tea",
+            slug="masala-tea",
+            product_type="retail",
+            category="Food & Beverage",
+            created_by_account_id=ACCOUNT,
+        )
+    )
+    rdb.add(
+        InventoryItem(
+            id="inv-tea",
+            account_id=ACCOUNT,
+            product_id="tea",
+            selling_price=50,
+            stock_quantity=0,
+            inventory_role="for_sale",
+            is_active=True,
+        )
+    )
+    rdb.commit()
+
+    menu.replace_recipe(
+        "tea",
+        RecipeReplace(
+            lines=[RecipeLineIn(product_id="flour", quantity=0.1)],
+            serving_unit="cups",
+        ),
+        request=None,
+        db=rdb,
+        session={},
+    )
+    rdb.commit()
+
+    costing = next(row for row in menu_costing(rdb, ACCOUNT) if row["product_id"] == "tea")
+    assert costing["has_recipe"] is True
+    assert costing["serving_unit"] == "cups"
+    assert costing["portions_available"] == 100
+
+    rdb.expire_all()
+    product = _inventory_product_out(rdb.get(Catalogue, "tea"), ACCOUNT)
+    assert product is not None
+    assert product.recipe_serving_unit == "cups"
+    assert len(product.recipe or []) == 1
 
 
 def test_usage_report_balances(rdb):

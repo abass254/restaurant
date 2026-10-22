@@ -12,6 +12,8 @@ import { apiRoutes } from "@/lib/config";
 import { isRestaurantStore } from "@/lib/onboarding";
 import {
   baseUnitName,
+  detectPackFactor,
+  isGroupUnit,
   mergeSellUnitsIntoAttributes,
   packUnits,
   type SellUnit,
@@ -151,13 +153,47 @@ export function TransChapProductEditForm() {
     );
   }, [restaurant, role]);
 
+  function handleBaseUnitChange(nextUnit: string) {
+    setBaseUnit(nextUnit);
+    const autoFactor = detectPackFactor(nextUnit, name);
+    if (autoFactor) {
+      const packName = isGroupUnit(nextUnit) ? nextUnit.trim() : "Bulk";
+      setPacks((prev) => {
+        if (prev.length === 0) {
+          return [
+            {
+              key: `pack-${Date.now()}`,
+              name: packName,
+              factor: String(autoFactor),
+              sellingPrice: "",
+            },
+          ];
+        } else if (
+          prev.length === 1 &&
+          (!prev[0].factor || prev[0].name === "Bulk" || isGroupUnit(prev[0].name))
+        ) {
+          return [
+            {
+              ...prev[0],
+              name: prev[0].name || packName,
+              factor: String(autoFactor),
+            },
+          ];
+        }
+        return prev;
+      });
+    }
+  }
+
   function addPack() {
+    const autoFactor = detectPackFactor(baseUnit, name);
+    const autoName = isGroupUnit(baseUnit) ? baseUnit.trim() : "Bulk";
     setPacks((prev) => [
       ...prev,
       {
         key: `pack-${Date.now()}`,
-        name: "",
-        factor: "",
+        name: autoName,
+        factor: autoFactor ? String(autoFactor) : "",
         sellingPrice: "",
       },
     ]);
@@ -165,7 +201,17 @@ export function TransChapProductEditForm() {
 
   function updatePack(key: string, patch: Partial<PackDraft>) {
     setPacks((prev) =>
-      prev.map((pack) => (pack.key === key ? { ...pack, ...patch } : pack)),
+      prev.map((pack) => {
+        if (pack.key !== key) return pack;
+        const next = { ...pack, ...patch };
+        if (patch.name !== undefined && (!pack.factor || pack.factor.trim() === "")) {
+          const auto = detectPackFactor(patch.name, name);
+          if (auto) {
+            next.factor = String(auto);
+          }
+        }
+        return next;
+      }),
     );
   }
 
@@ -250,9 +296,21 @@ export function TransChapProductEditForm() {
       };
       if (!hotel) {
         payload.inventory_role = role;
+        let finalPacks = draftsToSellUnits(packs);
+        if (finalPacks.length === 0) {
+          const autoFactor = detectPackFactor(nextBaseUnit, nextName);
+          if (autoFactor) {
+            finalPacks = [
+              {
+                name: isGroupUnit(nextBaseUnit) ? nextBaseUnit : "Bulk",
+                factor: autoFactor,
+              },
+            ];
+          }
+        }
         payload.attributes = mergeSellUnitsIntoAttributes(
           item.attributes,
-          draftsToSellUnits(packs),
+          finalPacks,
         );
       }
       let updated = await updateInventoryItem(item.id, payload);
@@ -554,7 +612,7 @@ export function TransChapProductEditForm() {
                       placeholder="Piece"
                       className="trans-chap-edit-input"
                       value={baseUnit}
-                      onChange={(event) => setBaseUnit(event.target.value)}
+                      onChange={(event) => handleBaseUnitChange(event.target.value)}
                     />
                     <span className="trans-chap-edit-field__hint">
                       Inventory is always kept in this unit (e.g. Piece, Packet, Box, Kg).

@@ -48,6 +48,18 @@ from app.support.order_status import CANCELLED, PAYMENT_CREDIT, PAYMENT_SPLIT, R
 router = APIRouter(prefix="/customers", tags=["customers"])
 
 TILL_CUSTOMER_SECTIONS = ("customer", "pos", "dashboard")
+
+
+def _outstanding_adjustment_allowed(db: Session, account_id: str) -> bool:
+    account = db.get(Account, account_id)
+    return bool(account and getattr(account, "allow_outstanding_adjustment", False))
+
+
+def _reject_outstanding_adjustment() -> None:
+    raise HTTPException(
+        status.HTTP_403_FORBIDDEN,
+        detail="Turn on Adjust Supplier/Customer Outstanding amounts in Settings to change a balance.",
+    )
 TAB_SALES_LIMIT = 100
 TAB_PAYMENTS_LIMIT = 20
 
@@ -63,6 +75,7 @@ class CustomerCreateRequest(BaseModel):
     physical_location: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=2000)
     credit_limit: float = Field(default=1000.0, ge=0, le=99_999_999.99)
+    outstanding_balance: float = Field(default=0.0, ge=0, le=99_999_999.99)
     date_to_pay: date | str | None = None
 
 
@@ -81,6 +94,7 @@ class CustomerUpdateRequest(BaseModel):
     physical_location: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=2000)
     credit_limit: float | None = Field(default=None, ge=0, le=99_999_999.99)
+    outstanding_balance: float | None = Field(default=None, ge=0, le=99_999_999.99)
     date_to_pay: date | str | None = None
 
 
@@ -269,6 +283,8 @@ def create_customer(
     user = require_user(db, session)
     assert_merchant_section_any_access(user, *TILL_CUSTOMER_SECTIONS)
     account_id = require_merchant_account_id(user)
+    if (payload.outstanding_balance or 0) > 0 and not _outstanding_adjustment_allowed(db, account_id):
+        _reject_outstanding_adjustment()
     try:
         loc = payload.physical_location or payload.address
         customer = CustomerService(db).create_customer(
@@ -284,6 +300,7 @@ def create_customer(
             date_to_pay=payload.date_to_pay,
             notes=payload.notes,
             credit_limit=payload.credit_limit,
+            outstanding_balance=payload.outstanding_balance,
         )
     except CustomerServiceError as exc:
         _raise_service_error(exc)
@@ -497,6 +514,8 @@ def update_customer(
     assert_merchant_section_access(user, "customer")
     account_id = require_merchant_account_id(user)
     data = payload.model_dump(exclude_unset=True)
+    if "outstanding_balance" in data and not _outstanding_adjustment_allowed(db, account_id):
+        _reject_outstanding_adjustment()
     loc = (
         data.get("physical_location")
         if "physical_location" in data
@@ -521,6 +540,9 @@ def update_customer(
             date_to_pay=data.get("date_to_pay") if "date_to_pay" in data else None,
             notes=data.get("notes") if "notes" in data else None,
             credit_limit=data.get("credit_limit") if "credit_limit" in data else None,
+            outstanding_balance=(
+                data.get("outstanding_balance") if "outstanding_balance" in data else None
+            ),
             clear_email="email" in data and not data.get("email"),
             clear_address="address" in data and not str(data.get("address") or "").strip(),
             clear_physical_location=(

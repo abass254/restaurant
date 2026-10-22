@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_FLOOR
 from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models import (
@@ -17,6 +17,7 @@ from app.models import (
     Order,
     OrderItem,
     PurchaseOrder,
+    RecipeServingUnit,
     StockMovement,
     StockTake,
     StockTakeLine,
@@ -31,6 +32,7 @@ from app.services.inventory_stock_service import (
     total_on_hand,
 )
 from app.services.menu_options import account_recipe, line_stock_usage
+from app.services.kitchen_menu_service import MENU_CATEGORIES
 from app.services.order_stock_service import kitchen_issuing_on
 from app.support.order_status import CANCELLED, REFUNDED
 
@@ -74,9 +76,22 @@ def menu_costing(db: Session, account_id: str) -> list[dict[str, Any]]:
         .options(joinedload(InventoryItem.product))
         .filter(
             InventoryItem.account_id == account_id,
-            Catalogue.product_type.in_(("meal", "combo")),
+            or_(
+                Catalogue.product_type.in_(("meal", "combo")),
+                and_(
+                    ~Catalogue.product_type.in_(("combo", "addon", "service")),
+                    func.replace(func.lower(func.trim(Catalogue.category)), " ", "_").in_(
+                        MENU_CATEGORIES
+                    ),
+                ),
+            ),
         )
         .order_by(Catalogue.name.asc())
+        .all()
+    )
+    serving_units = dict(
+        db.query(RecipeServingUnit.product_id, RecipeServingUnit.serving_unit)
+        .filter(RecipeServingUnit.account_id == account_id)
         .all()
     )
     usages: dict[str, list[dict]] = {}
@@ -158,6 +173,7 @@ def menu_costing(db: Session, account_id: str) -> list[dict[str, Any]]:
                 "product_id": row.product_id,
                 "name": product.name if product else "Item",
                 "product_type": product.product_type if product else None,
+                "serving_unit": serving_units.get(str(row.product_id), "servings"),
                 "selling_price": _f(price),
                 "has_recipe": has_recipe,
                 "cost_per_portion": float(cost.quantize(MONEY)) if ingredients else None,

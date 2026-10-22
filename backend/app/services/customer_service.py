@@ -311,6 +311,7 @@ class CustomerService:
         date_to_pay: date | str | None = None,
         notes: str | None = None,
         credit_limit: object | None = None,
+        outstanding_balance: object | None = None,
         clear_email: bool = False,
         clear_address: bool = False,
         clear_physical_location: bool = False,
@@ -364,6 +365,14 @@ class CustomerService:
                     "Credit limit cannot be lower than the amount already outstanding."
                 )
             customer.credit_limit = new_limit
+        if outstanding_balance is not None:
+            opening = _money(outstanding_balance, field="Outstanding balance")
+            limit = _money(customer.credit_limit)
+            if limit > 0 and opening > limit:
+                raise CustomerServiceError(
+                    "Outstanding balance cannot be higher than the credit limit."
+                )
+            customer.outstanding_balance = opening
         customer.updated_at = utc_now()
         self.db.commit()
         self.db.refresh(customer)

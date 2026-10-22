@@ -11,11 +11,15 @@ import Link from "next/link";
 import { apiFetch, apiFetchCached, readPageCache, writePageCache } from "@/lib/api";
 import { confirmAction, showError, showInternalError, toastSuccess, internalErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
-import { formatKsh } from "@/lib/trans-chap-receipt";
+import { formatKesDigits, formatKsh } from "@/lib/trans-chap-receipt";
 import {
+  allSellUnits,
   baseUnitName,
   formatGroupedQty,
   groupedQtyBreakdown,
+  mergeSellUnitsIntoAttributes,
+  packUnits,
+  type SellUnit,
 } from "@/lib/sell-units";
 import { useTransChapIsPhone } from "@/lib/trans-chap-list-view";
 import {
@@ -111,7 +115,9 @@ export function TransChapStocksList() {
   const user = useAuthUser();
   const canEditQty = isShopOwner(user);
   const [allowQuantityAdjustment, setAllowQuantityAdjustment] = useState(true);
+  const [allowPriceAdjustment, setAllowPriceAdjustment] = useState(false);
   const canAdjustQty = allowQuantityAdjustment;
+  const canAdjustPrice = allowPriceAdjustment;
   const restaurant = isRestaurantStore(user.active_account ?? user.account);
   const roleFilters = restaurant
     ? [...BASE_ROLE_FILTERS, RAW_ROLE_FILTER]
@@ -139,6 +145,15 @@ export function TransChapStocksList() {
   const view: StocksView = useTransChapIsPhone() ? "grid" : storedView;
   const [qtyDrafts, setQtyDrafts] = useState<Record<string, string>>({});
   const [qtySavingId, setQtySavingId] = useState<string | null>(null);
+  const [bulkFactorDrafts, setBulkFactorDrafts] = useState<Record<string, string>>({});
+  const [bulkFactorSavingId, setBulkFactorSavingId] = useState<string | null>(null);
+  const [bulkQtyDrafts, setBulkQtyDrafts] = useState<Record<string, string>>({});
+  const [bulkQtySavingId, setBulkQtySavingId] = useState<string | null>(null);
+  const [bpSingleDrafts, setBpSingleDrafts] = useState<Record<string, string>>({});
+  const [spSingleDrafts, setSpSingleDrafts] = useState<Record<string, string>>({});
+  const [bpBulkDrafts, setBpBulkDrafts] = useState<Record<string, string>>({});
+  const [spBulkDrafts, setSpBulkDrafts] = useState<Record<string, string>>({});
+  const [priceSavingKey, setPriceSavingKey] = useState<string | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
 
   useEffect(() => {
@@ -147,18 +162,35 @@ export function TransChapStocksList() {
 
   useEffect(() => {
     let cancelled = false;
-    void apiFetchCached<SettingsResponse>(apiRoutes.settings)
+    void apiFetch<SettingsResponse>(apiRoutes.settings)
       .then((data) => {
         if (!cancelled) {
           setAllowQuantityAdjustment(data.allow_item_quantity_adjustment ?? true);
+          setAllowPriceAdjustment(data.allow_price_adjustment ?? false);
         }
       })
       .catch(() => {
-        if (!cancelled) setAllowQuantityAdjustment(true);
+        if (!cancelled) {
+          setAllowQuantityAdjustment(true);
+          setAllowPriceAdjustment(false);
+        }
       });
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    const onFocus = () => {
+      void apiFetch<SettingsResponse>(apiRoutes.settings)
+        .then((data) => {
+          setAllowQuantityAdjustment(data.allow_item_quantity_adjustment ?? true);
+          setAllowPriceAdjustment(data.allow_price_adjustment ?? false);
+        })
+        .catch(() => undefined);
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, []);
 
   function setStocksView(next: StocksView) {
@@ -304,6 +336,564 @@ export function TransChapStocksList() {
       });
     } finally {
       setQtySavingId(null);
+    }
+  }
+
+  function bulkFactorDraftValue(item: InventoryItem): string {
+    if (Object.prototype.hasOwnProperty.call(bulkFactorDrafts, item.id)) {
+      return bulkFactorDrafts[item.id] ?? "";
+    }
+    const units = allSellUnits(item);
+    const bulkUnit =
+      units.length > 1
+        ? units.slice(1).reduce((best, unit) => (unit.factor > best.factor ? unit : best))
+        : null;
+    return bulkUnit ? String(bulkUnit.factor) : "";
+  }
+
+  async function saveBulkFactor(item: InventoryItem) {
+    if (isHotelMenuItem(item) || bulkFactorSavingId === item.id || selecting) return;
+    const raw = bulkFactorDraftValue(item).trim();
+    const units = allSellUnits(item);
+    const bulkUnit =
+      units.length > 1
+        ? units.slice(1).reduce((best, unit) => (unit.factor > best.factor ? unit : best))
+        : null;
+    const currentFactor = bulkUnit?.factor ?? null;
+
+    if (raw === "") {
+      if (currentFactor == null) {
+        setBulkFactorDrafts((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        return;
+      }
+      const existingPacks = packUnits(item);
+      const remainingPacks = existingPacks.filter((p) => p.name !== bulkUnit?.name);
+      const nextAttrs = mergeSellUnitsIntoAttributes(item.attributes, remainingPacks);
+      setBulkFactorSavingId(item.id);
+      try {
+        const updated = await updateInventoryItem(item.id, { attributes: nextAttrs });
+        setItems((prev) => {
+          const next = prev.map((row) => (row.id === updated.id ? updated : row));
+          writePageCache(STOCKS_CACHE_KEY, next);
+          return next;
+        });
+        setBulkFactorDrafts((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        await toastSuccess("Bulk unit removed");
+      } catch {
+        await showInternalError();
+        setBulkFactorDrafts((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+      } finally {
+        setBulkFactorSavingId(null);
+      }
+      return;
+    }
+
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 2) {
+      await showError("Invalid bulk quantity", "Enter a whole number of 2 or higher (or clear to remove bulk pack).");
+      setBulkFactorDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      return;
+    }
+
+    if (currentFactor === parsed) {
+      setBulkFactorDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      return;
+    }
+
+    const existingPacks = packUnits(item);
+    let updatedPacks: SellUnit[];
+    if (bulkUnit && existingPacks.some((p) => p.name === bulkUnit.name)) {
+      updatedPacks = existingPacks.map((pack) => {
+        if (pack.name === bulkUnit.name) {
+          return { ...pack, factor: parsed };
+        }
+        return pack;
+      });
+    } else {
+      updatedPacks = [
+        ...existingPacks,
+        {
+          name: "Bulk",
+          factor: parsed,
+        },
+      ];
+    }
+
+    const nextAttrs = mergeSellUnitsIntoAttributes(item.attributes, updatedPacks);
+    setBulkFactorSavingId(item.id);
+    try {
+      const updated = await updateInventoryItem(item.id, { attributes: nextAttrs });
+      setItems((prev) => {
+        const next = prev.map((row) => (row.id === updated.id ? updated : row));
+        writePageCache(STOCKS_CACHE_KEY, next);
+        return next;
+      });
+      setBulkFactorDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      await toastSuccess("Bulk quantity updated");
+    } catch {
+      await showInternalError();
+      setBulkFactorDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+    } finally {
+      setBulkFactorSavingId(null);
+    }
+  }
+
+  function bulkQtyDraftValue(item: InventoryItem): string {
+    if (Object.prototype.hasOwnProperty.call(bulkQtyDrafts, item.id)) {
+      return bulkQtyDrafts[item.id] ?? "";
+    }
+    const units = allSellUnits(item);
+    const bulkUnit =
+      units.length > 1
+        ? units.slice(1).reduce((best, unit) => (unit.factor > best.factor ? unit : best))
+        : null;
+    if (!bulkUnit || bulkUnit.factor < 2 || item.stock_quantity == null) return "";
+    return String(Math.floor(item.stock_quantity / bulkUnit.factor));
+  }
+
+  async function saveBulkQty(item: InventoryItem) {
+    if (!canAdjustQty || isHotelMenuItem(item) || bulkQtySavingId === item.id || selecting) return;
+    const raw = bulkQtyDraftValue(item).trim();
+    const units = allSellUnits(item);
+    const bulkUnit =
+      units.length > 1
+        ? units.slice(1).reduce((best, unit) => (unit.factor > best.factor ? unit : best))
+        : null;
+    if (!bulkUnit || bulkUnit.factor < 2) return;
+
+    if (raw === "") {
+      setBulkQtyDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      return;
+    }
+
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
+      await showError("Invalid bulk quantity", "Enter a whole number 0 or higher.");
+      setBulkQtyDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      return;
+    }
+
+    const currentTotal = item.stock_quantity ?? 0;
+    const currentBulk = Math.floor(currentTotal / bulkUnit.factor);
+    if (currentBulk === parsed) {
+      setBulkQtyDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      return;
+    }
+
+    const remainder = currentTotal >= 0 ? currentTotal % bulkUnit.factor : 0;
+    const newTotal = parsed * bulkUnit.factor + remainder;
+
+    setBulkQtySavingId(item.id);
+    try {
+      const updated = await updateInventoryItem(item.id, { stock_quantity: newTotal });
+      setItems((prev) => {
+        const next = prev.map((row) => (row.id === updated.id ? updated : row));
+        writePageCache(STOCKS_CACHE_KEY, next);
+        return next;
+      });
+      setBulkQtyDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      await toastSuccess("Bulk quantity updated");
+    } catch {
+      await showInternalError();
+      setBulkQtyDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+    } finally {
+      setBulkQtySavingId(null);
+    }
+  }
+
+  function bpSingleDraftValue(item: InventoryItem): string {
+    if (Object.prototype.hasOwnProperty.call(bpSingleDrafts, item.id)) {
+      return bpSingleDrafts[item.id] ?? "";
+    }
+    const units = allSellUnits(item);
+    const singleUnit = units[0];
+    return singleUnit?.buying_price != null ? String(singleUnit.buying_price) : "";
+  }
+
+  async function saveBpSingle(item: InventoryItem) {
+    if (!canAdjustPrice || isHotelMenuItem(item) || priceSavingKey === `${item.id}:bp_single` || selecting) return;
+    const raw = bpSingleDraftValue(item).trim();
+    const current = item.buying_price ?? null;
+
+    if (raw === "") {
+      if (current == null) {
+        setBpSingleDrafts((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        return;
+      }
+      setPriceSavingKey(`${item.id}:bp_single`);
+      try {
+        const updated = await updateInventoryItem(item.id, { buying_price: null });
+        setItems((prev) => {
+          const next = prev.map((row) => (row.id === updated.id ? updated : row));
+          writePageCache(STOCKS_CACHE_KEY, next);
+          return next;
+        });
+        setBpSingleDrafts((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        await toastSuccess("Buying price cleared");
+      } catch {
+        await showInternalError();
+        setBpSingleDrafts((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+      } finally {
+        setPriceSavingKey(null);
+      }
+      return;
+    }
+
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      await showError("Invalid price", "Enter a valid positive number.");
+      setBpSingleDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      return;
+    }
+
+    if (current === parsed) {
+      setBpSingleDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      return;
+    }
+
+    setPriceSavingKey(`${item.id}:bp_single`);
+    try {
+      const updated = await updateInventoryItem(item.id, { buying_price: parsed });
+      setItems((prev) => {
+        const next = prev.map((row) => (row.id === updated.id ? updated : row));
+        writePageCache(STOCKS_CACHE_KEY, next);
+        return next;
+      });
+      setBpSingleDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      await toastSuccess("Buying price updated");
+    } catch {
+      await showInternalError();
+      setBpSingleDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+    } finally {
+      setPriceSavingKey(null);
+    }
+  }
+
+  function spSingleDraftValue(item: InventoryItem): string {
+    if (Object.prototype.hasOwnProperty.call(spSingleDrafts, item.id)) {
+      return spSingleDrafts[item.id] ?? "";
+    }
+    const units = allSellUnits(item);
+    const singleUnit = units[0];
+    return singleUnit?.selling_price != null ? String(singleUnit.selling_price) : "";
+  }
+
+  async function saveSpSingle(item: InventoryItem) {
+    if (!canAdjustPrice || isHotelMenuItem(item) || priceSavingKey === `${item.id}:sp_single` || selecting) return;
+    const raw = spSingleDraftValue(item).trim();
+    const current = item.selling_price ?? null;
+
+    if (raw === "") {
+      if (current == null) {
+        setSpSingleDrafts((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        return;
+      }
+      setPriceSavingKey(`${item.id}:sp_single`);
+      try {
+        const updated = await updateInventoryItem(item.id, { selling_price: null });
+        setItems((prev) => {
+          const next = prev.map((row) => (row.id === updated.id ? updated : row));
+          writePageCache(STOCKS_CACHE_KEY, next);
+          return next;
+        });
+        setSpSingleDrafts((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        await toastSuccess("Selling price cleared");
+      } catch {
+        await showInternalError();
+        setSpSingleDrafts((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+      } finally {
+        setPriceSavingKey(null);
+      }
+      return;
+    }
+
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      await showError("Invalid price", "Enter a valid positive number.");
+      setSpSingleDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      return;
+    }
+
+    if (current === parsed) {
+      setSpSingleDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      return;
+    }
+
+    setPriceSavingKey(`${item.id}:sp_single`);
+    try {
+      const updated = await updateInventoryItem(item.id, { selling_price: parsed });
+      setItems((prev) => {
+        const next = prev.map((row) => (row.id === updated.id ? updated : row));
+        writePageCache(STOCKS_CACHE_KEY, next);
+        return next;
+      });
+      setSpSingleDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      await toastSuccess("Selling price updated");
+    } catch {
+      await showInternalError();
+      setSpSingleDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+    } finally {
+      setPriceSavingKey(null);
+    }
+  }
+
+  function bpBulkDraftValue(item: InventoryItem): string {
+    if (Object.prototype.hasOwnProperty.call(bpBulkDrafts, item.id)) {
+      return bpBulkDrafts[item.id] ?? "";
+    }
+    const units = allSellUnits(item);
+    const bulkUnit =
+      units.length > 1
+        ? units.slice(1).reduce((best, unit) => (unit.factor > best.factor ? unit : best))
+        : null;
+    return bulkUnit?.buying_price != null ? String(bulkUnit.buying_price) : "";
+  }
+
+  function spBulkDraftValue(item: InventoryItem): string {
+    if (Object.prototype.hasOwnProperty.call(spBulkDrafts, item.id)) {
+      return spBulkDrafts[item.id] ?? "";
+    }
+    const units = allSellUnits(item);
+    const bulkUnit =
+      units.length > 1
+        ? units.slice(1).reduce((best, unit) => (unit.factor > best.factor ? unit : best))
+        : null;
+    return bulkUnit?.selling_price != null ? String(bulkUnit.selling_price) : "";
+  }
+
+  async function saveBulkPrice(
+    item: InventoryItem,
+    kind: "buying_price" | "selling_price",
+  ) {
+    const isBp = kind === "buying_price";
+    const savingKey = `${item.id}:${isBp ? "bp_bulk" : "sp_bulk"}`;
+    if (!canAdjustPrice || isHotelMenuItem(item) || priceSavingKey === savingKey || selecting) return;
+
+    const raw = (isBp ? bpBulkDraftValue(item) : spBulkDraftValue(item)).trim();
+    const setDrafts = isBp ? setBpBulkDrafts : setSpBulkDrafts;
+    const units = allSellUnits(item);
+    const bulkUnit =
+      units.length > 1
+        ? units.slice(1).reduce((best, unit) => (unit.factor > best.factor ? unit : best))
+        : null;
+    if (!bulkUnit || bulkUnit.factor < 2) return;
+
+    const currentPrice = bulkUnit[kind] ?? null;
+
+    if (raw === "") {
+      if (currentPrice == null) {
+        setDrafts((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        return;
+      }
+      const existingPacks = packUnits(item);
+      const updatedPacks = (existingPacks.length ? existingPacks : [{ name: bulkUnit.name, factor: bulkUnit.factor }]).map((p) => {
+        if (p.name === bulkUnit.name) {
+          const copy = { ...p };
+          delete copy[kind];
+          return copy;
+        }
+        return p;
+      });
+      const nextAttrs = mergeSellUnitsIntoAttributes(item.attributes, updatedPacks);
+      setPriceSavingKey(savingKey);
+      try {
+        const updated = await updateInventoryItem(item.id, { attributes: nextAttrs });
+        setItems((prev) => {
+          const next = prev.map((row) => (row.id === updated.id ? updated : row));
+          writePageCache(STOCKS_CACHE_KEY, next);
+          return next;
+        });
+        setDrafts((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+        await toastSuccess(isBp ? "Bulk buying price cleared" : "Bulk selling price cleared");
+      } catch {
+        await showInternalError();
+        setDrafts((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+      } finally {
+        setPriceSavingKey(null);
+      }
+      return;
+    }
+
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      await showError("Invalid price", "Enter a valid positive number.");
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      return;
+    }
+
+    if (currentPrice === parsed) {
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      return;
+    }
+
+    const existingPacks = packUnits(item);
+    let updatedPacks: SellUnit[];
+    if (existingPacks.some((p) => p.name === bulkUnit.name)) {
+      updatedPacks = existingPacks.map((p) => {
+        if (p.name === bulkUnit.name) {
+          return { ...p, [kind]: parsed };
+        }
+        return p;
+      });
+    } else {
+      updatedPacks = [
+        ...existingPacks,
+        {
+          name: bulkUnit.name,
+          factor: bulkUnit.factor,
+          [kind]: parsed,
+        },
+      ];
+    }
+
+    const nextAttrs = mergeSellUnitsIntoAttributes(item.attributes, updatedPacks);
+    setPriceSavingKey(savingKey);
+    try {
+      const updated = await updateInventoryItem(item.id, { attributes: nextAttrs });
+      setItems((prev) => {
+        const next = prev.map((row) => (row.id === updated.id ? updated : row));
+        writePageCache(STOCKS_CACHE_KEY, next);
+        return next;
+      });
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      await toastSuccess(isBp ? "Bulk buying price updated" : "Bulk selling price updated");
+    } catch {
+      await showInternalError();
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+    } finally {
+      setPriceSavingKey(null);
     }
   }
 
@@ -524,13 +1114,22 @@ export function TransChapStocksList() {
                 <tr>
                   {selecting ? <th className="trans-chap-stock-table__check" scope="col"> </th> : null}
                   <th scope="col">Product</th>
-                  <th scope="col">SKU</th>
-                  <th scope="col">Type</th>
+                  <th className="trans-chap-stock-table__qty" scope="col" title="Quantity per 1 bulk pack">
+                    Qty per 1 Bulk
+                  </th>
                   <th scope="col">Unit</th>
-                  <th className="trans-chap-stock-table__qty" scope="col">Qty</th>
-                  <th scope="col">Buy</th>
-                  <th scope="col">Sell</th>
-                  <th scope="col">Margin</th>
+                  <th className="trans-chap-stock-table__qty" scope="col" title="Quantity in single units">
+                    Qty single
+                  </th>
+                  <th className="trans-chap-stock-table__qty" scope="col" title="Quantity in bulk packs">
+                    Qty bulk
+                  </th>
+                  <th className="trans-chap-stock-table__money" scope="col" title="Buying price, single">BP single</th>
+                  <th className="trans-chap-stock-table__money" scope="col" title="Selling price, single">SP single</th>
+                  <th className="trans-chap-stock-table__money" scope="col" title="Buying price, bulk">BP bulk</th>
+                  <th className="trans-chap-stock-table__money" scope="col" title="Selling price, bulk">SP bulk</th>
+                  <th className="trans-chap-stock-table__money" scope="col" title="Markup, single">Mkup single</th>
+                  <th className="trans-chap-stock-table__money" scope="col" title="Markup, bulk">Mkup bulk</th>
                   <th scope="col">Active</th>
                   <th className="trans-chap-stock-table__actions" scope="col">
                     Action
@@ -542,22 +1141,24 @@ export function TransChapStocksList() {
                   const name = inventoryProductName(item);
                   const hotel = isHotelMenuItem(item);
                   const picked = selectedIds.has(item.id);
-                  const sell =
-                    item.selling_price != null ? formatKsh(item.selling_price) : "—";
-                  const buy =
-                    hotel
+                  const units = allSellUnits(item);
+                  const singleUnit = units[0];
+                  const bulkUnit =
+                    units.length > 1
+                      ? units.slice(1).reduce((best, unit) => (unit.factor > best.factor ? unit : best))
+                      : null;
+                  const bulkQty =
+                    !hotel && bulkUnit && item.stock_quantity != null
+                      ? Math.floor(item.stock_quantity / bulkUnit.factor)
+                      : null;
+                  const priceText = (value: number | null | undefined) =>
+                    hotel || value == null || !Number.isFinite(value)
                       ? "—"
-                      : item.buying_price != null
-                        ? formatKsh(item.buying_price)
-                        : "—";
-                  const margin =
-                    hotel
+                      : Math.round(value).toLocaleString("en-KE");
+                  const markupText = (sell: number | null | undefined, buy: number | null | undefined) =>
+                    hotel || sell == null || buy == null || !Number.isFinite(sell) || !Number.isFinite(buy)
                       ? "—"
-                      : item.margin != null
-                        ? formatKsh(item.margin)
-                        : item.buying_price != null && item.selling_price != null
-                          ? formatKsh(item.selling_price - item.buying_price)
-                          : "—";
+                      : formatKesDigits(sell - buy);
                   const sku =
                     item.product?.sku?.trim() ||
                     item.product?.product_code?.trim() ||
@@ -596,11 +1197,55 @@ export function TransChapStocksList() {
                           <span title={name}>{name}</span>
                         </div>
                       </td>
-                      <td className="trans-chap-stock-table__mono">{sku}</td>
-                      <td>
-                        {restaurant && hotel
-                          ? "Hotel menu"
-                          : inventoryRoleLabel(inventoryRole(item))}
+                      <td
+                        className="trans-chap-stock-table__qty"
+                        title={
+                          bulkUnit
+                            ? `${bulkUnit.factor} ${item.product?.unit?.trim() || "units"} per ${bulkUnit.name}`
+                            : undefined
+                        }
+                      >
+                        {hotel ? (
+                          <span className="trans-chap-stock-table__muted">—</span>
+                        ) : canAdjustQty ? (
+                          <label className="trans-chap-panel__qty-edit">
+                            <span className="sr-only">Qty per 1 Bulk</span>
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              min={2}
+                              step={1}
+                              placeholder="—"
+                              value={bulkFactorDraftValue(item)}
+                              disabled={bulkFactorSavingId === item.id}
+                              aria-label={`Quantity per 1 bulk for ${name}`}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setBulkFactorDrafts((prev) => ({ ...prev, [item.id]: value }));
+                              }}
+                              onBlur={() => void saveBulkFactor(item)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                                if (event.key === "Escape") {
+                                  setBulkFactorDrafts((prev) => {
+                                    const next = { ...prev };
+                                    delete next[item.id];
+                                    return next;
+                                  });
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                              }}
+                            />
+                          </label>
+                        ) : (
+                          <span className="trans-chap-stock-table__mono">
+                            {bulkUnit ? bulkUnit.factor : "—"}
+                          </span>
+                        )}
                       </td>
                       <td>{unit}</td>
                       <td className="trans-chap-stock-table__qty" title={qtyHint}>
@@ -617,6 +1262,7 @@ export function TransChapStocksList() {
                               value={qtyDraftValue(item)}
                               disabled={qtySavingId === item.id}
                               aria-label={`Quantity for ${name}`}
+                              onClick={(event) => event.stopPropagation()}
                               onChange={(event) => {
                                 const value = event.target.value;
                                 setQtyDrafts((prev) => ({ ...prev, [item.id]: value }));
@@ -644,9 +1290,222 @@ export function TransChapStocksList() {
                           </span>
                         )}
                       </td>
-                      <td>{buy}</td>
-                      <td className="trans-chap-stock-table__strong">{sell}</td>
-                      <td>{margin}</td>
+                      <td
+                        className="trans-chap-stock-table__qty"
+                        title={bulkUnit ? `${bulkUnit.name} of ${bulkUnit.factor}` : "No bulk pack"}
+                      >
+                        {hotel || !bulkUnit ? (
+                          <span className="trans-chap-stock-table__muted">—</span>
+                        ) : canAdjustQty ? (
+                          <label className="trans-chap-panel__qty-edit">
+                            <span className="sr-only">Qty bulk</span>
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              min={0}
+                              step={1}
+                              placeholder="—"
+                              value={bulkQtyDraftValue(item)}
+                              disabled={bulkQtySavingId === item.id}
+                              aria-label={`Bulk quantity for ${name}`}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setBulkQtyDrafts((prev) => ({ ...prev, [item.id]: value }));
+                              }}
+                              onBlur={() => void saveBulkQty(item)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                                if (event.key === "Escape") {
+                                  setBulkQtyDrafts((prev) => {
+                                    const next = { ...prev };
+                                    delete next[item.id];
+                                    return next;
+                                  });
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                              }}
+                            />
+                          </label>
+                        ) : (
+                          <span className="trans-chap-stock-table__mono">
+                            {bulkQty == null ? "—" : bulkQty}
+                          </span>
+                        )}
+                      </td>
+                      <td className="trans-chap-stock-table__money">
+                        {hotel ? (
+                          <span className="trans-chap-stock-table__muted">—</span>
+                        ) : canAdjustPrice ? (
+                          <label className="trans-chap-panel__qty-edit">
+                            <span className="sr-only">BP single</span>
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              min={0}
+                              step="any"
+                              placeholder="—"
+                              value={bpSingleDraftValue(item)}
+                              disabled={priceSavingKey === `${item.id}:bp_single`}
+                              aria-label={`Buying price single for ${name}`}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setBpSingleDrafts((prev) => ({ ...prev, [item.id]: value }));
+                              }}
+                              onBlur={() => void saveBpSingle(item)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                                if (event.key === "Escape") {
+                                  setBpSingleDrafts((prev) => {
+                                    const next = { ...prev };
+                                    delete next[item.id];
+                                    return next;
+                                  });
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                              }}
+                            />
+                          </label>
+                        ) : (
+                          <span className="trans-chap-stock-table__mono">{priceText(singleUnit?.buying_price)}</span>
+                        )}
+                      </td>
+                      <td className="trans-chap-stock-table__money">
+                        {hotel ? (
+                          <span className="trans-chap-stock-table__muted">—</span>
+                        ) : canAdjustPrice ? (
+                          <label className="trans-chap-panel__qty-edit">
+                            <span className="sr-only">SP single</span>
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              min={0}
+                              step="any"
+                              placeholder="—"
+                              value={spSingleDraftValue(item)}
+                              disabled={priceSavingKey === `${item.id}:sp_single`}
+                              aria-label={`Selling price single for ${name}`}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setSpSingleDrafts((prev) => ({ ...prev, [item.id]: value }));
+                              }}
+                              onBlur={() => void saveSpSingle(item)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                                if (event.key === "Escape") {
+                                  setSpSingleDrafts((prev) => {
+                                    const next = { ...prev };
+                                    delete next[item.id];
+                                    return next;
+                                  });
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                              }}
+                            />
+                          </label>
+                        ) : (
+                          <span className="trans-chap-stock-table__strong">{priceText(singleUnit?.selling_price)}</span>
+                        )}
+                      </td>
+                      <td className="trans-chap-stock-table__money">
+                        {hotel || !bulkUnit ? (
+                          <span className="trans-chap-stock-table__muted">—</span>
+                        ) : canAdjustPrice ? (
+                          <label className="trans-chap-panel__qty-edit">
+                            <span className="sr-only">BP bulk</span>
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              min={0}
+                              step="any"
+                              placeholder="—"
+                              value={bpBulkDraftValue(item)}
+                              disabled={priceSavingKey === `${item.id}:bp_bulk`}
+                              aria-label={`Buying price bulk for ${name}`}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setBpBulkDrafts((prev) => ({ ...prev, [item.id]: value }));
+                              }}
+                              onBlur={() => void saveBulkPrice(item, "buying_price")}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                                if (event.key === "Escape") {
+                                  setBpBulkDrafts((prev) => {
+                                    const next = { ...prev };
+                                    delete next[item.id];
+                                    return next;
+                                  });
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                              }}
+                            />
+                          </label>
+                        ) : (
+                          <span className="trans-chap-stock-table__mono">{priceText(bulkUnit?.buying_price)}</span>
+                        )}
+                      </td>
+                      <td className="trans-chap-stock-table__money">
+                        {hotel || !bulkUnit ? (
+                          <span className="trans-chap-stock-table__muted">—</span>
+                        ) : canAdjustPrice ? (
+                          <label className="trans-chap-panel__qty-edit">
+                            <span className="sr-only">SP bulk</span>
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              min={0}
+                              step="any"
+                              placeholder="—"
+                              value={spBulkDraftValue(item)}
+                              disabled={priceSavingKey === `${item.id}:sp_bulk`}
+                              aria-label={`Selling price bulk for ${name}`}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setSpBulkDrafts((prev) => ({ ...prev, [item.id]: value }));
+                              }}
+                              onBlur={() => void saveBulkPrice(item, "selling_price")}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                                if (event.key === "Escape") {
+                                  setSpBulkDrafts((prev) => {
+                                    const next = { ...prev };
+                                    delete next[item.id];
+                                    return next;
+                                  });
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                              }}
+                            />
+                          </label>
+                        ) : (
+                          <span className="trans-chap-stock-table__strong">{priceText(bulkUnit?.selling_price)}</span>
+                        )}
+                      </td>
+                      <td className="trans-chap-stock-table__money">
+                        <span className="trans-chap-stock-table__mono">{markupText(singleUnit?.selling_price, singleUnit?.buying_price)}</span>
+                      </td>
+                      <td className="trans-chap-stock-table__money">
+                        <span className="trans-chap-stock-table__mono">{markupText(bulkUnit?.selling_price, bulkUnit?.buying_price)}</span>
+                      </td>
                       <td>
                         {selecting ? (
                           <span className="trans-chap-stock-table__muted">—</span>
@@ -668,47 +1527,25 @@ export function TransChapStocksList() {
                       </td>
                       <td className="trans-chap-stock-table__actions">
                         <div className="trans-chap-stock-table__actions-inner">
-                          {restaurant ? null : (
-                            <Link
-                              href={`/trans-chap/stocks/quotation?items=${encodeURIComponent(item.id)}`}
-                              className="trans-chap-panel__link"
-                              style={{ color: "#16a34a", fontWeight: 750 }}
-                              title={`Create quote for ${name}`}
-                            >
-                              Quote
-                            </Link>
-                          )}
                           <Link
                             href={`/trans-chap/stocks/edit?id=${encodeURIComponent(item.id)}`}
-                            className="trans-chap-panel__link"
+                            className="trans-chap-stock-table__icon-btn"
+                            title={hotel || item.selling_price != null ? `Edit ${name}` : `Set price for ${name}`}
+                            aria-label={hotel || item.selling_price != null ? `Edit ${name}` : `Set price for ${name}`}
                           >
-                            {hotel || item.selling_price != null ? "Edit" : "Set price"}
+                            <i className="fa-solid fa-pen" aria-hidden />
                           </Link>
                           {restaurant && isKitchenIssuableRole(inventoryRole(item)) ? (
                             <Link
                               href={`/trans-chap/purchases/issue?new=1&from=store&items=${encodeURIComponent(item.id)}`}
-                              className="trans-chap-panel__link"
-                              style={{ color: "var(--app-primary)", fontWeight: 700 }}
+                              className="trans-chap-stock-table__icon-btn"
+                              style={{ color: "var(--app-primary)" }}
+                              title={`Release ${name} to the kitchen`}
+                              aria-label={`Release ${name} to the kitchen`}
                             >
-                              Release
+                              <i className="fa-solid fa-arrow-right-from-bracket" aria-hidden />
                             </Link>
                           ) : null}
-                          {hotel ? null : (
-                            <Link
-                              href={
-                                canEditQty
-                                  ? "/trans-chap/purchases/new"
-                                  : `/trans-chap/purchases/unavailable?name=${encodeURIComponent(name)}${
-                                      sku && sku !== "—"
-                                        ? `&barcode=${encodeURIComponent(sku)}`
-                                        : ""
-                                    }`
-                              }
-                              className="trans-chap-panel__link"
-                            >
-                              Buy
-                            </Link>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -813,16 +1650,6 @@ export function TransChapStocksList() {
                 }
                 action={
                   <>
-                    {restaurant ? null : (
-                      <Link
-                        href={`/trans-chap/stocks/quotation?items=${encodeURIComponent(item.id)}`}
-                        className="trans-chap-panel__link"
-                        style={{ color: "#16a34a", fontWeight: 750 }}
-                        title={`Create quote for ${name}`}
-                      >
-                        Quote
-                      </Link>
-                    )}
                     <Link
                       href={`/trans-chap/stocks/edit?id=${encodeURIComponent(item.id)}`}
                       className="trans-chap-panel__link"
@@ -838,18 +1665,6 @@ export function TransChapStocksList() {
                         Release to kitchen
                       </Link>
                     ) : null}
-                    {hotel ? null : (
-                      <Link
-                        href={
-                          canEditQty
-                            ? "/trans-chap/purchases/new"
-                            : `/trans-chap/purchases/unavailable?name=${encodeURIComponent(name)}`
-                        }
-                        className="trans-chap-panel__link"
-                      >
-                        Buy more
-                      </Link>
-                    )}
                   </>
                 }
               >

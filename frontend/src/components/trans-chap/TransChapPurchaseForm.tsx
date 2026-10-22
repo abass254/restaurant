@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useOptionalAuthUser } from "@/components/app/AuthProvider";
 import { Skeleton } from "@/components/app/Skeleton";
@@ -265,6 +265,7 @@ function businessLocationLabel(
 
 export function TransChapPurchaseForm() {
   const router = useRouter();
+  const presetSupplier = useSearchParams().get("supplier")?.trim() || "";
   const reduce = useReducedMotion();
   const user = useOptionalAuthUser();
   const restaurant = isRestaurantStore(user?.active_account ?? user?.account);
@@ -472,12 +473,17 @@ export function TransChapPurchaseForm() {
             line.unitFactor && line.unitFactor >= 1 ? line.unitFactor : 1,
         })),
       );
-      setPurchaseMeta(draft.meta);
+      setPurchaseMeta(
+        presetSupplier ? { ...draft.meta, supplier: presetSupplier } : draft.meta,
+      );
       void toastSuccess(
         draft.lines.length === 1
           ? "Purchase draft restored"
           : `Purchase draft restored · ${draft.lines.length} items`,
       );
+    } else if (presetSupplier) {
+      setPurchaseMeta((meta) => ({ ...meta, supplier: presetSupplier }));
+      setMobileScreen("supplier");
     }
     setDraftReady(true);
     // Restore once on mount; accountId is stable for a signed-in session.

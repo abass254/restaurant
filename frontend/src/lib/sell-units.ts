@@ -26,30 +26,47 @@ export function baseUnitName(item: InventoryItem): string {
 export function packUnits(item: InventoryItem | null | undefined): SellUnit[] {
   const attrs = asRecord(item?.attributes);
   const raw = attrs?.sell_units;
-  if (!Array.isArray(raw)) return [];
   const packs: SellUnit[] = [];
   const seen = new Set<string>();
-  for (const entry of raw) {
-    const row = asRecord(entry);
-    if (!row) continue;
-    const name = String(row.name || "").trim();
-    if (!name) continue;
-    const key = normalizeUnitName(name);
-    if (seen.has(key)) continue;
-    const factor = Number(row.factor);
-    if (!Number.isFinite(factor) || factor < 2 || factor > 1_000_000) continue;
-    seen.add(key);
-    const pack: SellUnit = { name, factor: Math.floor(factor) };
-    for (const priceKey of ["selling_price", "buying_price"] as const) {
-      const rawPrice = row[priceKey];
-      if (rawPrice == null || rawPrice === "") continue;
-      const price = Number(rawPrice);
-      if (Number.isFinite(price) && price >= 0) {
-        pack[priceKey] = Math.round(price * 100) / 100;
+
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      const row = asRecord(entry);
+      if (!row) continue;
+      const name = String(row.name || "").trim();
+      if (!name) continue;
+      const key = normalizeUnitName(name);
+      if (seen.has(key)) continue;
+      const factor = Number(row.factor);
+      if (!Number.isFinite(factor) || factor < 2 || factor > 1_000_000) continue;
+      seen.add(key);
+      const pack: SellUnit = { name, factor: Math.floor(factor) };
+      for (const priceKey of ["selling_price", "buying_price"] as const) {
+        const rawPrice = row[priceKey];
+        if (rawPrice == null || rawPrice === "") continue;
+        const price = Number(rawPrice);
+        if (Number.isFinite(price) && price >= 0) {
+          pack[priceKey] = Math.round(price * 100) / 100;
+        }
       }
+      packs.push(pack);
     }
-    packs.push(pack);
   }
+
+  // If no explicit packs are configured, automatically detect if UOM or name is a group
+  if (packs.length === 0 && item?.product) {
+    const uom = item.product.unit?.trim();
+    const name = item.product.name?.trim();
+    const detected = detectPackFactor(uom, name);
+    if (detected && detected >= 2) {
+      const packName = isGroupUnit(uom) ? (uom || "Bulk") : "Bulk";
+      packs.push({
+        name: packName,
+        factor: detected,
+      });
+    }
+  }
+
   return packs;
 }
 
@@ -70,7 +87,7 @@ export function allSellUnits(item: InventoryItem): SellUnit[] {
   return [
     base,
     ...packUnits(item)
-      .filter((pack) => normalizeUnitName(pack.name) !== baseKey)
+      .filter((pack) => normalizeUnitName(pack.name) !== baseKey || pack.factor > 1)
       .map((pack) => {
         const next = { ...pack };
         if (
@@ -199,16 +216,142 @@ export function mergeSellUnitsIntoAttributes(
   return Object.keys(next).length ? next : null;
 }
 
+export const GROUP_UNIT_ALIASES = new Set([
+  "ctn",
+  "ctns",
+  "carton",
+  "cartons",
+  "box",
+  "boxes",
+  "bx",
+  "crate",
+  "crates",
+  "tray",
+  "trays",
+  "bale",
+  "bales",
+  "bal",
+  "bag",
+  "bags",
+  "jar",
+  "jars",
+  "out",
+  "pkt",
+  "pkts",
+  "pack",
+  "packs",
+  "outer",
+  "outers",
+  "bundle",
+  "bundles",
+  "case",
+  "cases",
+]);
+
+export const DOZEN_UNIT_ALIASES = new Set(["dozen", "dozens", "doz", "dz", "dzn"]);
+
+export function isGroupUnit(unit?: string | null): boolean {
+  if (!unit) return false;
+  const clean = unit.trim().toLowerCase();
+  const stripped = clean.replace(/[^a-z]/g, "");
+  if (DOZEN_UNIT_ALIASES.has(stripped)) return true;
+  if (GROUP_UNIT_ALIASES.has(stripped)) return true;
+  if (
+    /(?:pack|bundle|box|carton|case|crate|bale|tray|bag|outer|ctn|bal|dozen|dzn)\b/i.test(
+      clean,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Detect pack size / pieces per bulk from a UOM or product name:
+ * e.g. "Dozen" -> 12, "Carton of 24" -> 24, "Coke 24x500ml" -> 24, "Eggs 30s" -> 30.
+ */
+export function detectPackFactor(
+  unitOrName?: string | null,
+  fallbackName?: string | null,
+): number | null {
+  const candidates = [unitOrName, fallbackName].filter(Boolean) as string[];
+
+  for (const text of candidates) {
+    const raw = text.trim();
+    if (!raw) continue;
+    const lower = raw.toLowerCase();
+    const stripped = lower.replace(/[^a-z]/g, "");
+
+    // 1. Dozen
+    if (DOZEN_UNIT_ALIASES.has(stripped)) {
+      return 12;
+    }
+
+    // 2. Explicit pack/group size: e.g. "Carton of 24", "Crate of 30", "Pack 12", "Tray of 30"
+    const groupMatch = lower.match(
+      /(?:pack|bundle|box|carton|case|crate|bale|tray|bag|outer|ctn|bal)\s+(?:of\s+|x\s*|per\s+)?(\d+)/i,
+    );
+    if (groupMatch) {
+      const factor = parseInt(groupMatch[1], 10);
+      if (factor >= 2 && factor <= 1_000_000) return factor;
+    }
+
+    // 3. Piece count suffix: "30 pcs", "12 pieces", "24 pkts", "30 eggs", "24 cans", "12 bottles"
+    const pcsMatch = lower.match(
+      /\b(\d+)\s*(?:pcs|packets?|pieces?|pkts?|sachets?|bottles?|cans?|eggs?|rolls?|bars?|tabs?|nos?)\b/i,
+    );
+    if (pcsMatch) {
+      const factor = parseInt(pcsMatch[1], 10);
+      if (factor >= 2 && factor <= 1_000_000) return factor;
+    }
+
+    // 4. Volume / weight multiplier: "24x500ml", "12*1L", "24 x 1.5L"
+    const measureMatch = lower.match(
+      /\b(\d+)\s*[x×*]\s*\d+(?:\.\d+)?\s*(?:ml|cl|ltrs?|litres?|liters?|l|kgs?|g|gms?|mg)\b/i,
+    );
+    if (measureMatch) {
+      const factor = parseInt(measureMatch[1], 10);
+      if (factor >= 2 && factor <= 1_000_000) return factor;
+    }
+
+    // 5. Dimension / count product: "10x4", "6x4", "1x24"
+    const productMatch = lower.match(/\b(\d+)\s*[x×*]\s*(\d+)\b/);
+    if (productMatch) {
+      const factor = parseInt(productMatch[1], 10) * parseInt(productMatch[2], 10);
+      if (factor >= 2 && factor <= 1_000_000) return factor;
+    }
+
+    // 6. Multiplier prefix: "x24", "x 12"
+    const xMatch = lower.match(/(?:^|\s)[x×*]\s*(\d+)\b/);
+    if (xMatch) {
+      const factor = parseInt(xMatch[1], 10);
+      if (factor >= 2 && factor <= 1_000_000) return factor;
+    }
+
+    // 7. S-suffix: "24s", "30's", "40s"
+    const sMatch = lower.match(/\b(\d+)(?:['’]s|s)\b/i);
+    if (sMatch) {
+      const factor = parseInt(sMatch[1], 10);
+      if (factor >= 2 && factor <= 1_000_000) return factor;
+    }
+
+    // 8. Parenthesized number: "(24)", "(12)"
+    const parenMatch = lower.match(/\((\d+)\)/);
+    if (parenMatch) {
+      const factor = parseInt(parenMatch[1], 10);
+      if (factor >= 2 && factor <= 1_000_000) return factor;
+    }
+
+    // 9. Standard default count for known fixed group units if no explicit count found
+    if (stripped === "tray" || stripped === "trays") return 30;
+  }
+
+  return null;
+}
+
 /**
  * Try to detect pack size from product names like "Unga (pack of 24)" or "Water (12pcs)".
  */
 export function detectPackSize(name: string): number | null {
-  const normalized = name.toLowerCase();
-  const packMatch = normalized.match(/(?:pack|bundle|box|carton|case|crate)\s+(?:of\s+)?(\d+)/);
-  if (packMatch) return parseInt(packMatch[1], 10);
-
-  const pcsMatch = normalized.match(/(\d+)\s*(?:pcs|packets|pieces|pkts)/);
-  if (pcsMatch) return parseInt(pcsMatch[1], 10);
-
-  return null;
+  return detectPackFactor(name);
 }

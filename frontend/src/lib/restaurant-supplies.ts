@@ -203,6 +203,7 @@ export type MenuCosting = {
   product_id: string;
   name: string;
   product_type: string | null;
+  serving_unit: string;
   selling_price: number | null;
   has_recipe: boolean;
   cost_per_portion: number | null;
@@ -425,6 +426,49 @@ export type KitchenSuggestion = KitchenItem & {
 
 export type KitchenStock = { enabled: boolean; items: KitchenItem[] };
 
+export type KitchenShiftSession = {
+  id: string;
+  status: "active" | "closing";
+  opening_stock: { inventory_item_id: string; name: string; unit: string; quantity: number }[];
+  closing_stock: { inventory_item_id: string; name: string; unit: string; quantity: number }[] | null;
+  closing_note: string | null;
+  orders_cleared: boolean;
+  clocked_in_by: string | null;
+  clocked_out_by: string | null;
+  clocked_in_at: string;
+  clocked_out_at: string | null;
+};
+
+export type KitchenShiftState = {
+  session: KitchenShiftSession | null;
+  items: KitchenItem[];
+};
+
+export async function fetchKitchenShift(): Promise<KitchenShiftState> {
+  return (await apiFetch<{ data: KitchenShiftState }>(apiRoutes.kitchenShift)).data;
+}
+
+export async function clockInKitchenShift(
+  items: { inventory_item_id: string; quantity: number }[],
+): Promise<KitchenShiftState> {
+  return (
+    await apiFetch<{ data: KitchenShiftState }>(apiRoutes.kitchenShiftAction("clock-in"), json({ items }))
+  ).data;
+}
+
+export async function clockOutKitchenShift(
+  items: { inventory_item_id: string; quantity: number }[],
+  note: string,
+  ordersCleared: boolean,
+): Promise<KitchenShiftState> {
+  return (
+    await apiFetch<{ data: KitchenShiftState }>(
+      apiRoutes.kitchenShiftAction("clock-out"),
+      json({ items, note, orders_cleared: ordersCleared }),
+    )
+  ).data;
+}
+
 export type KitchenIssueStatus = "requested" | "issued" | "cancelled";
 
 export type KitchenIssueLine = {
@@ -480,6 +524,19 @@ type ItemQty = { inventory_item_id: string; quantity: number };
 
 export async function fetchKitchenStock(): Promise<KitchenStock> {
   return (await apiFetch<{ data: KitchenStock }>(apiRoutes.kitchenStock)).data;
+}
+
+export async function fetchKitchenEquivalenceUnits(): Promise<string[]> {
+  return (await apiFetch<{ data: string[] }>(apiRoutes.kitchenEquivalenceUnits)).data;
+}
+
+export async function saveKitchenEquivalenceUnits(units: string[]): Promise<string[]> {
+  return (
+    await apiFetch<{ data: string[] }>(apiRoutes.kitchenEquivalenceUnits, {
+      method: "PUT",
+      body: JSON.stringify({ units }),
+    })
+  ).data;
 }
 
 export async function fetchKitchenSuggestion(): Promise<KitchenSuggestion[]> {

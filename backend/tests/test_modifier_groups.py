@@ -290,12 +290,27 @@ def _add_supply(db, pid, name, unit, stock, role="raw_material"):
 def test_recipe_is_saved_and_rejects_dishes(db):
     _add_supply(db, "flour", "Flour", "kg", 2)
     body = menu.replace_recipe(
-        "fries", RecipeReplace(lines=[RecipeLineIn(product_id="flour", quantity=0.1)]),
+        "fries",
+        RecipeReplace(lines=[RecipeLineIn(product_id="flour", quantity=0.1)], serving_unit="plates"),
         request=None, db=db, session={},
     )
     assert body["data"][0]["name"] == "Flour" and body["data"][0]["unit"] == "kg"
+    assert body["serving_unit"] == "plates"
     out = InventoryItemOut.from_model(db.get(InventoryItem, "inv-fries"))
     assert [(r.name, r.quantity) for r in out.product.recipe] == [("Flour", 0.1)]
+    assert out.product.recipe_serving_unit == "plates"
+
+    legacy_body = menu.replace_recipe(
+        "fries", RecipeReplace(lines=[RecipeLineIn(product_id="flour", quantity=0.1)]),
+        request=None, db=db, session={},
+    )
+    assert legacy_body["serving_unit"] == "plates"
+
+    cleared = menu.replace_recipe(
+        "fries", RecipeReplace(lines=[], serving_unit="sticks"),
+        request=None, db=db, session={},
+    )
+    assert cleared["data"] == [] and cleared["serving_unit"] == "sticks"
 
     with pytest.raises(HTTPException) as exc:
         menu.replace_recipe(
@@ -453,4 +468,3 @@ def test_order_rejects_selling_price_below_buying_price(db):
     res = _order(db, {"inventory_item_id": "inv-coke", "quantity": 1, "unit_price": 85})
     assert "data" in res
     assert res["data"].total == Decimal("85.00")
-

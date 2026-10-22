@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   FormEvent,
   Fragment,
@@ -33,6 +34,7 @@ import { formatKsh } from "@/lib/trans-chap-receipt";
 import { useTransChapIsPhone } from "@/lib/trans-chap-list-view";
 import type {
   ContactImportMode,
+  SettingsOperationsResponse,
   ShopSupplier,
   ShopSupplierMutationResponse,
   ShopSupplierPayment,
@@ -234,6 +236,7 @@ export function TransChapSuppliersList() {
   );
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [owingOnly, setOwingOnly] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<SupplierForm>(EMPTY_FORM);
   const [createForm, setCreateForm] = useState<SupplierForm>(EMPTY_FORM);
@@ -246,6 +249,23 @@ export function TransChapSuppliersList() {
   const [recordingPaymentId, setRecordingPaymentId] = useState<string | null>(null);
   const [supplierPayments, setSupplierPayments] = useState<Record<string, ShopSupplierPayment[]>>({});
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [allowOutstandingAdjustment, setAllowOutstandingAdjustment] = useState(false);
+  const [balanceDrafts, setBalanceDrafts] = useState<Record<string, string>>({});
+  const [savingBalanceId, setSavingBalanceId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void apiFetch<SettingsOperationsResponse>(apiRoutes.settingsOperations)
+      .then((data) => {
+        if (!cancelled) setAllowOutstandingAdjustment(Boolean(data.allow_outstanding_adjustment));
+      })
+      .catch(() => {
+        if (!cancelled) setAllowOutstandingAdjustment(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [importMode, setImportMode] = useState<ContactImportMode>("merge");
   const [importing, setImporting] = useState(false);
   const [downloadingFormat, setDownloadingFormat] = useState<"xlsx" | "csv" | null>(null);
@@ -272,9 +292,10 @@ export function TransChapSuppliersList() {
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return suppliers;
-    return suppliers.filter((row) =>
-      [
+    return suppliers.filter((row) => {
+      if (owingOnly && !(Number(row.balance || 0) > 0)) return false;
+      if (!needle) return true;
+      return [
         row.name,
         row.phone,
         row.pin_number ?? "",
@@ -285,9 +306,9 @@ export function TransChapSuppliersList() {
       ]
         .join(" ")
         .toLowerCase()
-        .includes(needle),
-    );
-  }, [suppliers, query]);
+        .includes(needle);
+    });
+  }, [owingOnly, query, suppliers]);
 
   async function handleDownloadTemplate(format: "xlsx" | "csv") {
     setDownloadingFormat(format);
@@ -366,7 +387,9 @@ export function TransChapSuppliersList() {
       address: form.address.trim() || null,
       postal_code: form.postal_code.trim() || null,
       fax: form.fax.trim() || null,
-      balance: Number.isFinite(balanceNum) ? balanceNum : 0,
+      ...(allowOutstandingAdjustment
+        ? { balance: Number.isFinite(balanceNum) ? balanceNum : 0 }
+        : {}),
       credit_limit: Number.isFinite(creditLimitNum) ? creditLimitNum : 0,
       balance_due_date: form.balance_due_date || null,
       notes: form.notes.trim() || null,
@@ -433,6 +456,48 @@ export function TransChapSuppliersList() {
       await showError("Could not update supplier", extractErrorMessage(err));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveTableBalance(supplier: ShopSupplier) {
+    if (!allowOutstandingAdjustment || savingBalanceId === supplier.id) return;
+    const raw = (balanceDrafts[supplier.id] ?? String(supplier.balance ?? 0)).trim().replace(/,/g, "");
+    const amount = raw ? Number(raw) : 0;
+    if (!Number.isFinite(amount) || amount < 0) {
+      await showError("Check balance", "Enter a balance of 0 or more.");
+      setBalanceDrafts((prev) => {
+        const next = { ...prev };
+        delete next[supplier.id];
+        return next;
+      });
+      return;
+    }
+    if (Math.abs(amount - Number(supplier.balance || 0)) < 0.009) {
+      setBalanceDrafts((prev) => {
+        const next = { ...prev };
+        delete next[supplier.id];
+        return next;
+      });
+      return;
+    }
+    setSavingBalanceId(supplier.id);
+    try {
+      const res = await apiFetch<ShopSupplierMutationResponse>(
+        apiRoutes.supplierUpdate(supplier.id),
+        { method: "POST", body: JSON.stringify({ balance: amount }) },
+      );
+      setSuppliers((prev) => prev.map((row) => (row.id === supplier.id ? res.data : row)));
+      setBalanceDrafts((prev) => {
+        const next = { ...prev };
+        delete next[supplier.id];
+        return next;
+      });
+      if (openId === supplier.id) setEditForm(formFromSupplier(res.data));
+      await toastSuccess(`Balance set to ${formatKsh(amount)}`);
+    } catch (err) {
+      await showError("Could not update balance", extractErrorMessage(err));
+    } finally {
+      setSavingBalanceId(null);
     }
   }
 
@@ -714,34 +779,38 @@ export function TransChapSuppliersList() {
               />
             </div>
           </div>
-          <div className="auth-split__field">
-            <label htmlFor="trans-chap-supplier-balance">Current Balance (KES, optional)</label>
-            <div className="trans-chap-input">
-              <input
-                id="trans-chap-supplier-balance"
-                type="text"
-                inputMode="decimal"
-                className="auth-split__input"
-                placeholder="0.00"
-                value={createForm.balance}
-                onChange={(e) => setCreateForm((f) => ({ ...f, balance: e.target.value }))}
-              />
-            </div>
-          </div>
-          <div className="auth-split__field">
-            <label htmlFor="trans-chap-supplier-due">Pay balance by (optional)</label>
-            <div className="trans-chap-input">
-              <input
-                id="trans-chap-supplier-due"
-                type="date"
-                className="auth-split__input"
-                value={createForm.balance_due_date}
-                onChange={(e) =>
-                  setCreateForm((f) => ({ ...f, balance_due_date: e.target.value }))
-                }
-              />
-            </div>
-          </div>
+          {allowOutstandingAdjustment ? (
+            <>
+              <div className="auth-split__field">
+                <label htmlFor="trans-chap-supplier-balance">Current Balance (KES, optional)</label>
+                <div className="trans-chap-input">
+                  <input
+                    id="trans-chap-supplier-balance"
+                    type="text"
+                    inputMode="decimal"
+                    className="auth-split__input"
+                    placeholder="0.00"
+                    value={createForm.balance}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, balance: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="auth-split__field">
+                <label htmlFor="trans-chap-supplier-due">Pay balance by (optional)</label>
+                <div className="trans-chap-input">
+                  <input
+                    id="trans-chap-supplier-due"
+                    type="date"
+                    className="auth-split__input"
+                    value={createForm.balance_due_date}
+                    onChange={(e) =>
+                      setCreateForm((f) => ({ ...f, balance_due_date: e.target.value }))
+                    }
+                  />
+                </div>
+              </div>
+            </>
+          ) : null}
           <div className="auth-split__field">
             <label htmlFor="trans-chap-supplier-notes">Notes (optional)</label>
             <div className="trans-chap-input">
@@ -1033,42 +1102,46 @@ export function TransChapSuppliersList() {
             />
           </div>
         </div>
-        <div className="auth-split__field">
-          <label htmlFor={`${panelId}-balance`}>Current Balance (KES)</label>
-          <div className="trans-chap-input">
-            <input
-              id={`${panelId}-balance`}
-              type="text"
-              inputMode="decimal"
-              className="auth-split__input"
-              placeholder="0.00"
-              value={
-                open
-                  ? editForm.balance
-                  : supplier.balance != null
-                  ? String(supplier.balance)
-                  : "0"
-              }
-              onChange={(e) =>
-              setEditForm((f) => ({ ...f, balance: e.target.value }))
-            }
-          />
-        </div>
-      </div>
-      <div className="auth-split__field">
-        <label htmlFor={`${panelId}-due`}>Pay balance by</label>
-        <div className="trans-chap-input">
-          <input
-            id={`${panelId}-due`}
-            type="date"
-            className="auth-split__input"
-            value={open ? editForm.balance_due_date : supplier.balance_due_date ?? ""}
-            onChange={(e) =>
-              setEditForm((f) => ({ ...f, balance_due_date: e.target.value }))
-            }
-          />
-        </div>
-      </div>
+        {allowOutstandingAdjustment ? (
+          <>
+            <div className="auth-split__field">
+              <label htmlFor={`${panelId}-balance`}>Current Balance (KES)</label>
+              <div className="trans-chap-input">
+                <input
+                  id={`${panelId}-balance`}
+                  type="text"
+                  inputMode="decimal"
+                  className="auth-split__input"
+                  placeholder="0.00"
+                  value={
+                    open
+                      ? editForm.balance
+                      : supplier.balance != null
+                      ? String(supplier.balance)
+                      : "0"
+                  }
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, balance: e.target.value }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="auth-split__field">
+              <label htmlFor={`${panelId}-due`}>Pay balance by</label>
+              <div className="trans-chap-input">
+                <input
+                  id={`${panelId}-due`}
+                  type="date"
+                  className="auth-split__input"
+                  value={open ? editForm.balance_due_date : supplier.balance_due_date ?? ""}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, balance_due_date: e.target.value }))
+                  }
+                />
+              </div>
+            </div>
+          </>
+        ) : null}
         <div className="auth-split__field">
           <label htmlFor={`${panelId}-notes`}>Notes</label>
           <div className="trans-chap-input">
@@ -1225,6 +1298,13 @@ export function TransChapSuppliersList() {
             </section>
 
             <div className="trans-chap-customer-actions">
+              <Link
+                href={`/trans-chap/purchases/new?supplier=${encodeURIComponent(supplier.name)}`}
+                className="trans-chap-btn trans-chap-btn--primary trans-chap-customer-actions__wide"
+              >
+                <i className="fa-solid fa-box-open" aria-hidden />
+                <span>Receive goods</span>
+              </Link>
               {supplier.phone ? (
                 <>
                   {cleanPhone ? (
@@ -1772,6 +1852,15 @@ export function TransChapSuppliersList() {
           </button>
           <button
             type="button"
+            className={`trans-chap-chip${owingOnly ? " trans-chap-chip--primary" : ""}`}
+            aria-pressed={owingOnly}
+            onClick={() => setOwingOnly((on) => !on)}
+          >
+            <i className="fa-solid fa-scale-unbalanced" aria-hidden />
+            <span>{owingOnly ? "You owe" : "All suppliers"}</span>
+          </button>
+          <button
+            type="button"
             className="trans-chap-chip"
             onClick={openImport}
           >
@@ -1792,7 +1881,11 @@ export function TransChapSuppliersList() {
           No suppliers yet. Tap + to add people you buy from, or import from Excel or CSV.
         </TransChapStatus>
       ) : filtered.length === 0 ? (
-        <p className="trans-chap-sales__empty">No suppliers match this search.</p>
+        <p className="trans-chap-sales__empty">
+          {owingOnly && !query.trim()
+            ? "You don't owe any suppliers right now. Show all suppliers to see everyone."
+            : "No suppliers match this search."}
+        </p>
       ) : layoutView === "list" ? (
         <div className="trans-chap-sales__list">
           <div className="trans-chap-stock-table-wrap trans-chap-stock-table-wrap--cards">
@@ -1848,15 +1941,43 @@ export function TransChapSuppliersList() {
                           {supplier.pin_number || "—"}
                         </td>
                         <td className="trans-chap-stock-table__strong">
-                          {bal > 0 ? (
-                            formatKsh(bal)
-                          ) : bal < 0 ? (
-                            <span className="trans-chap-stock-table__muted">
-                              Advance {formatKsh(Math.abs(bal))}
-                            </span>
-                          ) : (
-                            <span className="trans-chap-stock-table__muted">—</span>
-                          )}
+                          <label className="trans-chap-panel__qty-edit">
+                            <span className="sr-only">Balance owed</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={
+                                allowOutstandingAdjustment
+                                  ? (balanceDrafts[supplier.id] ?? String(supplier.balance ?? 0))
+                                  : bal > 0
+                                    ? formatKsh(bal)
+                                    : bal < 0
+                                      ? `Advance ${formatKsh(Math.abs(bal))}`
+                                      : "—"
+                              }
+                              disabled={!allowOutstandingAdjustment || savingBalanceId === supplier.id}
+                              aria-label={`Balance owed for ${supplier.name}`}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                setBalanceDrafts((prev) => ({ ...prev, [supplier.id]: value }));
+                              }}
+                              onBlur={() => void saveTableBalance(supplier)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                                if (event.key === "Escape") {
+                                  setBalanceDrafts((prev) => {
+                                    const next = { ...prev };
+                                    delete next[supplier.id];
+                                    return next;
+                                  });
+                                  (event.target as HTMLInputElement).blur();
+                                }
+                              }}
+                            />
+                          </label>
                         </td>
                         <td>
                           {supplier.balance_due_date && bal > 0 ? (
@@ -1874,6 +1995,12 @@ export function TransChapSuppliersList() {
                         </td>
                         <td className="trans-chap-stock-table__actions">
                           <div className="trans-chap-stock-table__actions-inner">
+                            <Link
+                              href={`/trans-chap/purchases/new?supplier=${encodeURIComponent(supplier.name)}`}
+                              className="trans-chap-panel__link"
+                            >
+                              Receive goods
+                            </Link>
                             <button
                               type="button"
                               className="trans-chap-panel__link"

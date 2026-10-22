@@ -31,7 +31,7 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
       : paid
         ? "Paid"
         : onCredit
-          ? "On credit"
+          ? "Invoice"
           : waiting
             ? "Waiting"
             : "Failed";
@@ -77,7 +77,12 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
         <header className="trans-chap-slip__brand">
           <DukAiLogoMark size={36} color="currentColor" accentColor="#e8412a" />
           <strong>{receipt.shopName}</strong>
-          <span>Till receipt</span>
+          {receipt.headerLines?.map((line, index) => (
+            <p key={`${index}-${line}`} className="trans-chap-slip__desc">
+              {line}
+            </p>
+          ))}
+          <span>{onCredit ? "Invoice" : "Till receipt"}</span>
         </header>
 
         <p className={`trans-chap-slip__stamp is-${statusTone}`} aria-label={`Status: ${status}`}>

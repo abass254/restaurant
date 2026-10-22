@@ -31,6 +31,7 @@ export type TransChapReceipt = {
   orderId: string | null;
   orderNumber: string;
   shopName: string;
+  headerLines?: string[] | null;
   productName: string;
   items: TransChapReceiptLine[];
   amount: number;
@@ -229,14 +230,14 @@ export function transChapReceiptMessage(receipt: TransChapReceipt): string {
         ? `Paid via M-PESA. Receipt ${receipt.mpesaReceiptNumber}.`
         : "Paid via M-PESA."
       : receipt.payMode === "credit"
-        ? "On credit."
+        ? "Invoice."
         : "Paid in cash.";
   return [
     `${receipt.orderNumber} Confirmed.`,
     isSplit
       ? `${total} sale at ${receipt.shopName} for ${receipt.productName}.`
       : receipt.payMode === "credit"
-        ? `${total} on credit at ${receipt.shopName} for ${receipt.productName}.`
+        ? `${total} invoice at ${receipt.shopName} for ${receipt.productName}.`
         : `${total} paid to ${receipt.shopName} for ${receipt.productName}.`,
     receipt.customerName ? `Customer ${receipt.customerName}.` : "",
     paymentLine,
@@ -255,6 +256,17 @@ export function formatKesDigits(amount: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+export function receiptHeaderLines(
+  account?: { receipt_descriptions?: string[] | null } | null,
+): string[] {
+  const lines = account?.receipt_descriptions;
+  if (!Array.isArray(lines)) return [];
+  return lines
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 export function formatKsh(amount: number): string {

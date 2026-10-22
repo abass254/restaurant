@@ -2,31 +2,49 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { confirmAction, extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { isStoreAdmin } from "@/lib/merchant-permissions";
 import {
+  clockInKitchenShift,
+  clockOutKitchenShift,
   enableKitchenIssuing,
+  fetchKitchenShift,
+  fetchKitchenEquivalenceUnits,
   fetchKitchenStock,
-  fetchStockTakes,
   fetchSupplyItems,
   formatQty,
   recordKitchenUsed,
   roundQty,
-  startStockTake,
+  saveKitchenEquivalenceUnits,
+  fetchMenuCosting,
+  type MenuCosting,
   type KitchenIssue,
   type KitchenItem,
+  type KitchenShiftState,
   type KitchenStock,
-  type StockTake,
   type SupplyItem,
 } from "@/lib/restaurant-supplies";
-import { isHotelMenuItem, updateInventoryActive } from "@/lib/trans-chap-product";
+import {
+  inventoryProductName,
+  isHotelMenuItem,
+  isSupplyItem,
+  saveRecipe,
+  supportsKitchenRecipe,
+  updateInventoryActive,
+} from "@/lib/trans-chap-product";
 import { RestaurantKitchenModifiers } from "@/components/trans-chap/restaurant/RestaurantKitchenModifiers";
+import {
+  RecipeField,
+  parseRecipeQty,
+  recipeDraftLines,
+  type RecipeDraft,
+} from "@/components/trans-chap/TransChapMenuRecipeField";
 import type { InventoryItem } from "@/lib/types";
 import { formatKsh } from "@/lib/trans-chap-receipt";
+import { formatNairobiStamp24 } from "@/lib/nairobi-time";
 
 function parseQty(value: string): number | null {
   const trimmed = value.trim();
@@ -43,7 +61,8 @@ export function issueStatusTone(status: KitchenIssue["status"]): string {
 
 export function RestaurantKitchenTab() {
   const [stock, setStock] = useState<KitchenStock | null>(null);
-  const [openCount, setOpenCount] = useState<StockTake | null>(null);
+  const [shift, setShift] = useState<KitchenShiftState | null>(null);
+  const [shiftLoadFailed, setShiftLoadFailed] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -51,10 +70,11 @@ export function RestaurantKitchenTab() {
       const next = await fetchKitchenStock();
       setStock(next);
       if (next.enabled) {
-        const takes = await fetchStockTakes("kitchen");
-        setOpenCount(takes.find((take) => take.status === "draft") ?? null);
+        setShift(await fetchKitchenShift());
       }
+      setShiftLoadFailed(false);
     } catch (err) {
+      setShiftLoadFailed(true);
       await showError("Could not load the kitchen", extractErrorMessage(err));
     } finally {
       setLoading(false);
@@ -65,10 +85,35 @@ export function RestaurantKitchenTab() {
     void load();
   }, [load]);
 
+  async function onEnabled(next: KitchenStock) {
+    setStock(next);
+    try {
+      setShift(await fetchKitchenShift());
+      setShiftLoadFailed(false);
+    } catch (err) {
+      setShiftLoadFailed(true);
+      await showError("Could not load the kitchen shift", extractErrorMessage(err));
+    }
+  }
+
   if (loading) return <p className="rs-empty">Loading kitchen…</p>;
   if (!stock) return null;
-  if (!stock.enabled) return <KitchenSetup onEnabled={setStock} />;
-  return <KitchenBoard stock={stock} openCount={openCount} onStock={setStock} />;
+  if (!stock.enabled) return <KitchenSetup onEnabled={(next) => void onEnabled(next)} />;
+  if (!shift) {
+    return (
+      <p className="rs-empty">
+        {shiftLoadFailed ? "Kitchen shift could not be loaded. Refresh the page to try again." : "Loading kitchen shift…"}
+      </p>
+    );
+  }
+  return (
+    <KitchenBoard
+      stock={stock}
+      onStock={setStock}
+      shift={shift}
+      onShift={setShift}
+    />
+  );
 }
 
 export function KitchenSetup({ onEnabled }: { onEnabled: (stock: KitchenStock) => void }) {
@@ -178,29 +223,33 @@ export function KitchenSetup({ onEnabled }: { onEnabled: (stock: KitchenStock) =
 
 function KitchenBoard({
   stock,
-  openCount,
   onStock,
+  shift,
+  onShift,
 }: {
   stock: KitchenStock;
-  openCount: StockTake | null;
   onStock: (stock: KitchenStock) => void;
+  shift: KitchenShiftState;
+  onShift: (shift: KitchenShiftState) => void;
 }) {
-  const router = useRouter();
   const [activeView, setActiveView] = useState<"all" | "inventory" | "menu">("all");
   const [usingItem, setUsingItem] = useState<KitchenItem | null>(null);
-  const [busy, setBusy] = useState(false);
   const [inventoryQuery, setInventoryQuery] = useState("");
 
   const [dishes, setDishes] = useState<InventoryItem[]>([]);
+  const [supplies, setSupplies] = useState<InventoryItem[]>([]);
   const [dishesLoading, setDishesLoading] = useState(true);
 
-  const loadDishes = useCallback(async () => {
+  const loadDishes = useCallback(async (): Promise<InventoryItem[] | null> => {
     try {
       const res = await apiFetch<{ data: InventoryItem[] }>(apiRoutes.inventory);
       const hotelItems = (res.data || []).filter((item) => isHotelMenuItem(item));
+      setSupplies((res.data || []).filter((item) => isSupplyItem(item)));
       setDishes(hotelItems);
+      return res.data;
     } catch (err) {
       await showError("Could not load current menu", extractErrorMessage(err));
+      return null;
     } finally {
       setDishesLoading(false);
     }
@@ -215,6 +264,14 @@ function KitchenBoard({
     () => stock.items.filter((item) => (item.kitchen_quantity ?? 0) > 0),
     [stock.items],
   );
+  const kitchenSupplyProductIds = useMemo(() => {
+    const kitchenInventoryIds = new Set(stock.items.map((item) => item.inventory_item_id));
+    return new Set(
+      supplies
+        .filter((item) => item.is_active && kitchenInventoryIds.has(item.id))
+        .map((item) => item.product_id),
+    );
+  }, [stock.items, supplies]);
 
   const totalKitchenValue = useMemo(
     () => kitchenSupplies.reduce((sum, item) => sum + (item.kitchen_value ?? 0), 0),
@@ -232,23 +289,27 @@ function KitchenBoard({
     (item) => !needle || item.name.toLowerCase().includes(needle),
   );
 
-  async function closeDay() {
-    if (openCount) {
-      router.push(`/trans-chap/purchases/count?id=${encodeURIComponent(openCount.id)}&from=kitchen`);
-      return;
-    }
-    setBusy(true);
+  async function refreshShift(next: KitchenShiftState) {
+    onShift(next);
     try {
-      const take = await startStockTake("kitchen");
-      router.push(`/trans-chap/purchases/count?id=${encodeURIComponent(take.id)}&from=kitchen`);
+      onStock(await fetchKitchenStock());
     } catch (err) {
-      await showError("Could not start ending the kitchen session", extractErrorMessage(err));
-      setBusy(false);
+      await showError("Shift updated, but kitchen stock could not be refreshed", extractErrorMessage(err));
     }
+  }
+
+  if (!shift.session) {
+    return (
+      <div className="tc-kitchen-page">
+        <KitchenShiftPanel shift={shift} onShift={(next) => void refreshShift(next)} />
+        <p className="rs-empty">Confirm the store handover and clock in to access the kitchen order queue.</p>
+      </div>
+    );
   }
 
   return (
     <div className="tc-kitchen-page">
+      <KitchenShiftPanel shift={shift} onShift={(next) => void refreshShift(next)} />
       {/* 1. Header with Title, Badge, and Action Buttons */}
       <header className="tc-kitchen-header">
         <div className="tc-kitchen-header__info">
@@ -275,20 +336,15 @@ function KitchenBoard({
               <small>Request supplies from the store</small>
             </span>
           </Link>
-          <button
-            type="button"
-            className="tc-kitchen-action"
-            disabled={busy}
-            onClick={() => void closeDay()}
-          >
+          <Link className="tc-kitchen-action" href="/trans-chap/sales">
             <span className="tc-kitchen-action__icon" aria-hidden>
-              <i className="fa-solid fa-calendar-check" />
+              <i className="fa-solid fa-clipboard-list" />
             </span>
             <span className="tc-kitchen-action__text">
-              <strong>{openCount ? "Continue ending session" : "End kitchen session"}</strong>
-              <small>{openCount ? "Finish the closing count" : "Count what is left for the day"}</small>
+              <strong>Open order queue</strong>
+              <small>View and manage kitchen orders</small>
             </span>
-          </button>
+          </Link>
         </div>
       </header>
 
@@ -329,10 +385,10 @@ function KitchenBoard({
           <div className="tc-kitchen-stat-info">
             <span className="tc-kitchen-stat-label">Daily Session</span>
             <strong className="tc-kitchen-stat-val">
-              {openCount ? "Closing in Draft" : "Session Active"}
+              Session Active
             </strong>
             <span className="tc-kitchen-stat-sub">
-              {openCount ? "Count pending completion" : "Ready for orders"}
+              Since {formatNairobiStamp24(shift.session.clocked_in_at)}
             </span>
           </div>
         </div>
@@ -492,6 +548,9 @@ function KitchenBoard({
           <CurrentMenuSection
             dishes={dishes}
             setDishes={setDishes}
+            supplies={supplies}
+            kitchenSupplyProductIds={kitchenSupplyProductIds}
+            reloadDishes={loadDishes}
             loading={dishesLoading}
           />
         </section>
@@ -510,22 +569,311 @@ function KitchenBoard({
           onUsed={(next) => onStock(next)}
         />
       )}
+
     </div>
+  );
+}
+
+function KitchenShiftPanel({
+  shift,
+  onShift,
+}: {
+  shift: KitchenShiftState;
+  onShift: (shift: KitchenShiftState) => void;
+}) {
+  const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
+  const [clockOut, setClockOut] = useState(false);
+  const [counts, setCounts] = useState<Record<string, string>>({});
+  const [note, setNote] = useState("");
+  const [ordersCleared, setOrdersCleared] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const session = shift.session;
+
+  async function startShift() {
+    if (!shift.items.length) {
+      await showError("No kitchen stock to confirm", "Ask the store to issue supplies before clocking in.");
+      return;
+    }
+    if (shift.items.some((item) => !confirmed[item.inventory_item_id])) {
+      await showError("Confirm every item", "Review and confirm each issued quantity before clocking in.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const next = await clockInKitchenShift(
+        shift.items.map((item) => ({
+          inventory_item_id: item.inventory_item_id,
+          quantity: item.kitchen_quantity,
+        })),
+      );
+      onShift(next);
+      await toastSuccess("Kitchen shift started");
+    } catch (err) {
+      await showError("Could not clock in", extractErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function finishShift() {
+    const parsed = shift.items.map((item) => ({
+      inventory_item_id: item.inventory_item_id,
+      quantity: parseQty(counts[item.inventory_item_id] ?? ""),
+    }));
+    if (parsed.some((item) => item.quantity == null)) {
+      await showError("Complete every count", "Enter the physical closing count for every kitchen item.");
+      return;
+    }
+    const hasVariance = parsed.some((row, index) => row.quantity !== shift.items[index].kitchen_quantity);
+    if (hasVariance && !note.trim()) {
+      await showError("Explain the difference", "Add a note describing the stock difference before clocking out.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const validCounts = parsed.flatMap((item) =>
+        item.quantity == null
+          ? []
+          : [{ inventory_item_id: item.inventory_item_id, quantity: item.quantity }],
+      );
+      if (validCounts.length !== parsed.length) return;
+      const next = await clockOutKitchenShift(validCounts, note, ordersCleared);
+      onShift(next);
+      setClockOut(false);
+      setConfirmed({});
+      setCounts({});
+      setNote("");
+      setOrdersCleared(false);
+      await toastSuccess("Kitchen shift closed and stock reconciled");
+    } catch (err) {
+      await showError("Could not clock out", extractErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="rs-card" aria-label="Kitchen shift handover">
+      <div className="rs-row rs-row--between">
+        <div>
+          <p className="rs-card__title">{session ? "Kitchen shift in progress" : "Confirm stock to clock in"}</p>
+          <p className="rs-card__meta">
+            {session
+              ? `Clocked in ${formatNairobiStamp24(session.clocked_in_at)}. Confirm closing counts before signing out.`
+              : "Check the quantities handed over by the store. You can only start the order queue after confirming all items."}
+          </p>
+        </div>
+        <span className={`rs-badge ${session ? "rs-badge--ok" : "rs-badge--warn"}`}>
+          {session ? "On duty" : "Awaiting handover"}
+        </span>
+      </div>
+
+      {!session ? (
+        <>
+          {shift.items.length ? (
+            <div className="rs-table-wrap">
+              <table className="rs-table">
+                <thead>
+                  <tr><th>Issued supply</th><th className="rs-num">Quantity to confirm</th><th className="rs-num">Confirmed</th></tr>
+                </thead>
+                <tbody>
+                  {shift.items.map((item) => (
+                    <tr key={item.inventory_item_id}>
+                      <td>{item.name}<div className="rs-muted">{item.unit}</div></td>
+                      <td className="rs-num"><strong>{formatQty(item.kitchen_quantity, item.unit)}</strong></td>
+                      <td className="rs-num">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(confirmed[item.inventory_item_id])}
+                          aria-label={`Confirm ${item.name} handover`}
+                          onChange={(event) =>
+                            setConfirmed((previous) => ({
+                              ...previous,
+                              [item.inventory_item_id]: event.target.checked,
+                            }))
+                          }
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <p className="rs-empty">The store has not issued any stock to the kitchen yet.</p>}
+          <div className="rs-row" style={{ justifyContent: "flex-end" }}>
+            <button type="button" className="rs-btn rs-btn--primary" disabled={busy || !shift.items.length} onClick={() => void startShift()}>
+              {busy ? "Starting shift…" : "Confirm handover & clock in"}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="rs-card__meta">
+            Current kitchen stock is reconciled from sales, recorded use, and store issues. Count what is physically left at the end of the shift.
+          </p>
+          {clockOut ? (
+            <>
+              {shift.items.length ? (
+                <div className="rs-table-wrap">
+                  <table className="rs-table">
+                    <thead><tr><th>Supply</th><th className="rs-num">System quantity</th><th className="rs-num">Physical count</th></tr></thead>
+                    <tbody>
+                      {shift.items.map((item) => (
+                        <tr key={item.inventory_item_id}>
+                          <td>{item.name}<div className="rs-muted">{item.unit}</div></td>
+                          <td className="rs-num">{formatQty(item.kitchen_quantity, item.unit)}</td>
+                          <td className="rs-num">
+                            <input
+                              className="rs-input rs-input--qty"
+                              inputMode="decimal"
+                              value={counts[item.inventory_item_id] ?? ""}
+                              aria-label={`Closing count for ${item.name}`}
+                              placeholder="Enter count"
+                              onChange={(event) =>
+                                setCounts((previous) => ({
+                                  ...previous,
+                                  [item.inventory_item_id]: event.target.value,
+                                }))
+                              }
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : <p className="rs-empty">No stock lines to count for this shift.</p>}
+              <label style={{ display: "block", marginTop: "1rem" }}>
+                <span className="rs-card__meta">Variance note (required if counts differ)</span>
+                <textarea
+                  className="rs-input"
+                  rows={2}
+                  maxLength={1000}
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder="Explain any missing, damaged, or wasted stock"
+                  style={{ display: "block", width: "100%", marginTop: "0.4rem" }}
+                />
+              </label>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: "0.55rem", marginTop: "0.8rem" }}>
+                <input
+                  type="checkbox"
+                  checked={ordersCleared}
+                  onChange={(event) => setOrdersCleared(event.target.checked)}
+                />
+                <span className="rs-card__meta">
+                  I have completed or handed over every active order.{" "}
+                  <Link href="/trans-chap/sales" target="_blank" rel="noreferrer">
+                    Review the order queue
+                  </Link>{" "}
+                  before closing this shift.
+                </span>
+              </label>
+              <div className="rs-row" style={{ justifyContent: "flex-end" }}>
+                <button type="button" className="rs-btn" disabled={busy} onClick={() => setClockOut(false)}>Back</button>
+                <button
+                  type="button"
+                  className="rs-btn rs-btn--primary"
+                  disabled={busy || !ordersCleared}
+                  onClick={() => void finishShift()}
+                >
+                  {busy ? "Reconciling…" : "Confirm counts & clock out"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="rs-row" style={{ justifyContent: "flex-end" }}>
+              <button type="button" className="rs-btn rs-btn--danger" onClick={() => setClockOut(true)}>
+                Count stock &amp; clock out
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 
 function CurrentMenuSection({
   dishes,
   setDishes,
+  supplies,
+  kitchenSupplyProductIds,
+  reloadDishes,
   loading,
 }: {
   dishes: InventoryItem[];
   setDishes: React.Dispatch<React.SetStateAction<InventoryItem[]>>;
+  supplies: InventoryItem[];
+  kitchenSupplyProductIds: ReadonlySet<string>;
+  reloadDishes: () => Promise<InventoryItem[] | null>;
   loading: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [recipeEditor, setRecipeEditor] = useState<InventoryItem | null>(null);
+  const [recipeDraft, setRecipeDraft] = useState<RecipeDraft[]>([]);
+  const [recipeServingUnit, setRecipeServingUnit] = useState("servings");
+  const [loadingRecipeStock, setLoadingRecipeStock] = useState(false);
+  const [recipeStockLoadFailed, setRecipeStockLoadFailed] = useState(false);
+  const [savingRecipe, setSavingRecipe] = useState(false);
+  const [costing, setCosting] = useState<Map<string, MenuCosting>>(new Map());
+  const [equivalenceUnits, setEquivalenceUnits] = useState<string[]>([]);
+  const [costingLoading, setCostingLoading] = useState(true);
+  const [costingLoadFailed, setCostingLoadFailed] = useState(false);
+
+  const refreshCosting = useCallback(async () => {
+    setCostingLoading(true);
+    setCostingLoadFailed(false);
+    try {
+      const rows = await fetchMenuCosting();
+      setCosting(new Map(rows.map((row) => [row.inventory_item_id, row])));
+    } catch (err) {
+      setCostingLoadFailed(true);
+      await showError("Could not load meal portions", extractErrorMessage(err));
+    } finally {
+      setCostingLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetchMenuCosting()
+      .then((rows) => {
+        if (active) {
+          setCosting(new Map(rows.map((row) => [row.inventory_item_id, row])));
+          setCostingLoadFailed(false);
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          setCostingLoadFailed(true);
+          void showError("Could not load meal portions", extractErrorMessage(err));
+        }
+      })
+      .finally(() => {
+        if (active) setCostingLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    fetchKitchenEquivalenceUnits()
+      .then(setEquivalenceUnits)
+      .catch((err) => void showError("Could not load equivalence measures", extractErrorMessage(err)));
+  }, []);
+
+  async function updateEquivalenceUnits(units: string[]) {
+    try {
+      setEquivalenceUnits(await saveKitchenEquivalenceUnits(units));
+    } catch (err) {
+      await showError("Could not save equivalence measures", extractErrorMessage(err));
+      throw err;
+    }
+  }
 
   async function handleToggle(dish: InventoryItem) {
     const nextState = !dish.is_active;
@@ -547,6 +895,77 @@ function CurrentMenuSection({
       await showError("Could not update menu dish availability", extractErrorMessage(err));
     } finally {
       setTogglingId(null);
+    }
+  }
+
+  async function openRecipeEditor(dish: InventoryItem) {
+    setRecipeEditor(dish);
+    setRecipeServingUnit(dish.product?.recipe_serving_unit || "servings");
+    setRecipeDraft(
+      (dish.product?.recipe ?? []).map((line) => ({
+        productId: line.ingredient_product_id,
+        qty: String(line.quantity),
+      })),
+    );
+    setLoadingRecipeStock(true);
+    setRecipeStockLoadFailed(false);
+    const latestItems = await reloadDishes();
+    setRecipeStockLoadFailed(latestItems == null);
+    const latestDish = latestItems?.find((item) => item.id === dish.id);
+    if (latestDish) {
+      setRecipeEditor(latestDish);
+      setRecipeServingUnit(latestDish.product?.recipe_serving_unit || "servings");
+      setRecipeDraft(
+        (latestDish.product?.recipe ?? []).map((line) => ({
+          productId: line.ingredient_product_id,
+          qty: String(line.quantity),
+        })),
+      );
+    }
+    setLoadingRecipeStock(false);
+  }
+
+  async function handleSaveRecipe() {
+    if (!recipeEditor || savingRecipe) return;
+    if (!recipeServingUnit.trim()) {
+      await showError("Enter a serving unit", "Name what one unit of this menu item is called, such as plates or sticks.");
+      return;
+    }
+    if (recipeDraft.some((row) => row.productId && parseRecipeQty(row.qty) == null)) {
+      await showError("Check recipe quantities", "Enter a valid amount greater than zero for each selected supply.");
+      return;
+    }
+    setSavingRecipe(true);
+    try {
+      const saved = await saveRecipe(
+        recipeEditor.product_id,
+        recipeDraftLines(recipeDraft).map((line) => ({
+          product_id: line.productId,
+          quantity: line.quantity,
+        })),
+        recipeServingUnit.trim(),
+      );
+      setDishes((previous) =>
+        previous.map((dish) =>
+          dish.id === recipeEditor.id && dish.product
+            ? {
+                ...dish,
+                product: {
+                  ...dish.product,
+                  recipe: saved.lines,
+                  recipe_serving_unit: saved.servingUnit,
+                },
+              }
+            : dish,
+        ),
+      );
+      setRecipeEditor(null);
+      await toastSuccess(`Recipe saved for "${inventoryProductName(recipeEditor)}"`);
+      await refreshCosting();
+    } catch (err) {
+      await showError("Could not save recipe", extractErrorMessage(err));
+    } finally {
+      setSavingRecipe(false);
     }
   }
 
@@ -576,10 +995,19 @@ function CurrentMenuSection({
             <span className="rs-badge" style={{ fontSize: "0.75rem" }}>{dishes.length}</span>
           </h3>
           <p className="tc-kitchen-section__subtitle">
-            Toggle menu items available or paused based on kitchen ingredients.
+            Set each meal&apos;s recipe in base units per serving. Portion estimates use kitchen stock and the ingredient
+            that runs out first; sales deduct recipe ingredients automatically.
           </p>
         </div>
         <div style={{ display: "flex", gap: "0.45rem" }}>
+          <button
+            type="button"
+            className="rs-btn rs-btn--small"
+            onClick={() => void refreshCosting()}
+            disabled={costingLoading}
+          >
+            <i className="fa-solid fa-rotate" aria-hidden /> Refresh portions
+          </button>
           <span className="rs-badge rs-badge--ok" style={{ fontSize: "0.75rem" }}>
             {activeCount} Available
           </span>
@@ -663,7 +1091,8 @@ function CurrentMenuSection({
               <tr>
                 <th>Meal</th>
                 <th className="rs-num">Price</th>
-                <th className="rs-num">Status &amp; Availability</th>
+                <th className="rs-num">Portions ready</th>
+                <th className="rs-num">Menu status</th>
               </tr>
             </thead>
             <tbody>
@@ -683,9 +1112,49 @@ function CurrentMenuSection({
                         </span>
                       )}
                     </div>
+                    {supportsKitchenRecipe(dish) ? (
+                      <button
+                        type="button"
+                        className="tc-menu__recipe-action"
+                        onClick={() => openRecipeEditor(dish)}
+                      >
+                        <i className="fa-solid fa-list-check" aria-hidden="true" />
+                        {costing.get(dish.id)?.has_recipe ? "Edit recipe" : "Set recipe"}
+                      </button>
+                    ) : (
+                      <span className="tc-kitchen-table__recipe-note">
+                        {dish.product?.product_type === "combo"
+                          ? "Availability comes from included meal recipes"
+                          : dish.product?.product_type === "addon"
+                            ? "Add-on stock tracked separately"
+                            : "Recipe setup not available for this item"}
+                      </span>
+                    )}
                   </td>
                   <td className="rs-num" style={{ fontWeight: 700, fontSize: "0.92rem" }}>
                     {formatKsh(dish.selling_price ?? 0)}
+                  </td>
+                  <td className="rs-num">
+                    {costingLoading ? (
+                      <span className="rs-muted">Loading…</span>
+                    ) : costingLoadFailed ? (
+                      <span className="rs-badge rs-badge--warn">Unavailable</span>
+                    ) : (() => {
+                      const meal = costing.get(dish.id);
+                      if (!meal?.has_recipe) return <span className="rs-badge rs-badge--warn">Recipe not set</span>;
+                      if (meal.portions_available == null) {
+                        return <span className="rs-badge rs-badge--warn">Stock not tracked</span>;
+                      }
+                      return (
+                        <>
+                          <strong>{meal.portions_available}</strong>{" "}
+                          {meal.serving_unit || "servings"}
+                          {meal.limiting_ingredient ? (
+                            <div className="rs-muted">Limited by {meal.limiting_ingredient}</div>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                   </td>
                   <td className="rs-num">
                     <div style={{ display: "inline-flex", alignItems: "center", gap: "0.65rem", justifyContent: "flex-end" }}>
@@ -715,6 +1184,90 @@ function CurrentMenuSection({
           </table>
         </div>
       )}
+      {recipeEditor ? (
+        <div
+          className="pos-menu-modal-backdrop"
+          onClick={() => !savingRecipe && !loadingRecipeStock && setRecipeEditor(null)}
+          role="presentation"
+        >
+          <div
+            className="pos-menu-modal tc-menu__recipe-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="kitchen-recipe-editor-title"
+          >
+            <div className="pos-menu-modal__drag-handle" />
+            <header className="pos-menu-modal__header">
+              <div className="pos-menu-modal__title-row">
+                <div>
+                  <h2 id="kitchen-recipe-editor-title" className="pos-menu-modal__title">Recipe setup</h2>
+                  <p className="pos-menu-modal__label-hint">{inventoryProductName(recipeEditor)}</p>
+                </div>
+                <button
+                  type="button"
+                  className="pos-menu-modal__close-btn"
+                  onClick={() => setRecipeEditor(null)}
+                  disabled={savingRecipe || loadingRecipeStock}
+                  aria-label="Close recipe setup"
+                >
+                  <i className="fa-solid fa-xmark" aria-hidden="true" />
+                </button>
+              </div>
+            </header>
+            <div className="pos-menu-modal__body">
+              {loadingRecipeStock ? (
+                <p className="rs-empty">Refreshing current kitchen quantities…</p>
+              ) : recipeStockLoadFailed ? (
+                <p className="rs-empty">Current kitchen stock could not be refreshed. Close and reopen recipe setup to try again.</p>
+              ) : (
+                <RecipeField
+                  label="Ingredients per serving"
+                  supplies={supplies}
+                  selectableSupplyProductIds={kitchenSupplyProductIds}
+                  equivalenceUnits={equivalenceUnits}
+                  onSaveEquivalenceUnits={updateEquivalenceUnits}
+                  rows={recipeDraft}
+                  price={recipeEditor.selling_price}
+                  servingUnit={recipeServingUnit}
+                  onServingUnitChange={setRecipeServingUnit}
+                  onChange={setRecipeDraft}
+                />
+              )}
+              <footer className="pos-menu-modal__footer tc-menu__footer tc-menu__recipe-footer">
+                <button
+                  type="button"
+                  className="rs-btn"
+                  onClick={() => setRecipeEditor(null)}
+                  disabled={savingRecipe || loadingRecipeStock}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    savingRecipe ||
+                    loadingRecipeStock ||
+                    recipeStockLoadFailed ||
+                    !recipeServingUnit.trim() ||
+                    recipeDraft.some((row) => row.productId && parseRecipeQty(row.qty) == null)
+                  }
+                  className="pos-menu-modal__submit-btn"
+                  onClick={() => void handleSaveRecipe()}
+                >
+                  {loadingRecipeStock
+                    ? "Refreshing stock…"
+                    : recipeStockLoadFailed
+                      ? "Stock unavailable"
+                      : savingRecipe
+                        ? "Saving…"
+                        : "Save recipe"}
+                </button>
+              </footer>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

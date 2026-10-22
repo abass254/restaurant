@@ -7,6 +7,7 @@ export type BusinessAccount = {
   business_category: string | null;
   store_type?: StoreType | string | null;
   logo_url?: string | null;
+  receipt_descriptions?: string[] | null;
   latitude: number | null;
   longitude: number | null;
 };
@@ -625,8 +626,10 @@ export type SettingsResponse = {
   suggested_opening_stock: string;
   allow_item_quantity_adjustment?: boolean;
   allow_price_adjustment?: boolean;
+  allow_outstanding_adjustment?: boolean;
   adjust_selling_price_on_purchase?: boolean;
   force_mpesa_prompt?: boolean;
+  receipt_descriptions?: string[];
   block_sale_on_low_ingredients?: boolean;
   kitchen_issuing_enabled?: boolean;
   inventory_integration?: InventoryIntegrationConfig | null;
@@ -635,6 +638,7 @@ export type SettingsResponse = {
 export type SettingsOperationsResponse = {
   allow_item_quantity_adjustment: boolean;
   allow_price_adjustment: boolean;
+  allow_outstanding_adjustment?: boolean;
   adjust_selling_price_on_purchase: boolean;
   force_mpesa_prompt: boolean;
   block_sale_on_low_ingredients?: boolean;
@@ -1238,6 +1242,7 @@ export type CatalogProduct = {
   modifier_groups?: ModifierGroup[] | null;
   combo_components?: ComboComponent[] | null;
   recipe?: RecipeLine[] | null;
+  recipe_serving_unit?: string;
   is_active?: boolean;
   created_at: string | null;
   updated_at: string | null;
@@ -1263,6 +1268,7 @@ export type InventoryItem = {
   selling_price: number | null;
   margin: number | null;
   stock_quantity: number | null;
+  kitchen_quantity?: number | null;
   low_stock_threshold: number | null;
   inventory_role?: InventoryRole | string | null;
   is_active: boolean;
@@ -2508,4 +2514,3 @@ export type ExpenseListResponse = {
   total_amount: number;
   count: number;
 };
-

@@ -69,9 +69,41 @@ class OpeningInvestmentUpdate(BaseModel):
     opening_investment: Decimal = Field(ge=0, le=99_999_999.99, decimal_places=2)
 
 
+class ReceiptDescriptionsUpdate(BaseModel):
+    descriptions: list[str] = Field(default_factory=list, max_length=8)
+
+
+def clean_receipt_descriptions(lines: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    for line in lines:
+        text = " ".join(str(line).split())
+        if not text:
+            continue
+        if len(text) > 160:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="Each receipt line must be 160 characters or fewer.",
+            )
+        cleaned.append(text)
+    if len(cleaned) > 8:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Add up to 8 receipt lines.",
+        )
+    return cleaned
+
+
+def receipt_descriptions_for(account: Account | None) -> list[str]:
+    raw = getattr(account, "receipt_descriptions", None) if account else None
+    if not isinstance(raw, list):
+        return []
+    return [line for line in raw if isinstance(line, str) and line.strip()]
+
+
 class OperationsSettingsUpdate(BaseModel):
     allow_item_quantity_adjustment: bool | None = None
     allow_price_adjustment: bool | None = None
+    allow_outstanding_adjustment: bool | None = None
     adjust_selling_price_on_purchase: bool | None = None
     force_mpesa_prompt: bool | None = None
     block_sale_on_low_ingredients: bool | None = None
@@ -300,12 +332,16 @@ def show_settings(
         "allow_price_adjustment": (
             account.allow_price_adjustment if account else False
         ),
+        "allow_outstanding_adjustment": (
+            account.allow_outstanding_adjustment if account else False
+        ),
         "adjust_selling_price_on_purchase": (
             account.adjust_selling_price_on_purchase if account else True
         ),
         "force_mpesa_prompt": (
             account.force_mpesa_prompt if account else True
         ),
+        "receipt_descriptions": receipt_descriptions_for(account),
         "can_set_opening_amount": bool(account is not None and can_manage_opening_amount),
         "can_set_opening_stock": bool(account is not None and can_manage_opening_amount),
         "can_set_opening_investment": bool(account is not None and can_manage_opening_amount),
@@ -324,7 +360,9 @@ def show_operations_settings(
     session: dict = Depends(get_request_session),
 ):
     user = require_user(services.db, session)
-    assert_merchant_section_any_access(user, "settings", "pos", "dashboard")
+    assert_merchant_section_any_access(
+        user, "settings", "pos", "dashboard", "customer", "supplier"
+    )
     account_id = require_merchant_account_id(user)
     account = services.db.get(Account, account_id)
     if account is None:
@@ -332,6 +370,9 @@ def show_operations_settings(
     return {
         "allow_item_quantity_adjustment": account.allow_item_quantity_adjustment,
         "allow_price_adjustment": account.allow_price_adjustment,
+        "allow_outstanding_adjustment": bool(
+            getattr(account, "allow_outstanding_adjustment", False)
+        ),
         "adjust_selling_price_on_purchase": account.adjust_selling_price_on_purchase,
         "force_mpesa_prompt": account.force_mpesa_prompt,
         "block_sale_on_low_ingredients": bool(
@@ -371,6 +412,9 @@ def update_operations_settings(
     return {
         "allow_item_quantity_adjustment": account.allow_item_quantity_adjustment,
         "allow_price_adjustment": account.allow_price_adjustment,
+        "allow_outstanding_adjustment": bool(
+            getattr(account, "allow_outstanding_adjustment", False)
+        ),
         "adjust_selling_price_on_purchase": account.adjust_selling_price_on_purchase,
         "force_mpesa_prompt": account.force_mpesa_prompt,
         "block_sale_on_low_ingredients": bool(
@@ -409,6 +453,38 @@ def update_menu_sections(
     services.db.commit()
     services.db.refresh(account)
     return {"message": "Menu sections saved.", "sections": menu_sections_for(account)}
+
+
+@router.put("/receipt-descriptions")
+def set_receipt_descriptions(
+    payload: ReceiptDescriptionsUpdate,
+    request: Request,
+    services: ServiceContainer = Depends(get_services),
+    session: dict = Depends(get_request_session),
+):
+    """Lines printed under the logo and shop name on till receipts."""
+    validate_csrf(request, session)
+    user = require_user(services.db, session)
+    assert_merchant_section_access(user, "settings")
+    account_id = require_merchant_account_id(user)
+
+    if not (user.is_super_admin() or is_membership_owner(user, account_id)):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Only the shop owner can change the receipt header.",
+        )
+
+    account = services.db.get(Account, account_id)
+    if account is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Business account not found.")
+
+    account.receipt_descriptions = clean_receipt_descriptions(payload.descriptions)
+    services.db.commit()
+    services.db.refresh(account)
+    return {
+        "message": "Receipt header saved.",
+        "receipt_descriptions": receipt_descriptions_for(account),
+    }
 
 
 @router.put("/opening-amount")

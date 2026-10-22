@@ -54,6 +54,8 @@ class Account(Base):
     # Commerce mode: general retail vs restaurant / F&B.
     store_type: Mapped[str] = mapped_column(String(32), default="retail")
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Short lines printed under the shop name on till receipts.
+    receipt_descriptions: Mapped[Any | None] = mapped_column(JSON, nullable=True)
     opening_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     opening_amount_set_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     opening_stock: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
@@ -62,6 +64,7 @@ class Account(Base):
     opening_investment_set_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     allow_item_quantity_adjustment: Mapped[bool] = mapped_column(Boolean, default=True)
     allow_price_adjustment: Mapped[bool] = mapped_column(Boolean, default=False)
+    allow_outstanding_adjustment: Mapped[bool] = mapped_column(Boolean, default=False)
     adjust_selling_price_on_purchase: Mapped[bool] = mapped_column(Boolean, default=True)
     force_mpesa_prompt: Mapped[bool] = mapped_column(Boolean, default=True)
     # Restaurant only: refuse a sale when recipe ingredients are short (default lets stock go negative).
@@ -1015,6 +1018,11 @@ class Catalogue(Base):
         cascade="all, delete-orphan",
         order_by="RecipeLine.sort_order",
     )
+    recipe_serving_units: Mapped[list[RecipeServingUnit]] = relationship(
+        "RecipeServingUnit",
+        back_populates="product",
+        cascade="all, delete-orphan",
+    )
     combo_component_links: Mapped[list[ComboComponent]] = relationship(
         "ComboComponent",
         foreign_keys="[ComboComponent.combo_id]",
@@ -1197,6 +1205,48 @@ class RecipeLine(Base):
 
     product: Mapped[Catalogue] = relationship(foreign_keys=[product_id], back_populates="recipe_lines")
     ingredient: Mapped[Catalogue] = relationship(foreign_keys=[ingredient_product_id])
+
+
+class RecipeServingUnit(Base):
+    """The account-specific unit in which a menu recipe yields portions."""
+
+    __tablename__ = "recipe_serving_units"
+    __table_args__ = (
+        UniqueConstraint("account_id", "product_id", name="uq_recipe_serving_units_account_product"),
+        {"mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_unicode_ci"},
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    account_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+    )
+    product_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("catalogue.id", ondelete="CASCADE"),
+    )
+    serving_unit: Mapped[str] = mapped_column(String(32), default="servings")
+    product: Mapped[Catalogue] = relationship(back_populates="recipe_serving_units")
+
+
+class KitchenEquivalenceUnit(Base):
+    """Account-wide menu output measures available when setting kitchen recipes."""
+
+    __tablename__ = "kitchen_equivalence_units"
+    __table_args__ = (
+        UniqueConstraint("account_id", "name", name="uq_kitchen_equivalence_units_account_name"),
+        Index("ix_kitchen_equivalence_units_account_order", "account_id", "sort_order"),
+        {"mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_unicode_ci"},
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    account_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+    )
+    name: Mapped[str] = mapped_column(String(32))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class ComboComponent(Base):
@@ -1514,6 +1564,37 @@ class StockTakeLine(Base):
 
     stock_take: Mapped[StockTake] = relationship(back_populates="lines")
     inventory_item: Mapped[InventoryItem] = relationship()
+
+
+class KitchenShiftSession(Base):
+    """A kitchen staff handover, from confirmed stock receipt to counted close."""
+
+    __tablename__ = "kitchen_shift_sessions"
+    __table_args__ = (
+        Index("ix_kitchen_shift_sessions_account_status", "account_id", "status"),
+        {"mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_unicode_ci"},
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    account_id: Mapped[str] = mapped_column(
+        String(PK_LEN), ForeignKey("accounts.id", ondelete="CASCADE"),
+    )
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    opening_stock: Mapped[Any] = mapped_column(JSON)
+    closing_stock: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    closing_note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    orders_cleared: Mapped[bool] = mapped_column(Boolean, default=False)
+    clocked_in_by: Mapped[str | None] = mapped_column(
+        String(PK_LEN), ForeignKey("users.id"), nullable=True,
+    )
+    clocked_out_by: Mapped[str | None] = mapped_column(
+        String(PK_LEN), ForeignKey("users.id"), nullable=True,
+    )
+    clocked_in_at: Mapped[datetime] = mapped_column(DateTime)
+    clocked_out_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    stock_take_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN), ForeignKey("stock_takes.id"), nullable=True,
+    )
 
 
 class KitchenIssue(Base):

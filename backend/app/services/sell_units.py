@@ -64,6 +64,15 @@ _FACTOR_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     ),
     # (24)
     (re.compile(r"\((\d+)\)"), "first"),
+    # group size: carton of 24 / pack 12 / crate 30 / box of 50
+    (
+        re.compile(
+            r"\b(?:pack|bundle|box|carton|case|crate|bale|tray|bag|outer|ctn|bal)\s+(?:of\s+|x\s*|per\s+)?(\d+)\b"
+            + _NOT_MEASURE,
+            re.I,
+        ),
+        "first",
+    ),
     # tray of 30 / pack per 24
     (re.compile(r"\b(?:of|per)\s+(\d+)\b" + _NOT_MEASURE, re.I), "first"),
 )
@@ -142,8 +151,17 @@ def sell_units_for_item(item: Any) -> list[dict[str, Any]]:
             "buying_price": base_buy,
         }
     ]
-    for pack in pack_units_from_attributes(getattr(item, "attributes", None)):
-        if _normalize_name(pack["name"]) == _normalize_name(base_name):
+    packs = pack_units_from_attributes(getattr(item, "attributes", None))
+    if not packs:
+        product = getattr(item, "product", None)
+        uom = getattr(product, "unit", None) if product is not None else None
+        p_name = getattr(product, "name", None) if product is not None else None
+        detected = detect_pack(uom, p_name)
+        if detected and detected[1] and detected[1] >= 2:
+            pack_name = detected[0] if _normalize_name(detected[0]) != _normalize_name(base_name) else "Bulk"
+            packs = [{"name": pack_name, "factor": detected[1]}]
+    for pack in packs:
+        if _normalize_name(pack["name"]) == _normalize_name(base_name) and int(pack.get("factor", 1)) <= 1:
             continue
         factor = int(pack["factor"])
         if pack.get("selling_price") is None and base_sell is not None:
@@ -218,8 +236,9 @@ def infer_pack_factor(
 
 
 def unit_kind(unit: str | None) -> str | None:
-    """Classify an Excel unit label as ``pack``, ``dozen``, ``piece`` or None (other)."""
-    key = re.sub(r"[^a-z]", "", _normalize_name(unit))
+    """Classify a unit label as ``pack``, ``dozen``, ``piece`` or None (other)."""
+    norm = _normalize_name(unit)
+    key = re.sub(r"[^a-z]", "", norm)
     if not key:
         return None
     if key in PACK_UNIT_ALIASES:
@@ -228,6 +247,12 @@ def unit_kind(unit: str | None) -> str | None:
         return "dozen"
     if key in PIECE_UNIT_ALIASES:
         return "piece"
+    for alias in DOZEN_UNIT_ALIASES:
+        if re.search(rf"\b{alias}\b", norm):
+            return "dozen"
+    for alias in PACK_UNIT_ALIASES:
+        if re.search(rf"\b{alias}\b", norm):
+            return "pack"
     return None
 
 
@@ -236,11 +261,10 @@ def detect_pack(
     name: str | None,
     pack_size: Any = None,
 ) -> tuple[str, int | None] | None:
-    """Detect a pack unit for an imported row.
+    """Detect a pack unit for an imported row or product item.
 
     Returns ``(pack_label, pieces_per_pack)`` when ``unit`` is a pack or dozen
-    unit, else None. ``pieces_per_pack`` is None when it is a pack unit but the
-    size is neither given nor parseable from the name.
+    unit, else None.
     """
     kind = unit_kind(unit)
     label = (unit or "").strip()[:64]
@@ -251,7 +275,10 @@ def detect_pack(
         return None
     if kind == "dozen":
         return label, 12
-    return label, pack_factor_from_name(name)
+    factor = pack_factor_from_name(unit) or pack_factor_from_name(name)
+    if factor is not None:
+        return label, factor
+    return label, None
 
 
 def merge_pack_into_attributes(

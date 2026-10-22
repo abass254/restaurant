@@ -46,19 +46,23 @@ Allow: /
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Start the M-PESA lost-callback recovery sweep alongside the app."""
+    """Start background maintenance tasks alongside the app."""
     settings = get_settings()
-    task: asyncio.Task | None = None
+    tasks: list[asyncio.Task] = []
     if settings.mpesa_stk_recovery_enabled:
         from app.services.mpesa_recovery_service import run_recovery_loop
 
-        task = asyncio.create_task(run_recovery_loop())
+        tasks.append(asyncio.create_task(run_recovery_loop()))
+    from app.services.kitchen_menu_service import run_daily_menu_reset
+
+    tasks.append(asyncio.create_task(run_daily_menu_reset()))
 
     try:
         yield
     finally:
-        if task is not None:
+        for task in tasks:
             task.cancel()
+        for task in tasks:
             with suppress(asyncio.CancelledError):
                 await task
 

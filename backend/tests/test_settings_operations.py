@@ -3,6 +3,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+from fastapi import HTTPException
+
 from app.api.v1 import settings as settings_api
 
 
@@ -11,6 +14,7 @@ def test_operations_settings_are_readable_from_pos(monkeypatch) -> None:
     account = SimpleNamespace(
         allow_item_quantity_adjustment=True,
         allow_price_adjustment=False,
+        allow_outstanding_adjustment=False,
         adjust_selling_price_on_purchase=True,
         force_mpesa_prompt=False,
     )
@@ -35,10 +39,23 @@ def test_operations_settings_are_readable_from_pos(monkeypatch) -> None:
     assert response == {
         "allow_item_quantity_adjustment": True,
         "allow_price_adjustment": False,
+        "allow_outstanding_adjustment": False,
         "adjust_selling_price_on_purchase": True,
         "force_mpesa_prompt": False,
         "block_sale_on_low_ingredients": False,
         "kitchen_issuing_enabled": False,
     }
-    assert accessed_sections == [("settings", "pos", "dashboard")]
+    assert accessed_sections == [("settings", "pos", "dashboard", "customer", "supplier")]
     db.get.assert_called_once()
+
+
+def test_receipt_descriptions_trim_and_drop_blanks() -> None:
+    assert settings_api.clean_receipt_descriptions(["  Paybill 123  ", "", "  Thanks  "]) == [
+        "Paybill 123",
+        "Thanks",
+    ]
+
+
+def test_receipt_descriptions_reject_long_lines() -> None:
+    with pytest.raises(HTTPException):
+        settings_api.clean_receipt_descriptions(["x" * 161])

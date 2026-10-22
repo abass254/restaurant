@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuthUser } from "@/components/app/AuthProvider";
+import { useAuthRefresh, useAuthUser } from "@/components/app/AuthProvider";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { TransChapCameraSettings } from "@/components/trans-chap/TransChapCameraSettings";
 import { TransChapInstallPanel } from "@/components/trans-chap/TransChapInstallPanel";
@@ -43,6 +43,7 @@ type SettingsPane =
   | "download"
   | "camera"
   | "menu-sections"
+  | "receipt"
   | "team";
 
 function initials(name: string): string {
@@ -54,6 +55,7 @@ function initials(name: string): string {
 
 export default function TransChapSettingsPage() {
   const user = useAuthUser();
+  const refreshUser = useAuthRefresh();
   const [pane, setPane] = useState<SettingsPane>("list");
   const [loggingOut, setLoggingOut] = useState(false);
   const [mpesaReady, setMpesaReady] = useState<boolean | null>(null);
@@ -87,11 +89,15 @@ export default function TransChapSettingsPage() {
   const [adjustSellingPrice, setAdjustSellingPrice] = useState(true);
   const [allowQuantityAdjustment, setAllowQuantityAdjustment] = useState(true);
   const [allowPriceAdjustment, setAllowPriceAdjustment] = useState(false);
+  const [allowOutstandingAdjustment, setAllowOutstandingAdjustment] = useState(false);
   const [forceMpesaPrompt, setForceMpesaPrompt] = useState(true);
   const [blockLowIngredients, setBlockLowIngredients] = useState(false);
   const [kitchenIssuing, setKitchenIssuing] = useState(false);
   const [operationsSaving, setOperationsSaving] = useState(false);
   const [settingsQuery, setSettingsQuery] = useState("");
+  const [receiptLines, setReceiptLines] = useState<string[]>([]);
+  const [receiptDraft, setReceiptDraft] = useState("");
+  const [receiptSaving, setReceiptSaving] = useState(false);
 
   const restaurant = isRestaurantStore(user.active_account ?? user.account);
   const router = useRouter();
@@ -168,10 +174,12 @@ export default function TransChapSettingsPage() {
         }
         setAllowQuantityAdjustment(data.allow_item_quantity_adjustment ?? true);
         setAllowPriceAdjustment(data.allow_price_adjustment ?? false);
+        setAllowOutstandingAdjustment(data.allow_outstanding_adjustment ?? false);
         setAdjustSellingPrice(data.adjust_selling_price_on_purchase ?? true);
         setForceMpesaPrompt(data.force_mpesa_prompt ?? true);
         setBlockLowIngredients(data.block_sale_on_low_ingredients ?? false);
         setKitchenIssuing(data.kitchen_issuing_enabled ?? false);
+        setReceiptLines(data.receipt_descriptions ?? []);
         const ig = data.user.instagram_account;
         setHasInstagram(Boolean(ig));
         if (typeof ig?.auto_replies_enabled === "boolean") {
@@ -216,6 +224,7 @@ export default function TransChapSettingsPage() {
       );
       setAllowQuantityAdjustment(data.allow_item_quantity_adjustment);
       setAllowPriceAdjustment(data.allow_price_adjustment);
+      setAllowOutstandingAdjustment(data.allow_outstanding_adjustment ?? false);
       setAdjustSellingPrice(data.adjust_selling_price_on_purchase);
       setBlockLowIngredients(data.block_sale_on_low_ingredients ?? false);
       setKitchenIssuing(data.kitchen_issuing_enabled ?? false);
@@ -248,6 +257,15 @@ export default function TransChapSettingsPage() {
       enabled
         ? "Selling price shown on purchases"
         : "Selling price hidden on purchases",
+    );
+  }
+
+  async function handleAllowOutstandingAdjustmentToggle(enabled: boolean) {
+    await updateOperations(
+      { allow_outstanding_adjustment: enabled },
+      enabled
+        ? "Outstanding amounts can be adjusted"
+        : "Outstanding amount adjustment turned off",
     );
   }
 
@@ -430,11 +448,118 @@ export default function TransChapSettingsPage() {
     window.location.assign(SIGN_IN_PATH);
   }
 
+  function addReceiptLine() {
+    const line = receiptDraft.trim().replace(/\s+/g, " ");
+    if (!line || receiptLines.length >= 8) return;
+    if (line.length > 160) {
+      void showError("Too long", "Each line can be up to 160 characters.");
+      return;
+    }
+    setReceiptLines((current) => [...current, line]);
+    setReceiptDraft("");
+  }
+
+  async function saveReceiptLines() {
+    if (receiptSaving || !owner) return;
+    setReceiptSaving(true);
+    try {
+      const data = await apiFetch<{ receipt_descriptions: string[] }>(
+        apiRoutes.settingsReceiptDescriptions,
+        {
+          method: "PUT",
+          body: JSON.stringify({ descriptions: receiptLines }),
+        },
+      );
+      setReceiptLines(data.receipt_descriptions);
+      await refreshUser();
+      setPane("list");
+      await toastSuccess("Receipt header saved");
+    } catch (error) {
+      await showError("Could not save", extractErrorMessage(error));
+    } finally {
+      setReceiptSaving(false);
+    }
+  }
+
   function backToList() {
     setPane("list");
     const url = new URL(window.location.href);
     url.searchParams.delete("pane");
     window.history.replaceState({}, "", url.pathname + url.search);
+  }
+
+  if (pane === "receipt" && owner) {
+    return (
+      <div className="ios-settings">
+        <button type="button" className="ios-settings__back" onClick={backToList}>
+          <i className="fa-solid fa-chevron-left" aria-hidden />
+          Settings
+        </button>
+        <h2 className="ios-settings__screen-title">Receipt header</h2>
+        <section className="ios-settings__group" aria-label="Receipt header lines">
+          <div className="ios-settings__card ios-settings__card--pad">
+            <label htmlFor="receipt-line" className="auth-split__label">
+              Lines under the logo and shop name
+            </label>
+            <input
+              id="receipt-line"
+              type="text"
+              className="auth-split__input"
+              placeholder="Welcome. Paybill 123456."
+              maxLength={160}
+              value={receiptDraft}
+              disabled={receiptSaving || receiptLines.length >= 8}
+              onChange={(event) => setReceiptDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  addReceiptLine();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="auth-split__submit"
+              disabled={receiptSaving || !receiptDraft.trim() || receiptLines.length >= 8}
+              onClick={addReceiptLine}
+            >
+              Add line
+            </button>
+            {receiptLines.length ? (
+              <ul className="ios-settings__receipt-lines">
+                {receiptLines.map((line, index) => (
+                  <li key={`${index}-${line}`}>
+                    <span>{line}</span>
+                    <button
+                      type="button"
+                      disabled={receiptSaving}
+                      onClick={() =>
+                        setReceiptLines((current) => current.filter((_, item) => item !== index))
+                      }
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="ios-settings__footer">No extra lines yet. Receipts show the shop name only.</p>
+            )}
+            <button
+              type="button"
+              className="auth-split__submit"
+              disabled={receiptSaving}
+              onClick={() => void saveReceiptLines()}
+            >
+              {receiptSaving ? "Saving…" : "Save receipt header"}
+            </button>
+          </div>
+          <p className="ios-settings__footer">
+            Up to 8 short lines. They print at the top of every till receipt, after the logo and shop name.
+          </p>
+        </section>
+      </div>
+    );
   }
 
   if (pane === "mpesa") {
@@ -660,7 +785,7 @@ export default function TransChapSettingsPage() {
         />
       </label>
 
-      {groupMatches("getting started opening investment cash till setup payments mpesa mobile money") ? (
+      {groupMatches("getting started opening investment cash till setup payments mpesa mobile money receipt header description") ? (
       <section className="ios-settings__group" aria-label="Getting started">
         <h3 className="ios-settings__caption">Getting Started</h3>
         <div className="ios-settings__card">
@@ -740,6 +865,30 @@ export default function TransChapSettingsPage() {
               <span className="ios-settings__value">
                 {openingStock == null ? "Owner only" : formatMoney(Number(openingStock))}
               </span>
+            </div>
+          )}
+          {owner ? (
+            <button
+              type="button"
+              className="ios-settings__row"
+              onClick={() => setPane("receipt")}
+            >
+              <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
+                <i className="fa-solid fa-receipt" />
+              </span>
+              <span className="ios-settings__label">Receipt header</span>
+              <span className="ios-settings__value">
+                {receiptLines.length ? `${receiptLines.length} line${receiptLines.length === 1 ? "" : "s"}` : "Not set"}
+              </span>
+              <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+            </button>
+          ) : (
+            <div className="ios-settings__row ios-settings__row--static">
+              <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
+                <i className="fa-solid fa-receipt" />
+              </span>
+              <span className="ios-settings__label">Receipt header</span>
+              <span className="ios-settings__value">Owner only</span>
             </div>
           )}
           <button
@@ -856,6 +1005,44 @@ export default function TransChapSettingsPage() {
       </section>
       ) : null}
 
+      {groupMatches("supplier customer outstanding balance amount adjust") ? (
+      <section className="ios-settings__group" aria-label="Suppliers and customers">
+        <h3 className="ios-settings__caption">Suppliers and customers</h3>
+        <div className="ios-settings__card">
+          <div className="ios-settings__row ios-settings__row--static">
+            <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
+              <i className="fa-solid fa-scale-balanced" />
+            </span>
+            <span className="ios-settings__label">Adjust Supplier/Customer Outstanding amounts</span>
+            <span className="ios-settings__trailing">
+              {owner ? (
+                <button
+                  type="button"
+                  role="switch"
+                  className={`theme-switch${allowOutstandingAdjustment ? " is-on" : ""}`}
+                  aria-checked={allowOutstandingAdjustment}
+                  aria-label="Adjust Supplier/Customer Outstanding amounts"
+                  disabled={operationsSaving}
+                  onClick={() =>
+                    void handleAllowOutstandingAdjustmentToggle(!allowOutstandingAdjustment)
+                  }
+                >
+                  <span className="theme-switch__thumb" aria-hidden />
+                </button>
+              ) : (
+                <span className="ios-settings__value">Owner only</span>
+              )}
+            </span>
+          </div>
+        </div>
+        <p className="ios-settings__footer">
+          {allowOutstandingAdjustment
+            ? "Opening and outstanding balances can be edited on the Suppliers and Customers pages."
+            : "Outstanding balances stay as recorded from purchases, sales, and payments."}
+        </p>
+      </section>
+      ) : null}
+
       {groupMatches("inventory stock item quantity adjustment purchases") ? (
       <section className="ios-settings__group" aria-label="Inventory">
         <h3 className="ios-settings__caption">Inventory</h3>
@@ -889,7 +1076,7 @@ export default function TransChapSettingsPage() {
             <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
               <i className="fa-solid fa-money-bill-transfer" />
             </span>
-            <span className="ios-settings__label">Allow sale price update</span>
+            <span className="ios-settings__label">Allow price adjustment</span>
             <span className="ios-settings__trailing">
               {owner ? (
                 <button
@@ -897,7 +1084,7 @@ export default function TransChapSettingsPage() {
                   role="switch"
                   className={`theme-switch${allowPriceAdjustment ? " is-on" : ""}`}
                   aria-checked={allowPriceAdjustment}
-                  aria-label="Allow sale price update"
+                  aria-label="Allow price adjustment"
                   disabled={operationsSaving}
                   onClick={() =>
                     void handleAllowPriceAdjustmentToggle(!allowPriceAdjustment)
@@ -916,8 +1103,8 @@ export default function TransChapSettingsPage() {
             ? "Owners and staff can edit stock quantities. "
             : "Quantities are read-only for staff. "}
           {allowPriceAdjustment
-            ? "Sale prices can be modified during checkout."
-            : "Sale prices are fixed during checkout."}
+            ? "Prices can be modified on the stocks list and during checkout."
+            : "Prices are fixed on the stocks list and during checkout."}
         </p>
       </section>
       ) : null}

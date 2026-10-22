@@ -48,6 +48,16 @@ export function isHotelMenuItem(item: InventoryItem): boolean {
   );
 }
 
+export function supportsKitchenRecipe(item: InventoryItem): boolean {
+  const type = item.product?.product_type;
+  return type === "meal" || (
+    type !== "combo" &&
+    type !== "addon" &&
+    type !== "service" &&
+    isMenuCatalogCategory(item.product?.category)
+  );
+}
+
 /** Stock bought in (sold as-is or used in cooking), as opposed to dishes made in the kitchen. */
 export function isSupplyItem(item: InventoryItem): boolean {
   const type = item.product?.product_type;
@@ -176,12 +186,13 @@ export async function saveItemModifierGroups(
 export async function saveRecipe(
   dishProductId: string,
   lines: { product_id: string; quantity: number }[],
-): Promise<RecipeLine[]> {
-  const res = await apiFetch<{ data: RecipeLine[] }>(apiRoutes.productRecipe(dishProductId), {
+  servingUnit: string,
+): Promise<{ lines: RecipeLine[]; servingUnit: string }> {
+  const res = await apiFetch<{ data: RecipeLine[]; serving_unit: string }>(apiRoutes.productRecipe(dishProductId), {
     method: "PUT",
-    body: JSON.stringify({ lines }),
+    body: JSON.stringify({ lines, serving_unit: servingUnit }),
   });
-  return res.data;
+  return { lines: res.data, servingUnit: res.serving_unit };
 }
 
 /**

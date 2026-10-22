@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.session import require_user, validate_csrf
 from app.database import get_db
 from app.dependencies import get_request_session
-from app.models import Account, User
+from app.models import Account, KitchenEquivalenceUnit, User
 from app.services.kitchen_issue_service import (
     KitchenIssueError,
     KitchenIssueNotFound,
@@ -80,11 +80,63 @@ class EnableRequest(BaseModel):
     opening_counts: list[ItemQty] = Field(default_factory=list, max_length=1000)
 
 
+class EquivalenceUnitsReplace(BaseModel):
+    units: list[str] = Field(default_factory=list, max_length=40)
+
+
 def _shop(db: Session, session: dict) -> tuple[User, Account]:
     user = require_user(db, session)
     assert_merchant_section_any_access(user, "inventory", "dashboard")
     account = require_restaurant_account(db, str(active_account_id(user)))
     return user, account
+
+
+@router.get("/equivalence-units")
+def get_equivalence_units(
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    _, account = _shop(db, session)
+    units = (
+        db.query(KitchenEquivalenceUnit)
+        .filter(KitchenEquivalenceUnit.account_id == account.id)
+        .order_by(KitchenEquivalenceUnit.sort_order, KitchenEquivalenceUnit.name)
+        .all()
+    )
+    return {"data": [unit.name for unit in units]}
+
+
+@router.put("/equivalence-units")
+def replace_equivalence_units(
+    payload: EquivalenceUnitsReplace,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    validate_csrf(request, session)
+    _, account = _shop(db, session)
+    units: list[str] = []
+    seen: set[str] = set()
+    for raw_name in payload.units:
+        name = raw_name.strip()
+        key = name.casefold()
+        if name and key not in seen:
+            units.append(name)
+            seen.add(key)
+    if any(len(name) > 32 for name in units):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Each equivalence measure must be 32 characters or fewer.",
+        )
+    db.query(KitchenEquivalenceUnit).filter(
+        KitchenEquivalenceUnit.account_id == account.id
+    ).delete(synchronize_session=False)
+    db.add_all(
+        KitchenEquivalenceUnit(account_id=account.id, name=name, sort_order=index)
+        for index, name in enumerate(units)
+    )
+    db.commit()
+    return {"data": units}
 
 
 def _error(exc: KitchenIssueError) -> HTTPException:

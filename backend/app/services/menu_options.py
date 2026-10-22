@@ -42,6 +42,7 @@ def menu_options_loaders(product_path):
         .joinedload(CatalogueModifierGroup.group)
         .selectinload(ModifierGroup.options),
         product_path.selectinload(Catalogue.recipe_lines).joinedload(RecipeLine.ingredient),
+        product_path.selectinload(Catalogue.recipe_serving_units),
     ]
 
 
