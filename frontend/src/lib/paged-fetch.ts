@@ -19,15 +19,17 @@ export type PageProgressMeta = { isFirstPage: boolean; done: boolean; totalPages
 export type PageProgressCallback<T> = (rows: T[], meta: PageProgressMeta) => void;
 
 /**
- * Load every page of a paginated list: page 1 first (to learn `last_page`), then
+ * Load pages of a paginated list: page 1 first (to learn `last_page`), then
  * the rest in parallel. On failure, returns the contiguous pages loaded so far.
  * If `onProgress` is supplied, it is called as soon as page 1 arrives so callers
  * can render the first batch immediately without blocking on the whole fetch.
+ * If `shouldStop` is supplied, it stops fetching further pages early when true.
  */
 export async function fetchAllPages<T>(
   pageUrl: (page: number) => string,
   maxPages: number,
   onProgress?: PageProgressCallback<T>,
+  shouldStop?: (pageRows: T[], pageNumber: number, allRowsSoFar: T[]) => boolean,
 ): Promise<{ rows: T[]; failed: boolean; truncated: boolean }> {
   let first: PagedResponse<T>;
   try {
@@ -40,26 +42,40 @@ export async function fetchAllPages<T>(
   const truncated = first.meta.last_page > maxPages;
   const pages: (T[] | undefined)[] = [first.data];
 
+  const stopAfterFirst = shouldStop?.(first.data, 1, first.data) ?? false;
+
   onProgress?.(first.data, {
     isFirstPage: true,
-    done: lastPage <= 1,
+    done: lastPage <= 1 || stopAfterFirst,
     totalPages: lastPage,
   });
 
-  if (lastPage <= 1) {
-    return { rows: first.data, failed: false, truncated };
+  if (lastPage <= 1 || stopAfterFirst) {
+    return { rows: first.data, failed: false, truncated: false };
   }
 
   let failed = false;
+  let stopped = false;
   let next = 2;
 
   async function worker() {
-    while (!failed && next <= lastPage) {
+    while (!failed && !stopped && next <= lastPage) {
       const page = next;
       next += 1;
       try {
         const data = await apiFetch<PagedResponse<T>>(pageUrl(page));
         pages[page - 1] = data.data;
+
+        if (
+          shouldStop?.(
+            data.data,
+            page,
+            pages.filter((p): p is T[] => Boolean(p)).flat(),
+          )
+        ) {
+          stopped = true;
+          break;
+        }
       } catch {
         failed = true;
       }
@@ -82,5 +98,21 @@ export async function fetchAllPages<T>(
     totalPages: lastPage,
   });
 
-  return { rows, failed, truncated: failed ? false : truncated };
+  return { rows, failed, truncated: failed ? false : stopped ? false : truncated };
+}
+
+export async function fetchSinglePage<T>(
+  url: string,
+): Promise<{ rows: T[]; lastPage: number; total: number; failed: boolean }> {
+  try {
+    const res = await apiFetch<PagedResponse<T> & { meta: { total?: number } }>(url);
+    return {
+      rows: res.data,
+      lastPage: res.meta.last_page,
+      total: res.meta.total ?? 0,
+      failed: false,
+    };
+  } catch {
+    return { rows: [], lastPage: 1, total: 0, failed: true };
+  }
 }

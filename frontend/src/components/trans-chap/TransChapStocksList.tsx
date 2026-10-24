@@ -5,10 +5,16 @@ import {
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import Link from "next/link";
 import { apiFetch, apiFetchCached, readPageCache, writePageCache } from "@/lib/api";
+import {
+  getCachedInventory,
+  setCachedInventory,
+  updateCachedInventoryItem,
+} from "@/lib/inventory-cache";
 import { confirmAction, showError, showInternalError, toastSuccess, internalErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { formatKesDigits, formatKsh } from "@/lib/trans-chap-receipt";
@@ -126,11 +132,13 @@ export function TransChapStocksList() {
     ? "/trans-chap/purchases/new"
     : "/trans-chap/purchases/unavailable";
   const listId = useId();
+  const initialCached = getCachedInventory();
   const [items, setItems] = useState<InventoryItem[]>(
-    () => readPageCache<InventoryItem[]>(STOCKS_CACHE_KEY) ?? [],
+    () => initialCached ?? readPageCache<InventoryItem[]>(STOCKS_CACHE_KEY) ?? [],
   );
+  const hasLoadedOnceRef = useRef(Boolean((initialCached && initialCached.length > 0) || readPageCache(STOCKS_CACHE_KEY)));
   const [loading, setLoading] = useState(
-    () => readPageCache(STOCKS_CACHE_KEY) === undefined,
+    () => !hasLoadedOnceRef.current,
   );
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -203,20 +211,27 @@ export function TransChapStocksList() {
   }
 
   const reload = useCallback(async () => {
-    if (readPageCache(STOCKS_CACHE_KEY) === undefined) setLoading(true);
+    // Once initial data is loaded, disable ANY loading effect for the page!
+    if (!hasLoadedOnceRef.current && items.length === 0) {
+      setLoading(true);
+    }
     try {
       const data = await apiFetch<InventoryResponse>(
         `${apiRoutes.inventory}?active=true`,
       );
       setItems(data.data);
+      setCachedInventory(data.data);
       writePageCache(STOCKS_CACHE_KEY, data.data);
+      hasLoadedOnceRef.current = true;
       setError(null);
     } catch {
-      setError(internalErrorMessage());
+      if (!hasLoadedOnceRef.current && items.length === 0) {
+        setError(internalErrorMessage());
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [items.length]);
 
   useEffect(() => {
     void reload();
@@ -259,17 +274,62 @@ export function TransChapStocksList() {
     [filtered],
   );
 
+  const STOCKS_PAGE_SIZE = 40;
+  const [visibleCount, setVisibleCount] = useState(STOCKS_PAGE_SIZE);
+
+  useEffect(() => {
+    setVisibleCount(STOCKS_PAGE_SIZE);
+  }, [query, roleFilter, outOnly, view]);
+
+  const visibleFiltered = useMemo(() => {
+    return filtered.slice(0, visibleCount);
+  }, [filtered, visibleCount]);
+
+  const stocksSentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (visibleCount >= filtered.length) return;
+    const target = stocksSentinelRef.current;
+    if (!target || typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + STOCKS_PAGE_SIZE, filtered.length));
+        }
+      },
+      { rootMargin: "400px" },
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [visibleCount, filtered.length]);
+
+  const applyUpdatedItem = useCallback((updated: InventoryItem) => {
+    setItems((prev) => {
+      const next = prev.map((row) => (row.id === updated.id ? updated : row));
+      setCachedInventory(next);
+      writePageCache(STOCKS_CACHE_KEY, next);
+      return next;
+    });
+    updateCachedInventoryItem(updated);
+  }, []);
+
   async function toggleActive(item: InventoryItem) {
     if (savingId || selecting) return;
     const next = !item.is_active;
     setSavingId(item.id);
     try {
       const updated = await updateInventoryActive(item.id, next);
-      setItems((prev) =>
-        next
+      setItems((prev) => {
+        const nextItems = next
           ? prev.map((row) => (row.id === updated.id ? updated : row))
-          : prev.filter((row) => row.id !== updated.id),
-      );
+          : prev.filter((row) => row.id !== updated.id);
+        setCachedInventory(nextItems);
+        writePageCache(STOCKS_CACHE_KEY, nextItems);
+        return nextItems;
+      });
+      updateCachedInventoryItem(updated);
       if (openId === item.id) setOpenId(null);
       await toastSuccess(next ? "Item enabled" : "Item disabled");
     } catch {
@@ -318,9 +378,7 @@ export function TransChapStocksList() {
     setQtySavingId(item.id);
     try {
       const updated = await updateInventoryItem(item.id, { stock_quantity: parsed });
-      setItems((prev) =>
-        prev.map((row) => (row.id === updated.id ? updated : row)),
-      );
+      applyUpdatedItem(updated);
       setQtyDrafts((prev) => {
         const next = { ...prev };
         delete next[item.id];
@@ -376,11 +434,7 @@ export function TransChapStocksList() {
       setBulkFactorSavingId(item.id);
       try {
         const updated = await updateInventoryItem(item.id, { attributes: nextAttrs });
-        setItems((prev) => {
-          const next = prev.map((row) => (row.id === updated.id ? updated : row));
-          writePageCache(STOCKS_CACHE_KEY, next);
-          return next;
-        });
+        applyUpdatedItem(updated);
         setBulkFactorDrafts((prev) => {
           const next = { ...prev };
           delete next[item.id];
@@ -443,11 +497,7 @@ export function TransChapStocksList() {
     setBulkFactorSavingId(item.id);
     try {
       const updated = await updateInventoryItem(item.id, { attributes: nextAttrs });
-      setItems((prev) => {
-        const next = prev.map((row) => (row.id === updated.id ? updated : row));
-        writePageCache(STOCKS_CACHE_KEY, next);
-        return next;
-      });
+      applyUpdatedItem(updated);
       setBulkFactorDrafts((prev) => {
         const next = { ...prev };
         delete next[item.id];
@@ -526,11 +576,7 @@ export function TransChapStocksList() {
     setBulkQtySavingId(item.id);
     try {
       const updated = await updateInventoryItem(item.id, { stock_quantity: newTotal });
-      setItems((prev) => {
-        const next = prev.map((row) => (row.id === updated.id ? updated : row));
-        writePageCache(STOCKS_CACHE_KEY, next);
-        return next;
-      });
+      applyUpdatedItem(updated);
       setBulkQtyDrafts((prev) => {
         const next = { ...prev };
         delete next[item.id];
@@ -575,11 +621,7 @@ export function TransChapStocksList() {
       setPriceSavingKey(`${item.id}:bp_single`);
       try {
         const updated = await updateInventoryItem(item.id, { buying_price: null });
-        setItems((prev) => {
-          const next = prev.map((row) => (row.id === updated.id ? updated : row));
-          writePageCache(STOCKS_CACHE_KEY, next);
-          return next;
-        });
+        applyUpdatedItem(updated);
         setBpSingleDrafts((prev) => {
           const next = { ...prev };
           delete next[item.id];
@@ -622,11 +664,7 @@ export function TransChapStocksList() {
     setPriceSavingKey(`${item.id}:bp_single`);
     try {
       const updated = await updateInventoryItem(item.id, { buying_price: parsed });
-      setItems((prev) => {
-        const next = prev.map((row) => (row.id === updated.id ? updated : row));
-        writePageCache(STOCKS_CACHE_KEY, next);
-        return next;
-      });
+      applyUpdatedItem(updated);
       setBpSingleDrafts((prev) => {
         const next = { ...prev };
         delete next[item.id];
@@ -671,11 +709,7 @@ export function TransChapStocksList() {
       setPriceSavingKey(`${item.id}:sp_single`);
       try {
         const updated = await updateInventoryItem(item.id, { selling_price: null });
-        setItems((prev) => {
-          const next = prev.map((row) => (row.id === updated.id ? updated : row));
-          writePageCache(STOCKS_CACHE_KEY, next);
-          return next;
-        });
+        applyUpdatedItem(updated);
         setSpSingleDrafts((prev) => {
           const next = { ...prev };
           delete next[item.id];
@@ -718,11 +752,7 @@ export function TransChapStocksList() {
     setPriceSavingKey(`${item.id}:sp_single`);
     try {
       const updated = await updateInventoryItem(item.id, { selling_price: parsed });
-      setItems((prev) => {
-        const next = prev.map((row) => (row.id === updated.id ? updated : row));
-        writePageCache(STOCKS_CACHE_KEY, next);
-        return next;
-      });
+      applyUpdatedItem(updated);
       setSpSingleDrafts((prev) => {
         const next = { ...prev };
         delete next[item.id];
@@ -806,11 +836,7 @@ export function TransChapStocksList() {
       setPriceSavingKey(savingKey);
       try {
         const updated = await updateInventoryItem(item.id, { attributes: nextAttrs });
-        setItems((prev) => {
-          const next = prev.map((row) => (row.id === updated.id ? updated : row));
-          writePageCache(STOCKS_CACHE_KEY, next);
-          return next;
-        });
+        applyUpdatedItem(updated);
         setDrafts((prev) => {
           const next = { ...prev };
           delete next[item.id];
@@ -874,11 +900,7 @@ export function TransChapStocksList() {
     setPriceSavingKey(savingKey);
     try {
       const updated = await updateInventoryItem(item.id, { attributes: nextAttrs });
-      setItems((prev) => {
-        const next = prev.map((row) => (row.id === updated.id ? updated : row));
-        writePageCache(STOCKS_CACHE_KEY, next);
-        return next;
-      });
+      applyUpdatedItem(updated);
       setDrafts((prev) => {
         const next = { ...prev };
         delete next[item.id];
@@ -1084,7 +1106,7 @@ export function TransChapStocksList() {
       </div>
       <div className="trans-chap-sales__list">
         {restaurant ? <RestaurantKitchenRequests /> : null}
-        {loading ? (
+        {loading && items.length === 0 ? (
           <TransChapListSkeleton />
         ) : error && items.length === 0 ? (
           <TransChapStatus tone="error">{error}</TransChapStatus>
@@ -1137,7 +1159,7 @@ export function TransChapStocksList() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((item) => {
+                {visibleFiltered.map((item) => {
                   const name = inventoryProductName(item);
                   const hotel = isHotelMenuItem(item);
                   const picked = selectedIds.has(item.id);
@@ -1556,7 +1578,7 @@ export function TransChapStocksList() {
           </div>
         ) : (
           <MotionList as="div" className="trans-chap-sales__stagger">
-          {filtered.map((item) => {
+          {visibleFiltered.map((item) => {
             const name = inventoryProductName(item);
             const hotel = isHotelMenuItem(item);
             const picked = selectedIds.has(item.id);
@@ -1706,6 +1728,19 @@ export function TransChapStocksList() {
           })}
           </MotionList>
         )}
+        {visibleCount < filtered.length ? (
+          <div
+            ref={stocksSentinelRef}
+            style={{
+              textAlign: "center",
+              padding: "1.25rem 1rem",
+              color: "var(--tc-muted, #888)",
+              fontSize: "0.85rem",
+            }}
+          >
+            Showing {visibleFiltered.length} of {filtered.length} products (scroll down for more)…
+          </div>
+        ) : null}
       </div>
       {selecting ? (
         <div className="trans-chap-bulk-bar">

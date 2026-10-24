@@ -2316,6 +2316,113 @@ html[data-theme="dark"] .fb-app .pos-totals__grand dd {
   padding-left: 10px;
   border-left: 1px solid rgba(250, 248, 244, 0.25);
 }
+.fb-app .pos-place-dual-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.fb-app .pos-place.pos-place--subtle {
+  background: var(--app-surface, #ffffff);
+  color: var(--app-text, #334155);
+  border: 1px solid var(--app-border-light, #cbd5e1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.fb-app .pos-place.pos-place--subtle:hover:not(:disabled) {
+  background: var(--app-surface-hover, #f8fafc);
+  border-color: var(--app-border, #94a3b8);
+  color: var(--app-text, #0f172a);
+  filter: none;
+}
+
+.fb-app .pos-place.pos-place--subtle .pos-place__total {
+  border-left-color: var(--app-border-light, #cbd5e1);
+  color: var(--app-text-secondary, #64748b);
+}
+
+html:not([data-theme="light"]) .fb-app .pos-place.pos-place--subtle {
+  background: rgba(255, 255, 255, 0.07);
+  color: #e2e8f0;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+html:not([data-theme="light"]) .fb-app .pos-place.pos-place--subtle:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+html:not([data-theme="light"]) .fb-app .pos-place.pos-place--subtle .pos-place__total {
+  border-left-color: rgba(255, 255, 255, 0.15);
+  color: #94a3b8;
+}
+
+.fb-app .pos-mpesa-mode-selector {
+  display: flex;
+  align-items: center;
+  background: var(--app-surface-secondary, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--app-border-light, #e2e8f0);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 3px;
+  margin-bottom: 6px;
+  grid-column: 1 / -1;
+}
+
+html:not([data-theme="light"]) .fb-app .pos-mpesa-mode-selector {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.fb-app .pos-mpesa-mode-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-text-secondary, #64748b);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.fb-app .pos-mpesa-mode-btn:hover:not(.is-active) {
+  color: var(--app-text, #0f172a);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.fb-app .pos-mpesa-mode-btn.is-active {
+  background: var(--app-surface, #ffffff);
+  color: var(--app-text, #0f172a);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  font-weight: 700;
+}
+
+html:not([data-theme="light"]) .fb-app .pos-mpesa-mode-btn.is-active {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+.fb-app .pos-mpesa-mode-btn.is-active i {
+  color: #059669;
+}
+
+.fb-app .pos-mpesa-stk-hint {
+  font-size: 0.72rem;
+  color: var(--app-text-secondary, #64748b);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+}
 
 .fb-app .pos-autoprint-toggle {
   display: inline-flex;

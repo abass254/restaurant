@@ -114,7 +114,8 @@ def test_receipt_whatsapp_includes_shop_and_payment() -> None:
     text = build_customer_receipt_whatsapp(_order(), shop_name="Mama Mboga")
     assert "ORD-000001 Confirmed." in text
     assert "Mama Mboga" in text
-    assert "2 × Coffee" in text
+    assert "Coffee" in text
+    assert "2pc" in text
     assert "Paid in cash." in text
     assert "Thank you for shopping with us." in text
 
@@ -130,7 +131,7 @@ def test_receipt_whatsapp_includes_pdf_and_credit_tab() -> None:
     assert "On credit." in text
     assert "Your tab is now KES 1,200.00." in text
     assert "Pay your bill: https://example.com/pay-bill/tok" in text
-    assert "Receipt PDF: https://example.com/uploads/receipts/a/o.pdf" in text
+    assert "[View Receipt](https://example.com/uploads/receipts/a/o.pdf)" in text
 
 
 def test_receipt_whatsapp_includes_mpesa_code() -> None:
@@ -159,7 +160,7 @@ def test_receipt_whatsapp_send_uses_openwa() -> None:
     kwargs = service.whatsapp.send_text.call_args.kwargs
     assert kwargs["to"] == "+254712345678"
     assert "ORD-000001 Confirmed." in kwargs["text"]
-    assert "Receipt PDF: https://example.com/r.pdf" in kwargs["text"]
+    assert "[View Receipt](https://example.com/r.pdf)" in kwargs["text"]
 
 
 def test_receipt_whatsapp_skipped_without_phone() -> None:
@@ -168,3 +169,45 @@ def test_receipt_whatsapp_skipped_without_phone() -> None:
     result = service.notify_customer_receipt_whatsapp(_order(), "  ")
     assert result.ok is False
     service.whatsapp.send_text.assert_not_called()
+
+
+def test_build_whatsapp_receipt_items_table_exact_format() -> None:
+    from app.services.order_notification_service import build_whatsapp_receipt_items_table
+
+    items = [
+        _item(product_name="Mangos", quantity=1, unit_price=0, line_total=0),
+        _item(product_name="Ajab Unga 12×2kg", quantity=1, unit_price=200, line_total=200),
+        _item(product_name="Cocacola 1.5 Ltrs", quantity=1, unit_price=250, line_total=250),
+        _item(product_name="Fanta Orange 2L", quantity=1, unit_price=250, line_total=250),
+        _item(product_name="Mineral Water 5 ltr", quantity=1, unit_price=0, line_total=0),
+        _item(product_name="Test Product", quantity=6, unit_price=10, line_total=60),
+    ]
+    order = _order(items=items, subtotal=760, total=760)
+    lines = build_whatsapp_receipt_items_table(order, currency="KES")
+    rendered = "\n".join(lines)
+
+    expected = (
+        "```\n"
+        "ITEMS (KES):\n"
+        "\n"
+        "ITEM               QTY   PRICE   TOTAL\n"
+        "──────────────────────────────────────\n"
+        "Mangos             1pc       0       0\n"
+        "Ajab Unga 12×2kg\n"
+        "                   1pc     200     200\n"
+        "Cocacola 1.5 Ltrs\n"
+        "                   1pc     250     250\n"
+        "Fanta Orange 2L\n"
+        "                   1pc     250     250\n"
+        "Mineral Water 5 ltr\n"
+        "                   1pc       0       0\n"
+        "Test Product\n"
+        "                   6pc      10      60\n"
+        "──────────────────────────────────────\n"
+        "              Subtotal:            760\n"
+        "              TOTAL:           KES 760\n"
+        "──────────────────────────────────────\n"
+        "```"
+    )
+    assert rendered == expected
+

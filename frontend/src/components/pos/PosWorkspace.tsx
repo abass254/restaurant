@@ -62,6 +62,7 @@ import {
   type OptionAvailabilityMap,
 } from "@/lib/trans-chap-product";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
+import { getCachedInventory, setCachedInventory } from "@/lib/inventory-cache";
 import { useOptionalAuthUser } from "@/components/app/AuthProvider";
 import { isRestaurantStore } from "@/lib/onboarding";
 import {
@@ -518,11 +519,17 @@ export function PosWorkspace({
   const { priceEditEnabled } = usePlatformRuntime();
   const { mapEnabled } = useGoogleMapsPublicConfig();
   const isTransChapSale = salesProfile === "transchap";
-  const [items, setItems] = useState<InventoryItem[]>([]);
-  const [catalogById, setCatalogById] = useState<Map<string, InventoryItem>>(
-    () => new Map(),
-  );
-  const [loading, setLoading] = useState(true);
+  const initialCached = getCachedInventory();
+  const [items, setItems] = useState<InventoryItem[]>(() => initialCached ?? []);
+  const [catalogById, setCatalogById] = useState<Map<string, InventoryItem>>(() => {
+    const map = new Map<string, InventoryItem>();
+    if (initialCached) {
+      for (const item of initialCached) map.set(item.id, item);
+    }
+    return map;
+  });
+  const inventoryLoadedOnce = useRef(Boolean(initialCached && initialCached.length > 0));
+  const [loading, setLoading] = useState(() => !inventoryLoadedOnce.current);
   const [searching, setSearching] = useState(false);
   const [loadedQuery, setLoadedQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -533,7 +540,6 @@ export function PosWorkspace({
   const printAfterSaleRef = useRef(false);
   const paidPrintIdRef = useRef<string | null>(null);
   const inventoryRequestId = useRef(0);
-  const inventoryLoadedOnce = useRef(false);
 
   const [cart, setCart] = useState<CartLine[]>([]);
   const [bulkFactorDrafts, setBulkFactorDrafts] = useState<Record<string, string>>({});
@@ -601,6 +607,7 @@ export function PosWorkspace({
   const [heldHydrated, setHeldHydrated] = useState(false);
   const [allowPriceUpdate, setAllowPriceUpdate] = useState(false);
   const [forceMpesaPrompt, setForceMpesaPrompt] = useState(true);
+  const [mpesaAction, setMpesaAction] = useState<"record" | "stk">("record");
   const [operationsSettingsLoaded, setOperationsSettingsLoaded] = useState(false);
   const [operationsSettingsError, setOperationsSettingsError] = useState<string | null>(
     null,
@@ -676,9 +683,10 @@ export function PosWorkspace({
           /* the server still rejects sold-out picks */
         });
     }
-    const silent = opts?.silent ?? false;
-    if (!silent) setLoading(true);
-    else setSearching(true);
+    const hasData = items.length > 0 || inventoryLoadedOnce.current;
+    const silent = opts?.silent ?? hasData;
+    if (!silent && !hasData) setLoading(true);
+    else if (!hasData) setSearching(true);
     try {
       // Restaurants list paused dishes too, shown greyed out so staff can see what is off today.
       const params = new URLSearchParams(isRestaurant ? {} : { active: "true" });
@@ -689,6 +697,8 @@ export function PosWorkspace({
       );
       if (requestId !== inventoryRequestId.current) return;
       setItems(data.data);
+      setCachedInventory(data.data);
+      inventoryLoadedOnce.current = true;
       setLoadedQuery(term);
       setCatalogById((prev) => {
         const next = new Map(prev);
@@ -698,24 +708,18 @@ export function PosWorkspace({
       setError(null);
     } catch (err) {
       if (requestId !== inventoryRequestId.current) return;
-      setError(extractErrorMessage(err, "Failed to load inventory."));
+      if (!hasData) setError(extractErrorMessage(err, "Failed to load inventory."));
     } finally {
       if (requestId !== inventoryRequestId.current) return;
-      if (!silent) setLoading(false);
+      setLoading(false);
       setSearching(false);
     }
-  }, [isRestaurant]);
+  }, [isRestaurant, items.length]);
 
   useEffect(() => {
-    const term = search.trim();
     const firstLoad = !inventoryLoadedOnce.current;
-    const delay = firstLoad || !term ? 0 : 280;
-    const timer = window.setTimeout(() => {
-      inventoryLoadedOnce.current = true;
-      void reload({ silent: !firstLoad, q: term });
-    }, delay);
-    return () => window.clearTimeout(timer);
-  }, [reload, search]);
+    void reload({ silent: !firstLoad });
+  }, [reload]);
 
   useEffect(() => {
     void apiFetch<ShopCustomersListResponse>(apiRoutes.customers)
@@ -1037,21 +1041,38 @@ export function PosWorkspace({
   }, [catalogItems]);
 
   const filteredItems = useMemo(() => {
+    const term = search.trim().toLowerCase();
     return catalogItems
-      .filter(
-        (item) =>
-          selectedCategory === "all" ||
-          (item.product?.category || "").trim().toLowerCase() === selectedCategory.toLowerCase(),
-      )
+      .filter((item) => {
+        if (
+          selectedCategory !== "all" &&
+          (item.product?.category || "").trim().toLowerCase() !== selectedCategory.toLowerCase()
+        ) {
+          return false;
+        }
+        if (!term) return true;
+        const name = (item.product?.name || "").toLowerCase();
+        const sku = (item.product?.sku || item.product?.product_code || "").toLowerCase();
+        const brand = (item.product?.brand || "").toLowerCase();
+        const cat = (item.product?.category || "").toLowerCase();
+        const supplier = (item.supplier || "").toLowerCase();
+        return (
+          name.includes(term) ||
+          sku.includes(term) ||
+          brand.includes(term) ||
+          cat.includes(term) ||
+          supplier.includes(term)
+        );
+      })
       .sort((a, b) => Number(b.is_active) - Number(a.is_active));
-  }, [catalogItems, selectedCategory]);
+  }, [catalogItems, search, selectedCategory]);
 
   const POS_PAGE_SIZE = 24;
   const [posVisibleCount, setPosVisibleCount] = useState(POS_PAGE_SIZE);
 
   useEffect(() => {
     setPosVisibleCount(POS_PAGE_SIZE);
-  }, [loadedQuery, selectedCategory]);
+  }, [loadedQuery, selectedCategory, search]);
 
   const visibleItems = useMemo(() => {
     return filteredItems.slice(0, posVisibleCount);
@@ -1097,10 +1118,9 @@ export function PosWorkspace({
     };
   }, [posHasMore, filteredItems.length]);
 
-  const catalogPending =
-    loading ||
-    searching ||
-    search.trim().toLowerCase() !== loadedQuery.trim().toLowerCase();
+  // Once initial data is loaded, disable ANY loading effect for the page!
+  const hasData = items.length > 0 || inventoryLoadedOnce.current;
+  const catalogPending = !hasData && loading;
 
   const handleConfirmModifiers = ({
     optionIds,
@@ -1735,7 +1755,36 @@ export function PosWorkspace({
 
           {usesMpesa ? (
             <div className="pos-customer-card__mpesa-box">
-              {forceMpesaPrompt ? (
+              {!forceMpesaPrompt ? (
+                <div
+                  className="pos-mpesa-mode-selector"
+                  role="radiogroup"
+                  aria-label="M-PESA checkout option"
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={mpesaAction === "record"}
+                    className={`pos-mpesa-mode-btn ${mpesaAction === "record" ? "is-active" : ""}`}
+                    onClick={() => setMpesaAction("record")}
+                  >
+                    <i className="fa-solid fa-receipt" aria-hidden="true" />
+                    <span>Record payment</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={mpesaAction === "stk"}
+                    className={`pos-mpesa-mode-btn ${mpesaAction === "stk" ? "is-active" : ""}`}
+                    onClick={() => setMpesaAction("stk")}
+                  >
+                    <i className="fa-solid fa-mobile-screen-button" aria-hidden="true" />
+                    <span>Send STK push</span>
+                  </button>
+                </div>
+              ) : null}
+
+              {forceMpesaPrompt || mpesaAction === "stk" ? (
                 <>
                   <label
                     className="pos-customer-card__mpesa-label"
@@ -1757,6 +1806,11 @@ export function PosWorkspace({
                       }
                     />
                   </div>
+                  {!forceMpesaPrompt ? (
+                    <small>
+                      Prompt of {formatMoney(mpesaDue)} will be sent to the customer&apos;s phone.
+                    </small>
+                  ) : null}
                 </>
               ) : (
                 <>
@@ -1908,12 +1962,41 @@ export function PosWorkspace({
               selling on credit.
             </p>
           ) : null}
+          {usesMpesa && !forceMpesaPrompt ? (
+            <div
+              className="pos-mpesa-mode-selector"
+              role="radiogroup"
+              aria-label="M-PESA checkout option"
+            >
+              <button
+                type="button"
+                role="radio"
+                aria-checked={mpesaAction === "record"}
+                className={`pos-mpesa-mode-btn ${mpesaAction === "record" ? "is-active" : ""}`}
+                onClick={() => setMpesaAction("record")}
+              >
+                <i className="fa-solid fa-receipt" aria-hidden="true" />
+                <span>Record payment</span>
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={mpesaAction === "stk"}
+                className={`pos-mpesa-mode-btn ${mpesaAction === "stk" ? "is-active" : ""}`}
+                onClick={() => setMpesaAction("stk")}
+              >
+                <i className="fa-solid fa-mobile-screen-button" aria-hidden="true" />
+                <span>Send STK push</span>
+              </button>
+            </div>
+          ) : null}
+
           {showWalkInPhone ? (
             <div className="pos-walkin-phone">
               <label className="pos-label" htmlFor="pos-walkin-phone-input">
                 <i className="fa-solid fa-mobile-screen-button" aria-hidden />{" "}
                 {usesMpesa
-                  ? forceMpesaPrompt
+                  ? (forceMpesaPrompt || mpesaAction === "stk")
                     ? "M-PESA Phone (prompt recipient)"
                     : "Customer Phone (optional)"
                   : "Customer Phone"}
@@ -1925,7 +2008,7 @@ export function PosWorkspace({
                 onChange={(e) => setCustomerPhone(e.target.value)}
                 placeholder={
                   usesMpesa
-                    ? forceMpesaPrompt
+                    ? (forceMpesaPrompt || mpesaAction === "stk")
                       ? "2547… (required for M-PESA)"
                       : "2547… (optional)"
                     : "Phone (optional)"
@@ -1933,18 +2016,23 @@ export function PosWorkspace({
                 aria-label={
                   usesMpesa ? "M-PESA phone" : "Customer phone"
                 }
-                aria-required={usesMpesa && forceMpesaPrompt}
+                aria-required={usesMpesa && (forceMpesaPrompt || mpesaAction === "stk")}
                 className={
                   usesMpesa &&
-                  forceMpesaPrompt &&
+                  (forceMpesaPrompt || mpesaAction === "stk") &&
                   !customerPhone.trim()
                     ? "pos-input--required"
                     : undefined
                 }
               />
+              {usesMpesa && !forceMpesaPrompt && mpesaAction === "stk" ? (
+                <small className="pos-mpesa-stk-hint">
+                  <i className="fa-solid fa-circle-info" aria-hidden="true" /> An STK push prompt of {formatMoney(mpesaDue)} will be sent to this phone.
+                </small>
+              ) : null}
             </div>
           ) : null}
-          {usesMpesa && !forceMpesaPrompt ? (
+          {usesMpesa && !forceMpesaPrompt && mpesaAction === "record" ? (
             <div className="pos-walkin-phone">
               <label className="pos-label" htmlFor="pos-mpesa-receipt-code">
                 <i className="fa-solid fa-receipt" aria-hidden /> M-PESA receipt code (optional)
@@ -2076,6 +2164,8 @@ export function PosWorkspace({
       (paymentMethod === "" ||
         !TRANSCHAP_PAYMENT_METHODS.includes(paymentMethod)));
 
+  const isStkActive = forceMpesaPrompt || (usesMpesa && mpesaAction === "stk");
+
   const placeLabel = (() => {
     if (
       isTransChapSale &&
@@ -2088,7 +2178,7 @@ export function PosWorkspace({
     if (submitting) {
       if (isTransChapSale) {
         if (usesMpesa) {
-          return forceMpesaPrompt ? "Sending M-Pesa…" : "Recording M-Pesa…";
+          return isStkActive ? "Sending M-Pesa…" : "Recording M-Pesa…";
         }
         if (isSplit) return "Completing split sale…";
         if (paymentMethod === "credit") return "Saving on credit…";
@@ -2111,7 +2201,7 @@ export function PosWorkspace({
     if (isTransChapSale) {
       if (usesMpesa) {
         const amount = isSplit ? ` (${formatMoney(mpesaDue)})` : "";
-        return forceMpesaPrompt
+        return isStkActive
           ? `Send M-Pesa prompt${amount}`
           : `Record M-Pesa payment${amount}`;
       }
@@ -2122,8 +2212,35 @@ export function PosWorkspace({
     return canCompleteSaleNow ? "Complete order" : "Place order";
   })();
 
-  async function placeOrder() {
+  async function handleActionPlace(action: "record" | "stk") {
+    if (action === "stk") {
+      setMpesaAction("stk");
+      if (!customerPhone.trim()) {
+        const phoneInput = (document.getElementById("pos-walkin-phone-input") ||
+          document.getElementById("pos-customer-stk-phone")) as HTMLInputElement | null;
+        if (phoneInput) {
+          phoneInput.focus();
+        }
+        await showError(
+          "Customer phone required",
+          "Enter the customer's M-PESA phone number so we can send them the payment prompt.",
+        );
+        return;
+      }
+      await placeOrder({ sendStkPush: true });
+    } else {
+      setMpesaAction("record");
+      await placeOrder({ sendStkPush: false });
+    }
+  }
+
+  async function placeOrder(opts?: { sendStkPush?: boolean }) {
     if (cart.length === 0) return;
+    const isStk =
+      opts?.sendStkPush !== undefined
+        ? opts.sendStkPush
+        : (forceMpesaPrompt || (usesMpesa && mpesaAction === "stk"));
+
     if (hasPriceBelowBuyingPrice) {
       const stockItem = belowBuyingItem
         ? itemsById.get(belowBuyingItem.inventoryItemId)
@@ -2179,14 +2296,12 @@ export function PosWorkspace({
       );
       return;
     }
-    if (usesMpesa && !customerPhone.trim()) {
-      if (forceMpesaPrompt) {
-        await showError(
-          "Customer phone required",
-          "Enter the customer's M-PESA phone number so we can send them the payment prompt.",
-        );
-        return;
-      }
+    if (usesMpesa && isStk && !customerPhone.trim()) {
+      await showError(
+        "Customer phone required",
+        "Enter the customer's M-PESA phone number so we can send them the payment prompt.",
+      );
+      return;
     }
     if (usesCredit && !selectedCustomerId) {
       await showError(
@@ -2213,9 +2328,10 @@ export function PosWorkspace({
         delivery_notes: orderFulfillment === "delivery" ? deliveryNotes.trim() || null : null,
         payment_method: paymentMethod || null,
         payments: isSplit ? splitParts : undefined,
+        send_mpesa_stk_push: usesMpesa ? isStk : undefined,
         mpesa_receipt_number:
-          usesMpesa && !forceMpesaPrompt
-            ? mpesaReceiptCode.trim()
+          usesMpesa && !isStk
+            ? mpesaReceiptCode.trim() || undefined
             : undefined,
         date_to_pay: usesCredit ? creditDueDate.trim() || null : null,
         delivery_fee: orderFulfillment === "delivery" ? deliveryFeeNum : 0,
@@ -2269,7 +2385,7 @@ export function PosWorkspace({
         suppressMerchantOrderNotification(order.id);
         clearCart();
         void reload({ silent: true, q: search });
-        if (push?.status === "confirmed") {
+        if (push?.status === "confirmed" || !isStk) {
           setReceiptOrder(order);
           printAfterSaleRef.current = autoPrintReceipt;
           paidPrintIdRef.current = order.id;
@@ -3761,30 +3877,81 @@ export function PosWorkspace({
               </div>
             ) : null}
 
-            <button
-              type="button"
-              className="pos-place"
-              onClick={() => void placeOrder()}
-              disabled={placeDisabled}
-            >
-              {submitting ? (
-                <>
-                  <i
-                    className="fa-solid fa-spinner fa-spin"
-                    aria-hidden="true"
-                  />
-                  {placeLabel}
-                </>
-              ) : (
-                <>
-                  <span className="pos-place__label">
-                    <i className="fa-solid fa-check" aria-hidden="true" />
+            {usesMpesa && !forceMpesaPrompt ? (
+              <div className="pos-place-dual-group">
+                <button
+                  type="button"
+                  className={`pos-place pos-place--record ${
+                    mpesaAction === "record" ? "pos-place--active" : "pos-place--subtle"
+                  }`}
+                  onClick={() => void handleActionPlace("record")}
+                  disabled={placeDisabled}
+                >
+                  {submitting && mpesaAction === "record" ? (
+                    <>
+                      <i className="fa-solid fa-spinner fa-spin" aria-hidden="true" />
+                      <span>Recording M-Pesa…</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="pos-place__label">
+                        <i className="fa-solid fa-receipt" aria-hidden="true" />
+                        <span>Record payment</span>
+                      </span>
+                      <span className="pos-place__total">{formatMoney(total)}</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className={`pos-place pos-place--stk ${
+                    mpesaAction === "stk" ? "pos-place--active" : "pos-place--subtle"
+                  }`}
+                  onClick={() => void handleActionPlace("stk")}
+                  disabled={placeDisabled}
+                >
+                  {submitting && mpesaAction === "stk" ? (
+                    <>
+                      <i className="fa-solid fa-spinner fa-spin" aria-hidden="true" />
+                      <span>Sending M-Pesa…</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="pos-place__label">
+                        <i className="fa-solid fa-mobile-screen-button" aria-hidden="true" />
+                        <span>Send STK push</span>
+                      </span>
+                      <span className="pos-place__total">{formatMoney(total)}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="pos-place"
+                onClick={() => void placeOrder()}
+                disabled={placeDisabled}
+              >
+                {submitting ? (
+                  <>
+                    <i
+                      className="fa-solid fa-spinner fa-spin"
+                      aria-hidden="true"
+                    />
                     {placeLabel}
-                  </span>
-                  <span className="pos-place__total">{formatMoney(total)}</span>
-                </>
-              )}
-            </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="pos-place__label">
+                      <i className="fa-solid fa-check" aria-hidden="true" />
+                      {placeLabel}
+                    </span>
+                    <span className="pos-place__total">{formatMoney(total)}</span>
+                  </>
+                )}
+              </button>
+            )}
             <label className="pos-autoprint-toggle">
               <input
                 type="checkbox"

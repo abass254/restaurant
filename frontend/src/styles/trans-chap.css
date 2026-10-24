@@ -1474,6 +1474,34 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-card__stock.is-fresh {
     box-shadow: 0 6px 16px color-mix(in srgb, var(--app-primary) 36%, transparent);
 }
 
+.trans-chap-pos-host.fb-app .pos-place-dual-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+}
+
+.trans-chap-pos-host.fb-app .pos-place-dual-group .pos-place {
+    height: 44px;
+    min-height: 44px;
+    border-radius: 12px;
+    font-size: 0.88rem;
+    font-weight: 750;
+}
+
+.trans-chap-pos-host.fb-app .pos-place.pos-place--subtle {
+    background: var(--app-surface, #ffffff);
+    border: 1.5px solid color-mix(in srgb, var(--brown-600) 25%, var(--app-border-light, #e2e8f0));
+    color: var(--brown-800, #3e2723);
+    box-shadow: 0 1px 4px rgba(62, 39, 35, 0.06);
+}
+
+.trans-chap-pos-host.fb-app .pos-place.pos-place--subtle:hover:not(:disabled) {
+    background: var(--cream-100, #f5efe6);
+    border-color: var(--brown-500, #5d4037);
+    color: var(--brown-900, #271406);
+}
+
 .trans-chap-pos-host.fb-app .pos-card.is-in-cart {
     background: var(--cream-50);
     box-shadow:
@@ -8517,16 +8545,59 @@ html[data-theme="dark"] .trans-chap-receipt {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.85rem;
-    height: 1.85rem;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 0;
     border-radius: 999px;
     color: var(--app-text);
-    background: rgba(255, 255, 255, 0.06);
+    background: color-mix(in srgb, var(--app-text) 8%, transparent);
+    font: inherit;
+    font-size: 0.88rem;
+    text-decoration: none;
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease, transform 0.1s ease;
 }
 
-.trans-chap-stock-table__icon-btn:hover {
+.trans-chap-stock-table__icon-btn:hover:not(:disabled) {
     color: var(--app-primary);
-    background: rgba(255, 255, 255, 0.12);
+    background: color-mix(in srgb, var(--app-primary) 14%, transparent);
+}
+
+.trans-chap-stock-table__icon-btn:active:not(:disabled) {
+    transform: scale(0.94);
+}
+
+.trans-chap-stock-table__icon-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.trans-chap-stock-table__icon-btn--void {
+    color: #e11d48;
+}
+
+.trans-chap-stock-table__icon-btn--void:hover:not(:disabled) {
+    color: #be123c;
+    background: color-mix(in srgb, #e11d48 14%, transparent);
+}
+
+.trans-chap-stock-table__icon-btn--return {
+    color: #c2410c;
+}
+
+.trans-chap-stock-table__icon-btn--return:hover:not(:disabled) {
+    color: #9a3412;
+    background: color-mix(in srgb, #ea580c 14%, transparent);
+}
+
+.trans-chap-stock-table__icon-btn--receipt {
+    color: var(--app-primary);
+}
+
+.trans-chap-stock-table__icon-btn--receipt:hover:not(:disabled) {
+    color: var(--app-primary-hover, #c2341f);
+    background: color-mix(in srgb, var(--app-primary) 14%, transparent);
 }
 
 .trans-chap-stock-table--stock .trans-chap-stock-table__qty .trans-chap-panel__qty-edit {

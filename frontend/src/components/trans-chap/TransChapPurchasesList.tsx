@@ -427,15 +427,38 @@ export function TransChapPurchasesList() {
     );
   }
 
-  function renderVoidButton(row: TransChapPurchase) {
+  function renderVoidButton(row: TransChapPurchase, layout: "table" | "card" = "table") {
     if (!canVoid || row.voidedAt) return null;
+    const busy = voidingId === row.id || bulkVoiding;
+    if (layout === "table") {
+      return (
+        <button
+          type="button"
+          className="trans-chap-stock-table__icon-btn trans-chap-stock-table__icon-btn--void"
+          disabled={busy}
+          title={voidingId === row.id ? "Working…" : "Void purchase"}
+          aria-label={voidingId === row.id ? `Working on void for ${row.productName}` : `Void purchase for ${row.productName}`}
+          onClick={() => void voidPurchase(row)}
+        >
+          <i
+            className={voidingId === row.id ? "fa-solid fa-circle-notch fa-spin" : "fa-solid fa-ban"}
+            aria-hidden
+          />
+        </button>
+      );
+    }
     return (
       <button
         type="button"
         className="trans-chap-panel__link trans-chap-panel__void"
-        disabled={voidingId === row.id || bulkVoiding}
+        disabled={busy}
         onClick={() => void voidPurchase(row)}
       >
+        <i
+          className={voidingId === row.id ? "fa-solid fa-circle-notch fa-spin" : "fa-solid fa-ban"}
+          aria-hidden
+          style={{ marginRight: "0.35rem" }}
+        />
         {voidingId === row.id ? "Working…" : "Void purchase"}
       </button>
     );
@@ -830,11 +853,16 @@ export function TransChapPurchasesList() {
                               {!batchVoided && !selecting ? (
                                 <button
                                   type="button"
-                                  className="trans-chap-panel__link trans-chap-panel__void"
+                                  className="trans-chap-stock-table__icon-btn trans-chap-stock-table__icon-btn--void"
                                   disabled={bulkVoiding}
+                                  title={bulkVoiding ? "Working…" : "Void batch"}
+                                  aria-label={bulkVoiding ? "Working on voiding batch" : `Void batch ${batch.supplier || ""}`}
                                   onClick={() => void voidBatch(batch)}
                                 >
-                                  Void batch
+                                  <i
+                                    className={bulkVoiding ? "fa-solid fa-circle-notch fa-spin" : "fa-solid fa-ban"}
+                                    aria-hidden
+                                  />
                                 </button>
                               ) : null}
                             </div>
@@ -1095,7 +1123,7 @@ export function TransChapPurchasesList() {
                   else if (!voided) toggleSelected(row.id);
                 }}
                 headAction={selecting ? renderCheck(row) : undefined}
-                action={renderVoidButton(row)}
+                action={renderVoidButton(row, "card")}
               >
                 <p className="trans-chap-panel__lead">
                   {voided

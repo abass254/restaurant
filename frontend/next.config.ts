@@ -97,6 +97,41 @@ const nextConfig: NextConfig = {
         permanent: true,
       },
       {
+        source: "/transchap/inventories",
+        destination: "/trans-chap/stocks",
+        permanent: false,
+      },
+      {
+        source: "/trans-chap/inventories",
+        destination: "/trans-chap/stocks",
+        permanent: false,
+      },
+      {
+        source: "/transchap/inventory",
+        destination: "/trans-chap/stocks",
+        permanent: false,
+      },
+      {
+        source: "/trans-chap/inventory",
+        destination: "/trans-chap/stocks",
+        permanent: false,
+      },
+      {
+        source: "/transchap/pos/:path*",
+        destination: "/trans-chap/pos/:path*",
+        permanent: false,
+      },
+      {
+        source: "/transchap/stocks/:path*",
+        destination: "/trans-chap/stocks/:path*",
+        permanent: false,
+      },
+      {
+        source: "/transchap/:path*",
+        destination: "/trans-chap/:path*",
+        permanent: false,
+      },
+      {
         source: "/setup-checklist",
         destination: "/tools/onboarding",
         permanent: true,

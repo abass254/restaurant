@@ -1849,6 +1849,8 @@ export type OrderCreatePayload = {
   notes?: string | null;
   /** When set with payment_method=mpesa, closes the sale with this SMS code (no STK). */
   mpesa_receipt_number?: string | null;
+  /** Explicitly send STK push (true) or record payment directly (false); falls back to account setting if omitted. */
+  send_mpesa_stk_push?: boolean | null;
   table_number?: string | null;
   server_name?: string | null;
   date_to_pay?: string | null;

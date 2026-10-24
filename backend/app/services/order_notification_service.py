@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
@@ -220,6 +221,141 @@ def _mpesa_receipt_for_order(order: Order) -> str | None:
     return None
 
 
+def _normalize_sell_unit(unit: object) -> str:
+    if not isinstance(unit, str):
+        return "pc"
+    raw = unit.strip().lower()
+    if not raw or raw in {"piece", "pieces", "pc", "pcs", "item", "items"}:
+        return "pc"
+    if raw in {"kilogram", "kilograms", "kg", "kgs"}:
+        return "kg"
+    if raw in {"gram", "grams", "g"}:
+        return "g"
+    if raw in {"litre", "litres", "liter", "liters", "l", "ltr", "ltrs"}:
+        return "L"
+    if raw in {"pack", "packs", "pk"}:
+        return "pk"
+    if raw in {"box", "boxes", "bx"}:
+        return "bx"
+    if len(raw) <= 3:
+        return raw
+    return "pc"
+
+
+def _safe_table_num(val: object) -> float:
+    if isinstance(val, (int, float, Decimal)):
+        return float(val)
+    if isinstance(val, str):
+        try:
+            return float(val.strip())
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def _format_table_amount(amount: object) -> str:
+    val = _safe_table_num(amount)
+    if val.is_integer():
+        return f"{int(val):,}"
+    return f"{val:,.2f}"
+
+
+def build_whatsapp_receipt_items_table(order: Order, currency: str = "KES") -> list[str]:
+    """Format receipt items and totals inside a monospace WhatsApp code block (38 cols)."""
+    table_lines: list[str] = [
+        "```",
+        f"ITEMS ({currency}):",
+        "",
+        "ITEM".ljust(19) + "QTY" + "PRICE".rjust(8) + "TOTAL".rjust(8),
+        "─" * 38,
+    ]
+
+    items = list(order.items or [])
+    if not items:
+        total_val = _safe_table_num(getattr(order, "total", 0))
+        total_str = _format_table_amount(total_val)
+        table_lines.append("Sale".ljust(19) + "1pc".rjust(3) + total_str.rjust(8) + total_str.rjust(8))
+    else:
+        for item in items:
+            name = (getattr(item, "product_name", None) or "Item")
+            if not isinstance(name, str):
+                name = "Item"
+            name = name.strip() or "Item"
+
+            qty_raw = getattr(item, "quantity", 1) or 1
+            qty_f = _safe_table_num(qty_raw) or 1.0
+            qty_disp = int(qty_f) if qty_f.is_integer() else f"{qty_f:.2f}".rstrip("0").rstrip(".")
+            unit_suffix = _normalize_sell_unit(getattr(item, "sell_unit", None))
+            qty_str = f"{qty_disp}{unit_suffix}"
+
+            unit_price = _safe_table_num(getattr(item, "unit_price", 0))
+            line_total = _safe_table_num(getattr(item, "line_total", 0))
+            price_str = _format_table_amount(unit_price)
+            total_str = _format_table_amount(line_total)
+
+            nums = qty_str.rjust(3) + price_str.rjust(8) + total_str.rjust(8)
+            if len(name) <= 10:
+                table_lines.append(name.ljust(19) + nums)
+            else:
+                if len(name) <= 38:
+                    table_lines.append(name)
+                else:
+                    import textwrap
+                    for chunk in textwrap.wrap(name, width=38):
+                        table_lines.append(chunk)
+                table_lines.append(" " * 19 + nums)
+
+            mods = getattr(item, "modifiers", None) or []
+            if isinstance(mods, list):
+                for mod in mods:
+                    mod_name = mod.get("name") if isinstance(mod, dict) else getattr(mod, "name", "")
+                    mod_price = _safe_table_num(mod.get("price", 0) if isinstance(mod, dict) else getattr(mod, "price", 0))
+                    m_str = f"   + {mod_name}"
+                    if mod_price > 0:
+                        m_str += f" ({_format_table_amount(mod_price)})"
+                    table_lines.append(m_str)
+
+    table_lines.append("─" * 38)
+
+    subtotal = _safe_table_num(getattr(order, "subtotal", None))
+    total_val = _safe_table_num(getattr(order, "total", None))
+    if subtotal <= 0:
+        subtotal = total_val
+
+    sub_str = _format_table_amount(subtotal)
+    table_lines.append(" " * 14 + "Subtotal:".ljust(9) + sub_str.rjust(15))
+
+    discount = _safe_table_num(getattr(order, "discount", None))
+    if discount > 0:
+        disc_str = f"-{_format_table_amount(discount)}"
+        table_lines.append(" " * 14 + "Discount:".ljust(9) + disc_str.rjust(15))
+
+    delivery_fee = _safe_table_num(getattr(order, "delivery_fee", None))
+    if delivery_fee > 0:
+        deliv_str = _format_table_amount(delivery_fee)
+        table_lines.append(" " * 14 + "Delivery:".ljust(9) + deliv_str.rjust(15))
+
+    tax = _safe_table_num(getattr(order, "tax", None))
+    if tax > 0:
+        tax_str = _format_table_amount(tax)
+        table_lines.append(" " * 14 + "Tax (16%):".ljust(10) + tax_str.rjust(14))
+
+    returned_total = _safe_table_num(getattr(order, "returned_total", None))
+    if returned_total > 0:
+        ret_str = f"-{_format_table_amount(returned_total)}"
+        table_lines.append(" " * 14 + "Returned:".ljust(9) + ret_str.rjust(15))
+
+    net_total = max(0.0, total_val - returned_total)
+    total_lbl = "NET TOTAL:" if returned_total > 0 else "TOTAL:"
+    tot_str = f"{currency} {_format_table_amount(net_total)}"
+    lbl_w = len(total_lbl)
+    table_lines.append(" " * 14 + total_lbl.ljust(lbl_w) + tot_str.rjust(24 - lbl_w))
+
+    table_lines.append("─" * 38)
+    table_lines.append("```")
+    return table_lines
+
+
 def build_customer_receipt_whatsapp(
     order: Order,
     *,
@@ -227,65 +363,80 @@ def build_customer_receipt_whatsapp(
     receipt_pdf_url: str | None = None,
     credit_outstanding: float | None = None,
     pay_bill_url: str | None = None,
+    shop_phone: str | None = None,
+    shop_location: str | None = None,
 ) -> str:
-    """Plain-text till receipt for WhatsApp (openWA text-only)."""
+    """Rich card till-receipt for WhatsApp matching the quotation layout."""
     currency = order.currency or "KES"
     ref = order.order_number
     pay = order.payment_method or ""
-    total = _format_money(order.total, currency)
-    receipt = _mpesa_receipt_for_order(order)
+    receipt_code = _mpesa_receipt_for_order(order)
     customer = (order.customer_name or "").strip()
 
+    is_credit = pay == PAYMENT_CREDIT
+    lines: list[str] = [
+        "📋 *INVOICE*" if is_credit else "🧾 *TILL RECEIPT*",
+        f"🏪 *{shop_name}*",
+    ]
+
+    stamp_dt = order.paid_at or getattr(order, "placed_at", None) or getattr(order, "created_at", None)
+    if stamp_dt:
+        aware = stamp_dt.replace(tzinfo=UTC) if stamp_dt.tzinfo is None else stamp_dt
+        date_str = aware.astimezone(NAIROBI).strftime("%d %b %Y")
+    else:
+        date_str = datetime.now(timezone.utc).astimezone(NAIROBI).strftime("%d %b %Y")
+    lines.append(f"🗓️ *Date:* {date_str}")
+    lines.append(f"🏷️ *Ref:* {ref} Confirmed.")
+
+    if customer and customer.lower() != "walk-in":
+        lines.append(f"👤 *Customer:* {customer}")
+    if getattr(order, "table_number", None):
+        lines.append(f"🪑 *Table:* {order.table_number}")
+
+    lines.extend(build_whatsapp_receipt_items_table(order, currency))
+
     if pay == PAYMENT_CREDIT:
-        headline = f"{total} on credit at {shop_name}."
         payment_line = "On credit."
     elif pay == PAYMENT_SPLIT:
-        headline = f"{total} sale at {shop_name}."
         payment_line = f"Paid with {payment_summary(order, currency)}."
-        if receipt:
-            payment_line += f" M-PESA receipt {receipt}."
+        if receipt_code:
+            payment_line += f" M-PESA receipt {receipt_code}."
     elif pay == PAYMENT_MPESA:
-        headline = f"{total} paid to {shop_name}."
         payment_line = (
-            f"Paid via M-PESA. Receipt {receipt}."
-            if receipt
+            f"Paid via M-PESA. Receipt {receipt_code}."
+            if receipt_code
             else "Paid via M-PESA."
         )
+    elif pay == PAYMENT_CASH:
+        payment_line = "Paid in cash."
     else:
-        headline = f"{total} paid to {shop_name}."
         payment_line = PAYMENT_METHOD_LABELS.get(
             pay,
             (pay or "Paid").replace("_", " ").title(),
         )
-        if pay == PAYMENT_CASH:
-            payment_line = "Paid in cash."
 
-    lines: list[str] = [f"{ref} Confirmed.", headline]
-    items = list(order.items or [])
-    if len(items) == 1:
-        name = (items[0].product_name or "Sale").strip() or "Sale"
-        qty = int(items[0].quantity or 1)
-        lines.append(f"{name}" if qty <= 1 else f"{qty} × {name}")
-    elif items:
-        for item in items:
-            name = (item.product_name or "Item").strip() or "Item"
-            qty = int(item.quantity or 1)
-            amount = _format_money(item.line_total, currency)
-            label = name if qty <= 1 else f"{qty} × {name}"
-            lines.append(f"{label}: {amount}")
-    if customer:
-        lines.append(f"Customer {customer}.")
-    lines.append(payment_line)
+    lines.append(f"💳 *Payment:* {payment_line}")
+
     if order_uses_payment(order, PAYMENT_CREDIT) and credit_outstanding is not None:
         lines.append(
-            f"Your tab is now {_format_money(credit_outstanding, currency)}."
+            f"📒 Your tab is now {_format_money(credit_outstanding, currency)}."
         )
     if pay_bill_url:
-        lines.append(f"Pay your bill: {pay_bill_url}")
+        lines.append(f"🔗 Pay your bill: {pay_bill_url}")
     if receipt_pdf_url:
-        lines.append(f"Receipt PDF: {receipt_pdf_url}")
-    lines.append("Thank you for shopping with us.")
-    return "\n".join(line for line in lines if line)
+        lines.append(f"📄 [View Receipt]({receipt_pdf_url})")
+
+    notes = getattr(order, "delivery_notes", None) or getattr(order, "notes", None)
+    if isinstance(notes, str) and notes.strip():
+        lines.append(f"📌 *Notes:*\n{notes.strip()}")
+
+    if shop_phone:
+        lines.append(f"📞 *Enquiries:* {shop_phone}")
+    if shop_location:
+        lines.append(f"📍 *Location:* {shop_location}")
+
+    lines.append("_Thank you for shopping with us._")
+    return "\n".join(lines)
 
 
 def build_customer_receipt_email(
@@ -531,12 +682,26 @@ class OrderNotificationService:
                             self.settings,
                         )
 
+        account = order.account or self.db.query(Account).filter(Account.id == order.account_id).first()
+        shop_location = (account.business_location if account else None) or None
+        shop_phone = None
+        if account:
+            from app.models import User
+
+            users = self.db.query(User).filter(User.account_id == account.id).all()
+            for u in users:
+                if u.phone and u.phone.strip():
+                    shop_phone = u.phone.strip()
+                    break
+
         body = build_customer_receipt_whatsapp(
             order,
             shop_name=shop_name,
             receipt_pdf_url=pdf_url,
             credit_outstanding=resolved_outstanding,
             pay_bill_url=resolved_pay_bill,
+            shop_phone=shop_phone,
+            shop_location=shop_location,
         )
         return self.whatsapp.send_text(to=to, text=body)
 

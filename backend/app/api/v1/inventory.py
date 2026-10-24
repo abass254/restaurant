@@ -210,14 +210,19 @@ def list_inventory(
     user = _auth_inventory_user(db, session, pos_read_ok=True)
     account_id = _require_shop(user)
 
-    query = (
-        db.query(InventoryItem)
-        .options(
+    restaurant = is_restaurant_account(db, account_id)
+    loaders = [joinedload(InventoryItem.product)]
+    if restaurant:
+        loaders.extend([
             joinedload(InventoryItem.product)
             .selectinload(Product.available_addons)
             .selectinload(MealAddon.addon),
             *menu_options_loaders(joinedload(InventoryItem.product)),
-        )
+        ])
+
+    query = (
+        db.query(InventoryItem)
+        .options(*loaders)
         .filter(InventoryItem.account_id == account_id)
         .order_by(
             InventoryItem.updated_at.is_(None),

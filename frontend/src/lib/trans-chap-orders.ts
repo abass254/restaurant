@@ -6,6 +6,7 @@ import {
   promptVoidReason,
 } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
+import { nairobiDateKey, parseIso } from "@/lib/nairobi-time";
 import { orderHasSuccessfulMpesa, orderUsesPayment } from "@/lib/orders";
 import {
   fetchAllPages,
@@ -22,23 +23,68 @@ export type WalkinOrdersProgressCallback = (
   meta: PageProgressMeta,
 ) => void;
 
+export type FetchWalkinOrdersOptions = {
+  maxPages?: number;
+  untilPastDateKey?: string;
+  shouldStop?: (pageRows: Order[], pageNumber: number, allRowsSoFar: Order[]) => boolean;
+  onProgress?: WalkinOrdersProgressCallback;
+} & TimeWindow;
+
 export async function fetchWalkinOrders(
-  options?: {
-    maxPages?: number;
-    onProgress?: WalkinOrdersProgressCallback;
-  } & TimeWindow,
+  options?: FetchWalkinOrdersOptions,
 ): Promise<{ orders: Order[]; error: string | null; truncated: boolean }> {
   const window = timeWindowQuery(options);
+  const untilPastDateKey = options?.untilPastDateKey;
+
+  const shouldStop =
+    options?.shouldStop ??
+    (untilPastDateKey
+      ? (pageRows: Order[]) => {
+          return pageRows.some((order) => {
+            const date = parseIso(order.paid_at || order.placed_at || order.created_at);
+            const k = date ? nairobiDateKey(date) : null;
+            return Boolean(k && k < untilPastDateKey);
+          });
+        }
+      : undefined);
+
   const result = await fetchAllPages<OrdersListResponse["data"][number]>(
     (page) => `${apiRoutes.orders}?source=walkin&per_page=100&page=${page}${window}`,
     options?.maxPages ?? MAX_PAGES,
     options?.onProgress,
+    shouldStop,
   );
   return {
     orders: result.rows,
     error: result.failed ? internalErrorMessage() : null,
     truncated: result.truncated,
   };
+}
+
+export async function fetchWalkinOrdersPage(
+  page = 1,
+  options?: { perPage?: number } & TimeWindow,
+): Promise<{ orders: Order[]; lastPage: number; total: number; error: string | null }> {
+  const window = timeWindowQuery(options);
+  const perPage = options?.perPage ?? 100;
+  try {
+    const res = await apiFetch<OrdersListResponse>(
+      `${apiRoutes.orders}?source=walkin&per_page=${perPage}&page=${page}${window}`,
+    );
+    return {
+      orders: res.data,
+      lastPage: res.meta.last_page,
+      total: res.meta.total,
+      error: null,
+    };
+  } catch {
+    return {
+      orders: [],
+      lastPage: 1,
+      total: 0,
+      error: internalErrorMessage(),
+    };
+  }
 }
 
 export function isCountedWalkinSale(order: Order): boolean {

@@ -25,6 +25,7 @@ export type TransChapReceiptLine = {
   unitPrice: number;
   lineTotal: number;
   modifiers?: OrderItemModifier[] | null;
+  sellUnit?: string | null;
 };
 
 export type TransChapReceipt = {
@@ -54,6 +55,7 @@ export type TransChapReceipt = {
   mpesaMessage: string | null;
   creditOutstanding: number | null;
   payBillUrl: string | null;
+  receiptPdfUrl?: string | null;
   /** Set for split payments; payMode then reflects the part that still needs settling. */
   paymentSplits: OrderPaymentSplit[] | null;
 };
@@ -161,6 +163,7 @@ export function loadTransChapReceipt(): TransChapReceipt | null {
                 quantity: Number(line.quantity),
                 unitPrice: Number(line.unitPrice),
                 lineTotal: Number(line.lineTotal),
+                sellUnit: typeof line.sellUnit === "string" ? line.sellUnit : null,
               },
             ];
           })
@@ -199,6 +202,7 @@ export function loadTransChapReceipt(): TransChapReceipt | null {
           ? Number(parsed.creditOutstanding)
           : null,
       payBillUrl: parsed.payBillUrl ?? null,
+      receiptPdfUrl: typeof parsed.receiptPdfUrl === "string" ? parsed.receiptPdfUrl : null,
       paymentSplits: parsePaymentSplits(parsed.paymentSplits),
     };
   } catch {
@@ -218,8 +222,132 @@ export function isTransChapReceiptClosed(receipt: TransChapReceipt): boolean {
   return receipt.orderStatus === "cancelled" || receipt.orderStatus === "refunded";
 }
 
+function normalizeSellUnit(unit?: string | null): string {
+  const raw = (unit || "").trim().toLowerCase();
+  if (!raw || ["piece", "pieces", "pc", "pcs", "item", "items"].includes(raw)) {
+    return "pc";
+  }
+  if (["kilogram", "kilograms", "kg", "kgs"].includes(raw)) return "kg";
+  if (["gram", "grams", "g"].includes(raw)) return "g";
+  if (["litre", "litres", "liter", "liters", "l", "ltr", "ltrs"].includes(raw)) return "L";
+  if (["pack", "packs", "pk"].includes(raw)) return "pk";
+  if (["box", "boxes", "bx"].includes(raw)) return "bx";
+  if (raw.length <= 3) return raw;
+  return "pc";
+}
+
+function formatTableAmount(amount: unknown): string {
+  const val = Number(amount) || 0;
+  if (Number.isInteger(val)) {
+    return val.toLocaleString("en-KE");
+  }
+  return val.toLocaleString("en-KE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 export function transChapReceiptMessage(receipt: TransChapReceipt): string {
-  const total = formatKsh(receipt.amount);
+  const isCredit = receipt.payMode === "credit";
+  const lines: string[] = [
+    isCredit ? "📋 *INVOICE*" : "🧾 *TILL RECEIPT*",
+    `🏪 *${receipt.shopName}*`,
+  ];
+
+  const dateStr = receipt.paidAt
+    ? new Date(receipt.paidAt).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : new Date().toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+  lines.push(`🗓️ *Date:* ${dateStr}`);
+  lines.push(`🏷️ *Ref:* ${receipt.orderNumber} Confirmed.`);
+
+  if (receipt.customerName && receipt.customerName.trim().toLowerCase() !== "walk-in") {
+    lines.push(`👤 *Customer:* ${receipt.customerName.trim()}`);
+  }
+  if (receipt.tableNumber) {
+    lines.push(`🪑 *Table:* ${receipt.tableNumber}`);
+  }
+
+  const currency = receipt.currency || "KES";
+  lines.push("```");
+  lines.push(`ITEMS (${currency}):`);
+  lines.push("");
+  lines.push("ITEM".padEnd(19) + "QTY" + "PRICE".padStart(8) + "TOTAL".padStart(8));
+  lines.push("─".repeat(38));
+
+  const items = receipt.items?.length
+    ? receipt.items
+    : [{ name: receipt.productName, quantity: 1, unitPrice: receipt.amount, lineTotal: receipt.amount }];
+
+  items.forEach((item) => {
+    const name = (item.name || "Item").trim() || "Item";
+    const qty = Number(item.quantity) || 1;
+    const qtyDisp = Number.isInteger(qty) ? String(qty) : qty.toFixed(2).replace(/\.?0+$/, "");
+    const unitSuffix = normalizeSellUnit(item.sellUnit);
+    const qtyStr = `${qtyDisp}${unitSuffix}`;
+
+    const unitPrice = Number(item.unitPrice) || 0;
+    const lineTotal = Number(item.lineTotal) || 0;
+    const priceStr = formatTableAmount(unitPrice);
+    const totalStr = formatTableAmount(lineTotal);
+
+    const nums = qtyStr.padStart(3) + priceStr.padStart(8) + totalStr.padStart(8);
+    if (name.length <= 10) {
+      lines.push(name.padEnd(19) + nums);
+    } else {
+      if (name.length <= 38) {
+        lines.push(name);
+      } else {
+        for (let i = 0; i < name.length; i += 38) {
+          lines.push(name.slice(i, i + 38));
+        }
+      }
+      lines.push(" ".repeat(19) + nums);
+    }
+
+    if (item.modifiers?.length) {
+      item.modifiers.forEach((mod) => {
+        const modPrice = Number(mod.price) || 0;
+        const mStr = modPrice > 0 ? ` (${formatTableAmount(modPrice)})` : "";
+        lines.push(`   + ${mod.name}${mStr}`);
+      });
+    }
+  });
+
+  lines.push("─".repeat(38));
+
+  const subtotal = receipt.subtotal ?? items.reduce((sum, line) => sum + line.lineTotal, 0);
+  lines.push(" ".repeat(14) + "Subtotal:".padEnd(9) + formatTableAmount(subtotal).padStart(15));
+
+  if (receipt.discount && receipt.discount > 0) {
+    lines.push(" ".repeat(14) + "Discount:".padEnd(9) + `-${formatTableAmount(receipt.discount)}`.padStart(15));
+  }
+  if (receipt.deliveryFee && receipt.deliveryFee > 0) {
+    lines.push(" ".repeat(14) + "Delivery:".padEnd(9) + formatTableAmount(receipt.deliveryFee).padStart(15));
+  }
+  if (receipt.tax && receipt.tax > 0) {
+    lines.push(" ".repeat(14) + "Tax (16%):".padEnd(10) + formatTableAmount(receipt.tax).padStart(14));
+  }
+  if (receipt.returnedTotal && receipt.returnedTotal > 0) {
+    lines.push(" ".repeat(14) + "Returned:".padEnd(9) + `-${formatTableAmount(receipt.returnedTotal)}`.padStart(15));
+  }
+
+  const netTotal = Math.max(0, receipt.amount - (receipt.returnedTotal ?? 0));
+  const totalLbl = receipt.returnedTotal ? "NET TOTAL:" : "TOTAL:";
+  const totStr = `${currency} ${formatTableAmount(netTotal)}`;
+  const lblW = totalLbl.length;
+  lines.push(" ".repeat(14) + totalLbl.padEnd(lblW) + totStr.padStart(24 - lblW));
+
+  lines.push("─".repeat(38));
+  lines.push("```");
+
   const isSplit = Boolean(receipt.paymentSplits?.length);
   const paymentLine = isSplit
     ? `Paid with ${transChapReceiptPayLabel(receipt)}.${
@@ -230,25 +358,22 @@ export function transChapReceiptMessage(receipt: TransChapReceipt): string {
         ? `Paid via M-PESA. Receipt ${receipt.mpesaReceiptNumber}.`
         : "Paid via M-PESA."
       : receipt.payMode === "credit"
-        ? "Invoice."
+        ? "On credit."
         : "Paid in cash.";
-  return [
-    `${receipt.orderNumber} Confirmed.`,
-    isSplit
-      ? `${total} sale at ${receipt.shopName} for ${receipt.productName}.`
-      : receipt.payMode === "credit"
-        ? `${total} invoice at ${receipt.shopName} for ${receipt.productName}.`
-        : `${total} paid to ${receipt.shopName} for ${receipt.productName}.`,
-    receipt.customerName ? `Customer ${receipt.customerName}.` : "",
-    paymentLine,
-    (receipt.payMode === "credit" || isSplit) && receipt.creditOutstanding != null
-      ? `Your tab is now ${formatKsh(receipt.creditOutstanding)}.`
-      : "",
-    receipt.payBillUrl ? `Pay your bill: ${receipt.payBillUrl}` : "",
-    "Thank you for shopping with us.",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  lines.push(`💳 *Payment:* ${paymentLine}`);
+
+  if ((receipt.payMode === "credit" || isSplit) && receipt.creditOutstanding != null) {
+    lines.push(`📒 Your tab is now ${formatKsh(receipt.creditOutstanding)}.`);
+  }
+  if (receipt.payBillUrl) {
+    lines.push(`🔗 Pay your bill: ${receipt.payBillUrl}`);
+  }
+  if (receipt.receiptPdfUrl) {
+    lines.push(`📄 [View Receipt](${receipt.receiptPdfUrl})`);
+  }
+
+  lines.push("_Thank you for shopping with us._");
+  return lines.join("\n");
 }
 
 export function formatKesDigits(amount: number): string {
@@ -289,6 +414,7 @@ export function receiptFromOrder(
     unitPrice: line.unit_price,
     lineTotal: line.line_total,
     modifiers: line.modifiers?.length ? line.modifiers : null,
+    sellUnit: line.sell_unit ?? null,
   }));
   const productName = items[0]?.name || "Sale";
   return {
@@ -324,6 +450,8 @@ export function receiptFromOrder(
     creditOutstanding:
       creditTab?.outstanding_balance != null ? Number(creditTab.outstanding_balance) : null,
     payBillUrl: creditTab?.pay_bill_url ?? null,
+    receiptPdfUrl:
+      (order as unknown as { receipt_pdf_url?: string | null })?.receipt_pdf_url ?? null,
     paymentSplits:
       order.payment_method === "split" ? orderPaymentPortions(order) : null,
   };

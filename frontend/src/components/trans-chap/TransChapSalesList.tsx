@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { TransChapFab } from "@/components/trans-chap/TransChapFab";
@@ -36,6 +36,7 @@ import {
   transChapPayLabel,
   transChapReceiptHref,
   transChapReceiptPayLabel,
+  type TransChapReceipt,
 } from "@/lib/trans-chap-receipt";
 import { TransChapGoodsOnReturnModal } from "@/components/trans-chap/TransChapGoodsOnReturnModal";
 import type { Order, OrderMutationResponse } from "@/lib/types";
@@ -85,10 +86,53 @@ function orderDateKey(order: Order): string | null {
   return date ? nairobiDateKey(date) : null;
 }
 
-function matchesQuery(order: Order, query: string): boolean {
-  if (!query) return true;
-  const haystack = [
-    ...(order.items?.map((line) => line.product_name) ?? []),
+const SALES_CACHE_KEY = "trans-chap:sales";
+const SALES_STORAGE_KEY = "trans-chap:sales:cache:v1";
+const INITIAL_VISIBLE_COUNT = 50;
+const VISIBLE_INCREMENT = 50;
+
+type SalesSnapshot = { orders: Order[]; truncated: boolean; timestamp?: number };
+
+type IndexedOrder = Order & {
+  _searchText?: string;
+  _saleStatus?: { label: string; tone: "ok" | "wait" | "fail" | "credit" };
+  _dateKey?: string | null;
+  _receipt?: TransChapReceipt;
+};
+
+function readSalesCache(): SalesSnapshot | null {
+  const mem = readPageCache<SalesSnapshot>(SALES_CACHE_KEY);
+  if (mem && mem.orders && mem.orders.length > 0) return mem;
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(SALES_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && Array.isArray(parsed.orders) && parsed.orders.length > 0) {
+      writePageCache(SALES_CACHE_KEY, parsed);
+      return parsed as SalesSnapshot;
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return null;
+}
+
+function writeSalesCache(snapshot: SalesSnapshot) {
+  writePageCache(SALES_CACHE_KEY, snapshot);
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(SALES_STORAGE_KEY, JSON.stringify({ ...snapshot, timestamp: Date.now() }));
+  } catch {
+    // Ignore quota errors
+  }
+}
+
+function getOrderSearchText(order: IndexedOrder): string {
+  if (order._searchText !== undefined) return order._searchText;
+  const items = order.items ?? [];
+  const hay = [
+    ...items.map((line) => line.product_name),
     order.order_number,
     order.customer_name,
     order.customer_phone,
@@ -98,28 +142,48 @@ function matchesQuery(order: Order, query: string): boolean {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
-  return haystack.includes(query);
+  order._searchText = hay;
+  return hay;
 }
 
-const SALES_CACHE_KEY = "trans-chap:sales";
-const INITIAL_VISIBLE_COUNT = 50;
-const VISIBLE_INCREMENT = 50;
+function getCachedSaleStatus(order: IndexedOrder) {
+  if (order._saleStatus !== undefined) return order._saleStatus;
+  const s = saleStatus(order);
+  order._saleStatus = s;
+  return s;
+}
 
-type SalesSnapshot = { orders: Order[]; truncated: boolean };
+function getCachedDateKey(order: IndexedOrder): string | null {
+  if (order._dateKey !== undefined) return order._dateKey;
+  const k = orderDateKey(order);
+  order._dateKey = k;
+  return k;
+}
+
+function getCachedReceipt(order: IndexedOrder, shopName: string): TransChapReceipt {
+  if (order._receipt !== undefined) return order._receipt;
+  const r = receiptFromOrder(order, shopName);
+  order._receipt = r;
+  return r;
+}
 
 export function TransChapSalesList() {
   const user = useAuthUser();
   const restaurant = isRestaurantStore(user.active_account ?? user.account);
   const listId = useId();
-  const [cached] = useState(() => readPageCache<SalesSnapshot>(SALES_CACHE_KEY));
+  const [cached] = useState(() => readSalesCache());
   const [orders, setOrders] = useState<Order[]>(cached?.orders ?? []);
-  const [loading, setLoading] = useState(!cached);
+  const initialLoadedRef = useRef(Boolean(cached?.orders?.length));
+  const allLoadedRef = useRef(false);
+  const [loading, setLoading] = useState(!cached?.orders?.length);
   const [backgroundSyncing, setBackgroundSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(cached?.truncated ?? false);
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   const [when, setWhen] = useState<WhenFilter>(() => {
     if (typeof window !== "undefined") {
       const value = new URLSearchParams(window.location.search).get("when");
@@ -152,35 +216,130 @@ export function TransChapSalesList() {
     user.account?.business_name ||
     "DukAI";
 
-  const reload = useCallback(async () => {
-    if (!readPageCache(SALES_CACHE_KEY)) setLoading(true);
+  const todayKey = useMemo(() => nairobiDateKey(new Date()), []);
+  const sevenDaysAgoKey = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return nairobiDateKey(d);
+  }, []);
+
+  const reload = useCallback(async (opts?: { silent?: boolean; forceAll?: boolean }) => {
+    const hasData = initialLoadedRef.current || Boolean(readSalesCache()?.orders?.length);
+    if (!opts?.silent && !hasData) {
+      setLoading(true);
+    }
+    const untilPastDateKey = opts?.forceAll
+      ? undefined
+      : when === "today"
+        ? todayKey
+        : when === "week"
+          ? sevenDaysAgoKey
+          : undefined;
+
     const result = await fetchWalkinOrders({
+      untilPastDateKey,
       onProgress: (progressiveOrders, meta) => {
-        setOrders(progressiveOrders);
-        if (meta.isFirstPage) {
-          setLoading(false);
-          if (!meta.done) {
-            setBackgroundSyncing(true);
-          }
+        setOrders((existing) => {
+          const freshIds = new Set(progressiveOrders.map((o) => o.id));
+          const older = existing.filter((o) => !freshIds.has(o.id));
+          return [...progressiveOrders, ...older];
+        });
+        initialLoadedRef.current = true;
+        setLoading(false);
+        if (!meta.done) {
+          setBackgroundSyncing(true);
         }
       },
     });
-    setOrders(result.orders);
+
+    if (result.orders.length > 0) {
+      setOrders((existing) => {
+        const freshIds = new Set(result.orders.map((o) => o.id));
+        const older = existing.filter((o) => !freshIds.has(o.id));
+        const merged = [...result.orders, ...older];
+        writeSalesCache({
+          orders: merged,
+          truncated: result.truncated,
+        });
+        return merged;
+      });
+    }
+
+    if (!untilPastDateKey) {
+      allLoadedRef.current = true;
+    }
     setError(result.error);
     setTruncated(result.truncated);
     setBackgroundSyncing(false);
-    if (!result.error) {
-      writePageCache(SALES_CACHE_KEY, {
-        orders: result.orders,
-        truncated: result.truncated,
-      } satisfies SalesSnapshot);
-    }
+    initialLoadedRef.current = true;
     setLoading(false);
-  }, []);
+  }, [sevenDaysAgoKey, todayKey, when]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  const fetchOlderOrders = useCallback(async (targetDateKey?: string) => {
+    if (allLoadedRef.current) return;
+    setBackgroundSyncing(true);
+    try {
+      const result = await fetchWalkinOrders({
+        untilPastDateKey: targetDateKey,
+        onProgress: (progressiveOrders) => {
+          setOrders((existing) => {
+            const freshIds = new Set(progressiveOrders.map((o) => o.id));
+            const older = existing.filter((o) => !freshIds.has(o.id));
+            return [...progressiveOrders, ...older];
+          });
+        },
+      });
+      if (result.orders.length > 0) {
+        setOrders((existing) => {
+          const freshIds = new Set(result.orders.map((o) => o.id));
+          const older = existing.filter((o) => !freshIds.has(o.id));
+          const merged = [...result.orders, ...older];
+          writeSalesCache({
+            orders: merged,
+            truncated: result.truncated,
+          });
+          return merged;
+        });
+      }
+      if (!targetDateKey) {
+        allLoadedRef.current = true;
+      }
+    } finally {
+      setBackgroundSyncing(false);
+    }
+  }, []);
+
+  const handleWhenChange = useCallback(
+    (nextWhen: WhenFilter) => {
+      setWhen(nextWhen);
+      if (nextWhen === "today") return;
+
+      if (nextWhen === "week") {
+        const hasOlderThan7Days = orders.some((order) => {
+          const k = getCachedDateKey(order as IndexedOrder);
+          return Boolean(k && k < sevenDaysAgoKey);
+        });
+        if (!hasOlderThan7Days && !allLoadedRef.current) {
+          void fetchOlderOrders(sevenDaysAgoKey);
+        }
+      } else if (nextWhen === "all") {
+        if (!allLoadedRef.current) {
+          void fetchOlderOrders();
+        }
+      }
+    },
+    [fetchOlderOrders, orders, sevenDaysAgoKey],
+  );
+
+  useEffect(() => {
+    if (deferredQuery.trim().length >= 3 && !allLoadedRef.current && !backgroundSyncing) {
+      void fetchOlderOrders();
+    }
+  }, [deferredQuery, fetchOlderOrders, backgroundSyncing]);
 
   useEffect(() => {
     const value = new URLSearchParams(window.location.search).get("when");
@@ -258,14 +417,14 @@ export function TransChapSalesList() {
     }
   }
 
-  const todayKey = nairobiDateKey(new Date());
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+    const needle = deferredQuery.trim().toLowerCase();
     return orders.filter((order) => {
-      if (!matchesQuery(order, needle)) return false;
+      const idxOrder = order as IndexedOrder;
+      if (needle && !getOrderSearchText(idxOrder).includes(needle)) return false;
       if (method === "credit" && !orderUsesPayment(order, "credit")) return false;
       if (method === "mpesa" && !orderUsesPayment(order, "mpesa")) return false;
-      const tone = saleStatus(order).tone;
+      const tone = getCachedSaleStatus(idxOrder).tone;
       if (status === "paid" && tone !== "ok") return false;
       if (status === "waiting" && tone !== "wait") return false;
       if (status === "failed" && (tone !== "fail" || order.status === "cancelled" || order.status === "refunded")) {
@@ -275,16 +434,32 @@ export function TransChapSalesList() {
         return false;
       }
       if (when === "all") return true;
-      const key = orderDateKey(order);
+      const key = getCachedDateKey(idxOrder);
       if (!key) return false;
       if (when === "today") return key === todayKey;
       return isWithinLastDays(key, 7, todayKey);
     });
-  }, [method, orders, query, status, todayKey, when]);
+  }, [deferredQuery, method, orders, status, todayKey, when]);
 
   useEffect(() => {
     setVisibleCount(INITIAL_VISIBLE_COUNT);
-  }, [query, when, method, status]);
+  }, [deferredQuery, when, method, status]);
+
+  // Infinite scroll progressive loading via IntersectionObserver
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || selecting) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + VISIBLE_INCREMENT, filtered.length));
+        }
+      },
+      { rootMargin: "350px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [filtered.length, selecting]);
 
   const displayedOrders = useMemo(() => {
     if (selecting) return filtered;
@@ -390,6 +565,66 @@ export function TransChapSalesList() {
     );
   }
 
+  function renderTableActions(order: Order, product: string) {
+    const sale = saleStatus(order);
+    const undo = undoActionFor(order);
+    const busy = stkBusyId === order.id || undoingId === order.id || bulkUndoing;
+    return (
+      <>
+        {sale.tone === "wait" || (orderUsesPayment(order, "mpesa") && sale.tone === "fail" && order.status !== "cancelled" && order.status !== "refunded") ? (
+          <button
+            type="button"
+            className="trans-chap-stock-table__icon-btn"
+            disabled={busy}
+            title={stkBusyId === order.id ? "Working…" : "Complete M-PESA"}
+            aria-label={`Complete M-PESA for ${product}`}
+            onClick={() => void handlePendingStk(order)}
+          >
+            <i
+              className={stkBusyId === order.id ? "fa-solid fa-circle-notch fa-spin" : "fa-solid fa-mobile-screen-button"}
+              aria-hidden
+            />
+          </button>
+        ) : null}
+        {undo ? (
+          <button
+            type="button"
+            className="trans-chap-stock-table__icon-btn trans-chap-stock-table__icon-btn--void"
+            disabled={busy}
+            title={undoingId === order.id ? "Working…" : undo === "refund" ? "Refund sale" : "Void sale"}
+            aria-label={undo === "refund" ? `Refund sale for ${product}` : `Void sale for ${product}`}
+            onClick={() => void undoSale(order)}
+          >
+            <i
+              className={undoingId === order.id ? "fa-solid fa-circle-notch fa-spin" : "fa-solid fa-ban"}
+              aria-hidden
+            />
+          </button>
+        ) : null}
+        {canReturnGoods(order) ? (
+          <button
+            type="button"
+            className="trans-chap-stock-table__icon-btn trans-chap-stock-table__icon-btn--return"
+            disabled={busy}
+            title="Return goods"
+            aria-label={`Return goods for ${product}`}
+            onClick={() => setReturnOrder(order)}
+          >
+            <i className="fa-solid fa-arrow-rotate-left" aria-hidden />
+          </button>
+        ) : null}
+        <Link
+          href={transChapReceiptHref(order.id)}
+          className="trans-chap-stock-table__icon-btn trans-chap-stock-table__icon-btn--receipt"
+          title="Open receipt"
+          aria-label={`Open receipt for ${product}`}
+        >
+          <i className="fa-solid fa-receipt" aria-hidden />
+        </Link>
+      </>
+    );
+  }
+
   function renderActions(order: Order, product: string) {
     const sale = saleStatus(order);
     const undo = undoActionFor(order);
@@ -427,6 +662,7 @@ export function TransChapSalesList() {
             disabled={busy}
             onClick={() => setReturnOrder(order)}
           >
+            <i className="fa-solid fa-arrow-rotate-left" aria-hidden style={{ marginRight: "0.35rem" }} />
             Return goods
           </button>
         ) : null}
@@ -435,6 +671,7 @@ export function TransChapSalesList() {
           className="trans-chap-panel__link"
           aria-label={`Open receipt for ${product}`}
         >
+          <i className="fa-solid fa-receipt" aria-hidden style={{ marginRight: "0.35rem" }} />
           Open receipt
         </Link>
       </>
@@ -497,7 +734,7 @@ export function TransChapSalesList() {
         </div>
         {filtersOpen ? (
           <div id="trans-chap-sales-filters" className="trans-chap-sales__chips">
-            <TransChapFilterChips label="When" value={when} options={WHEN_CHIPS} onChange={setWhen} />
+            <TransChapFilterChips label="When" value={when} options={WHEN_CHIPS} onChange={handleWhenChange} />
             <TransChapFilterChips label="Payment" value={method} options={METHOD_CHIPS} onChange={setMethod} />
             <TransChapFilterChips label="Status" value={status} options={STATUS_CHIPS} onChange={setStatus} />
             {activeFilterCount ? (
@@ -505,7 +742,7 @@ export function TransChapSalesList() {
                 type="button"
                 className="trans-chap-sales__chip trans-chap-sales__chip--clear"
                 onClick={() => {
-                  setWhen("all");
+                  handleWhenChange("all");
                   setMethod("all");
                   setStatus("all");
                 }}
@@ -633,7 +870,7 @@ export function TransChapSalesList() {
                       </td>
                       <td className="trans-chap-stock-table__actions">
                         <div className="trans-chap-stock-table__actions-inner">
-                          {selecting ? null : renderActions(order, product)}
+                          {selecting ? null : renderTableActions(order, product)}
                         </div>
                       </td>
                     </tr>
@@ -646,7 +883,7 @@ export function TransChapSalesList() {
           <MotionList
             as="div"
             className="trans-chap-sales__stagger"
-            staggerChildren={displayedOrders.length > 20 ? 0.02 : 0.045}
+            staggerChildren={displayedOrders.length > 20 ? 0 : 0.02}
           >
             {displayedOrders.map((order) => {
             const product = order.items?.[0]?.product_name || "Sale";
@@ -792,7 +1029,8 @@ export function TransChapSalesList() {
           </MotionList>
         )}
         {!selecting && filtered.length > displayedOrders.length ? (
-          <div style={{ display: "flex", justifyContent: "center", padding: "1rem 0" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "1rem 0" }}>
+            <div ref={sentinelRef} style={{ height: "1px", width: "100%", margin: "4px 0" }} />
             <button
               type="button"
               className="trans-chap-sales__chip"

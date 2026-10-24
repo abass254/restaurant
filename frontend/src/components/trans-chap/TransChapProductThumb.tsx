@@ -26,7 +26,13 @@ export function TransChapProductThumb({
     <span className={`trans-chap-thumb trans-chap-thumb--${size}`} aria-hidden>
       {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={resolved} alt="" onError={() => setFailedSrc(resolved)} />
+        <img
+          src={resolved}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailedSrc(resolved)}
+        />
       ) : (
         <em>{initial}</em>
       )}

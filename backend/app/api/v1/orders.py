@@ -245,6 +245,10 @@ class OrderCreate(BaseModel):
     # When set with payment_method=mpesa, skip STK and close the sale with this SMS code
     # (customer paid the merchant's Till/Paybill/phone directly).
     mpesa_receipt_number: str | None = Field(default=None, max_length=50)
+    # When explicitly provided, determines whether an STK push prompt is sent to the customer
+    # (True) or if the payment is recorded directly without an STK prompt (False).
+    # If None, defaults to the account's force_mpesa_prompt setting.
+    send_mpesa_stk_push: bool | None = Field(default=None)
 
     items: list[OrderItemPayload] = Field(min_length=1, max_length=100)
 
@@ -381,16 +385,7 @@ def list_orders(
         order_options.append(selectinload(Order.items).selectinload(OrderItem.inventory_item))
         order_options.append(joinedload(Order.assigned_rider))
 
-    query = (
-        db.query(Order)
-        .options(*order_options)
-        .filter(Order.account_id == account_id)
-        .order_by(
-            Order.created_at.is_(None),
-            Order.created_at.desc(),
-            Order.id.desc(),
-        )
-    )
+    base_query = db.query(Order).filter(Order.account_id == account_id)
 
     if status_filter:
         if status_filter not in ALL_STATUSES:
@@ -398,7 +393,7 @@ def list_orders(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Unknown status: {status_filter}",
             )
-        query = query.filter(Order.status == status_filter)
+        base_query = base_query.filter(Order.status == status_filter)
 
     if source:
         if source not in ALL_SOURCES:
@@ -406,7 +401,7 @@ def list_orders(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Unknown source: {source}",
             )
-        query = query.filter(Order.source == source)
+        base_query = base_query.filter(Order.source == source)
 
     if fulfillment_type:
         if fulfillment_type not in ALL_FULFILLMENT_TYPES:
@@ -414,19 +409,19 @@ def list_orders(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Unknown fulfillment type: {fulfillment_type}",
             )
-        query = query.filter(Order.fulfillment_type == fulfillment_type)
+        base_query = base_query.filter(Order.fulfillment_type == fulfillment_type)
 
     if since is not None or until is not None:
         # Same timestamp the Trans Chap dashboard buckets a sale by.
         activity_at = func.coalesce(Order.paid_at, Order.placed_at, Order.created_at)
         if since is not None:
-            query = query.filter(activity_at >= naive_utc(since))
+            base_query = base_query.filter(activity_at >= naive_utc(since))
         if until is not None:
-            query = query.filter(activity_at < naive_utc(until))
+            base_query = base_query.filter(activity_at < naive_utc(until))
 
     if q:
         term = f"%{q}%"
-        query = query.filter(
+        base_query = base_query.filter(
             or_(
                 Order.order_number.ilike(term),
                 Order.customer_name.ilike(term),
@@ -435,14 +430,27 @@ def list_orders(
             ),
         )
 
-    total = query.count()
-    rows = query.offset((page - 1) * per_page).limit(per_page).all()
+    # Lightweight count query without eager load joins or sorting overhead
+    total = base_query.with_entities(func.count(Order.id)).scalar() or 0
 
+    rows = (
+        base_query.options(*order_options)
+        .order_by(
+            Order.created_at.desc(),
+            Order.id.desc(),
+        )
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+
+    is_walkin = source == "walkin"
     items = [
         OrderOut.from_model(
             row,
             include_items=True,
             include_history=False,
+            include_workflow=not is_walkin,
             allowed_next=allowed_next_statuses(row.status, row.fulfillment_type),
         )
         for row in rows
@@ -904,9 +912,13 @@ def create_order(
 
     account = db.get(Account, account_id)
     force_mpesa_prompt = (
-        account.force_mpesa_prompt
-        if account and account.force_mpesa_prompt is not None
-        else True
+        payload.send_mpesa_stk_push
+        if payload.send_mpesa_stk_push is not None
+        else (
+            account.force_mpesa_prompt
+            if account and account.force_mpesa_prompt is not None
+            else True
+        )
     )
 
     # STK push needs a phone; typing an SMS code for a direct payment does not.
@@ -2255,7 +2267,12 @@ def resend_mpesa_stk_push(
     user = _auth_orders_user(db, session, pos_ok=True)
     account_id = _require_shop(user)
     account = db.get(Account, account_id)
-    if account is not None and account.force_mpesa_prompt is False:
+    order = _get_owned_order(db, account_id, order_id)
+    if (
+        account is not None
+        and account.force_mpesa_prompt is False
+        and not order.mpesa_transaction_id
+    ):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             detail=(
@@ -2263,8 +2280,6 @@ def resend_mpesa_stk_push(
                 "using the customer's receipt code."
             ),
         )
-
-    order = _get_owned_order(db, account_id, order_id)
     if order.status in TERMINAL_STATUSES:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
