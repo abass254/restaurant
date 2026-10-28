@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -104,13 +104,33 @@ class RecipeLineIn(BaseModel):
     quantity: float | None = Field(default=None, gt=0, le=100_000)
     batch_quantity: float | None = Field(default=None, gt=0, le=100_000)
     batch_yield: float | None = Field(default=None, gt=0, le=100_000)
-    serving_unit: str | None = Field(default=None, min_length=1, max_length=32)
-    ingredient_unit: str | None = Field(default=None, min_length=1, max_length=64)
+    serving_unit: str | None = Field(default=None, max_length=32)
+    ingredient_unit: str | None = Field(default=None, max_length=64)
+
+    @field_validator("serving_unit", "ingredient_unit", mode="before")
+    @classmethod
+    def _clean_empty_str(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            cleaned = v.strip()
+            return cleaned or None
+        return v
 
 
 class RecipeReplace(BaseModel):
     lines: list[RecipeLineIn] = Field(default_factory=list, max_length=40)
-    serving_unit: str | None = Field(default=None, min_length=1, max_length=32)
+    serving_unit: str | None = Field(default=None, max_length=32)
+
+    @field_validator("serving_unit", mode="before")
+    @classmethod
+    def _clean_serving_unit(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            cleaned = v.strip()
+            return cleaned or None
+        return v
 
 
 class ComboComponentIn(BaseModel):

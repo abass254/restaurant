@@ -413,6 +413,17 @@ def test_recipe_is_saved_and_rejects_dishes(db):
     )
     assert cleared["data"] == [] and cleared["serving_unit"] == "sticks"
 
+    # Accepts empty string ingredient_unit and serving_unit without validation error
+    empty_units_line = RecipeLineIn(product_id="flour", quantity=0.1, ingredient_unit="", serving_unit="")
+    assert empty_units_line.ingredient_unit is None
+    assert empty_units_line.serving_unit is None
+
+    empty_units_body = menu.replace_recipe(
+        "fries", RecipeReplace(lines=[empty_units_line], serving_unit=""),
+        request=None, db=db, session={},
+    )
+    assert empty_units_body["data"][0]["name"] == "Flour"
+
     with pytest.raises(HTTPException) as exc:
         menu.replace_recipe(
             "fries", RecipeReplace(lines=[RecipeLineIn(product_id="big-mac", quantity=1)]),

@@ -538,7 +538,7 @@ export function TransChapMenuForm() {
       await showError("Enter recipe batch amounts", "Enter the supply amount used for each recipe batch.");
       return;
     }
-    const lines = recipeDraftLines(recipeDraft);
+    const lines = recipeDraftLines(recipeDraft, supplies);
     setSaving(true);
     try {
       const saved = await saveRecipe(
@@ -548,8 +548,8 @@ export function TransChapMenuForm() {
           quantity: line.quantity,
           batch_quantity: line.batchQuantity,
           batch_yield: line.batchYield,
-          serving_unit: line.servingUnit,
-          ingredient_unit: line.ingredientUnit,
+          serving_unit: line.servingUnit?.trim() || null,
+          ingredient_unit: line.ingredientUnit?.trim() || null,
         })),
         recipeServingUnit.trim(),
       );

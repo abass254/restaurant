@@ -242,14 +242,14 @@ export async function saveRecipe(
     quantity: number;
     batch_quantity: number;
     batch_yield: number;
-    serving_unit: string;
-    ingredient_unit: string;
+    serving_unit?: string | null;
+    ingredient_unit?: string | null;
   }[],
-  servingUnit: string,
+  servingUnit?: string | null,
 ): Promise<{ lines: RecipeLine[]; servingUnit: string }> {
   const res = await apiFetch<{ data: RecipeLine[]; serving_unit: string }>(apiRoutes.productRecipe(dishProductId), {
     method: "PUT",
-    body: JSON.stringify({ lines, serving_unit: servingUnit }),
+    body: JSON.stringify({ lines, serving_unit: servingUnit?.trim() || null }),
   });
   return { lines: res.data, servingUnit: res.serving_unit };
 }

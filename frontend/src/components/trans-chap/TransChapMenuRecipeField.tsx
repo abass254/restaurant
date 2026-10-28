@@ -48,6 +48,7 @@ export function recipeDraftHasMismatchedYield(rows: RecipeDraft[]): boolean {
 
 export function recipeDraftLines(
   rows: RecipeDraft[],
+  supplies?: InventoryItem[],
 ): {
   productId: string;
   quantity: number;
@@ -56,6 +57,7 @@ export function recipeDraftLines(
   servingUnit: string;
   ingredientUnit: string;
 }[] {
+  const suppliesMap = supplies ? new Map(supplies.map((s) => [s.product_id, s])) : null;
   const quantities = new Map<
     string,
     { productId: string; quantity: number; batchQuantity: number; servingUnit: string; ingredientUnit: string }
@@ -66,12 +68,14 @@ export function recipeDraftLines(
     if (!row.productId || portion == null || yieldCount == null) return;
     const servingUnit = row.servingUnit.trim() || "servings";
     const key = `${row.productId}\u0000${servingUnit.toLowerCase()}`;
+    const supply = suppliesMap?.get(row.productId);
+    const fallbackUnit = supply ? (allSellUnits(supply)[0]?.name || supply.product?.unit || "") : "";
     const line = quantities.get(key) ?? {
       productId: row.productId,
       quantity: 0,
       batchQuantity: 0,
       servingUnit,
-      ingredientUnit: row.unit || "",
+      ingredientUnit: row.unit?.trim() || fallbackUnit,
     };
     line.quantity += portion / yieldCount;
     line.batchQuantity += portion;
@@ -271,9 +275,13 @@ export function RecipeField({
                   data-label="Supply"
                   value={row.productId}
                   onChange={(e) => {
+                    const nextSupply = byProductId.get(e.target.value);
+                    const defaultUnit = nextSupply
+                      ? (allSellUnits(nextSupply)[0]?.name || nextSupply.product?.unit || "Piece")
+                      : "";
                     patch(index, {
                       productId: e.target.value,
-                      unit: "",
+                      unit: defaultUnit,
                       servingUnit: rowServingUnit,
                       portion: "",
                       yield: "",

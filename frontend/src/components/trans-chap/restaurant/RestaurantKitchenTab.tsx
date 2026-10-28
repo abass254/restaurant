@@ -1646,13 +1646,13 @@ function CurrentMenuSection({
       }
       const saved = await saveRecipe(
         recipeEditor.product_id,
-        recipeDraftLines(recipeDraft).map((line) => ({
+        recipeDraftLines(recipeDraft, supplies).map((line) => ({
           product_id: line.productId,
           quantity: line.quantity,
           batch_quantity: line.batchQuantity,
           batch_yield: line.batchYield,
-          serving_unit: line.servingUnit,
-          ingredient_unit: line.ingredientUnit,
+          serving_unit: line.servingUnit?.trim() || null,
+          ingredient_unit: line.ingredientUnit?.trim() || null,
         })),
         recipeServingUnit.trim(),
       );
