@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Literal
 
 from sqlalchemy import inspect
@@ -264,6 +265,32 @@ class MealAddonLinkPayload(BaseModel):
     sort_order: int = 0
 
 
+class ModifierOptionRecipeOut(BaseModel):
+    id: str
+    menu_product_id: str
+    menu_name: str | None = None
+    product_id: str
+    product_name: str | None = None
+    product_unit: str | None = None
+    stock_qty: float = 1
+    portions_per_unit: float = 1
+    portion_unit: str = "portions"
+
+    @classmethod
+    def from_model(cls, recipe) -> "ModifierOptionRecipeOut":
+        return cls(
+            id=recipe.id,
+            menu_product_id=recipe.menu_product_id,
+            menu_name=recipe.menu_product.name if recipe.menu_product else None,
+            product_id=recipe.product_id,
+            product_name=recipe.product.name if recipe.product else None,
+            product_unit=recipe.product.unit if recipe.product else None,
+            stock_qty=float(recipe.stock_qty or 1),
+            portions_per_unit=float(recipe.portions_per_unit or 1),
+            portion_unit=recipe.portion_unit or "portions",
+        )
+
+
 class ModifierOptionOut(BaseModel):
     id: str
     group_id: str
@@ -273,12 +300,31 @@ class ModifierOptionOut(BaseModel):
     product_name: str | None = None
     product_unit: str | None = None
     stock_qty: float = 1
+    batch_yield: float = 1
+    portion_unit: str | None = None
+    recipes: list[ModifierOptionRecipeOut] = []
+    source_kind: str | None = None
+    source_product_id: str | None = None
+    source_option_id: str | None = None
+    source_name: str | None = None
     is_default: bool = False
     sort_order: int = 0
     is_active: bool = True
 
     @classmethod
     def from_model(cls, option) -> "ModifierOptionOut":
+        source_kind = getattr(option, "source_kind", None)
+        source_name = None
+        if source_kind in ("store_item", "menu"):
+            source = getattr(option, "source_product", None)
+            source_name = source.name if source else None
+            if source is None:
+                source_kind = None
+        elif source_kind == "extra":
+            source = getattr(option, "source_option", None)
+            source_name = source.name if source else None
+            if source is None:
+                source_kind = None
         return cls(
             id=option.id,
             group_id=option.group_id,
@@ -288,6 +334,13 @@ class ModifierOptionOut(BaseModel):
             product_name=option.product.name if option.product else None,
             product_unit=option.product.unit if option.product else None,
             stock_qty=float(option.stock_qty) if option.stock_qty is not None else 1,
+            batch_yield=float(option.batch_yield) if option.batch_yield is not None else 1,
+            portion_unit=option.portion_unit,
+            recipes=[ModifierOptionRecipeOut.from_model(recipe) for recipe in option.recipes or []],
+            source_kind=source_kind,
+            source_product_id=option.source_product_id if source_kind in ("store_item", "menu") else None,
+            source_option_id=option.source_option_id if source_kind == "extra" else None,
+            source_name=source_name,
             is_default=bool(option.is_default),
             sort_order=option.sort_order or 0,
             is_active=option.is_active is not False,
@@ -299,6 +352,7 @@ class ModifierGroupOut(BaseModel):
     name: str
     min_select: int = 0
     max_select: int = 1
+    is_extra: bool = False
     included: bool = False
     sort_order: int = 0
     options: list[ModifierOptionOut] = []
@@ -311,6 +365,7 @@ class ModifierGroupOut(BaseModel):
             name=group.name,
             min_select=group.min_select or 0,
             max_select=group.max_select or 1,
+            is_extra=bool(group.is_extra),
             included=bool(group.included),
             sort_order=group.sort_order or 0,
             options=[ModifierOptionOut.from_model(o) for o in group.options or []],
@@ -333,19 +388,35 @@ class RecipeLineOut(BaseModel):
     name: str | None = None
     unit: str | None = None
     quantity: float
+    batch_quantity: float
+    batch_yield: float
+    serving_unit: str = "servings"
+    ingredient_unit: str | None = None
 
 
 def recipe_for(product, account_id: str | None) -> list[RecipeLineOut]:
     """This shop's recipe for a dish (catalogue rows are shared, recipes are not)."""
     if product is None or account_id is None:
         return []
+
+    def quantity_per_serving(line) -> float:
+        batch_quantity = getattr(line, "batch_quantity", None)
+        batch_yield = getattr(line, "batch_yield", None)
+        if batch_quantity is not None and batch_yield is not None and Decimal(str(batch_yield)) > 0:
+            return float(Decimal(str(batch_quantity)) / Decimal(str(batch_yield)))
+        return float(line.quantity or 0)
+
     return [
         RecipeLineOut(
             id=line.id,
             ingredient_product_id=line.ingredient_product_id,
             name=line.ingredient.name if line.ingredient else None,
             unit=line.ingredient.unit if line.ingredient else None,
-            quantity=float(line.quantity or 0),
+            quantity=quantity_per_serving(line),
+            batch_quantity=float(line.batch_quantity or line.quantity or 0),
+            batch_yield=float(line.batch_yield or 1),
+            serving_unit=line.serving_unit or "servings",
+            ingredient_unit=getattr(line, "ingredient_unit", None) or (line.ingredient.unit if line.ingredient else None),
         )
         for line in product.recipe_lines or []
         if line.account_id == account_id
@@ -404,6 +475,7 @@ class ProductOut(BaseModel):
     combo_components: list[ComboComponentOut] | None = None
     recipe: list[RecipeLineOut] | None = None
     recipe_serving_unit: str = "servings"
+    serving_options: list[str] = Field(default_factory=list)
     is_active: bool = True
     created_at: datetime | None
     updated_at: datetime | None
@@ -494,13 +566,20 @@ def _inventory_product_out(product, account_id: str | None = None) -> ProductOut
         out.modifier_groups = modifier_groups_for(product, account_id)
     if recipe_supported:
         out.recipe = recipe_for(product, account_id)
+        out.serving_options = sorted(
+            {
+                (line.serving_unit or "servings").strip()
+                for line in product.recipe_lines or []
+                if line.account_id == account_id
+            }
+        )
         out.recipe_serving_unit = next(
             (
                 setting.serving_unit
                 for setting in product.recipe_serving_units or []
                 if setting.account_id == account_id
             ),
-            "servings",
+            (out.serving_options[0] if out.serving_options else "servings"),
         )
     if product_type == "combo":
         out.combo_components = combo_components_for(product, account_id)
@@ -632,6 +711,7 @@ class OrderItemOut(BaseModel):
     unit_price: float
     line_total: float
     sell_unit: str | None = None
+    serving_unit: str | None = None
     unit_factor: float = 1
     notes: str | None
     modifiers: list[dict[str, Any]] | None = None
@@ -657,6 +737,7 @@ class OrderItemOut(BaseModel):
             unit_price=float(item.unit_price),
             line_total=float(item.line_total),
             sell_unit=getattr(item, "sell_unit", None),
+            serving_unit=getattr(item, "serving_unit", None),
             unit_factor=factor,
             notes=item.notes,
             modifiers=getattr(item, "modifiers", None),

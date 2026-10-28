@@ -23,6 +23,7 @@ from app.services.restaurant_stock_service import (
     kitchen_day_report,
     list_stock_takes,
     menu_costing,
+    prepare_recipe_batch,
     profit_report,
     save_counts,
     stock_card,
@@ -58,6 +59,11 @@ class CountsRequest(BaseModel):
     counts: list[CountIn] = Field(min_length=1, max_length=1000)
 
 
+class PrepareRecipeBatchRequest(BaseModel):
+    batch_count: int = Field(default=1, ge=1, le=1000)
+    serving_unit: str | None = Field(default=None, min_length=1, max_length=32)
+
+
 def _shop(db: Session, session: dict, *sections: str) -> tuple[User, str]:
     user = require_user(db, session)
     assert_merchant_section_any_access(user, *(sections or ("inventory", "dashboard")))
@@ -90,6 +96,32 @@ def get_menu_costing(
 ):
     _, account_id = _shop(db, session, "inventory", "pos", "dashboard")
     return {"data": menu_costing(db, account_id)}
+
+
+@router.post("/menu/{inventory_item_id}/prepare")
+def post_prepare_recipe_batch(
+    inventory_item_id: str,
+    payload: PrepareRecipeBatchRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    validate_csrf(request, session)
+    user, account_id = _shop(db, session, "inventory", "pos", "dashboard")
+    try:
+        result = prepare_recipe_batch(
+            db,
+            account_id,
+            inventory_item_id,
+            batch_count=payload.batch_count,
+            serving_unit=payload.serving_unit,
+            user_id=user.id,
+        )
+    except StockTakeError as exc:
+        db.rollback()
+        raise _not_found_or_invalid(exc) from exc
+    db.commit()
+    return {"message": "Recipe batch prepared.", "data": result}
 
 
 @router.get("/items/{inventory_item_id}/movements")

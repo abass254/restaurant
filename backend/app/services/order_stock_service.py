@@ -12,7 +12,7 @@ from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models import Account, InventoryItem, Order, OrderItem, StockMovement
 from app.services.customer_service import CustomerService
@@ -20,6 +20,7 @@ from app.services.inventory_stock_service import (
     MONEY,
     LedgerLine,
     lock_item,
+    location_quantity,
     record_movement,
     record_stock_out,
     restore_stock_for_order,
@@ -35,11 +36,78 @@ def restaurant_line_usage(
     db: Session,
     account_id: str,
     inv_item: InventoryItem | None,
+    serving_unit: str | None = None,
 ) -> list[dict] | None:
-    """Stock one unit of a menu line uses when no options were picked (channel / API orders)."""
+    """Snapshot either prepared portions or ingredient use for a menu line."""
     if inv_item is None or inv_item.product is None:
         return None
-    return line_stock_usage(db, str(account_id), inv_item.product, []) or None
+    return order_line_usage(db, account_id, inv_item, serving_unit=serving_unit)
+
+
+def order_line_usage(
+    db: Session,
+    account_id: str,
+    inv_item: InventoryItem | None,
+    chosen=None,
+    serving_unit: str | None = None,
+) -> list[dict] | None:
+    if inv_item is None or inv_item.product is None:
+        return None
+    if not serving_unit:
+        serving_unit = next(
+            (
+                setting.serving_unit
+                for setting in (inv_item.product.recipe_serving_units or [])
+                if setting.account_id == account_id
+            ),
+            None,
+        )
+    usage = line_stock_usage(
+        db,
+        str(account_id),
+        inv_item.product,
+        chosen or [],
+        serving_unit=serving_unit,
+    )
+    for row in usage:
+        if not row.get("prepared") or row.get("serving_unit"):
+            continue
+        prepared_item = (
+            db.query(InventoryItem)
+            .options(joinedload(InventoryItem.product))
+            .filter(
+                InventoryItem.id == row["stock_item_id"],
+                InventoryItem.account_id == account_id,
+            )
+            .first()
+        )
+        if prepared_item and prepared_item.product:
+            row["serving_unit"] = next(
+                (
+                    setting.serving_unit
+                    for setting in (prepared_item.product.recipe_serving_units or [])
+                    if setting.account_id == account_id
+                ),
+                next(
+                    (
+                        recipe_line.serving_unit
+                        for recipe_line in prepared_item.product.recipe_lines or []
+                        if recipe_line.account_id == account_id
+                    ),
+                    "servings",
+                ),
+            )
+    if inv_item.prepared_quantity is None:
+        return usage or None
+    return [
+        {
+            "stock_item_id": str(inv_item.id),
+            "qty": 1,
+            "prepared": True,
+            "serving_unit": serving_unit or "servings",
+        },
+        *(row for row in usage if not row.get("recipe") or row.get("option")),
+    ]
 
 
 def _exact_and_recipe_lines(items: list[OrderItem]) -> tuple[list[LedgerLine], list[LedgerLine]]:
@@ -49,10 +117,28 @@ def _exact_and_recipe_lines(items: list[OrderItem]) -> tuple[list[LedgerLine], l
         quantity = Decimal(str(item.quantity or 0))
         if quantity <= 0:
             continue
-        if item.inventory_item_id:
+        usage = getattr(item, "stock_usage", None)
+        uses_prepared_stock = isinstance(usage, list) and any(
+            isinstance(row, dict)
+            and row.get("prepared")
+            and (not row.get("option") or str(row.get("stock_item_id")) == str(item.inventory_item_id))
+            for row in usage
+        )
+        if item.inventory_item_id and not uses_prepared_stock:
             factor = Decimal(str(getattr(item, "unit_factor", None) or 1))
             exact.append(LedgerLine(str(item.inventory_item_id), quantity * factor, item.id))
-        usage = getattr(item, "stock_usage", None)
+        if isinstance(usage, list):
+            for row in usage:
+                if isinstance(row, dict) and row.get("prepared") and row.get("stock_item_id"):
+                    exact.append(
+                        LedgerLine(
+                            str(row["stock_item_id"]),
+                            quantity * Decimal(str(row.get("qty") or 1)),
+                            item.id,
+                            location="prepared",
+                            serving_unit=str(row.get("serving_unit") or "servings"),
+                        )
+                    )
         for stock_id, qty in stock_usage_lines(usage, quantity, recipe=False):
             exact.append(LedgerLine(stock_id, qty, item.id))
         for stock_id, qty in stock_usage_lines(usage, quantity, recipe=True):
@@ -201,14 +287,16 @@ def reverse_for_order(
 
     now = datetime.utcnow()
     account_id = str(order.account_id)
-    kitchen_on = kitchen_issuing_on(db.get(Account, account_id))
     for sale, quantity in remaining:
         item = lock_item(db, sale.inventory_item_id, account_id=account_id)
-        if item is None or item.stock_quantity is None:
+        if item is None:
             continue
         links = {"order_id": order.id, "order_item_id": sale.order_item_id}
         unit_cost = Decimal(str(sale.unit_cost)) if sale.unit_cost is not None else None
-        location = (sale.location or "store") if kitchen_on else "store"
+        location = sale.location or "store"
+        serving_unit = getattr(sale, "serving_unit", None)
+        if location_quantity(item, location, serving_unit, db=db) is None:
+            continue
         record_movement(
             db,
             item,
@@ -222,6 +310,7 @@ def reverse_for_order(
             links=links,
             now=now,
             location=location,
+            serving_unit=serving_unit,
         )
         if wastage:
             record_movement(
@@ -238,6 +327,7 @@ def reverse_for_order(
                 links=links,
                 now=now,
                 location=location,
+                serving_unit=serving_unit,
             )
 
 
@@ -274,13 +364,19 @@ def adjust_line_quantity(
         return
     if line.stock_usage is None:
         inv_item = db.get(InventoryItem, line.inventory_item_id) if line.inventory_item_id else None
-        line.stock_usage = restaurant_line_usage(db, str(order.account_id), inv_item)
+        line.stock_usage = restaurant_line_usage(
+            db,
+            str(order.account_id),
+            inv_item,
+            serving_unit=getattr(line, "serving_unit", None),
+        )
     step = OrderItem(
         id=line.id,
         inventory_item_id=line.inventory_item_id,
         quantity=abs(delta),
         unit_factor=line.unit_factor,
         stock_usage=line.stock_usage,
+        serving_unit=getattr(line, "serving_unit", None),
     )
     account_id = str(order.account_id)
     account = db.get(Account, account_id)
@@ -299,7 +395,12 @@ def adjust_line_quantity(
         now = datetime.utcnow()
         for ledger_line in strict + flexible:
             item = lock_item(db, ledger_line.inventory_item_id, account_id=account_id)
-            if item is None or item.stock_quantity is None:
+            if item is None or location_quantity(
+                item,
+                ledger_line.location,
+                ledger_line.serving_unit,
+                db=db,
+            ) is None:
                 continue
             movement = record_movement(
                 db,
@@ -313,6 +414,7 @@ def adjust_line_quantity(
                 links={"order_id": order.id, "order_item_id": line.id},
                 now=now,
                 location=ledger_line.location,
+                serving_unit=ledger_line.serving_unit,
             )
             change -= Decimal(str(movement.total_cost or 0))
     if change:

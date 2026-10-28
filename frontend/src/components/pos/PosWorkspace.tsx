@@ -52,12 +52,15 @@ import { findInventoryByBarcode } from "@/lib/barcode";
 import { normalizeUnitName, packUnits } from "@/lib/sell-units";
 import { formatCategoryLabel } from "@/lib/product-categories";
 import {
+  hasKitchenRecipe,
   inventoryCoverUrl,
   inventoryRole,
   isHotelMenuItem,
   isSaleableRole,
   itemModifierGroups,
+  DEFAULT_RESTAURANT_TABLES,
   fetchOptionAvailability,
+  fetchRestaurantTables,
   mealBlockedBy,
   type OptionAvailabilityMap,
 } from "@/lib/trans-chap-product";
@@ -85,6 +88,7 @@ import type {
   ShopCustomer,
   ShopCustomersListResponse,
   SettingsOperationsResponse,
+  RestaurantTableDef,
 } from "@/lib/types";
 
 const MPESA_POLL_MS = 4_000;
@@ -566,6 +570,28 @@ export function PosWorkspace({
   const [source, setSource] = useState<OrderSource>("walkin");
   const [fulfillment, setFulfillment] = useState<OrderFulfillmentType>("pickup");
   const [tableNumber, setTableNumber] = useState<string>("Table 1");
+  const [restaurantTables, setRestaurantTables] = useState<RestaurantTableDef[]>(
+    DEFAULT_RESTAURANT_TABLES,
+  );
+
+  useEffect(() => {
+    if (!isRestaurant) return;
+    let alive = true;
+    fetchRestaurantTables()
+      .then((tables) => {
+        if (alive && tables?.length) {
+          setRestaurantTables(tables);
+          setTableNumber((curr) => {
+            if (curr && tables.some((t) => t.label === curr)) return curr;
+            return tables[0]?.label || "Table 1";
+          });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [isRestaurant]);
   const [modifyingItem, setModifyingItem] = useState<{
     item: InventoryItem;
     cartLineId?: string;
@@ -581,7 +607,7 @@ export function PosWorkspace({
   }, [isRestaurant]);
 
   const [paymentMethod, setPaymentMethod] = useState<OrderPaymentMethod | "">(
-    isTransChapSale ? "mpesa" : "",
+    isTransChapSale && !isRestaurant ? "mpesa" : "",
   );
   const [splitRows, setSplitRows] = useState<SplitDraft[]>([]);
   const [customerName, setCustomerName] = useState("");
@@ -688,8 +714,8 @@ export function PosWorkspace({
     if (!silent && !hasData) setLoading(true);
     else if (!hasData) setSearching(true);
     try {
-      // Restaurants list paused dishes too, shown greyed out so staff can see what is off today.
-      const params = new URLSearchParams(isRestaurant ? {} : { active: "true" });
+      // In POS, only active items should appear in the catalog
+      const params = new URLSearchParams({ active: "true" });
       const term = (opts?.q ?? "").trim();
       if (term) params.set("q", term);
       const data = await apiFetch<InventoryResponse>(
@@ -1022,10 +1048,13 @@ export function PosWorkspace({
   const itemsById = catalogById;
 
   const inCatalog = useCallback(
-    (item: InventoryItem) =>
-      isRestaurant
-        ? isHotelMenuItem(item)
-        : item.is_active && isSaleableRole(inventoryRole(item)),
+    (item: InventoryItem) => {
+      if (!item.is_active) return false;
+      if (isRestaurant) {
+        return isHotelMenuItem(item) && hasKitchenRecipe(item);
+      }
+      return isSaleableRole(inventoryRole(item));
+    },
     [isRestaurant],
   );
 
@@ -2161,6 +2190,7 @@ export function PosWorkspace({
       usesMpesa &&
       !operationsSettingsLoaded) ||
     (isTransChapSale &&
+      !isRestaurant &&
       (paymentMethod === "" ||
         !TRANSCHAP_PAYMENT_METHODS.includes(paymentMethod)));
 
@@ -2177,6 +2207,7 @@ export function PosWorkspace({
     }
     if (submitting) {
       if (isTransChapSale) {
+        if (isRestaurant && paymentMethod === "") return "Sending to kitchen…";
         if (usesMpesa) {
           return isStkActive ? "Sending M-Pesa…" : "Recording M-Pesa…";
         }
@@ -2199,6 +2230,11 @@ export function PosWorkspace({
         : "Price below buying price";
     }
     if (isTransChapSale) {
+      if (isRestaurant && paymentMethod === "") {
+        return tableNumber.trim()
+          ? `Send to kitchen (${tableNumber.trim()})`
+          : "Send to kitchen (Table order)";
+      }
       if (usesMpesa) {
         const amount = isSplit ? ` (${formatMoney(mpesaDue)})` : "";
         return isStkActive
@@ -2264,6 +2300,7 @@ export function PosWorkspace({
       : fulfillment;
     if (
       isTransChapSale &&
+      !isRestaurant &&
       (paymentMethod === "" ||
         !TRANSCHAP_PAYMENT_METHODS.includes(paymentMethod))
     ) {
@@ -2414,6 +2451,10 @@ export function PosWorkspace({
         );
       } else if (willCompleteNow && order.status === "picked_up") {
         await toastSuccess(`Order ${order.order_number} completed`);
+      } else if (isTransChapSale && isRestaurant && !paymentMethod) {
+        await toastSuccess(
+          `Order #${order.order_number} (${order.table_number || "Table"}) sent to kitchen (Unpaid)`,
+        );
       } else {
         await toastSuccess(`Order ${order.order_number} placed`);
       }
@@ -3582,14 +3623,14 @@ export function PosWorkspace({
                     <span className="pos-label">Table / Seating</span>
                     <div className="pos-table-selector">
                       <div className="pos-table-chips">
-                        {["Table 1", "Table 2", "Table 3", "Table 4", "Table 5", "Table 6", "Takeaway"].map((tbl) => (
+                        {restaurantTables.map((tbl) => (
                           <button
-                            key={tbl}
+                            key={tbl.id || tbl.label}
                             type="button"
-                            className={`pos-table-chip${tableNumber === tbl ? " is-active" : ""}`}
-                            onClick={() => setTableNumber(tbl)}
+                            className={`pos-table-chip${tableNumber === tbl.label ? " is-active" : ""}`}
+                            onClick={() => setTableNumber(tbl.label)}
                           >
-                            {tbl}
+                            {tbl.label}
                           </button>
                         ))}
                       </div>
@@ -3671,26 +3712,71 @@ export function PosWorkspace({
             ) : null}
             {isTransChapSale ? (
               <div className="pos-cart__row pos-cart__row--pay pos-cart__row--pay-full">
-                <div
-                  className={`pos-pickers pos-pickers--${paymentOptions.length === 4 ? "four" : "three"}`}
-                  role="radiogroup"
-                  aria-label="Payment method"
-                >
-                  {paymentOptions.map((p) => (
+                {isRestaurant ? (
+                  <div className="pos-restaurant-timing" role="radiogroup" aria-label="Payment timing">
                     <button
-                      key={p}
                       type="button"
                       role="radio"
-                      aria-checked={paymentMethod === p}
-                      className={`pos-picker pos-picker--wide${paymentMethod === p ? " is-active" : ""}${p === "credit" ? " pos-picker--credit" : ""}${p === "cash" ? " pos-picker--cash" : ""}`}
-                      onClick={() => choosePaymentMethod(p)}
+                      aria-checked={paymentMethod === ""}
+                      className={`pos-restaurant-timing__btn is-unpaid${paymentMethod === "" ? " is-active" : ""}`}
+                      onClick={() => setPaymentMethod("")}
                     >
-                      <span>
-                        {p === "cash" ? "Cash sale" : PAYMENT_LABELS[p]}
-                      </span>
+                      <i className="fa-solid fa-utensils" aria-hidden="true" />
+                      <span>Pay after meal (Unpaid)</span>
                     </button>
-                  ))}
-                </div>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={paymentMethod !== ""}
+                      className={`pos-restaurant-timing__btn${paymentMethod !== "" ? " is-active" : ""}`}
+                      onClick={() => {
+                        if (paymentMethod === "") choosePaymentMethod("cash");
+                      }}
+                    >
+                      <i className="fa-solid fa-credit-card" aria-hidden="true" />
+                      <span>Pay upfront now</span>
+                    </button>
+                  </div>
+                ) : null}
+
+                {!isRestaurant || paymentMethod !== "" ? (
+                  <div
+                    className={`pos-pickers pos-pickers--${paymentOptions.length === 4 ? "four" : "three"}`}
+                    role="radiogroup"
+                    aria-label="Payment method"
+                  >
+                    {paymentOptions.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        role="radio"
+                        aria-checked={paymentMethod === p}
+                        className={`pos-picker pos-picker--wide${paymentMethod === p ? " is-active" : ""}${p === "credit" ? " pos-picker--credit" : ""}${p === "cash" ? " pos-picker--cash" : ""}`}
+                        onClick={() => {
+                          if (isRestaurant && paymentMethod === p) {
+                            setPaymentMethod("");
+                          } else {
+                            choosePaymentMethod(p);
+                          }
+                        }}
+                      >
+                        <span>
+                          {p === "cash" ? "Cash sale" : PAYMENT_LABELS[p]}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="pos-unpaid-banner" role="status">
+                    <i className="fa-solid fa-circle-check" aria-hidden="true" />
+                    <div>
+                      <strong>No payment recorded at this point</strong>
+                      <p>
+                        Order will be sent to the kitchen. You can settle payment (Cash, M-PESA, or Credit) after the meal under <strong>Sales</strong>.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : null}
             {usesCredit ? (
@@ -3966,7 +4052,11 @@ export function PosWorkspace({
                 checked={autoPrintReceipt}
                 onChange={(e) => handleAutoPrintChange(e.target.checked)}
               />
-              <span>Auto-print receipt after sale</span>
+              <span>
+                {isRestaurant && !paymentMethod
+                  ? "Auto-print kitchen order ticket"
+                  : "Auto-print receipt after sale"}
+              </span>
             </label>
           </footer>
             </>

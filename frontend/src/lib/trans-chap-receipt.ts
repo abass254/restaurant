@@ -16,7 +16,7 @@ export { toWhatsAppMsisdn };
 
 export const TRANS_CHAP_RECEIPT_KEY = "trans-chap:last-receipt";
 
-export type TransChapPayMode = "cash" | "mpesa" | "credit";
+export type TransChapPayMode = "cash" | "mpesa" | "credit" | null;
 export type TransChapPaymentStatus = "paid" | "pending" | "failed";
 
 export type TransChapReceiptLine = {
@@ -63,7 +63,8 @@ export type TransChapReceipt = {
 export function transChapPayLabel(payMode: TransChapPayMode): string {
   if (payMode === "mpesa") return "M-PESA";
   if (payMode === "credit") return "Credit";
-  return "Cash";
+  if (payMode === "cash") return "Cash";
+  return "Unpaid (Pay after meal)";
 }
 
 /** "Cash" or, for split payments, "Cash Ksh500.00 + M-PESA Ksh300.00". */
@@ -77,14 +78,17 @@ export function transChapReceiptPayLabel(receipt: TransChapReceipt): string {
 export function payModeFromMethod(method: string | null | undefined): TransChapPayMode {
   if (method === "mpesa") return "mpesa";
   if (method === "credit") return "credit";
-  return "cash";
+  if (method === "cash") return "cash";
+  return null;
 }
 
 function payModeFromOrder(order: Order): TransChapPayMode {
+  if (!order.payment_method) return null;
   if (order.payment_method !== "split") return payModeFromMethod(order.payment_method);
   if (orderUsesPayment(order, "mpesa")) return "mpesa";
   if (orderUsesPayment(order, "credit")) return "credit";
-  return "cash";
+  if (orderUsesPayment(order, "cash")) return "cash";
+  return null;
 }
 
 function optionalAmount(value: unknown): number | null {
@@ -214,6 +218,7 @@ export function isTransChapReceiptPaid(receipt: TransChapReceipt): boolean {
   if (receipt.orderStatus === "cancelled" || receipt.orderStatus === "refunded") {
     return false;
   }
+  if (!receipt.payMode) return false;
   if (receipt.payMode === "credit") return false;
   return receipt.payMode !== "mpesa" || receipt.paymentStatus === "paid";
 }
@@ -250,7 +255,7 @@ function formatTableAmount(amount: unknown): string {
 export function transChapReceiptMessage(receipt: TransChapReceipt): string {
   const isCredit = receipt.payMode === "credit";
   const lines: string[] = [
-    isCredit ? "📋 *INVOICE*" : "🧾 *TILL RECEIPT*",
+    !receipt.payMode ? "🍽️ *ORDER TICKET*" : isCredit ? "📋 *INVOICE*" : "🧾 *TILL RECEIPT*",
     `🏪 *${receipt.shopName}*`,
   ];
 
@@ -266,7 +271,7 @@ export function transChapReceiptMessage(receipt: TransChapReceipt): string {
         year: "numeric",
       });
   lines.push(`🗓️ *Date:* ${dateStr}`);
-  lines.push(`🏷️ *Ref:* ${receipt.orderNumber} Confirmed.`);
+  lines.push(`🏷️ *Ref:* ${receipt.orderNumber} ${!receipt.payMode ? "Order Placed." : "Confirmed."}`);
 
   if (receipt.customerName && receipt.customerName.trim().toLowerCase() !== "walk-in") {
     lines.push(`👤 *Customer:* ${receipt.customerName.trim()}`);
@@ -349,17 +354,19 @@ export function transChapReceiptMessage(receipt: TransChapReceipt): string {
   lines.push("```");
 
   const isSplit = Boolean(receipt.paymentSplits?.length);
-  const paymentLine = isSplit
-    ? `Paid with ${transChapReceiptPayLabel(receipt)}.${
-        receipt.mpesaReceiptNumber ? ` M-PESA receipt ${receipt.mpesaReceiptNumber}.` : ""
-      }`
-    : receipt.payMode === "mpesa"
-      ? receipt.mpesaReceiptNumber
-        ? `Paid via M-PESA. Receipt ${receipt.mpesaReceiptNumber}.`
-        : "Paid via M-PESA."
-      : receipt.payMode === "credit"
-        ? "On credit."
-        : "Paid in cash.";
+  const paymentLine = !receipt.payMode
+    ? "Order ticket — payment pending (to be settled after meal)."
+    : isSplit
+      ? `Paid with ${transChapReceiptPayLabel(receipt)}.${
+          receipt.mpesaReceiptNumber ? ` M-PESA receipt ${receipt.mpesaReceiptNumber}.` : ""
+        }`
+      : receipt.payMode === "mpesa"
+        ? receipt.mpesaReceiptNumber
+          ? `Paid via M-PESA. Receipt ${receipt.mpesaReceiptNumber}.`
+          : "Paid via M-PESA."
+        : receipt.payMode === "credit"
+          ? "On credit."
+          : "Paid in cash.";
   lines.push(`💳 *Payment:* ${paymentLine}`);
 
   if ((receipt.payMode === "credit" || isSplit) && receipt.creditOutstanding != null) {

@@ -34,6 +34,7 @@ from app.services.inventory_stock_service import (
     transfer,
 )
 from app.services.order_stock_service import kitchen_issuing_on
+from app.services.sell_units import sell_units_for_item
 from app.support.store_type import is_restaurant
 
 NON_STOCK_TYPES = ("meal", "combo", "service")
@@ -106,9 +107,9 @@ def _daily_kitchen_usage(
     days: int,
     now: datetime,
 ) -> dict[str, Decimal]:
-    """Average daily sale usage per item over the last ``days`` days.
+    """Average daily kitchen usage per item over the last ``days`` days.
 
-    Uses kitchen sales; items with no kitchen history yet (just switched on)
+    Uses production and kitchen sale movements; items with no kitchen history yet (just switched on)
     fall back to their recipe sales from the store.
     """
     if not item_ids:
@@ -119,7 +120,7 @@ def _daily_kitchen_usage(
         .filter(
             StockMovement.account_id == account_id,
             StockMovement.inventory_item_id.in_(item_ids),
-            StockMovement.reason.in_(("sale", "sale_reversal")),
+            StockMovement.reason.in_(("sale", "sale_reversal", "production")),
             StockMovement.created_at >= since,
         )
         .all()
@@ -175,6 +176,7 @@ def kitchen_item_out(item: InventoryItem) -> dict[str, Any]:
         "inventory_item_id": item.id,
         "name": _name(item),
         "unit": _unit(item),
+        "units": [{"name": unit["name"], "factor": unit["factor"]} for unit in sell_units_for_item(item)],
         "inventory_role": item.normalized_role(),
         "store_quantity": float(store),
         "kitchen_quantity": float(kitchen),
@@ -550,6 +552,10 @@ def issue_out(issue: KitchenIssue, *, with_lines: bool = True) -> dict[str, Any]
                 "inventory_item_id": line.inventory_item_id,
                 "item_name": line.item_name,
                 "unit": _unit(line.inventory_item) if line.inventory_item is not None else "Piece",
+                "units": [
+                    {"name": unit["name"], "factor": unit["factor"]}
+                    for unit in sell_units_for_item(line.inventory_item)
+                ] if line.inventory_item is not None else [],
                 "requested_qty": _f(line.requested_qty),
                 "issued_qty": _f(line.issued_qty),
                 "unit_cost": _f(line.unit_cost),

@@ -8,6 +8,7 @@ import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
 import { isRestaurantStore } from "@/lib/onboarding";
 import {
   allSellUnits,
+  baseUnitName,
   canSellInUnit,
   hasPackUnits,
   normalizeUnitName,
@@ -19,8 +20,10 @@ import {
   canSellInventoryItem,
   inventoryProductName,
   inventoryRole,
+  hasKitchenRecipe,
   isHotelMenuItem,
   isSaleableRole,
+  supportsKitchenRecipe,
 } from "@/lib/trans-chap-product";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import type { InventoryItem } from "@/lib/types";
@@ -33,6 +36,7 @@ export type SaleCatalogLine = {
   unitPrice: number;
   sellUnit: string | null;
   unitFactor: number;
+  servingUnit: string | null;
 };
 
 type Props = {
@@ -43,9 +47,11 @@ type Props = {
   inventoryLoading: boolean;
   lastScannedKey: string | null;
   selectedUnitByItemId: Record<string, string>;
+  selectedServingUnitByItemId: Record<string, string>;
   onScan: (code: string) => void;
   onSelectUnit: (itemId: string, unitName: string) => void;
-  onAdd: (item: InventoryItem, unit?: SellUnit) => void;
+  onSelectServingUnit: (itemId: string, servingUnit: string) => void;
+  onAdd: (item: InventoryItem, unit?: SellUnit, servingUnit?: string) => void;
   onQty: (key: string, quantity: number) => void;
   onContinue: () => void;
 };
@@ -79,8 +85,10 @@ export function TransChapSaleCatalog({
   inventoryLoading,
   lastScannedKey,
   selectedUnitByItemId,
+  selectedServingUnitByItemId,
   onScan,
   onSelectUnit,
+  onSelectServingUnit,
   onAdd,
   onQty,
   onContinue,
@@ -107,6 +115,7 @@ export function TransChapSaleCatalog({
       if (!item.is_active) return false;
       if (!isSaleableRole(inventoryRole(item))) return false;
       if (restaurant) {
+        if ((supportsKitchenRecipe(item) || isHotelMenuItem(item)) && !hasKitchenRecipe(item)) return false;
         if (dishTab === "food" && isDrinkItem(item)) return false;
         if (dishTab === "drinks" && !isDrinkItem(item)) return false;
       }
@@ -241,7 +250,19 @@ export function TransChapSaleCatalog({
               const units = allSellUnits(item);
               const selected =
                 resolveSellUnit(item, selectedUnitByItemId[item.id] ?? null);
-              const lineKey = `${item.id}::${normalizeUnitName(selected.name)}`;
+              const servingOptions = item.product?.serving_options ?? [];
+              const requestedServingUnit = selectedServingUnitByItemId[item.id];
+              const servingUnit =
+                requestedServingUnit && servingOptions.includes(requestedServingUnit)
+                  ? requestedServingUnit
+                  : item.product?.recipe_serving_unit ?? servingOptions[0] ?? null;
+              const sellUnitKey =
+                normalizeUnitName(selected.name) !== normalizeUnitName(baseUnitName(item))
+                  ? `::${normalizeUnitName(selected.name)}`
+                  : "";
+              const lineKey =
+                `${item.id}${sellUnitKey}` +
+                (servingUnit ? `::${servingUnit.trim().toLowerCase()}` : "");
               const line = qtyByKey.get(lineKey);
               const canSell = canSellInventoryItem(item);
               const hotel = isHotelMenuItem(item);
@@ -261,7 +282,7 @@ export function TransChapSaleCatalog({
                     type="button"
                     className="trans-chap-catalog__main"
                     disabled={!canSell || !canSellInUnit(item, selected)}
-                    onClick={() => onAdd(item, selected)}
+                    onClick={() => onAdd(item, selected, servingUnit ?? undefined)}
                   >
                     <TransChapProductThumb item={item} name={name} size={scan ? "md" : "lg"} />
                     <span className="trans-chap-catalog__copy">
@@ -284,7 +305,9 @@ export function TransChapSaleCatalog({
                           : noPrice
                             ? "No price"
                             : `${formatKsh(price)}${
-                                selected.factor > 1 ? ` / ${selected.name}` : ""
+                                normalizeUnitName(selected.name) !== normalizeUnitName(baseUnitName(item))
+                                  ? ` / ${selected.name}`
+                                  : ""
                               }`}
                       </span>
                     </span>
@@ -317,6 +340,20 @@ export function TransChapSaleCatalog({
                       })}
                     </div>
                   ) : null}
+                  {servingOptions.length > 1 ? (
+                    <label className="trans-chap-catalog__units">
+                      <span className="sr-only">Serving option for {name}</span>
+                      <select
+                        aria-label={`Serving option for ${name}`}
+                        value={servingUnit ?? ""}
+                        onChange={(event) => onSelectServingUnit(item.id, event.target.value)}
+                      >
+                        {servingOptions.map((option) => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
                   {line ? (
                     <div className="trans-chap-sale-scan__qty">
                       <button
@@ -328,9 +365,10 @@ export function TransChapSaleCatalog({
                       </button>
                       <span>
                         {line.quantity}
-                        {line.unitFactor > 1 && line.sellUnit
+                        {line.sellUnit
                           ? ` ${line.sellUnit}`
                           : ""}
+                        {line.servingUnit ? ` ${line.servingUnit}` : ""}
                       </span>
                       <button
                         type="button"

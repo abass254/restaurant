@@ -16,6 +16,7 @@ import {
   inventoryProductName,
 } from "@/lib/trans-chap-product";
 import {
+  baseUnitName,
   canSellInUnit,
   normalizeUnitName,
   resolveSellUnit,
@@ -48,11 +49,18 @@ type BasketLine = {
   unitPrice: number;
   sellUnit: string | null;
   unitFactor: number;
+  servingUnit: string | null;
 };
 
-function basketKey(name: string, itemId: string | null, sellUnit: string | null): string {
+function basketKey(
+  name: string,
+  itemId: string | null,
+  sellUnit: string | null,
+  servingUnit: string | null,
+): string {
   const unitPart = sellUnit ? `::${normalizeUnitName(sellUnit)}` : "";
-  return `${itemId ?? name.trim().toLowerCase()}${unitPart}`;
+  const servingPart = servingUnit ? `::${servingUnit.trim().toLowerCase()}` : "";
+  return `${itemId ?? name.trim().toLowerCase()}${unitPart}${servingPart}`;
 }
 
 function mergeBasketLine(
@@ -63,10 +71,11 @@ function mergeBasketLine(
     unitPrice: number;
     sellUnit: string | null;
     unitFactor: number;
+    servingUnit: string | null;
   },
   item: InventoryItem | null,
 ): BasketLine[] {
-  const key = basketKey(draft.name, item?.id ?? null, draft.sellUnit);
+  const key = basketKey(draft.name, item?.id ?? null, draft.sellUnit, draft.servingUnit);
   const existing = lines.find((line) => line.key === key);
   if (existing) {
     const updated = { ...existing, quantity: existing.quantity + draft.qty };
@@ -81,6 +90,7 @@ function mergeBasketLine(
       unitPrice: draft.unitPrice,
       sellUnit: draft.sellUnit,
       unitFactor: draft.unitFactor,
+      servingUnit: draft.servingUnit,
     },
     ...lines,
   ];
@@ -101,6 +111,7 @@ export function TransChapTransactForm() {
   const [selectedUnitByItemId, setSelectedUnitByItemId] = useState<Record<string, string>>(
     {},
   );
+  const [selectedServingUnitByItemId, setSelectedServingUnitByItemId] = useState<Record<string, string>>({});
   const [lastScannedKey, setLastScannedKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [mpesaReady, setMpesaReady] = useState<boolean | null>(null);
@@ -153,7 +164,7 @@ export function TransChapTransactForm() {
     };
   }, []);
 
-  const addItem = useCallback((item: InventoryItem, unit?: SellUnit) => {
+  const addItem = useCallback((item: InventoryItem, unit?: SellUnit, servingUnit?: string) => {
     if (!canSellInventoryItem(item)) return;
     const resolved = unit ?? resolveSellUnit(item, selectedUnitByItemId[item.id] ?? null);
     if (!canSellInUnit(item, resolved)) {
@@ -166,8 +177,16 @@ export function TransChapTransactForm() {
     const name = inventoryProductName(item);
     const unitPrice = sellUnitPrice(resolved) ?? 0;
     if (unitPrice <= 0) return;
-    const sellUnit = resolved.factor > 1 ? resolved.name : null;
-    const key = basketKey(name, item.id, sellUnit);
+    const sellUnit = normalizeUnitName(resolved.name) !== normalizeUnitName(baseUnitName(item))
+      ? resolved.name
+      : null;
+    const savedServingUnit = selectedServingUnitByItemId[item.id];
+    const selectedServingUnit =
+      servingUnit ??
+      (savedServingUnit && item.product?.serving_options?.includes(savedServingUnit)
+        ? savedServingUnit
+        : item.product?.recipe_serving_unit ?? null);
+    const key = basketKey(name, item.id, sellUnit, selectedServingUnit);
     setBasket((prev) =>
       mergeBasketLine(
         prev,
@@ -177,12 +196,13 @@ export function TransChapTransactForm() {
           unitPrice,
           sellUnit,
           unitFactor: resolved.factor,
+          servingUnit: selectedServingUnit,
         },
         item,
       ),
     );
     setLastScannedKey(key);
-  }, [selectedUnitByItemId]);
+  }, [selectedServingUnitByItemId, selectedUnitByItemId]);
 
   const handleScan = useCallback((code: string) => {
     const scanned = code.trim();
@@ -373,6 +393,7 @@ export function TransChapTransactForm() {
           unit_price: line.unitPrice,
           inventory_item_id: item?.id ?? null,
           sell_unit: line.sellUnit,
+          serving_unit: line.servingUnit,
         });
       }
       setInventory(nextInventory);
@@ -450,9 +471,13 @@ export function TransChapTransactForm() {
           inventoryLoading={inventoryLoading}
           lastScannedKey={lastScannedKey}
           selectedUnitByItemId={selectedUnitByItemId}
+          selectedServingUnitByItemId={selectedServingUnitByItemId}
           onScan={handleScan}
           onSelectUnit={(itemId, unitName) => {
             setSelectedUnitByItemId((prev) => ({ ...prev, [itemId]: unitName }));
+          }}
+          onSelectServingUnit={(itemId, servingUnit) => {
+            setSelectedServingUnitByItemId((prev) => ({ ...prev, [itemId]: servingUnit }));
           }}
           onAdd={addItem}
           onQty={(key, quantity) => {

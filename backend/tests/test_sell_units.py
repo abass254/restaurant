@@ -41,9 +41,10 @@ def test_pack_units_parsed_from_attributes():
         },
     )
     units = sell_units_for_item(item)
-    assert [u["name"] for u in units] == ["Egg", "Crate", "Dozen"]
+    assert [u["name"] for u in units] == ["Egg", "Crate", "bad", "Dozen"]
     assert units[1]["factor"] == 30
     assert units[1]["selling_price"] == 550
+    assert units[2]["factor"] == 1
 
 
 def test_resolve_sell_unit_case_insensitive():

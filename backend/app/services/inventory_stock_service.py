@@ -9,7 +9,7 @@ from typing import Any, Literal
 
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import InventoryItem, Order, StockMovement
+from app.models import InventoryItem, Order, PreparedMenuStock, StockMovement
 
 
 class InsufficientStockError(ValueError):
@@ -311,10 +311,16 @@ def lines_from_order(order: Order) -> list[tuple[str, Decimal]]:
     lines: list[tuple[str, Decimal]] = []
     for item in order.items or []:
         quantity = Decimal(str(item.quantity or 0))
-        if item.inventory_item_id:
+        usage = getattr(item, "stock_usage", None)
+        has_prepared_self = isinstance(usage, list) and any(
+            isinstance(row, dict)
+            and row.get("prepared")
+            and str(row.get("stock_item_id")) == str(item.inventory_item_id)
+            for row in usage
+        )
+        if item.inventory_item_id and not has_prepared_self:
             factor = Decimal(str(getattr(item, "unit_factor", None) or 1))
             lines.append((str(item.inventory_item_id), quantity * factor))
-        usage = getattr(item, "stock_usage", None)
         if usage is not None:
             lines.extend(stock_usage_lines(usage, quantity))
         else:
@@ -339,6 +345,7 @@ def stock_usage_lines(
         for row in usage
         if isinstance(row, dict)
         and row.get("stock_item_id")
+        and not row.get("prepared")
         and (recipe is None or bool(row.get("recipe")) == recipe)
     ]
 
@@ -365,11 +372,46 @@ def deduct_stock_for_order(db: Session, order: Order) -> bool:
 
 
 def restore_stock_for_order(db: Session, order: Order) -> None:
-    restore_stock(
-        db,
-        lines_from_order(order),
-        account_id=str(order.account_id),
-    )
+    account_id = str(order.account_id)
+    if (
+        db.query(StockMovement.id)
+        .filter(
+            StockMovement.order_id == order.id,
+            StockMovement.reason == "sale_reversal",
+            StockMovement.voided_at.is_(None),
+        )
+        .first()
+    ):
+        return
+    restore_stock(db, lines_from_order(order), account_id=account_id)
+    now = datetime.utcnow()
+    for order_item in order.items or []:
+        usage = getattr(order_item, "stock_usage", None)
+        if not isinstance(usage, list):
+            continue
+        quantity = Decimal(str(order_item.quantity or 0))
+        for row in usage:
+            if not isinstance(row, dict) or not row.get("prepared") or not row.get("stock_item_id"):
+                continue
+            item = lock_item(db, str(row["stock_item_id"]), account_id=account_id)
+            if item is None:
+                continue
+            serving_unit = str(row.get("serving_unit") or _default_serving_unit(item))
+            if location_quantity(item, "prepared", serving_unit, db=db) is None:
+                continue
+            record_movement(
+                db,
+                item,
+                account_id=account_id,
+                direction="in",
+                quantity=quantity * Decimal(str(row.get("qty") or 1)),
+                reason="sale_reversal",
+                note=f"Order {order.order_number} {order.status}",
+                links={"order_id": order.id, "order_item_id": order_item.id},
+                now=now,
+                location="prepared",
+                serving_unit=serving_unit,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -388,6 +430,7 @@ LedgerReason = Literal[
     "receive",
     "sale",
     "sale_reversal",
+    "production",
     "adjustment",
     "damage",
     "wastage",
@@ -397,7 +440,7 @@ LedgerReason = Literal[
     "other",
 ]
 
-StockLocation = Literal["store", "kitchen"]
+StockLocation = Literal["store", "kitchen", "prepared"]
 
 
 @dataclass
@@ -406,10 +449,42 @@ class LedgerLine:
     quantity: Decimal
     order_item_id: str | None = None
     location: StockLocation = "store"
+    serving_unit: str | None = None
 
 
-def location_quantity(item: InventoryItem, location: StockLocation) -> Decimal | None:
-    raw = item.kitchen_quantity if location == "kitchen" else item.stock_quantity
+def location_quantity(
+    item: InventoryItem,
+    location: StockLocation,
+    serving_unit: str | None = None,
+    *,
+    db: Session | None = None,
+) -> Decimal | None:
+    if location == "prepared" and serving_unit and db is not None:
+        prepared = (
+            db.query(PreparedMenuStock)
+            .filter(
+                PreparedMenuStock.inventory_item_id == item.id,
+                PreparedMenuStock.serving_unit == serving_unit,
+            )
+            .first()
+        )
+        if prepared is not None:
+            return _qty(prepared.quantity)
+        if item.prepared_quantity is None:
+            return None
+        default_unit = _default_serving_unit(item)
+        return (
+            _qty(item.prepared_quantity)
+            if default_unit.casefold() == serving_unit.casefold()
+            else Decimal("0")
+        )
+    raw = (
+        item.kitchen_quantity
+        if location == "kitchen"
+        else item.prepared_quantity
+        if location == "prepared"
+        else item.stock_quantity
+    )
     return None if raw is None else Decimal(str(raw))
 
 
@@ -420,9 +495,63 @@ def total_on_hand(item: InventoryItem) -> Decimal | None:
     return _qty(item.stock_quantity) + _qty(item.kitchen_quantity)
 
 
-def _set_location_quantity(item: InventoryItem, location: StockLocation, value: Decimal) -> None:
+def _default_serving_unit(item: InventoryItem) -> str:
+    if item.product is None:
+        return "servings"
+    configured = next(
+        (
+            setting.serving_unit
+            for setting in (item.product.recipe_serving_units or [])
+            if setting.account_id == item.account_id
+        ),
+        None,
+    )
+    if configured:
+        return configured
+    units = {
+        (line.serving_unit or "servings").strip()
+        for line in (item.product.recipe_lines or [])
+        if line.account_id == item.account_id
+    }
+    return sorted(units)[0] if units else "servings"
+
+
+def _set_location_quantity(
+    db: Session,
+    item: InventoryItem,
+    location: StockLocation,
+    value: Decimal,
+    serving_unit: str | None = None,
+) -> None:
     if location == "kitchen":
         item.kitchen_quantity = value
+    elif location == "prepared":
+        if not serving_unit:
+            item.prepared_quantity = value
+            return
+        prepared = (
+            db.query(PreparedMenuStock)
+            .filter(
+                PreparedMenuStock.inventory_item_id == item.id,
+                PreparedMenuStock.serving_unit == serving_unit,
+            )
+            .with_for_update()
+            .first()
+        )
+        if prepared is None:
+            prepared = PreparedMenuStock(
+                inventory_item_id=item.id,
+                serving_unit=serving_unit,
+                quantity=value,
+            )
+            db.add(prepared)
+        else:
+            prepared.quantity = value
+        prepared.updated_at = datetime.utcnow()
+        if item.prepared_quantity is not None:
+            default_unit = _default_serving_unit(item)
+            if default_unit.casefold() == serving_unit.casefold():
+                item.prepared_quantity = value
     else:
         item.stock_quantity = value
 
@@ -465,6 +594,7 @@ def record_movement(
     links: dict[str, str | None] | None = None,
     now: datetime | None = None,
     location: StockLocation = "store",
+    serving_unit: str | None = None,
 ) -> StockMovement:
     """Change a locked, stock-tracked row and write its ledger entry.
 
@@ -474,7 +604,7 @@ def record_movement(
     """
     now = now or datetime.utcnow()
     qty = _qty(quantity)
-    before = _qty(location_quantity(item, location))
+    before = _qty(location_quantity(item, location, serving_unit, db=db))
     if direction == "out":
         if qty > before and not allow_negative:
             raise InsufficientStockError(_product_name(item), qty, before)
@@ -488,7 +618,7 @@ def record_movement(
 
     cost = unit_cost if unit_cost is not None else item.buying_price
     cost_value = Decimal(str(cost)).quantize(UNIT_COST) if cost is not None else None
-    _set_location_quantity(item, location, after)
+    _set_location_quantity(db, item, location, after, serving_unit)
     item.updated_at = now
     if direction == "in" and after > 0 and not item.is_active:
         item.is_active = True
@@ -503,6 +633,7 @@ def record_movement(
         quantity_after=after,
         reason=reason,
         location=location,
+        serving_unit=serving_unit,
         note=trimmed_note,
         unit_cost=cost_value,
         total_cost=(cost_value * qty).quantize(MONEY) if cost_value is not None else None,
@@ -531,7 +662,7 @@ def record_stock_out(
     Untracked rows (``stock_quantity`` NULL) are skipped. The shortage check
     uses each item's total per location across all lines.
     """
-    per_item: dict[tuple[str, StockLocation], dict[str | None, Decimal]] = {}
+    per_item: dict[tuple[str, StockLocation, str | None], dict[str | None, Decimal]] = {}
     for line in lines:
         item_id = str(line.inventory_item_id or "").strip()
         try:
@@ -540,17 +671,17 @@ def record_stock_out(
             continue
         if not item_id or qty <= 0:
             continue
-        bucket = per_item.setdefault((item_id, line.location), {})
+        bucket = per_item.setdefault((item_id, line.location, line.serving_unit), {})
         bucket[line.order_item_id] = bucket.get(line.order_item_id, Decimal("0")) + qty
 
     now = datetime.utcnow()
     movements: list[StockMovement] = []
-    for (item_id, location), by_line in per_item.items():
+    for (item_id, location, serving_unit), by_line in per_item.items():
         item = _locked_item(db, item_id, account_id=account_id)
-        if item is None or item.stock_quantity is None:
+        if item is None or location_quantity(item, location, serving_unit, db=db) is None:
             continue
         total = sum(by_line.values(), Decimal("0"))
-        available = _qty(location_quantity(item, location))
+        available = _qty(location_quantity(item, location, serving_unit, db=db))
         if total > available and not allow_negative:
             raise InsufficientStockError(_product_name(item), total, available)
         for order_item_id, qty in by_line.items():
@@ -568,6 +699,7 @@ def record_stock_out(
                     links={"order_id": order_id, "order_item_id": order_item_id},
                     now=now,
                     location=location,
+                    serving_unit=serving_unit,
                 )
             )
     return movements

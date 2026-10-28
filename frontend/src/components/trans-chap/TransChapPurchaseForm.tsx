@@ -52,6 +52,7 @@ import {
 } from "@/lib/trans-chap-product";
 import {
   allSellUnits,
+  baseUnitName,
   hasPackUnits,
   normalizeUnitName,
   resolveSellUnit,
@@ -166,8 +167,9 @@ function lineFromItem(
   const explicitPacks = packUnits(item);
   const autoPackFactor = explicitPacks.length === 0 ? detectPackSize(name) : undefined;
   
-  const sellUnit = resolved.factor > 1 ? resolved.name : (autoPackFactor ? "Pack" : null);
-  const unitFactor = resolved.factor > 1 ? resolved.factor : (autoPackFactor ?? 1);
+  const isAlternateUnit = normalizeUnitName(resolved.name) !== normalizeUnitName(baseUnitName(item));
+  const sellUnit = isAlternateUnit ? resolved.name : (autoPackFactor ? "Pack" : null);
+  const unitFactor = isAlternateUnit ? resolved.factor : (autoPackFactor ?? 1);
 
   return {
     key: basketKey(name, item.id, null, sellUnit),
@@ -469,8 +471,7 @@ export function TransChapPurchaseForm() {
         draft.lines.map((line) => ({
           ...line,
           sellUnit: line.sellUnit ?? null,
-          unitFactor:
-            line.unitFactor && line.unitFactor >= 1 ? line.unitFactor : 1,
+          unitFactor: line.unitFactor && line.unitFactor > 0 ? line.unitFactor : 1,
         })),
       );
       setPurchaseMeta(
@@ -960,22 +961,23 @@ export function TransChapPurchaseForm() {
         const { line, cost, sellingPrice } = prep;
         let item = await receiveStock({
           item: prep.item,
-          quantity: line.quantity * Math.max(1, line.unitFactor || 1),
+          quantity: line.quantity * Math.max(0.0001, line.unitFactor || 1),
           reason: "receive",
           // Persist buying price per stock (base) unit.
           unitCost:
-            Math.max(1, line.unitFactor || 1) > 1
-              ? Math.round((cost / Math.max(1, line.unitFactor || 1)) * 100) / 100
+            Math.max(0.0001, line.unitFactor || 1) !== 1
+              ? Math.round((cost / Math.max(0.0001, line.unitFactor || 1)) * 100) / 100
               : cost,
           note:
-            line.unitFactor > 1 && line.sellUnit
+            line.sellUnit
               ? [note, `${line.quantity} ${line.sellUnit}`].filter(Boolean).join(" · ")
               : note,
         });
         savedKeys.add(line.key);
-        // If this was a pack buy, store pack buying price on attributes.
-        if (line.unitFactor > 1 && line.sellUnit) {
-          const packs = allSellUnits(item).filter((unit) => unit.factor > 1);
+        // Remember the cost for any configured alternate purchase unit.
+        if (line.sellUnit) {
+          const baseName = normalizeUnitName(baseUnitName(item));
+          const packs = allSellUnits(item).filter((unit) => normalizeUnitName(unit.name) !== baseName);
           const existingIndex = packs.findIndex(
             (u) => normalizeUnitName(u.name) === normalizeUnitName(line.sellUnit)
           );
@@ -999,6 +1001,9 @@ export function TransChapPurchaseForm() {
             sell_units: packs.map((unit) => ({
               name: unit.name,
               factor: unit.factor,
+              ...(unit.reverse ? { reverse: true } : {}),
+              ...(unit.reference_unit ? { reference_unit: unit.reference_unit } : {}),
+              ...(unit.conversion_amount != null ? { conversion_amount: unit.conversion_amount } : {}),
               ...(unit.selling_price != null
                 ? { selling_price: unit.selling_price }
                 : {}),
@@ -1225,7 +1230,9 @@ export function TransChapPurchaseForm() {
                       name,
                       item.id,
                       null,
-                      selected.factor > 1 ? selected.name : null,
+                      normalizeUnitName(selected.name) !== normalizeUnitName(baseUnitName(item))
+                        ? selected.name
+                        : null,
                     );
                     const line =
                       lineByInventoryId.get(item.id)?.key === lineKey
@@ -1293,7 +1300,7 @@ export function TransChapPurchaseForm() {
                                       {formatMoney(buyPrice)}
                                     </span>
                                     <span className="pos-card__price-unit">
-                                      /{selected.factor > 1 ? selected.name : "buy"}
+                                      /{normalizeUnitName(selected.name) !== normalizeUnitName(baseUnitName(item)) ? selected.name : "buy"}
                                     </span>
                                   </>
                                 ) : (
@@ -1308,7 +1315,7 @@ export function TransChapPurchaseForm() {
                                   : `${item.stock_quantity} on hand`}
                                 {inCartQty > 0
                                   ? ` · ${inCartQty}${
-                                      line?.unitFactor && line.unitFactor > 1 && line.sellUnit
+                                      line?.sellUnit
                                         ? ` ${line.sellUnit}`
                                         : ""
                                     } in purchase`
@@ -1569,7 +1576,7 @@ export function TransChapPurchaseForm() {
                                 >
                                   {line.productName}
                                 </strong>
-                                {line.unitFactor > 1 && line.sellUnit ? (
+                                {line.sellUnit ? (
                                   <span className="pos-line__bulk-tag">
                                     {line.sellUnit} ({line.unitFactor})
                                   </span>
@@ -1689,7 +1696,7 @@ export function TransChapPurchaseForm() {
                               >
                                 <button
                                   type="button"
-                                  className={`pos-line__unit-chip${line.unitFactor === 1 ? " is-active" : ""}`}
+                                  className={`pos-line__unit-chip${!line.sellUnit ? " is-active" : ""}`}
                                   onClick={() =>
                                     updateLine(line.key, { unitFactor: 1, sellUnit: null })
                                   }
@@ -1698,20 +1705,19 @@ export function TransChapPurchaseForm() {
                                 </button>
                                 <button
                                   type="button"
-                                  className={`pos-line__unit-chip${line.unitFactor > 1 ? " is-active" : ""}`}
+                                  className={`pos-line__unit-chip${line.sellUnit ? " is-active" : ""}`}
                                   onClick={() =>
                                     updateLine(line.key, {
-                                      unitFactor:
-                                        line.unitFactor > 1
-                                          ? line.unitFactor
-                                          : line.autoPackFactor || 12,
-                                      sellUnit: "Bulk",
+                                      unitFactor: line.sellUnit
+                                        ? line.unitFactor
+                                        : line.autoPackFactor || 12,
+                                      sellUnit: line.sellUnit || "Bulk",
                                     })
                                   }
                                 >
                                   Bulk
                                 </button>
-                                {line.unitFactor > 1 && (
+                                {line.sellUnit === "Bulk" && line.unitFactor > 1 && (
                                   <input
                                     type="number"
                                     min={2}

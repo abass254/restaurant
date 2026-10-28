@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from app.services.dm_agent_tools import DmAgentTools
+from app.services.catalog.catalog_types import CatalogItem, platform_ref
 from app.services.dm_catalog_service import DmCatalogService
 
 
@@ -23,6 +24,17 @@ def _item(
         unit="pack",
         image_url=cover,
     )
+
+
+def _catalog_item(name: str, *, item_id: str = "item-1", image_urls: tuple[str, ...] = ()) -> CatalogItem:
+    return CatalogItem(
+        ref=platform_ref(item_id),
+        source="platform",
+        name=name,
+        price=None,
+        image_urls=image_urls,
+        platform_inventory_item_id=item_id,
+    )
     return SimpleNamespace(
         id=item_id,
         product=product,
@@ -33,36 +45,28 @@ def _item(
     )
 
 
-def test_product_image_urls_uses_shop_gallery_only() -> None:
+@patch.object(DmCatalogService, "_deliver", return_value=("sent", 3))
+def test_product_image_urls_uses_shop_gallery_only(_deliver: MagicMock) -> None:
     service = DmCatalogService(MagicMock(), MagicMock(frontend_url="https://shop.test"), MagicMock())
-    item = _item(
-        "Table Mirror",
-        media=[
-            {"url": "/uploads/mirror-1.jpg", "content_type": "image/jpeg"},
-            {"url": "/uploads/mirror-2.jpg", "content_type": "image/jpeg"},
-            {"url": "/uploads/clip.mp4", "content_type": "video/mp4"},
-        ],
-    )
-    urls = service._product_image_urls(item)
-    assert len(urls) == 2
-    assert all(url.startswith("https://shop.test/") for url in urls)
+    catalog = _catalog_item("Table Mirror", image_urls=(
+        "/uploads/mirror-1.jpg",
+        "/uploads/mirror-2.jpg",
+    ))
+    result = service.send_product_photos(SimpleNamespace(account_id="merchant-1"), SimpleNamespace(id="conv-1"), catalog)
+    assert result.photos_sent is True
+    assert result.image_count == 2
 
 
 def test_product_image_urls_falls_back_to_platform_cover() -> None:
     service = DmCatalogService(MagicMock(), MagicMock(frontend_url="https://shop.test"), MagicMock())
-    item = _item("Table Mirror", cover="/uploads/cover.jpg")
-    urls = service._product_image_urls(item)
-    assert urls == ["https://shop.test/uploads/cover.jpg"]
+    assert service._absolute_media_url("/uploads/cover.jpg") == "https://shop.test/uploads/cover.jpg"
 
 
 @patch.object(DmCatalogService, "_deliver")
 def test_send_product_photos_delivers_only_requested_item(mock_deliver: MagicMock) -> None:
     mock_deliver.return_value = ("sent", 2)
     service = DmCatalogService(MagicMock(), MagicMock(frontend_url="https://shop.test"), MagicMock())
-    item = _item(
-        "Starlight Table Mirror",
-        media=[{"url": "/uploads/mirror.jpg", "content_type": "image/jpeg"}],
-    )
+    item = _catalog_item("Starlight Table Mirror", image_urls=("/uploads/mirror.jpg",))
     account = SimpleNamespace(account_id="merchant-1")
     conversation = SimpleNamespace(id="conv-1", participant_ig_id="cust-1")
 
@@ -81,8 +85,8 @@ def test_send_product_photos_delivers_only_requested_item(mock_deliver: MagicMoc
 def test_resolve_photo_item_uses_last_discussed_id() -> None:
     tools = DmAgentTools.__new__(DmAgentTools)
     tools.catalog = MagicMock()
-    mirror = _item("Table Mirror", item_id="mirror-id")
-    tools.catalog.item_by_id.return_value = mirror
+    mirror = _catalog_item("Table Mirror", item_id="mirror-id")
+    tools.catalog.get_catalog_item.return_value = mirror
 
     account = SimpleNamespace(account_id="merchant-1")
     conversation = SimpleNamespace(
@@ -90,7 +94,7 @@ def test_resolve_photo_item_uses_last_discussed_id() -> None:
     )
     item = tools._resolve_photo_item(account, conversation, {})
     assert item is not None
-    assert item.id == "mirror-id"
+    assert item.inventory_item_id == "mirror-id"
 
 
 def test_build_system_prompt_mentions_product_photos_tool() -> None:

@@ -1674,17 +1674,21 @@ export function TransChapStocksList() {
                   <>
                     <Link
                       href={`/trans-chap/stocks/edit?id=${encodeURIComponent(item.id)}`}
-                      className="trans-chap-panel__link"
+                      className="trans-chap-panel__link trans-chap-panel__icon-action"
+                      title={hotel ? `Edit ${name}` : `Edit ${name} and its unit of measure`}
+                      aria-label={hotel ? `Edit ${name}` : `Edit ${name} and its unit of measure`}
                     >
-                      {hotel || item.selling_price != null ? "Edit" : "Set sell price"}
+                      <i className="fa-solid fa-pen" aria-hidden />
                     </Link>
                     {restaurant && isKitchenIssuableRole(inventoryRole(item)) ? (
                       <Link
                         href={`/trans-chap/purchases/issue?new=1&from=store&items=${encodeURIComponent(item.id)}`}
-                        className="trans-chap-panel__link"
+                        className="trans-chap-panel__link trans-chap-panel__icon-action"
+                        title={`Release ${name} to the kitchen`}
+                        aria-label={`Release ${name} to the kitchen`}
                         style={{ color: "var(--app-primary)", fontWeight: 750 }}
                       >
-                        Release to kitchen
+                        <i className="fa-solid fa-dolly" aria-hidden />
                       </Link>
                     ) : null}
                   </>
@@ -1695,7 +1699,23 @@ export function TransChapStocksList() {
                     <div>
                       <dt>On hand</dt>
                       <dd>
-                        {item.stock_quantity == null ? "Not tracked" : formatGroupedQty(item)}
+                        {item.stock_quantity == null
+                          ? "Not tracked"
+                          : `${formatGroupedQty(item)}${groupedQtyBreakdown(item) ? "" : ` ${baseUnitName(item)}`}`}
+                      </dd>
+                    </div>
+                  )}
+                  {hotel ? null : (
+                    <div>
+                      <dt>Unit of measure</dt>
+                      <dd>
+                        <div>{baseUnitName(item)}</div>
+                        {packUnits(item).map((unit) => (
+                          <div key={unit.name} className="trans-chap-panel__unit-conversion">
+                            <span>1 {unit.name} = {unit.factor} {baseUnitName(item)}</span>
+                            <span>{unit.factor} {baseUnitName(item)} = 1 {unit.name}</span>
+                          </div>
+                        ))}
                       </dd>
                     </div>
                   )}

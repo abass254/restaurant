@@ -16,16 +16,18 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.v1 import menu, orders
-from app.api.v1.menu import RecipeLineIn, RecipeReplace
+from app.api.v1.menu import ItemGroupsReplace, RecipeLineIn, RecipeReplace
 from app.api.v1.orders import OrderCreate, OrderTransition, OrderUpdate
 from app.database import Base
 from app.models import (
     Account,
     Catalogue,
     InventoryItem,
+    ModifierGroup,
     Order,
     OrderItem,
     PurchaseOrder,
+    RecipeLine,
     ShopCustomer,
     ShopSupplier,
     StockMovement,
@@ -46,6 +48,7 @@ from app.services.restaurant_stock_service import (
     complete_stock_take,
     create_stock_take,
     menu_costing,
+    prepare_recipe_batch,
     profit_report,
     save_counts,
     usage_report,
@@ -161,12 +164,280 @@ def test_restaurant_sale_writes_ledger_and_cost(rdb):
     sales = rdb.query(StockMovement).filter(StockMovement.reason == "sale").all()
     assert {m.inventory_item_id for m in sales} == {"inv-flour", "inv-oil", "inv-soda"}
     assert all(m.order_id == out.id and m.order_item_id for m in sales)
-
     lines = {line.product_name: line for line in rdb.query(OrderItem).all()}
     # 10 chapati: 1kg flour @100 + 0.1L oil @300 = 130
     assert float(lines["Chapati"].cost_total) == pytest.approx(130.0)
     assert float(lines["Soda"].cost_total) == pytest.approx(100.0)
     assert rdb.get(Order, out.id).stock_deducted is True
+
+
+def test_restaurant_meal_without_recipe_cannot_be_sold(rdb):
+    rdb.add(
+        Catalogue(
+            id="unconfigured-meal",
+            name="Unconfigured meal",
+            slug="unconfigured-meal",
+            product_type="meal",
+            created_by_account_id=ACCOUNT,
+        )
+    )
+    rdb.add(
+        InventoryItem(
+            id="inv-unconfigured-meal",
+            account_id=ACCOUNT,
+            product_id="unconfigured-meal",
+            selling_price=45,
+            inventory_role="for_sale",
+            is_active=True,
+        )
+    )
+    rdb.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        _order(rdb, {"inventory_item_id": "inv-unconfigured-meal", "quantity": 1})
+
+    assert exc.value.status_code == 422
+    assert "recipe" in str(exc.value.detail).lower()
+
+
+def test_recipe_backed_restaurant_meal_needs_a_menu_price(rdb):
+    rdb.get(InventoryItem, "inv-chapati").selling_price = None
+    rdb.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        _order(
+            rdb,
+            {"inventory_item_id": "inv-chapati", "quantity": 1, "unit_price": 30},
+        )
+
+    assert exc.value.status_code == 422
+    assert "price" in str(exc.value.detail).lower()
+
+
+def test_restaurant_meal_without_recipe_cannot_receive_modifiers(rdb):
+    rdb.query(RecipeLine).filter(
+        RecipeLine.account_id == ACCOUNT,
+        RecipeLine.product_id == "chapati",
+    ).delete()
+    group = ModifierGroup(
+        id="chapati-modifier",
+        account_id=ACCOUNT,
+        name="Preparation",
+        min_select=0,
+        max_select=1,
+    )
+    rdb.add(group)
+    rdb.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        menu.replace_item_modifier_groups(
+            "chapati",
+            ItemGroupsReplace(group_ids=[group.id]),
+            request=None,
+            db=rdb,
+            session={},
+        )
+
+    assert exc.value.status_code == 422
+    assert "recipe" in str(exc.value.detail).lower()
+
+
+def test_restaurant_meal_with_modifiers_cannot_have_recipe_cleared(rdb):
+    group = ModifierGroup(
+        id="chapati-modifier",
+        account_id=ACCOUNT,
+        name="Preparation",
+        min_select=0,
+        max_select=1,
+    )
+    rdb.add(group)
+    rdb.commit()
+    menu.replace_item_modifier_groups(
+        "chapati",
+        ItemGroupsReplace(group_ids=[group.id]),
+        request=None,
+        db=rdb,
+        session={},
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        menu.replace_recipe(
+            "chapati",
+            RecipeReplace(lines=[]),
+            request=None,
+            db=rdb,
+            session={},
+        )
+
+    assert exc.value.status_code == 422
+    assert "modifiers" in str(exc.value.detail).lower()
+
+
+def test_preparing_batch_consumes_kitchen_supplies_and_sales_consume_ready_portions(rdb):
+    account = rdb.get(Account, ACCOUNT)
+    account.kitchen_issuing_enabled = True
+    flour = rdb.get(InventoryItem, "inv-flour")
+    oil = rdb.get(InventoryItem, "inv-oil")
+    flour.kitchen_quantity = 10
+    oil.kitchen_quantity = 5
+    menu.replace_recipe(
+        "chapati",
+        RecipeReplace(
+            lines=[
+                RecipeLineIn(
+                    product_id="flour",
+                    quantity=0.1,
+                    batch_quantity=1,
+                    batch_yield=10,
+                    serving_unit="plates",
+                ),
+                RecipeLineIn(
+                    product_id="oil",
+                    quantity=0.01,
+                    batch_quantity=0.1,
+                    batch_yield=10,
+                    serving_unit="plates",
+                ),
+            ],
+            serving_unit="plates",
+        ),
+        request=None,
+        db=rdb,
+        session={},
+    )
+    dish = rdb.get(InventoryItem, "inv-chapati")
+    assert dish.prepared_quantity == 0
+
+    prepared = prepare_recipe_batch(rdb, ACCOUNT, dish.id, user_id="u1")
+    rdb.commit()
+    rdb.expire_all()
+    assert prepared["portions_added"] == pytest.approx(10)
+    assert float(rdb.get(InventoryItem, "inv-flour").kitchen_quantity) == pytest.approx(9)
+    assert float(rdb.get(InventoryItem, "inv-oil").kitchen_quantity) == pytest.approx(4.9)
+    assert float(rdb.get(InventoryItem, "inv-chapati").prepared_quantity) == pytest.approx(10)
+    costing = next(row for row in menu_costing(rdb, ACCOUNT) if row["inventory_item_id"] == dish.id)
+    assert costing["portions_available"] == 10
+    assert costing["serving_unit"] == "plates"
+
+    _order(rdb, {"inventory_item_id": "inv-chapati", "quantity": 2})
+    rdb.expire_all()
+    assert float(rdb.get(InventoryItem, "inv-chapati").prepared_quantity) == pytest.approx(8)
+    costing = next(row for row in menu_costing(rdb, ACCOUNT) if row["inventory_item_id"] == dish.id)
+    assert costing["portions_available"] == 8
+    assert float(rdb.get(InventoryItem, "inv-flour").kitchen_quantity) == pytest.approx(9)
+    assert float(rdb.get(InventoryItem, "inv-oil").kitchen_quantity) == pytest.approx(4.9)
+
+    sales = rdb.query(StockMovement).filter(StockMovement.reason == "sale").all()
+    assert len(sales) == 1
+    assert sales[0].inventory_item_id == "inv-chapati"
+    assert sales[0].location == "prepared"
+    order = rdb.query(Order).filter(Order.id == sales[0].order_id).one()
+    release_order_holds(rdb, order)
+    rdb.commit()
+    rdb.expire_all()
+    assert float(rdb.get(InventoryItem, "inv-chapati").prepared_quantity) == pytest.approx(10)
+
+
+def test_prepared_portions_are_separate_by_equivalence_and_reverse_correctly(rdb):
+    menu.replace_recipe(
+        "chapati",
+        RecipeReplace(
+            lines=[
+                RecipeLineIn(
+                    product_id="flour",
+                    quantity=0.2,
+                    batch_quantity=2,
+                    batch_yield=10,
+                    serving_unit="plates",
+                ),
+                RecipeLineIn(
+                    product_id="flour",
+                    quantity=0.25,
+                    batch_quantity=1,
+                    batch_yield=4,
+                    serving_unit="sticks",
+                ),
+            ],
+            serving_unit="plates",
+        ),
+        request=None,
+        db=rdb,
+        session={},
+    )
+    dish = rdb.get(InventoryItem, "inv-chapati")
+    prepare_recipe_batch(rdb, ACCOUNT, dish.id, serving_unit="plates")
+    prepare_recipe_batch(rdb, ACCOUNT, dish.id, serving_unit="sticks")
+    rdb.commit()
+    rdb.expire_all()
+
+    costing = next(row for row in menu_costing(rdb, ACCOUNT) if row["inventory_item_id"] == dish.id)
+    equivalences = {row["serving_unit"]: row for row in costing["equivalences"]}
+    assert equivalences["plates"]["portions_available"] == 10
+    assert equivalences["sticks"]["portions_available"] == 4
+    assert float(rdb.get(InventoryItem, dish.id).prepared_quantity) == pytest.approx(10)
+
+    order_out = _order(
+        rdb,
+        {"inventory_item_id": dish.id, "quantity": 1, "serving_unit": "sticks"},
+    )
+    rdb.commit()
+    rdb.expire_all()
+    order = rdb.get(Order, order_out.id)
+    costing = next(row for row in menu_costing(rdb, ACCOUNT) if row["inventory_item_id"] == dish.id)
+    equivalences = {row["serving_unit"]: row for row in costing["equivalences"]}
+    assert equivalences["plates"]["portions_available"] == 10
+    assert equivalences["sticks"]["portions_available"] == 3
+
+    release_order_holds(rdb, order)
+    rdb.commit()
+    rdb.expire_all()
+    costing = next(row for row in menu_costing(rdb, ACCOUNT) if row["inventory_item_id"] == dish.id)
+    equivalences = {row["serving_unit"]: row for row in costing["equivalences"]}
+    assert equivalences["plates"]["portions_available"] == 10
+    assert equivalences["sticks"]["portions_available"] == 4
+
+    wasted_order_out = _order(
+        rdb,
+        {"inventory_item_id": dish.id, "quantity": 1, "serving_unit": "sticks"},
+    )
+    rdb.commit()
+    wasted_order = rdb.get(Order, wasted_order_out.id)
+    release_order_holds(rdb, wasted_order, wastage=True)
+    rdb.commit()
+    rdb.expire_all()
+    costing = next(row for row in menu_costing(rdb, ACCOUNT) if row["inventory_item_id"] == dish.id)
+    equivalences = {row["serving_unit"]: row for row in costing["equivalences"]}
+    assert equivalences["plates"]["portions_available"] == 10
+    assert equivalences["sticks"]["portions_available"] == 3
+    wastage = rdb.query(StockMovement).filter(StockMovement.reason == "wastage").one()
+    assert wastage.serving_unit == "sticks"
+
+
+def test_sale_deducts_selected_menu_recipe_portion_per_sold_serving(rdb):
+    menu.replace_recipe(
+        "chapati",
+        RecipeReplace(
+            lines=[
+                RecipeLineIn(product_id="flour", quantity=10 / 8),
+                RecipeLineIn(product_id="oil", quantity=0.8 / 8),
+            ],
+            serving_unit="plates",
+        ),
+        request=None,
+        db=rdb,
+        session={},
+    )
+
+    _order(rdb, {"inventory_item_id": "inv-chapati", "quantity": 2})
+
+    assert _stock(rdb, "inv-flour") == pytest.approx(7.5)
+    assert _stock(rdb, "inv-oil") == pytest.approx(4.8)
+    sale_quantities = {
+        movement.inventory_item_id: float(movement.quantity)
+        for movement in rdb.query(StockMovement).filter(StockMovement.reason == "sale").all()
+    }
+    assert sale_quantities["inv-flour"] == pytest.approx(2.5)
+    assert sale_quantities["inv-oil"] == pytest.approx(0.2)
 
 
 def test_direct_item_shortage_blocks_but_recipe_may_go_negative(rdb):
@@ -330,6 +601,33 @@ def test_purchase_orders_reject_menu_items(rdb):
                        lines=[LineInput("inv-chapati", Decimal("1"), Decimal("10"))])
     names = {item.product.name for item in service.supply_items(ACCOUNT)}
     assert names == {"Soda", "Flour", "Cooking oil", "Eggs"}
+
+
+def test_supply_stock_list_can_exclude_inactive_inventory(rdb):
+    rdb.add(Catalogue(
+        id="archived-supply",
+        name="Archived supply",
+        slug="archived-supply",
+        product_type="retail",
+        unit="kg",
+    ))
+    rdb.add(InventoryItem(
+        id="inv-archived-supply",
+        account_id=ACCOUNT,
+        product_id="archived-supply",
+        stock_quantity=5,
+        is_active=False,
+    ))
+    rdb.commit()
+
+    all_supply_names = {item.product.name for item in PurchaseOrderService(rdb).supply_items(ACCOUNT)}
+    active_supply_names = {
+        item.product.name
+        for item in PurchaseOrderService(rdb).supply_items(ACCOUNT, active_only=True)
+    }
+    assert "Archived supply" in all_supply_names
+    assert "Archived supply" not in active_supply_names
+    assert active_supply_names == {"Soda", "Flour", "Cooking oil", "Eggs"}
 
 
 def test_cancel_needs_nothing_received(rdb):

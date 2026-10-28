@@ -20,6 +20,7 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
     const paid = isTransChapReceiptPaid(receipt);
     const closed = isTransChapReceiptClosed(receipt);
     const onCredit = !closed && receipt.payMode === "credit";
+    const isUnpaid = !closed && !paid && !onCredit && !receipt.payMode;
     const waiting = !closed && receipt.payMode === "mpesa" && receipt.paymentStatus === "pending";
     const lines = receipt.items?.length
       ? receipt.items
@@ -32,10 +33,12 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
         ? "Paid"
         : onCredit
           ? "Invoice"
-          : waiting
-            ? "Waiting"
-            : "Failed";
-    const statusTone = paid ? "ok" : onCredit ? "credit" : waiting ? "wait" : "fail";
+          : isUnpaid
+            ? "Table Bill"
+            : waiting
+              ? "Waiting"
+              : "Failed";
+    const statusTone = paid ? "ok" : onCredit ? "credit" : isUnpaid ? "wait" : waiting ? "wait" : "fail";
     const customer = receipt.customerName?.trim() || "Walk-in";
     const subtotal = receipt.subtotal ?? lines.reduce((sum, line) => sum + line.lineTotal, 0);
     const adjustments = [
@@ -63,11 +66,13 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
               ? ` Tab total is now Ksh${formatKesDigits(receipt.creditOutstanding)}. We sent a pay link on WhatsApp.`
               : " It is not paid yet."
           }`
-        : !paid
-          ? waiting
-            ? receipt.mpesaMessage || "Ask the customer to enter their PIN on the prompt."
-            : receipt.mpesaMessage || "The prompt didn't reach the phone. Send it again."
-          : null;
+        : isUnpaid
+          ? "Order sent to kitchen. Bill to be settled after the meal."
+          : !paid
+            ? waiting
+              ? receipt.mpesaMessage || "Ask the customer to enter their PIN on the prompt."
+              : receipt.mpesaMessage || "The prompt didn't reach the phone. Send it again."
+            : null;
 
     return (
       <article
@@ -182,8 +187,12 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
             <dd>{receipt.orderNumber}</dd>
           </div>
           <div>
-            <dt>When</dt>
+            <dt>{isUnpaid ? "Ordered" : "When"}</dt>
             <dd>{formatNairobiStamp24(receipt.paidAt) || "—"}</dd>
+          </div>
+          <div>
+            <dt>Payment</dt>
+            <dd>{receipt.payMode ? transChapReceiptPayLabel(receipt) : "Pay after meal"}</dd>
           </div>
           {receipt.customerPhone ? (
             <div>

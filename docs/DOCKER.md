@@ -1,7 +1,8 @@
 # Running DukAI in Docker
 
 The full stack — MySQL, FastAPI backend, Next.js frontend — runs from a single
-`docker compose up`. Ports follow the spec:
+`docker compose up`. The tracked [`compose.yaml`](../compose.yaml) starts the
+same stack in UAT or production. Ports follow the spec:
 
 | Service   | Container port | Host port           |
 |-----------|----------------|---------------------|
@@ -44,8 +45,10 @@ APP_ENV=production
 NEXT_PUBLIC_DEBUG=false
 ```
 
-`UPLOADS_HOST_PATH` bind-mounts the host folder onto `/app/uploads` so media
-is public at `https://merchants.dukai.app/uploads/...`. See [UPLOADS.md](./UPLOADS.md).
+The tracked Compose stack uses the persistent `backend_uploads` named volume.
+For a host-managed media folder, use a reviewed deployment override which bind
+mounts it at `/app/uploads`. Media is public at
+`https://merchants.dukai.app/uploads/...`. See [UPLOADS.md](./UPLOADS.md).
 
 For a generic production host behind nginx/TLS, set the same pattern with your
 domain:
@@ -71,8 +74,9 @@ docker compose up -d --build
 > Compose auto-reads `.env` for variable interpolation; the backend
 > container also loads it via `env_file`.
 
-First start brings up MySQL, runs its init, then starts the backend and
-frontend. Watch logs:
+First start brings up MySQL, then starts the backend and frontend after health
+checks. Migrations are deliberately manual so a failed schema change cannot
+silently alter a production database. Watch logs:
 
 ```bash
 docker compose logs -f
@@ -99,7 +103,8 @@ curl http://localhost:7070/                 # frontend
 curl http://127.0.0.1:7071/up               # backend health
 ```
 
-`docker compose ps` shows the per-container healthcheck status.
+`docker compose ps` shows the per-container healthcheck status. The database
+is not published to the host; backend is loopback-only for the TLS proxy.
 
 ## Common operations
 

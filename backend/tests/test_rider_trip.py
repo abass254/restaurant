@@ -44,7 +44,8 @@ def test_hash_login_code_stable() -> None:
     assert hash_login_code("123456") != hash_login_code("654321")
 
 
-def test_request_login_code_unknown_phone_returns_null_code() -> None:
+@patch("app.services.rider_trip_service.phone_otp_allowed", return_value=True)
+def test_request_login_code_unknown_phone_returns_null_code(_phone_allowed) -> None:
     db = MagicMock()
     db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
     service = RiderTripService(db)

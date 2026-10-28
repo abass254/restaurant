@@ -39,6 +39,7 @@ import {
   type TransChapReceipt,
 } from "@/lib/trans-chap-receipt";
 import { TransChapGoodsOnReturnModal } from "@/components/trans-chap/TransChapGoodsOnReturnModal";
+import { TransChapOrderDetailModal } from "@/components/trans-chap/TransChapOrderDetailModal";
 import type { Order, OrderMutationResponse } from "@/lib/types";
 
 type WhenFilter = "all" | "today" | "week";
@@ -77,6 +78,13 @@ function saleStatus(order: Order): { label: string; tone: "ok" | "wait" | "fail"
   }
   if (orderUsesPayment(order, "credit")) {
     return { label: "On credit", tone: "credit" };
+  }
+  if (!order.paid_at) {
+    if (order.status === "placed") return { label: "In Kitchen", tone: "wait" };
+    if (order.status === "being_prepared") return { label: "Preparing", tone: "wait" };
+    if (order.status === "ready") return { label: "Ready", tone: "ok" };
+    if (order.status === "picked_up") return { label: "Served · Unpaid", tone: "wait" };
+    if (order.status === "awaiting_payment") return { label: "Unpaid", tone: "wait" };
   }
   return { label: "Paid", tone: "ok" };
 }
@@ -199,6 +207,7 @@ export function TransChapSalesList() {
   const [undoingId, setUndoingId] = useState<string | null>(null);
   const [stkBusyId, setStkBusyId] = useState<string | null>(null);
   const [returnOrder, setReturnOrder] = useState<Order | null>(null);
+  const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
   const [view, setView] = useTransChapListView("trans-chap-sales-view");
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -417,6 +426,39 @@ export function TransChapSalesList() {
     }
   }
 
+  async function handleSettlePayment(order: Order) {
+    const choice = await promptMpesaReceipt(
+      `Settle bill: ${order.table_number || order.order_number}`,
+      `Total: KSh ${Math.round(order.total).toLocaleString("en-KE")}. Enter customer's M-PESA transaction code, or leave blank to record Cash payment.`,
+    );
+    if (choice === null) return;
+    setStkBusyId(order.id);
+    try {
+      const code = choice.trim();
+      const payload: Record<string, any> = {
+        is_paid: true,
+      };
+      if (code) {
+        payload.payment_method = "mpesa";
+        payload.mpesa_receipt_number = code;
+      } else {
+        payload.payment_method = "cash";
+      }
+      const data = await apiFetch<OrderMutationResponse>(apiRoutes.orderRecordPayment(order.id), {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      setOrders((prev) => prev.map((row) => (row.id === data.data.id ? data.data : row)));
+      if (viewingOrder?.id === data.data.id) {
+        setViewingOrder(data.data);
+      }
+      await toastSuccess(code ? "M-PESA payment recorded" : "Cash payment recorded");
+    } catch (err) {
+      await showError("Could not record payment", extractErrorMessage(err));
+    } finally {
+      setStkBusyId(null);
+    }
+  }
   const filtered = useMemo(() => {
     const needle = deferredQuery.trim().toLowerCase();
     return orders.filter((order) => {
@@ -629,52 +671,151 @@ export function TransChapSalesList() {
     const sale = saleStatus(order);
     const undo = undoActionFor(order);
     const busy = stkBusyId === order.id || undoingId === order.id || bulkUndoing;
+    const isPaid = Boolean(order.paid_at);
+    const isUndone = order.status === "cancelled" || order.status === "refunded";
+
     return (
-      <>
-        {sale.tone === "wait" || (orderUsesPayment(order, "mpesa") && sale.tone === "fail" && order.status !== "cancelled" && order.status !== "refunded") ? (
+      <div className="trans-chap-actions-group">
+        <button
+          type="button"
+          className="trans-chap-action-btn trans-chap-action-btn--view"
+          title={`View order ${order.order_number}`}
+          aria-label={`View order ${order.order_number}`}
+          onClick={() => setViewingOrder(order)}
+        >
+          <i className="fa-solid fa-eye" aria-hidden />
+        </button>
+        {!isPaid && !isUndone ? (
           <button
             type="button"
-            className="trans-chap-panel__link"
+            className="trans-chap-action-btn trans-chap-action-btn--pay"
             disabled={busy}
-            onClick={() => void handlePendingStk(order)}
+            title={`Record payment (${formatKsh(order.total)})`}
+            aria-label="Record payment"
+            onClick={() => setViewingOrder(order)}
           >
-            {stkBusyId === order.id ? "Working…" : "Complete M-PESA"}
+            <i className="fa-solid fa-money-bill-wave" aria-hidden />
+          </button>
+        ) : isPaid && !isUndone ? (
+          <button
+            type="button"
+            className="trans-chap-action-btn trans-chap-action-btn--paid"
+            disabled={busy}
+            title="Bill paid — click to view or manage"
+            aria-label="Bill paid"
+            onClick={() => setViewingOrder(order)}
+          >
+            <i className="fa-solid fa-circle-check" aria-hidden />
           </button>
         ) : null}
-        {undo ? (
+        {restaurant && order.workflow_actions ? (
+          (() => {
+            const stepAction = order.workflow_actions.find(
+              (a) =>
+                a.kind === "transition" &&
+                a.to_status !== "cancelled" &&
+                a.to_status !== "payment_received",
+            );
+            if (!stepAction) return null;
+            const stepIcon =
+              stepAction.to_status === "being_prepared"
+                ? "fa-fire-burner"
+                : stepAction.to_status === "ready"
+                  ? "fa-bell-concierge"
+                  : stepAction.to_status === "picked_up"
+                    ? "fa-utensils"
+                    : "fa-circle-check";
+            return (
+              <button
+                type="button"
+                className="trans-chap-action-btn trans-chap-action-btn--workflow"
+                title={stepAction.label}
+                aria-label={stepAction.label}
+                disabled={busy}
+                onClick={async () => {
+                  setStkBusyId(order.id);
+                  try {
+                    let updated: Order;
+                    if (stepAction.to_status === "picked_up") {
+                      const res = await apiFetch<OrderMutationResponse>(
+                        apiRoutes.orderConfirmHandoff(order.id),
+                        { method: "POST", body: "{}" },
+                      );
+                      updated = res.data;
+                    } else {
+                      const res = await apiFetch<OrderMutationResponse>(
+                        apiRoutes.orderTransition(order.id),
+                        {
+                          method: "POST",
+                          body: JSON.stringify({ to_status: stepAction.to_status }),
+                        },
+                      );
+                      updated = res.data;
+                    }
+                    setOrders((prev) =>
+                      prev.map((row) => (row.id === updated.id ? updated : row)),
+                    );
+                    if (viewingOrder?.id === updated.id) {
+                      setViewingOrder(updated);
+                    }
+                    await toastSuccess(stepAction.label);
+                  } catch (err) {
+                    await showError("Could not update order", extractErrorMessage(err));
+                  } finally {
+                    setStkBusyId(null);
+                  }
+                }}
+              >
+                <i className={`fa-solid ${stepIcon}`} aria-hidden />
+              </button>
+            );
+          })()
+        ) : null}
+        {sale.tone === "wait" || (orderUsesPayment(order, "mpesa") && sale.tone === "fail" && !isUndone) ? (
           <button
             type="button"
-            className="trans-chap-panel__link trans-chap-panel__void"
+            className="trans-chap-action-btn trans-chap-action-btn--mpesa"
             disabled={busy}
-            onClick={() => void undoSale(order)}
+            title={stkBusyId === order.id ? "Working…" : "Complete M-PESA"}
+            aria-label="Complete M-PESA"
+            onClick={() => void handlePendingStk(order)}
           >
-            {undoingId === order.id
-              ? "Working…"
-              : undo === "refund"
-                ? "Refund"
-                : "Void sale"}
+            <i className={stkBusyId === order.id ? "fa-solid fa-spinner fa-spin" : "fa-solid fa-mobile-screen-button"} aria-hidden />
           </button>
         ) : null}
         {canReturnGoods(order) ? (
           <button
             type="button"
-            className="trans-chap-panel__link"
+            className="trans-chap-action-btn trans-chap-action-btn--return"
             disabled={busy}
+            title="Return goods"
+            aria-label="Return goods"
             onClick={() => setReturnOrder(order)}
           >
-            <i className="fa-solid fa-arrow-rotate-left" aria-hidden style={{ marginRight: "0.35rem" }} />
-            Return goods
+            <i className="fa-solid fa-box-open" aria-hidden />
+          </button>
+        ) : null}
+        {undo ? (
+          <button
+            type="button"
+            className="trans-chap-action-btn trans-chap-action-btn--void"
+            disabled={busy}
+            title={undoingId === order.id ? "Working…" : undo === "refund" ? "Refund sale" : "Void sale"}
+            aria-label={undo === "refund" ? "Refund sale" : "Void sale"}
+            onClick={() => void undoSale(order)}
+          >
+            <i className={undoingId === order.id ? "fa-solid fa-spinner fa-spin" : undo === "refund" ? "fa-solid fa-rotate-left" : "fa-solid fa-ban"} aria-hidden />
           </button>
         ) : null}
         <Link
           href={transChapReceiptHref(order.id)}
-          className="trans-chap-panel__link"
+          className="trans-chap-action-btn trans-chap-action-btn--receipt"
+          title={`Open receipt for ${product}`}
           aria-label={`Open receipt for ${product}`}
         >
-          <i className="fa-solid fa-receipt" aria-hidden style={{ marginRight: "0.35rem" }} />
-          Open receipt
+          <i className="fa-solid fa-receipt" aria-hidden />
         </Link>
-      </>
+      </div>
     );
   }
 
@@ -832,7 +973,12 @@ export function TransChapSalesList() {
                           {renderCheck(order, `${product}${extra}`)}
                         </td>
                       ) : null}
-                      <td className="trans-chap-stock-table__product">
+                      <td
+                        className="trans-chap-stock-table__product"
+                        onClick={() => setViewingOrder(order)}
+                        style={{ cursor: "pointer" }}
+                        title="Click to view order details"
+                      >
                         <div>{`${product}${extra}`}</div>
                         {Number(order.returned_total || 0) > 0 ? (
                           <span
@@ -851,7 +997,14 @@ export function TransChapSalesList() {
                           </span>
                         ) : null}
                       </td>
-                      <td className="trans-chap-stock-table__mono">{receipt.orderNumber}</td>
+                      <td
+                        className="trans-chap-stock-table__mono"
+                        onClick={() => setViewingOrder(order)}
+                        style={{ cursor: "pointer" }}
+                        title="Click to view order details"
+                      >
+                        {receipt.orderNumber}
+                      </td>
                       <td className="trans-chap-stock-table__mono">{qty}</td>
                       <td className="trans-chap-stock-table__strong">{formatKsh(order.total)}</td>
                       <td title={transChapReceiptPayLabel(receipt)}>
@@ -886,7 +1039,11 @@ export function TransChapSalesList() {
             staggerChildren={displayedOrders.length > 20 ? 0 : 0.02}
           >
             {displayedOrders.map((order) => {
-            const product = order.items?.[0]?.product_name || "Sale";
+            const rawProduct = order.items?.[0]?.product_name || (restaurant ? "Order" : "Sale");
+            const product =
+              restaurant && order.table_number
+                ? `${order.table_number} · ${rawProduct}`
+                : rawProduct;
             const extra = (order.items?.length ?? 0) > 1
               ? ` +${(order.items?.length ?? 0) - 1}`
               : "";
@@ -1065,7 +1222,7 @@ export function TransChapSalesList() {
           </button>
         </div>
       ) : (
-        <TransChapFab label="New sale" href="/trans-chap/pos" />
+        <TransChapFab label={restaurant ? "Take order" : "New sale"} href="/trans-chap/pos" />
       )}
       <TransChapGoodsOnReturnModal
         order={returnOrder}
@@ -1074,6 +1231,18 @@ export function TransChapSalesList() {
         onSuccess={(updated) => {
           setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
         }}
+      />
+      <TransChapOrderDetailModal
+        order={viewingOrder}
+        open={Boolean(viewingOrder)}
+        onClose={() => setViewingOrder(null)}
+        onOrderUpdated={(updated) => {
+          setOrders((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+          setViewingOrder(updated);
+        }}
+        onReturnGoods={(order) => setReturnOrder(order)}
+        onVoidOrder={(order) => void undoSale(order)}
+        restaurant={restaurant}
       />
     </div>
   );

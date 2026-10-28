@@ -630,9 +630,21 @@ export type SettingsResponse = {
   adjust_selling_price_on_purchase?: boolean;
   force_mpesa_prompt?: boolean;
   receipt_descriptions?: string[];
+  restaurant_tables?: RestaurantTableDef[];
+  restaurant_stations?: RestaurantStationDef[];
   block_sale_on_low_ingredients?: boolean;
   kitchen_issuing_enabled?: boolean;
   inventory_integration?: InventoryIntegrationConfig | null;
+};
+
+export type RestaurantTableDef = {
+  id: string;
+  label: string;
+};
+
+export type RestaurantStationDef = {
+  id: string;
+  label: string;
 };
 
 export type SettingsOperationsResponse = {
@@ -1133,9 +1145,33 @@ export type ModifierOption = {
   product_unit?: string | null;
   /** Amount of the linked supply one pick uses, in the supply's unit. */
   stock_qty?: number;
+  /** Extra recipe: portions one supply batch makes; one pick uses one portion. */
+  batch_yield?: number;
+  portion_unit?: string | null;
+  /** Extras: the supply one pick uses on each meal. */
+  recipes?: ModifierOptionRecipe[];
+  /** Modifiers: what one pick uses — a store item or menu item (source_product_id) or an extra (source_option_id). */
+  source_kind?: ModifierSourceKind | null;
+  source_product_id?: string | null;
+  source_option_id?: string | null;
+  source_name?: string | null;
   is_default: boolean;
   sort_order: number;
   is_active: boolean;
+};
+
+export type ModifierSourceKind = "store_item" | "menu" | "extra";
+
+export type ModifierOptionRecipe = {
+  id: string;
+  menu_product_id: string;
+  menu_name?: string | null;
+  product_id: string;
+  product_name?: string | null;
+  product_unit?: string | null;
+  stock_qty: number;
+  portions_per_unit: number;
+  portion_unit: string;
 };
 
 /** Whether an option can be picked now: sold out by staff, or short of stock for one pick. */
@@ -1156,6 +1192,7 @@ export type ModifierGroup = {
   name: string;
   min_select: number;
   max_select: number;
+  is_extra?: boolean;
   /** Choices are part of the dish price (e.g. the drink in a meal), so they are free. */
   included?: boolean;
   sort_order: number;
@@ -1163,13 +1200,18 @@ export type ModifierGroup = {
   item_count?: number | null;
 };
 
-/** How much of a supply one portion of a dish uses (this shop's recipe). */
+/** A saved supply batch and its menu-serving yield (this shop's recipe). */
 export type RecipeLine = {
   id: string;
   ingredient_product_id: string;
   name?: string | null;
   unit?: string | null;
+  /** Derived per-serving amount used internally for costing and stock deduction. */
   quantity: number;
+  batch_quantity: number;
+  batch_yield: number;
+  serving_unit: string;
+  ingredient_unit?: string | null;
 };
 
 /** A dish included in a combo meal, with that dish's own option groups. */
@@ -1243,6 +1285,7 @@ export type CatalogProduct = {
   combo_components?: ComboComponent[] | null;
   recipe?: RecipeLine[] | null;
   recipe_serving_unit?: string;
+  serving_options?: string[];
   is_active?: boolean;
   created_at: string | null;
   updated_at: string | null;
@@ -1576,6 +1619,7 @@ export type OrderItem = {
   modifiers?: OrderItemModifier[] | null;
   unit_factor?: number | null;
   sell_unit?: string | null;
+  serving_unit?: string | null;
   cost_total?: number | null;
   /** Current on-hand stock for the linked inventory item, when known. */
   stock_quantity?: number | null;
@@ -1685,6 +1729,7 @@ export type OrderWorkflowAction = {
   | "resend_completion_prompt"
   | "cancel"
   | "refund"
+  | "record_payment"
   | "delete";
   label: string;
   to_status?: OrderStatus | null;
@@ -1861,6 +1906,7 @@ export type OrderCreatePayload = {
     quantity: number;
     unit_price?: number | null;
     sell_unit?: string | null;
+    serving_unit?: string | null;
     unit_factor?: number | null;
     notes?: string | null;
     modifiers?: OrderItemModifier[] | null;

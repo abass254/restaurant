@@ -16,6 +16,7 @@ from app.models import (
     InventoryItem,
     Order,
     OrderItem,
+    PreparedMenuStock,
     PurchaseOrder,
     RecipeServingUnit,
     StockMovement,
@@ -24,13 +25,17 @@ from app.models import (
 )
 from app.services.inventory_stock_service import (
     MONEY,
+    InsufficientStockError,
+    LedgerLine,
     QTY,
     StockLocation,
     location_quantity,
     lock_item,
     record_movement,
+    record_stock_out,
     total_on_hand,
 )
+from app.services.sell_units import sell_units_for_item
 from app.services.menu_options import account_recipe, line_stock_usage
 from app.services.kitchen_menu_service import MENU_CATEGORIES
 from app.services.order_stock_service import kitchen_issuing_on
@@ -95,11 +100,32 @@ def menu_costing(db: Session, account_id: str) -> list[dict[str, Any]]:
         .all()
     )
     usages: dict[str, list[dict]] = {}
+    unit_usages: dict[str, dict[str, list[dict]]] = {}
     stock_ids: set[str] = set()
     for row in menu_rows:
-        usage = line_stock_usage(db, account_id, row.product, []) if row.product else []
+        recipe_units = {
+            (line.serving_unit or "servings").strip()
+            for line in (row.product.recipe_lines or [])
+            if line.account_id == account_id
+        } if row.product else set()
+        if not recipe_units:
+            recipe_units = {serving_units.get(str(row.product_id), "servings")}
+        recipe_units = sorted(recipe_units)
+        unit_usages[row.id] = {
+            unit: line_stock_usage(db, account_id, row.product, [], serving_unit=unit)
+            if row.product
+            else []
+            for unit in recipe_units
+        }
+        default_unit = serving_units.get(str(row.product_id))
+        usage = unit_usages[row.id].get(default_unit) if default_unit else None
+        usage = usage or next(iter(unit_usages[row.id].values()), [])
         usages[row.id] = usage
-        stock_ids.update(entry["stock_item_id"] for entry in usage)
+        stock_ids.update(
+            entry["stock_item_id"]
+            for entries in unit_usages[row.id].values()
+            for entry in entries
+        )
 
     stock = {
         item.id: item
@@ -116,10 +142,17 @@ def menu_costing(db: Session, account_id: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for row in menu_rows:
         product = row.product
-        has_recipe = bool(account_recipe(product, account_id)) or (
+        has_recipe = bool(
+            product
+            and any(line.account_id == account_id for line in product.recipe_lines or [])
+        ) or (
             product is not None
             and product.is_combo()
-            and any(account_recipe(c.component, account_id) for c in product.combo_component_links or [])
+            and any(
+                any(line.account_id == account_id for line in component.component.recipe_lines or [])
+                for component in product.combo_component_links or []
+                if component.component is not None
+            )
         )
         cost = Decimal("0")
         missing_cost: list[str] = []
@@ -166,6 +199,82 @@ def menu_costing(db: Session, account_id: str) -> list[dict[str, Any]]:
                     "recipe": bool(entry.get("recipe")),
                 }
             )
+        equivalences: list[dict[str, Any]] = []
+        for unit, unit_entries in unit_usages.get(row.id, {}).items():
+            capacity: Decimal | None = None
+            unit_limiting: str | None = None
+            for entry in unit_entries:
+                item = stock.get(entry["stock_item_id"])
+                if item is None:
+                    capacity = Decimal("0")
+                    unit_limiting = "Missing supply"
+                    continue
+                from_kitchen = kitchen_on and (
+                    entry.get("recipe") or item.normalized_role() == "raw_material"
+                )
+                on_hand = (
+                    Decimal(str(item.kitchen_quantity or 0))
+                    if from_kitchen
+                    else Decimal(str(item.stock_quantity or 0))
+                )
+                per_portion = Decimal(str(entry["qty"]))
+                if per_portion > 0:
+                    can_make = max(on_hand, Decimal("0")) / per_portion
+                    if capacity is None or can_make < capacity:
+                        capacity = can_make
+                        unit_limiting = item.product.name if item.product else "Supply"
+            prepared_balance = location_quantity(row, "prepared", unit, db=db)
+            prepared_tracking = row.prepared_quantity is not None
+            available = (
+                prepared_balance
+                if prepared_tracking
+                else capacity
+            )
+            recipe_lines = account_recipe(product, account_id, unit) if product else []
+            batch_counts: list[int] = []
+            if recipe_lines:
+                for recipe_line in recipe_lines:
+                    item = stock.get(str(recipe_line.ingredient_product_id))
+                    if item is None:
+                        batch_counts.append(0)
+                        continue
+                    from_kitchen = kitchen_on
+                    on_hand = (
+                        Decimal(str(item.kitchen_quantity or 0))
+                        if from_kitchen
+                        else Decimal(str(item.stock_quantity or 0))
+                    )
+                    batch_qty = Decimal(str(recipe_line.batch_quantity or recipe_line.quantity))
+                    if batch_qty > 0:
+                        batch_counts.append(
+                            int((max(on_hand, Decimal("0")) / batch_qty).to_integral_value(rounding=ROUND_FLOOR))
+                        )
+            equivalences.append(
+                {
+                    "serving_unit": unit,
+                    "portions_available": (
+                        int(available.to_integral_value(rounding=ROUND_FLOOR))
+                        if available is not None
+                        else None
+                    ),
+                    "prepared_quantity": _f(prepared_balance) if prepared_tracking else None,
+                    "portions_producible": (
+                        int(capacity.to_integral_value(rounding=ROUND_FLOOR))
+                        if capacity is not None
+                        else None
+                    ),
+                    "batches_producible": min(batch_counts) if batch_counts else None,
+                    "limiting_ingredient": unit_limiting,
+                }
+            )
+        default_equivalence = next(
+            (
+                equivalence
+                for equivalence in equivalences
+                if equivalence["serving_unit"] == serving_units.get(str(row.product_id))
+            ),
+            equivalences[0] if equivalences else None,
+        )
         price = Decimal(str(row.selling_price)) if row.selling_price is not None else None
         out.append(
             {
@@ -185,7 +294,14 @@ def menu_costing(db: Session, account_id: str) -> list[dict[str, Any]]:
                 "gross_margin": float((price - cost).quantize(MONEY)) if ingredients and price is not None else None,
                 "missing_cost": missing_cost,
                 "portions_available": (
-                    int(portions.to_integral_value(rounding=ROUND_FLOOR)) if portions is not None else None
+                    default_equivalence["portions_available"]
+                    if default_equivalence
+                    else None
+                ),
+                "prepared_quantity": (
+                    default_equivalence["prepared_quantity"]
+                    if default_equivalence
+                    else _f(row.prepared_quantity)
                 ),
                 "limiting_ingredient": limiting,
                 "portions_with_store": (
@@ -194,9 +310,118 @@ def menu_costing(db: Session, account_id: str) -> list[dict[str, Any]]:
                     else None
                 ),
                 "ingredients": ingredients,
+                "equivalences": equivalences,
             }
         )
     return out
+
+
+def prepare_recipe_batch(
+    db: Session,
+    account_id: str,
+    inventory_item_id: str,
+    *,
+    batch_count: int = 1,
+    serving_unit: str | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """Consume the defined ingredient batch and add its menu portions to prepared stock."""
+    dish_item = (
+        db.query(InventoryItem)
+        .options(joinedload(InventoryItem.product))
+        .filter(
+            InventoryItem.id == inventory_item_id,
+            InventoryItem.account_id == account_id,
+        )
+        .with_for_update()
+        .first()
+    )
+    if dish_item is None or dish_item.product is None:
+        raise StockTakeError("Menu item not found.")
+    if dish_item.prepared_quantity is None:
+        raise StockTakeError("Save the batch recipe before preparing portions.")
+
+    recipe_lines = account_recipe(dish_item.product, account_id, serving_unit)
+    if not recipe_lines:
+        raise StockTakeError("Set a recipe for this menu item before preparing portions.")
+    effective_unit = serving_unit or recipe_lines[0].serving_unit or "servings"
+    yields = {
+        Decimal(str(line.batch_yield or 1))
+        for line in recipe_lines
+    }
+    if len(yields) != 1:
+        raise StockTakeError("All supplies in this recipe equivalence must have the same batch yield.")
+    portions_per_batch = next(iter(yields))
+    if portions_per_batch <= 0:
+        raise StockTakeError("The recipe batch must make at least one menu portion.")
+
+    product_ids = {str(line.ingredient_product_id) for line in recipe_lines}
+    supplies = {
+        item.product_id: item
+        for item in (
+            db.query(InventoryItem)
+            .filter(
+                InventoryItem.account_id == account_id,
+                InventoryItem.product_id.in_(product_ids),
+            )
+            .with_for_update()
+            .all()
+        )
+    }
+    location: StockLocation = "kitchen" if kitchen_issuing_on(db.get(Account, account_id)) else "store"
+    ingredient_lines: list[LedgerLine] = []
+    for line in recipe_lines:
+        supply = supplies.get(str(line.ingredient_product_id))
+        if supply is None:
+            raise StockTakeError("A recipe supply is no longer in this shop's inventory.")
+        if location_quantity(supply, location) is None:
+            raise StockTakeError(f"Stock for {supply.product.name if supply.product else 'a recipe supply'} is not tracked at the selected location.")
+        ingredient_lines.append(
+            LedgerLine(
+                supply.id,
+                Decimal(str(line.batch_quantity or line.quantity)) * batch_count,
+                location=location,
+            )
+        )
+
+    now = datetime.utcnow()
+    try:
+        ingredient_movements = record_stock_out(
+            db,
+            ingredient_lines,
+            account_id=account_id,
+            reason="production",
+            allow_negative=False,
+            user_id=user_id,
+            note=f"Prepared {dish_item.product.name}: {batch_count} recipe batch(es)",
+        )
+        output_movement = record_movement(
+            db,
+            dish_item,
+            account_id=account_id,
+            direction="in",
+            quantity=portions_per_batch * batch_count,
+            reason="production",
+            allow_negative=True,
+            user_id=user_id,
+            note=f"Prepared from {batch_count} recipe batch(es)",
+            now=now,
+            location="prepared",
+            serving_unit=effective_unit,
+        )
+    except InsufficientStockError as exc:
+        raise StockTakeError(str(exc)) from exc
+    return {
+        "inventory_item_id": dish_item.id,
+        "name": dish_item.product.name,
+        "prepared_quantity": float(
+            location_quantity(dish_item, "prepared", effective_unit, db=db) or 0
+        ),
+        "serving_unit": effective_unit,
+        "batch_count": batch_count,
+        "portions_added": float(output_movement.quantity),
+        "ingredient_movements": len(ingredient_movements),
+    }
 
 
 # --- Stock card ----------------------------------------------------------------
@@ -243,6 +468,7 @@ def stock_card(
             "unit": (item.product.unit if item.product else None) or "Piece",
             "stock_quantity": _f(item.stock_quantity),
             "kitchen_quantity": _f(item.kitchen_quantity),
+            "prepared_quantity": _f(item.prepared_quantity),
             "total_quantity": _f(total),
             "average_cost": _f(item.buying_price),
             "stock_value": (
@@ -485,6 +711,10 @@ def stock_take_out(take: StockTake, *, with_lines: bool = True) -> dict[str, Any
                     else None
                 )
                 or "Piece",
+                "units": [
+                    {"name": unit["name"], "factor": unit["factor"]}
+                    for unit in sell_units_for_item(line.inventory_item)
+                ] if line.inventory_item is not None else [],
                 "expected_qty": _f(line.expected_qty),
                 "current_qty": (
                     _f(location_quantity(line.inventory_item, where) or Decimal("0"))
@@ -518,7 +748,7 @@ def _bucket(movement: StockMovement) -> str:
         return "issued"
     if reason == "kitchen_return":
         return "returned"
-    if reason in ("sale", "sale_reversal"):
+    if reason in ("sale", "sale_reversal", "production"):
         return "used_in_sales"
     if reason in ("wastage", "damage"):
         return "wasted"

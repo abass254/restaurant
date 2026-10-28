@@ -73,6 +73,10 @@ class Account(Base):
     kitchen_issuing_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     # Ordered restaurant menu sections: [{"id": "mains", "label": "Mains"}, ...]
     menu_sections: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    # Restaurant tables: [{"id": "table_1", "label": "Table 1"}, ...]
+    restaurant_tables: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    # Restaurant stations: [{"id": "kitchen", "label": "Kitchen"}, ...]
+    restaurant_stations: Mapped[Any | None] = mapped_column(JSON, nullable=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Merchant Station: online order acceptance + kitchen prep timing
@@ -1103,6 +1107,7 @@ class ModifierGroup(Base):
     name: Mapped[str] = mapped_column(String(120))
     min_select: Mapped[int] = mapped_column(Integer, default=0)
     max_select: Mapped[int] = mapped_column(Integer, default=1)
+    is_extra: Mapped[bool] = mapped_column(Boolean, default=False)
     # Included choices (e.g. the drink in a meal) are free; otherwise supplies charge their selling price.
     included: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
@@ -1142,6 +1147,21 @@ class ModifierOption(Base):
     )
     # How much of the linked supply one pick uses, in the supply's unit (e.g. 0.05 kg cheese).
     stock_qty: Mapped[Any] = mapped_column(Numeric(10, 3), default=1)
+    # Extra recipe: stock_qty * batch_yield of the supply makes batch_yield portions (e.g. sticks).
+    batch_yield: Mapped[Any] = mapped_column(Numeric(10, 3), default=1)
+    portion_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Modifiers only: what one pick uses — "store_item" or "menu" (source_product_id) or "extra" (source_option_id).
+    source_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    source_product_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("catalogue.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    source_option_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("modifier_options.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -1150,6 +1170,50 @@ class ModifierOption(Base):
 
     group: Mapped[ModifierGroup] = relationship(back_populates="options")
     product: Mapped[Catalogue | None] = relationship(foreign_keys=[product_id])
+    source_product: Mapped[Catalogue | None] = relationship(foreign_keys=[source_product_id])
+    source_option: Mapped[ModifierOption | None] = relationship(
+        "ModifierOption", foreign_keys=[source_option_id], remote_side="ModifierOption.id"
+    )
+    recipes: Mapped[list[ModifierOptionRecipe]] = relationship(
+        "ModifierOptionRecipe",
+        back_populates="option",
+        cascade="all, delete-orphan",
+        order_by="ModifierOptionRecipe.sort_order",
+    )
+
+
+class ModifierOptionRecipe(Base):
+    """Supply one pick of an extra uses when it is added to a given meal."""
+
+    __tablename__ = "modifier_option_recipes"
+    __table_args__ = (
+        UniqueConstraint("option_id", "menu_product_id", "product_id", name="uq_modifier_option_recipes"),
+        Index("modifier_option_recipes_option_idx", "option_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    option_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("modifier_options.id", ondelete="CASCADE"),
+    )
+    menu_product_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("catalogue.id", ondelete="CASCADE"),
+    )
+    product_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("catalogue.id", ondelete="CASCADE"),
+    )
+    # Supply per pick, in the supply's unit: 1 / portions per unit.
+    stock_qty: Mapped[Any] = mapped_column(Numeric(14, 6), default=1)
+    portions_per_unit: Mapped[Any] = mapped_column(Numeric(10, 3), default=1)
+    portion_unit: Mapped[str] = mapped_column(String(32), default="portions")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    option: Mapped[ModifierOption] = relationship(back_populates="recipes")
+    menu_product: Mapped[Catalogue] = relationship(foreign_keys=[menu_product_id])
+    product: Mapped[Catalogue] = relationship(foreign_keys=[product_id])
 
 
 class CatalogueModifierGroup(Base):
@@ -1178,11 +1242,17 @@ class CatalogueModifierGroup(Base):
 
 
 class RecipeLine(Base):
-    """How much of a supply one portion of a dish uses, per shop (e.g. Chapati: 0.1 kg flour)."""
+    """How much of a supply one portion of a dish uses for one menu equivalence."""
 
     __tablename__ = "recipe_lines"
     __table_args__ = (
-        UniqueConstraint("account_id", "product_id", "ingredient_product_id", name="uq_recipe_lines"),
+        UniqueConstraint(
+            "account_id",
+            "product_id",
+            "ingredient_product_id",
+            "serving_unit",
+            name="uq_recipe_lines",
+        ),
         Index("recipe_lines_account_product_idx", "account_id", "product_id"),
     )
 
@@ -1200,6 +1270,10 @@ class RecipeLine(Base):
         ForeignKey("catalogue.id", ondelete="CASCADE"),
     )
     quantity: Mapped[Any] = mapped_column(Numeric(12, 4))
+    batch_quantity: Mapped[Any | None] = mapped_column(Numeric(14, 6), default=1, nullable=True)
+    batch_yield: Mapped[Any | None] = mapped_column(Numeric(14, 6), default=1, nullable=True)
+    serving_unit: Mapped[str] = mapped_column(String(32), default="servings")
+    ingredient_unit: Mapped[str | None] = mapped_column(String(64), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -1227,6 +1301,29 @@ class RecipeServingUnit(Base):
     )
     serving_unit: Mapped[str] = mapped_column(String(32), default="servings")
     product: Mapped[Catalogue] = relationship(back_populates="recipe_serving_units")
+
+
+class PreparedMenuStock(Base):
+    """Prepared portions of one menu item, kept separately by serving equivalence."""
+
+    __tablename__ = "prepared_menu_stocks"
+    __table_args__ = (
+        UniqueConstraint(
+            "inventory_item_id",
+            "serving_unit",
+            name="uq_prepared_menu_stocks_item_unit",
+        ),
+        Index("ix_prepared_menu_stocks_item", "inventory_item_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    inventory_item_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("inventory_items.id", ondelete="CASCADE"),
+    )
+    serving_unit: Mapped[str] = mapped_column(String(32))
+    quantity: Mapped[Any] = mapped_column(Numeric(12, 3), default=0)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class KitchenEquivalenceUnit(Base):
@@ -1301,6 +1398,8 @@ class InventoryItem(Base):
     stock_quantity: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     # Restaurant kitchen issuing: stock_quantity is the store, this is the kitchen.
     kitchen_quantity: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    # Prepared menu portions, separate from both ingredient and store stock.
+    prepared_quantity: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     low_stock_threshold: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     # for_sale = sell only | raw_material = buy only | both = buy & sell
     inventory_role: Mapped[str] = mapped_column(String(20), default="both")
@@ -1378,6 +1477,7 @@ class StockMovement(Base):
     reason: Mapped[str] = mapped_column(String(32))
     # store | kitchen (kitchen only when the restaurant uses kitchen issuing).
     location: Mapped[str] = mapped_column(String(16), default="store")
+    serving_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Cost per base unit at the time of the movement.
     unit_cost: Mapped[Any | None] = mapped_column(Numeric(14, 4), nullable=True)
@@ -1434,6 +1534,18 @@ class StockMovement(Base):
     account: Mapped[Account] = relationship()
     inventory_item: Mapped[InventoryItem] = relationship()
     supplier: Mapped[ShopSupplier | None] = relationship()
+    # Timeline and audit views show the source document for each movement.
+    # Keep these relationships explicit: the foreign-key columns alone are
+    # insufficient for eager loading and caused the inventory timeline to
+    # fail at runtime for movements linked to a sale or purchase order.
+    purchase_order: Mapped["PurchaseOrder | None"] = relationship(
+        "PurchaseOrder",
+        foreign_keys=[purchase_order_id],
+    )
+    order: Mapped["Order | None"] = relationship(
+        "Order",
+        foreign_keys=[order_id],
+    )
 
 
 class PurchaseOrder(Base):
@@ -1896,6 +2008,7 @@ class OrderItem(Base):
     line_total: Mapped[Any] = mapped_column(Numeric(12, 2))
     # Stock deduction is quantity * unit_factor in the inventory base unit.
     sell_unit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    serving_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     unit_factor: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=1)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     modifiers: Mapped[Any | None] = mapped_column(JSON, nullable=True)

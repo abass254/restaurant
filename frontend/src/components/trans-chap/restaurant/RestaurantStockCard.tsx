@@ -103,6 +103,12 @@ export function RestaurantStockCard() {
             <strong>{formatQty(item.stock_quantity, item.unit)}</strong>
           </div>
         )}
+        {item.prepared_quantity != null && (
+          <div className="rs-stat">
+            <span>Prepared portions</span>
+            <strong>{formatQty(item.prepared_quantity, "portions")}</strong>
+          </div>
+        )}
         <div className="rs-stat">
           <span>Average cost</span>
           <strong>{item.average_cost != null ? `${formatKsh(item.average_cost)} / ${item.unit}` : "—"}</strong>

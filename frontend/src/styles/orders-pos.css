@@ -3353,6 +3353,33 @@ html[data-theme="dark"] .pos-modifier-modal__item-name {
   gap: 22px;
 }
 
+.pos-modifier-category {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pos-modifier-category__title {
+  margin: 0;
+  color: #1e293b;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+html[data-theme="dark"] .pos-modifier-category__title {
+  color: #e2e8f0;
+}
+
+.pos-modifier-category__hint {
+  margin: -6px 0 0;
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+html[data-theme="dark"] .pos-modifier-category__hint {
+  color: #94a3b8;
+}
+
 .pos-modifier-group {
   display: flex;
   flex-direction: column;
@@ -3500,6 +3527,17 @@ html[data-theme="dark"] .pos-modifier-chip__label {
   font-weight: 700;
   color: #ea580c;
   white-space: nowrap;
+}
+
+.pos-modifier-chip__portion {
+  padding-left: 30px;
+  color: #64748b;
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+
+html[data-theme="dark"] .pos-modifier-chip__portion {
+  color: #94a3b8;
 }
 
 .pos-modifier-custom-row {

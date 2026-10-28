@@ -90,7 +90,7 @@ export const merchantNavLinks: MerchantNavLink[] = [
   {
     href: "/trans-chap",
     icon: "fa-bolt",
-    label: "Trans Chap",
+    label: "Dukai Merchant",
     section: "dashboard",
     group: "more",
   },

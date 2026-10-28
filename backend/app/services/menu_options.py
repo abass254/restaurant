@@ -6,7 +6,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models import (
     Account,
@@ -16,6 +16,7 @@ from app.models import (
     InventoryItem,
     ModifierGroup,
     ModifierOption,
+    ModifierOptionRecipe,
     RecipeLine,
 )
 
@@ -100,10 +101,47 @@ def option_unit_price(option: ModifierOption, group: ModifierGroup) -> Decimal:
     return _money(option.price_delta)
 
 
-def account_recipe(product: Catalogue | None, account_id: str) -> list[RecipeLine]:
+def _unit_key(value: str | None) -> str:
+    return (value or "").strip().casefold().rstrip("s")
+
+
+def account_recipe(
+    product: Catalogue | None,
+    account_id: str,
+    serving_unit: str | None = None,
+) -> list[RecipeLine]:
     if product is None:
         return []
-    return [line for line in product.recipe_lines or [] if line.account_id == account_id]
+    lines = [line for line in product.recipe_lines or [] if line.account_id == account_id]
+    if not lines:
+        return []
+
+    units = {line.serving_unit or "servings" for line in lines}
+    if serving_unit:
+        requested = _unit_key(serving_unit)
+        matches = [line for line in lines if _unit_key(line.serving_unit) == requested]
+        if matches:
+            return matches
+
+    defaults = [
+        setting.serving_unit
+        for setting in product.recipe_serving_units or []
+        if setting.account_id == account_id
+    ]
+    preferred = defaults[0] if defaults else (next(iter(units)) if len(units) == 1 else None)
+    if preferred:
+        matches = [line for line in lines if _unit_key(line.serving_unit) == _unit_key(preferred)]
+        if matches:
+            return matches
+    return lines if len(units) == 1 else []
+
+
+def _recipe_line_quantity(line: RecipeLine) -> Decimal:
+    batch_quantity = getattr(line, "batch_quantity", None)
+    batch_yield = getattr(line, "batch_yield", None)
+    if batch_quantity is not None and batch_yield is not None and Decimal(str(batch_yield)) > 0:
+        return Decimal(str(batch_quantity)) / Decimal(str(batch_yield))
+    return Decimal(str(line.quantity))
 
 
 def line_stock_usage(
@@ -111,39 +149,106 @@ def line_stock_usage(
     account_id: str,
     product: Catalogue,
     chosen: list[ModifierOption] | None = None,
+    serving_unit: str | None = None,
 ) -> list[dict]:
     """Other stock one unit of ``product`` uses: recipe ingredients, meal parts and linked options.
 
-    Returns ``[{"stock_item_id", "qty", "recipe"?}]``; supplies without tracked stock are
-    skipped. Recipe amounts are estimates and carry ``recipe: True``.
+    Returns ``[{"stock_item_id", "qty", "recipe"?, "option"?, "prepared"?}]``; supplies without
+    tracked stock are skipped. Recipe amounts are estimates and carry ``recipe: True``.
+    Rows a modifier brings in carry ``option: True`` so a prepared meal keeps them; a modifier
+    using a prepared menu item takes one of its prepared portions (``prepared: True``).
     """
-    # (catalogue id, qty, is recipe estimate)
-    needs: list[tuple[str, Decimal, bool]] = []
-    for line in account_recipe(product, account_id):
-        needs.append((str(line.ingredient_product_id), Decimal(str(line.quantity)), True))
+    # (catalogue id, qty, kind) where kind is "exact", "recipe" or "option_recipe".
+    needs: list[tuple[str, Decimal, str]] = []
+    for line in account_recipe(product, account_id, serving_unit):
+        needs.append((str(line.ingredient_product_id), _recipe_line_quantity(line), "recipe"))
     if product.is_combo():
         for component in product.combo_component_links or []:
             parts = Decimal(str(component.quantity or 1))
-            needs.append((str(component.component_product_id), parts, False))
+            needs.append((str(component.component_product_id), parts, "exact"))
             for line in account_recipe(component.component, account_id):
-                needs.append((str(line.ingredient_product_id), Decimal(str(line.quantity)) * parts, True))
+                needs.append((str(line.ingredient_product_id), _recipe_line_quantity(line) * parts, "recipe"))
+    meal_ids = {str(product.id)}
+    if product.is_combo():
+        meal_ids |= {str(component.component_product_id) for component in product.combo_component_links or []}
+    # Prepared inventory row id -> portions, for modifiers that use a prepared menu item.
+    prepared: dict[str, Decimal] = {}
     for option in chosen or []:
-        if option.product_id:
-            needs.append((str(option.product_id), Decimal(str(option.stock_qty or 1)), False))
-    if not needs:
+        source_kind = getattr(option, "source_kind", None)
+        if source_kind:
+            _source_needs(db, account_id, option, meal_ids, needs, prepared)
+        else:
+            needs.extend(_extra_needs(option, meal_ids))
+    if not needs and not prepared:
         return []
 
     stock_ids = _stock_item_ids(db, account_id, {product_id for product_id, _, _ in needs})
-    totals: dict[tuple[str, bool], Decimal] = {}
-    for product_id, qty, is_recipe in needs:
+    totals: dict[tuple[str, str], Decimal] = {}
+    for product_id, qty, kind in needs:
         stock_id = stock_ids.get(product_id)
         if stock_id:
-            key = (stock_id, is_recipe)
+            key = (stock_id, kind)
             totals[key] = totals.get(key, Decimal("0")) + qty
+    flags = {"exact": {}, "recipe": {"recipe": True}, "option_recipe": {"recipe": True, "option": True}}
     return [
-        {"stock_item_id": stock_id, "qty": float(qty), **({"recipe": True} if is_recipe else {})}
-        for (stock_id, is_recipe), qty in totals.items()
+        {"stock_item_id": stock_id, "qty": float(qty), **flags[kind]}
+        for (stock_id, kind), qty in totals.items()
+    ] + [
+        {"stock_item_id": stock_id, "qty": float(qty), "prepared": True, "option": True}
+        for stock_id, qty in prepared.items()
     ]
+
+
+def _extra_needs(option: ModifierOption, meal_ids: set[str]) -> list[tuple[str, Decimal, str]]:
+    """Supply one pick of an extra uses on these meals; legacy extras link one supply directly."""
+    recipes = list(option.recipes or [])
+    if recipes:
+        return [
+            (str(recipe.product_id), Decimal(str(recipe.stock_qty or 1)), "exact")
+            for recipe in recipes
+            if str(recipe.menu_product_id) in meal_ids
+        ]
+    if option.product_id:
+        return [(str(option.product_id), Decimal(str(option.stock_qty or 1)), "exact")]
+    return []
+
+
+def _source_needs(
+    db: Session,
+    account_id: str,
+    option: ModifierOption,
+    meal_ids: set[str],
+    needs: list[tuple[str, Decimal, str]],
+    prepared: dict[str, Decimal],
+) -> None:
+    """Stock one pick of a modifier uses through its source: a store item, a menu item or an extra."""
+    kind = option.source_kind
+    if kind == "store_item" and option.source_product_id:
+        needs.append((str(option.source_product_id), Decimal("1"), "exact"))
+    elif kind == "menu" and option.source_product_id:
+        menu = option.source_product
+        inv = (
+            db.query(InventoryItem)
+            .filter(InventoryItem.account_id == account_id, InventoryItem.product_id == option.source_product_id)
+            .first()
+        )
+        if inv is not None and inv.prepared_quantity is not None:
+            prepared[str(inv.id)] = prepared.get(str(inv.id), Decimal("0")) + 1
+            return
+        lines = account_recipe(menu, account_id)
+        if lines:
+            needs.extend(
+                (str(line.ingredient_product_id), _recipe_line_quantity(line), "option_recipe") for line in lines
+            )
+        else:
+            needs.append((str(option.source_product_id), Decimal("1"), "exact"))
+    elif kind == "extra" and option.source_option is not None:
+        extra = option.source_option
+        matched = _extra_needs(extra, meal_ids)
+        if not matched and extra.recipes:
+            first = extra.recipes[0]
+            matched = [(str(first.product_id), Decimal(str(first.stock_qty or 1)), "exact")]
+        needs.extend(matched)
 
 
 def resolve_line_options(
@@ -245,11 +350,29 @@ def option_availability(db: Session, account: Account | None) -> list[dict]:
     options = (
         db.query(ModifierOption)
         .join(ModifierGroup, ModifierGroup.id == ModifierOption.group_id)
-        .options(joinedload(ModifierOption.product))
+        .options(
+            joinedload(ModifierOption.product),
+            selectinload(ModifierOption.recipes).joinedload(ModifierOptionRecipe.product),
+            joinedload(ModifierOption.source_product),
+        )
         .filter(ModifierGroup.account_id == account_id)
         .all()
     )
-    linked = {str(option.product_id) for option in options if option.product_id}
+    menu_recipes = {
+        str(option.source_product_id): account_recipe(option.source_product, account_id)
+        for option in options
+        if option.source_kind == "menu" and option.source_product is not None
+    }
+    linked = (
+        {str(option.product_id) for option in options if option.product_id}
+        | {str(recipe.product_id) for option in options for recipe in option.recipes or []}
+        | {
+            str(option.source_product_id)
+            for option in options
+            if option.source_kind in ("store_item", "menu") and option.source_product_id
+        }
+        | {str(line.ingredient_product_id) for lines in menu_recipes.values() for line in lines}
+    )
     stock = {
         str(item.product_id): item
         for item in (
@@ -262,18 +385,78 @@ def option_availability(db: Session, account: Account | None) -> list[dict]:
     }
     kitchen_on = is_restaurant(account) and bool(getattr(account, "kitchen_issuing_enabled", False))
 
+    def on_hand_of(product_id: str) -> tuple[Decimal | None, str | None]:
+        item = stock.get(product_id)
+        if item is None or item.stock_quantity is None:
+            return None, None
+        location = "kitchen" if kitchen_on and item.normalized_role() == "raw_material" else "store"
+        raw = item.kitchen_quantity if location == "kitchen" else item.stock_quantity
+        return Decimal(str(raw or 0)), location
+
+    def source_row(option: ModifierOption, extra_rows: dict[str, dict]) -> dict:
+        """on_hand / location / unit / short for a modifier that uses a store item, menu item or extra."""
+        kind = option.source_kind
+        if kind == "extra":
+            row = extra_rows.get(str(option.source_option_id))
+            if row is None:
+                return {"short": False}
+            return {
+                "short": not row["available"],
+                "on_hand": row["on_hand"],
+                "location": row["location"],
+                "unit": row["unit"],
+            }
+        product_id = str(option.source_product_id or "")
+        item = stock.get(product_id)
+        unit = option.source_product.unit if option.source_product else None
+        if item is not None and item.is_active is False:
+            return {"short": True, "unit": unit}
+        if kind == "menu" and item is not None and item.prepared_quantity is not None:
+            have = Decimal(str(item.prepared_quantity or 0))
+            return {"short": have < 1, "on_hand": float(have), "location": "prepared", "unit": unit}
+        if kind == "menu" and menu_recipes.get(product_id):
+            short = False
+            for line in menu_recipes[product_id]:
+                have, _ = on_hand_of(str(line.ingredient_product_id))
+                if have is not None and have < _recipe_line_quantity(line):
+                    short = True
+            return {"short": short}
+        have, where = on_hand_of(product_id)
+        return {
+            "short": have is not None and have < 1,
+            "on_hand": float(have) if have is not None else None,
+            "location": where,
+            "unit": unit,
+        }
+
     rows: list[dict] = []
+    sourced: list[ModifierOption] = []
     for option in options:
-        item = stock.get(str(option.product_id)) if option.product_id else None
+        if option.source_kind:
+            sourced.append(option)
+            continue
+        # (supply id, per pick, unit); an extra stays available while any of its meals can make one.
+        uses = [
+            (str(recipe.product_id), Decimal(str(recipe.stock_qty or 1)), recipe.product.unit if recipe.product else None)
+            for recipe in option.recipes or []
+        ] or (
+            [(str(option.product_id), Decimal(str(option.stock_qty or 1)), option.product.unit if option.product else None)]
+            if option.product_id
+            else []
+        )
         on_hand: Decimal | None = None
         location: str | None = None
-        if item is not None and item.stock_quantity is not None:
-            location = "kitchen" if kitchen_on and item.normalized_role() == "raw_material" else "store"
-            raw = item.kitchen_quantity if location == "kitchen" else item.stock_quantity
-            on_hand = Decimal(str(raw or 0))
+        unit: str | None = None
+        short = bool(uses)
+        for product_id, per_pick, use_unit in uses:
+            have, where = on_hand_of(product_id)
+            if have is None or have >= per_pick:
+                short = False
+            if have is not None and (on_hand is None or have > on_hand):
+                on_hand, location, unit = have, where, use_unit
         if option.is_active is False:
             reason = "sold_out"
-        elif on_hand is not None and on_hand < Decimal(str(option.stock_qty or 1)):
+        elif short:
             reason = "out_of_stock"
         else:
             reason = None
@@ -286,7 +469,29 @@ def option_availability(db: Session, account: Account | None) -> list[dict]:
                 "reason": reason,
                 "on_hand": float(on_hand) if on_hand is not None else None,
                 "location": location,
-                "unit": option.product.unit if option.product else None,
+                "unit": unit,
+            }
+        )
+
+    by_option = {row["option_id"]: row for row in rows}
+    for option in sourced:
+        source = source_row(option, by_option)
+        if option.is_active is False:
+            reason = "sold_out"
+        elif source["short"]:
+            reason = "out_of_stock"
+        else:
+            reason = None
+        rows.append(
+            {
+                "option_id": option.id,
+                "group_id": option.group_id,
+                "is_active": option.is_active is not False,
+                "available": reason is None,
+                "reason": reason,
+                "on_hand": source.get("on_hand"),
+                "location": source.get("location"),
+                "unit": source.get("unit"),
             }
         )
     return rows

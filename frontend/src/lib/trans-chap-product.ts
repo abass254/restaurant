@@ -13,8 +13,11 @@ import type {
   MealAddon,
   ModifierGroup,
   ModifierOption,
+  ModifierSourceKind,
   OptionAvailability,
   RecipeLine,
+  RestaurantStationDef,
+  RestaurantTableDef,
   ProductImageUploadResponse,
   StockMovementsResponse,
 } from "@/lib/types";
@@ -58,6 +61,20 @@ export function supportsKitchenRecipe(item: InventoryItem): boolean {
   );
 }
 
+export function hasKitchenRecipe(item: InventoryItem): boolean {
+  if (Array.isArray(item.product?.recipe) && item.product.recipe.length > 0) {
+    return true;
+  }
+  if (
+    item.product?.product_type === "combo" &&
+    Array.isArray(item.product.combo_components) &&
+    item.product.combo_components.length > 0
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /** Stock bought in (sold as-is or used in cooking), as opposed to dishes made in the kitchen. */
 export function isSupplyItem(item: InventoryItem): boolean {
   const type = item.product?.product_type;
@@ -92,6 +109,7 @@ export type ModifierGroupInput = {
   name: string;
   min_select: number;
   max_select: number;
+  is_extra?: boolean;
   included: boolean;
   options: {
     id?: string;
@@ -99,9 +117,31 @@ export type ModifierGroupInput = {
     price_delta: number;
     product_id?: string | null;
     stock_qty?: number;
+    batch_yield?: number;
+    portion_unit?: string | null;
+    source_kind?: ModifierSourceKind | null;
+    source_product_id?: string | null;
+    source_option_id?: string | null;
     is_default: boolean;
   }[];
 };
+
+/** An existing option as save input, keeping its supply recipe. */
+export function modifierOptionInput(option: ModifierOption): ModifierGroupInput["options"][number] {
+  return {
+    id: option.id,
+    name: option.name,
+    price_delta: option.price_delta,
+    is_default: option.is_default,
+    product_id: option.product_id ?? null,
+    stock_qty: option.stock_qty,
+    batch_yield: option.batch_yield,
+    portion_unit: option.portion_unit,
+    source_kind: option.source_kind ?? null,
+    source_product_id: option.source_product_id ?? null,
+    source_option_id: option.source_option_id ?? null,
+  };
+}
 
 /** Price of one pick, as the server charges it: included groups are free, otherwise the option's own price. */
 export function modifierOptionPrice(option: ModifierOption, group: Pick<ModifierGroup, "included">): number {
@@ -120,6 +160,18 @@ export async function setModifierOptionActive(optionId: string, isActive: boolea
   const res = await apiFetch<{ data: ModifierOption }>(apiRoutes.menuModifierOption(optionId), {
     method: "PATCH",
     body: JSON.stringify({ is_active: isActive }),
+  });
+  return res.data;
+}
+
+/** Replaces an extra's per-meal recipes; each meal named is given the extra. */
+export async function saveExtraRecipes(
+  optionId: string,
+  lines: { menu_product_id: string; product_id: string; portions_per_unit: number; portion_unit: string }[],
+): Promise<ModifierOption> {
+  const res = await apiFetch<{ data: ModifierOption }>(`${apiRoutes.menuModifierOption(optionId)}/recipes`, {
+    method: "PUT",
+    body: JSON.stringify({ lines }),
   });
   return res.data;
 }
@@ -185,7 +237,14 @@ export async function saveItemModifierGroups(
 
 export async function saveRecipe(
   dishProductId: string,
-  lines: { product_id: string; quantity: number }[],
+  lines: {
+    product_id: string;
+    quantity: number;
+    batch_quantity: number;
+    batch_yield: number;
+    serving_unit: string;
+    ingredient_unit: string;
+  }[],
   servingUnit: string,
 ): Promise<{ lines: RecipeLine[]; servingUnit: string }> {
   const res = await apiFetch<{ data: RecipeLine[]; serving_unit: string }>(apiRoutes.productRecipe(dishProductId), {
@@ -259,6 +318,52 @@ export async function saveMenuSections(
   return res.sections;
 }
 
+export const DEFAULT_RESTAURANT_TABLES: RestaurantTableDef[] = [
+  { id: "table_1", label: "Table 1" },
+  { id: "table_2", label: "Table 2" },
+  { id: "table_3", label: "Table 3" },
+  { id: "table_4", label: "Table 4" },
+  { id: "table_5", label: "Table 5" },
+  { id: "table_6", label: "Table 6" },
+  { id: "takeaway", label: "Takeaway" },
+];
+
+export const DEFAULT_RESTAURANT_STATIONS: RestaurantStationDef[] = [
+  { id: "kitchen", label: "Kitchen" },
+  { id: "bar", label: "Bar" },
+  { id: "grill", label: "Grill" },
+];
+
+export async function fetchRestaurantTables(): Promise<RestaurantTableDef[]> {
+  const res = await apiFetch<{ tables: RestaurantTableDef[] }>(apiRoutes.settingsTables);
+  return res.tables.length ? res.tables : DEFAULT_RESTAURANT_TABLES;
+}
+
+export async function saveRestaurantTables(
+  tables: { id?: string; label: string }[],
+): Promise<RestaurantTableDef[]> {
+  const res = await apiFetch<{ tables: RestaurantTableDef[] }>(apiRoutes.settingsTables, {
+    method: "PUT",
+    body: JSON.stringify({ tables }),
+  });
+  return res.tables;
+}
+
+export async function fetchRestaurantStations(): Promise<RestaurantStationDef[]> {
+  const res = await apiFetch<{ stations: RestaurantStationDef[] }>(apiRoutes.settingsStations);
+  return res.stations.length ? res.stations : DEFAULT_RESTAURANT_STATIONS;
+}
+
+export async function saveRestaurantStations(
+  stations: { id?: string; label: string }[],
+): Promise<RestaurantStationDef[]> {
+  const res = await apiFetch<{ stations: RestaurantStationDef[] }>(apiRoutes.settingsStations, {
+    method: "PUT",
+    body: JSON.stringify({ stations }),
+  });
+  return res.stations;
+}
+
 export type MenuProductType = "meal" | "combo" | "addon";
 
 /** Save a hotel dish, meal or add-on to the catalogue and price it for this shop. */
@@ -279,6 +384,23 @@ export async function createMenuItem(input: {
   });
   return addInventoryFromCatalogProduct(created.data.id, {
     selling_price: input.price,
+    stock_quantity: null,
+    inventory_role: "for_sale",
+  });
+}
+
+/** Create a restaurant meal in Kitchen before it has a menu price. */
+export async function createKitchenMeal(name: string): Promise<InventoryItem> {
+  const created = await apiFetch<CatalogProductMutationResponse>(apiRoutes.products, {
+    method: "POST",
+    body: JSON.stringify({
+      name: name.trim(),
+      product_type: "meal",
+      category: "food_beverage",
+    }),
+  });
+  return addInventoryFromCatalogProduct(created.data.id, {
+    selling_price: null,
     stock_quantity: null,
     inventory_role: "for_sale",
   });
@@ -405,9 +527,9 @@ export async function addInventoryFromCatalogProduct(
       method: "POST",
       body: JSON.stringify({
         product_id: productId,
-        selling_price: extras?.selling_price ?? null,
-        buying_price: extras?.buying_price ?? null,
-        stock_quantity: extras?.stock_quantity ?? 0,
+        selling_price: extras && "selling_price" in extras ? extras.selling_price : null,
+        buying_price: extras && "buying_price" in extras ? extras.buying_price : null,
+        stock_quantity: extras && "stock_quantity" in extras ? extras.stock_quantity : 0,
         inventory_role: extras?.inventory_role ?? "both",
         is_active: true,
       }),

@@ -141,8 +141,11 @@ export async function fetchPurchaseOrders(params: {
   return apiFetch(`${apiRoutes.purchaseOrders}${qs ? `?${qs}` : ""}`);
 }
 
-export async function fetchSupplyItems(): Promise<SupplyItem[]> {
-  const res = await apiFetch<{ data: SupplyItem[] }>(apiRoutes.purchaseOrderSupplyItems);
+export async function fetchSupplyItems(options: { activeOnly?: boolean } = {}): Promise<SupplyItem[]> {
+  const search = new URLSearchParams();
+  if (options.activeOnly) search.set("active_only", "true");
+  const suffix = search.size ? `?${search.toString()}` : "";
+  const res = await apiFetch<{ data: SupplyItem[] }>(`${apiRoutes.purchaseOrderSupplyItems}${suffix}`);
   return res.data;
 }
 
@@ -211,14 +214,36 @@ export type MenuCosting = {
   gross_margin: number | null;
   missing_cost: string[];
   portions_available: number | null;
+  prepared_quantity: number | null;
   limiting_ingredient: string | null;
   /** With store and kitchen: portions if the store issued everything it has. */
   portions_with_store: number | null;
   ingredients: MenuCostingIngredient[];
+  equivalences: Array<{
+    serving_unit: string;
+    portions_available: number | null;
+    prepared_quantity: number | null;
+    portions_producible: number | null;
+    batches_producible: number | null;
+    limiting_ingredient: string | null;
+  }>;
 };
 
 export async function fetchMenuCosting(): Promise<MenuCosting[]> {
   return (await apiFetch<{ data: MenuCosting[] }>(apiRoutes.restaurantMenuCosting)).data;
+}
+
+export async function prepareMenuRecipeBatch(
+  inventoryItemId: string,
+  servingUnit?: string,
+  batchCount = 1,
+): Promise<{ prepared_quantity: number; portions_added: number }> {
+  return (
+    await apiFetch<One<{ prepared_quantity: number; portions_added: number }>>(
+      apiRoutes.restaurantMenuPrepare(inventoryItemId),
+      json({ batch_count: batchCount, serving_unit: servingUnit || null }),
+    )
+  ).data;
 }
 
 // --- Stock card ------------------------------------------------------------------
@@ -229,7 +254,7 @@ export type StockMovementRow = {
   id: string;
   direction: "in" | "out";
   reason: string;
-  location: StockLocation;
+  location: StockLocation | "prepared";
   kitchen_issue_id: string | null;
   quantity: number;
   signed_quantity: number;
@@ -254,6 +279,7 @@ export type StockCard = {
     unit: string;
     stock_quantity: number | null;
     kitchen_quantity: number | null;
+    prepared_quantity: number | null;
     total_quantity: number | null;
     average_cost: number | null;
     stock_value: number | null;
@@ -271,12 +297,14 @@ export const MOVEMENT_REASON_LABELS: Record<string, string> = {
   adjustment: "Adjustment",
   issue: "Issued to kitchen",
   kitchen_return: "Returned to store",
+  production: "Prepared / used in batch",
   other: "Other",
 };
 
-export const LOCATION_LABELS: Record<StockLocation, string> = {
+export const LOCATION_LABELS: Record<StockLocation | "prepared", string> = {
   store: "Store",
   kitchen: "Kitchen",
+  prepared: "Prepared portions",
 };
 
 export async function fetchStockCard(itemId: string): Promise<StockCard> {
@@ -290,6 +318,7 @@ export type StockTakeLine = {
   inventory_item_id: string;
   item_name: string;
   unit: string;
+  units: BuyUnit[];
   expected_qty: number | null;
   current_qty: number | null;
   counted_qty: number | null;
@@ -411,6 +440,7 @@ export type KitchenItem = {
   inventory_item_id: string;
   name: string;
   unit: string;
+  units: BuyUnit[];
   inventory_role: "for_sale" | "raw_material" | "both";
   store_quantity: number;
   kitchen_quantity: number;
@@ -476,6 +506,7 @@ export type KitchenIssueLine = {
   inventory_item_id: string;
   item_name: string;
   unit: string;
+  units: BuyUnit[];
   requested_qty: number | null;
   issued_qty: number | null;
   unit_cost: number | null;
@@ -573,19 +604,6 @@ export async function cancelKitchenIssue(id: string): Promise<KitchenIssue> {
 
 export async function returnToStore(lines: ItemQty[], note?: string | null): Promise<KitchenStock> {
   return (await apiFetch<One<KitchenStock>>(apiRoutes.kitchenReturn, json({ lines, note: note || null }))).data;
-}
-
-export async function recordKitchenUsed(
-  lines: ItemQty[],
-  note?: string | null,
-  reason: "adjustment" | "wastage" = "adjustment",
-): Promise<KitchenStock> {
-  return (
-    await apiFetch<One<KitchenStock>>(
-      apiRoutes.kitchenUsed,
-      json({ lines, note: note || null, reason }),
-    )
-  ).data;
 }
 
 export async function enableKitchenIssuing(openingCounts: ItemQty[]): Promise<KitchenStock> {

@@ -126,7 +126,7 @@ export async function requestCameraPermission(): Promise<CameraPermissionResult>
       ok: false,
       state: "insecure",
       message:
-        "Camera needs HTTPS. Open Trans Chap with https:// — http://192.168… will not show a permission prompt.",
+        "Camera needs HTTPS. Open DukAI Merch with https:// — http://192.168… will not show a permission prompt.",
     };
   }
 

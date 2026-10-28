@@ -1,16 +1,24 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { confirmAction, extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import {
   deleteModifierGroup,
-  inventoryProductName,
   modifierRuleLabel,
   saveModifierGroup,
 } from "@/lib/trans-chap-product";
-import type { InventoryItem, ModifierGroup } from "@/lib/types";
+import type { ModifierGroup, ModifierOption, ModifierSourceKind } from "@/lib/types";
 
 type RuleKind = "pick_one" | "optional_one" | "several";
+
+type SourceChoice = { id: string; name: string };
+
+/** What a modifier option can use for stock: store items (e.g. drinks), menu items and Kitchen extras. */
+export type ModifierSources = {
+  storeItems: SourceChoice[];
+  menuItems: SourceChoice[];
+  extras: SourceChoice[];
+};
 
 type OptionDraft = {
   key: string;
@@ -18,14 +26,23 @@ type OptionDraft = {
   name: string;
   /** Blank means free (part of the meal price). */
   price: string;
-  /** Optional supply this choice uses up; most choices (sizes, notes) have none. */
-  productId: string;
-  /** Amount of the supply one pick uses, in the supply's unit. */
-  qty: string;
-  /** Stock link row is open. */
-  tracking: boolean;
+  /** Portion multiplier/amount (e.g. 1 portion, 0.5 portion, 2 portions). */
+  portion: string;
+  portionUnit: string;
+  /** Extra recipe, set from Kitchen and carried through unchanged when the extra is renamed or repriced. */
+  recipe: Pick<ModifierOption, "product_id" | "stock_qty" | "batch_yield" | "portion_unit"> | null;
+  sourceKind: ModifierSourceKind | "";
+  /** Product id for a store or menu item, option id for an extra. */
+  sourceId: string;
   isDefault: boolean;
 };
+
+const SOURCE_LABELS: { kind: ModifierSourceKind | ""; label: string }[] = [
+  { kind: "", label: "Nothing (note only)" },
+  { kind: "store_item", label: "Store item" },
+  { kind: "menu", label: "Menu item" },
+  { kind: "extra", label: "Extra" },
+];
 
 let draftSeq = 0;
 function nextKey(): string {
@@ -33,8 +50,23 @@ function nextKey(): string {
   return `opt-${draftSeq}`;
 }
 
-function blankOption(): OptionDraft {
-  return { key: nextKey(), name: "", price: "", productId: "", qty: "1", tracking: false, isDefault: false };
+function blankOption(defaultPortionUnit: string = ""): OptionDraft {
+  return {
+    key: nextKey(),
+    name: "",
+    price: "",
+    portion: "1",
+    portionUnit: defaultPortionUnit,
+    recipe: null,
+    sourceKind: "",
+    sourceId: "",
+    isDefault: false,
+  };
+}
+
+function sourceChoices(sources: ModifierSources | undefined, kind: ModifierSourceKind | ""): SourceChoice[] {
+  if (!sources || !kind) return [];
+  return kind === "store_item" ? sources.storeItems : kind === "menu" ? sources.menuItems : sources.extras;
 }
 
 function parseAmount(value: string): number | null {
@@ -62,20 +94,40 @@ const RULES: { kind: RuleKind; label: string }[] = [
 /** Create or edit one modifier, e.g. "Size" (Small / Medium / Large +50) or "Drink" (Coke / Fanta). */
 export function TransChapMenuGroupEditor({
   group,
-  supplies,
+  isExtra = group?.is_extra ?? false,
+  sources,
+  isKitchen = false,
+  defaultPortionUnit = "",
+  availableUnits = [],
   onClose,
   onSaved,
   onDeleted,
 }: {
   group: ModifierGroup | null;
-  /** Stock bought through Purchases; an option can optionally use one of these. */
-  supplies: InventoryItem[];
+  /** Extras are add-ons whose supply recipe is set separately in Kitchen. */
+  isExtra?: boolean;
+  /** Modifiers only: what an option can use for stock. */
+  sources?: ModifierSources;
+  /** When edited from Kitchen, options are portion-wise and no cash/prices are shown or defined. */
+  isKitchen?: boolean;
+  defaultPortionUnit?: string;
+  availableUnits?: string[];
   onClose: () => void;
-  onSaved: (group: ModifierGroup) => void;
-  onDeleted?: (groupId: string) => void;
+  onSaved: (group: ModifierGroup) => void | Promise<void>;
+  onDeleted?: (groupId: string) => void | Promise<void>;
 }) {
+  const mealUnit = (defaultPortionUnit || "portion").trim();
+  const unitOptions = useMemo(() => {
+    const set = new Set<string>();
+    if (mealUnit) set.add(mealUnit);
+    for (const u of availableUnits ?? []) {
+      if (u?.trim()) set.add(u.trim());
+    }
+    return Array.from(set);
+  }, [mealUnit, availableUnits]);
+
   const [name, setName] = useState(group?.name ?? "");
-  const [rule, setRule] = useState<RuleKind>(ruleKindOf(group));
+  const [rule, setRule] = useState<RuleKind>(group ? ruleKindOf(group) : isExtra ? "optional_one" : "pick_one");
   const [maxText, setMaxText] = useState(String(group && group.max_select > 1 ? group.max_select : 3));
   // Kept for older modifiers that require several picks; new ones start at 0.
   const [minText, setMinText] = useState(String(group && group.max_select > 1 ? group.min_select : 0));
@@ -87,20 +139,65 @@ export function TransChapMenuGroupEditor({
           id: option.id,
           name: option.name,
           price: !group.included && option.price_delta ? String(option.price_delta) : "",
-          productId: option.product_id ?? "",
-          qty: String(option.stock_qty ?? 1),
-          tracking: !!option.product_id,
+          portion: option.stock_qty != null ? String(option.stock_qty) : "1",
+          portionUnit: option.portion_unit || defaultPortionUnit || "",
+          recipe: isExtra && option.product_id
+            ? {
+                product_id: option.product_id,
+                stock_qty: option.stock_qty,
+                batch_yield: option.batch_yield,
+                portion_unit: option.portion_unit,
+              }
+            : null,
+          sourceKind: (!isExtra && option.source_kind) || "",
+          sourceId:
+            option.source_kind === "extra"
+              ? option.source_option_id ?? ""
+              : option.source_product_id ?? "",
           isDefault: option.is_default,
         }))
-      : [blankOption(), blankOption()],
+      : [blankOption(defaultPortionUnit), blankOption(defaultPortionUnit)],
   );
-  const [saving, setSaving] = useState(false);
+  const showSources = !isExtra && !!sources;
+  const [quickPicks, setQuickPicks] = useState<Set<string> | null>(null);
+  const [quickSearch, setQuickSearch] = useState("");
+  const takenStoreIds = new Set(
+    options.filter((row) => row.sourceKind === "store_item" && row.sourceId).map((row) => row.sourceId),
+  );
+  const quickNeedle = quickSearch.trim().toLowerCase();
+  const quickChoices = (sources?.storeItems ?? []).filter(
+    (item) => !quickNeedle || item.name.toLowerCase().includes(quickNeedle),
+  );
 
-  const suppliesById = new Map(supplies.map((item) => [item.product_id, item]));
-  // Options saved earlier may link to items that are no longer listed as supplies.
-  const linkedElsewhere = (group?.options ?? []).filter(
-    (option) => option.product_id && !suppliesById.has(option.product_id),
-  );
+  function toggleQuickPick(id: string) {
+    setQuickPicks((prev) => {
+      const next = new Set(prev ?? []);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function closeQuickAdd() {
+    setQuickPicks(null);
+    setQuickSearch("");
+  }
+
+  function addQuickPicks() {
+    if (!quickPicks?.size || !sources) return;
+    const picks = sources.storeItems.filter((item) => quickPicks.has(item.id) && !takenStoreIds.has(item.id));
+    setOptions((prev) => [
+      ...prev.filter((row) => row.name.trim() || row.sourceId),
+      ...picks.map((item) => ({
+        ...blankOption(defaultPortionUnit),
+        name: item.name,
+        sourceKind: "store_item" as const,
+        sourceId: item.id,
+      })),
+    ]);
+    closeQuickAdd();
+  }
+  const [saving, setSaving] = useState(false);
 
   const filled = options.filter((option) => !!option.name.trim());
   const [minSelect, maxSelect] =
@@ -109,15 +206,16 @@ export function TransChapMenuGroupEditor({
       : rule === "optional_one"
         ? [0, 1]
         : [showMin ? parseCount(minText, 0) : 0, Math.max(2, parseCount(maxText, 3))];
-  const priceError = filled.some((option) => option.price.trim() && parseAmount(option.price) == null && Number(option.price) !== 0);
-  const qtyError = filled.some((option) => option.productId && parseAmount(option.qty) == null);
+  const priceError = !isKitchen && filled.some((option) => option.price.trim() && parseAmount(option.price) == null && Number(option.price) !== 0);
+  const portionError = isKitchen && filled.some((option) => option.portion.trim() && (Number(option.portion) <= 0 || !Number.isFinite(Number(option.portion))));
   const ruleError =
     minSelect > maxSelect
       ? "Minimum can't be more than the maximum."
       : filled.length && minSelect > filled.length
         ? "Add more options than customers must pick."
         : null;
-  const canSave = !saving && !!name.trim() && filled.length > 0 && !ruleError && !priceError && !qtyError;
+  const canSave =
+    !saving && !!name.trim() && filled.length > 0 && !ruleError && !priceError && !portionError;
 
   function patchOption(key: string, patch: Partial<OptionDraft>) {
     setOptions((prev) =>
@@ -128,14 +226,6 @@ export function TransChapMenuGroupEditor({
         return option;
       }),
     );
-  }
-
-  function linkSupply(option: OptionDraft, productId: string) {
-    const supply = suppliesById.get(productId);
-    patchOption(option.key, {
-      productId,
-      name: option.name.trim() || !supply ? option.name : inventoryProductName(supply),
-    });
   }
 
   function moveOption(key: string, step: -1 | 1) {
@@ -158,18 +248,41 @@ export function TransChapMenuGroupEditor({
         name: name.trim(),
         min_select: minSelect,
         max_select: maxSelect,
+        is_extra: isExtra,
         included: false,
-        options: filled.map((option) => ({
-          ...(option.id ? { id: option.id } : {}),
-          name: option.name.trim(),
-          price_delta: parseAmount(option.price) ?? 0,
-          product_id: option.productId || null,
-          stock_qty: option.productId ? (parseAmount(option.qty) ?? 1) : 1,
-          is_default: option.isDefault,
-        })),
+        options: filled.map((option) => {
+          const portionNum = Number(option.portion);
+          const stockQty = Number.isFinite(portionNum) && portionNum > 0 ? portionNum : (option.recipe?.stock_qty ?? 1);
+          const portionUnit = (option.portionUnit || defaultPortionUnit || option.recipe?.portion_unit || "").trim() || null;
+          const existingPrice = group?.options.find((o) => o.id === option.id)?.price_delta ?? 0;
+          return {
+            ...(option.id ? { id: option.id } : {}),
+            name: option.name.trim(),
+            price_delta: isKitchen ? existingPrice : (parseAmount(option.price) ?? 0),
+            ...(option.recipe
+              ? {
+                  product_id: option.recipe.product_id,
+                  stock_qty: stockQty,
+                  batch_yield: option.recipe.batch_yield,
+                  portion_unit: portionUnit ?? option.recipe.portion_unit,
+                }
+              : {
+                  product_id: null,
+                  stock_qty: stockQty,
+                  batch_yield: 1,
+                  portion_unit: portionUnit,
+                }),
+            ...(!isExtra && option.sourceKind && option.sourceId
+              ? option.sourceKind === "extra"
+                ? { source_kind: "extra" as const, source_option_id: option.sourceId, source_product_id: null }
+                : { source_kind: option.sourceKind, source_product_id: option.sourceId, source_option_id: null }
+              : { source_kind: null, source_product_id: null, source_option_id: null }),
+            is_default: option.isDefault,
+          };
+        }),
       });
+      await onSaved(saved);
       await toastSuccess(group ? `"${saved.name}" updated` : `"${saved.name}" created`);
-      onSaved(saved);
     } catch (err) {
       await showError("Could not save modifier", extractErrorMessage(err));
     } finally {
@@ -192,7 +305,7 @@ export function TransChapMenuGroupEditor({
     try {
       await deleteModifierGroup(group.id);
       await toastSuccess(`"${group.name}" deleted`);
-      onDeleted?.(group.id);
+      await onDeleted?.(group.id);
     } catch (err) {
       await showError("Could not delete", extractErrorMessage(err));
     } finally {
@@ -213,7 +326,7 @@ export function TransChapMenuGroupEditor({
         <header className="pos-menu-modal__header">
           <div className="pos-menu-modal__title-row">
             <h2 id="group-editor-title" className="pos-menu-modal__title">
-              {group ? "Edit modifier" : "New modifier"}
+              {isExtra ? (group ? "Edit extras" : "Add extras") : group ? "Edit modifier" : "New modifier"}
             </h2>
             <button type="button" className="pos-menu-modal__close-btn" onClick={onClose} aria-label="Close">
               <i className="fa-solid fa-xmark" aria-hidden="true" />
@@ -229,7 +342,7 @@ export function TransChapMenuGroupEditor({
                 id="group-editor-name"
                 type="text"
                 autoComplete="off"
-                placeholder="e.g. Size, Drink, Extras"
+                placeholder={isExtra ? "e.g. Extra cheese, Avocado" : "e.g. Size, Drink"}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="pos-menu-modal__text-input"
@@ -284,35 +397,73 @@ export function TransChapMenuGroupEditor({
 
           <div className="pos-menu-modal__field">
             <div className="pos-menu-modal__label-row">
-              <label>Options</label>
-              <span className="pos-menu-modal__label-hint">Leave price empty if free</span>
+              <label>{isExtra ? "Extras" : "Options"}</label>
+              <span className="pos-menu-modal__label-hint">
+                {isKitchen
+                  ? `Kitchen modifiers use meal unit (${mealUnit}) · Prices are set on the meal in Menu`
+                  : isExtra
+                    ? "Set each extra’s recipe from Kitchen after saving"
+                    : "Leave price empty if free · Uses deducts stock when picked"}
+              </span>
             </div>
             <ul className="tc-mod__options">
               {options.map((option, index) => {
-                const supply = suppliesById.get(option.productId);
-                const badPrice = !!option.price.trim() && parseAmount(option.price) == null && Number(option.price) !== 0;
+                const badPrice = !isKitchen && !!option.price.trim() && parseAmount(option.price) == null && Number(option.price) !== 0;
+                const badPortion = isKitchen && !!option.portion.trim() && (Number(option.portion) <= 0 || !Number.isFinite(Number(option.portion)));
+                const currentUnit = option.portionUnit || mealUnit;
                 return (
                   <li key={option.key} className="tc-mod__option">
                     <div className="tc-mod__row">
                       <input
                         type="text"
                         className="tc-mod__name"
-                        placeholder={index === 0 ? "e.g. Large" : "Option name"}
+                        placeholder={index === 0 ? (isKitchen ? `e.g. Regular / Half (${mealUnit})` : "e.g. Large") : "Option name"}
                         aria-label="Option name"
                         value={option.name}
                         onChange={(e) => patchOption(option.key, { name: e.target.value })}
                       />
-                      <label className={`tc-mod__price${badPrice ? " is-error" : ""}`}>
-                        <span>+KES</span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="0"
-                          aria-label="Extra price"
-                          value={option.price}
-                          onChange={(e) => patchOption(option.key, { price: e.target.value })}
-                        />
-                      </label>
+                      {isKitchen ? (
+                        <label className={`tc-mod__price${badPortion ? " is-error" : ""}`} title={`Quantity in ${currentUnit}`}>
+                          {unitOptions.length > 1 ? (
+                            <select
+                              className="tc-mod__unit-select"
+                              aria-label="Unit"
+                              value={currentUnit}
+                              onChange={(e) => patchOption(option.key, { portionUnit: e.target.value })}
+                            >
+                              {unitOptions.map((u) => (
+                                <option key={u} value={u}>
+                                  {u}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span style={{ textTransform: "capitalize" }}>{currentUnit}</span>
+                          )}
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0.1"
+                            max="100"
+                            placeholder="1"
+                            aria-label={`Option ${currentUnit}`}
+                            value={option.portion}
+                            onChange={(e) => patchOption(option.key, { portion: e.target.value })}
+                          />
+                        </label>
+                      ) : (
+                        <label className={`tc-mod__price${badPrice ? " is-error" : ""}`}>
+                          <span>+KES</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0"
+                            aria-label={isExtra ? "Extra price" : "Option price"}
+                            value={option.price}
+                            onChange={(e) => patchOption(option.key, { price: e.target.value })}
+                          />
+                        </label>
+                      )}
                       <button
                         type="button"
                         className="tc-mod__icon"
@@ -322,46 +473,6 @@ export function TransChapMenuGroupEditor({
                         <i className="fa-solid fa-xmark" aria-hidden="true" />
                       </button>
                     </div>
-
-                    {option.tracking ? (
-                      <div className="tc-mod__stock">
-                        <span>Uses</span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          aria-label="Amount used per pick"
-                          className={option.productId && parseAmount(option.qty) == null ? "is-error" : undefined}
-                          value={option.qty}
-                          onChange={(e) => patchOption(option.key, { qty: e.target.value })}
-                        />
-                        <select
-                          aria-label="Supply used"
-                          value={option.productId}
-                          onChange={(e) => linkSupply(option, e.target.value)}
-                        >
-                          <option value="">Choose stock…</option>
-                          {supplies.map((item) => (
-                            <option key={item.id} value={item.product_id}>
-                              {inventoryProductName(item)}
-                              {item.product?.unit ? ` (${item.product.unit})` : ""}
-                            </option>
-                          ))}
-                          {linkedElsewhere.map((linked) => (
-                            <option key={linked.id} value={linked.product_id ?? ""}>
-                              {linked.product_name || linked.name}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          className="tc-mod__icon"
-                          aria-label="Stop tracking stock"
-                          onClick={() => patchOption(option.key, { tracking: false, productId: "" })}
-                        >
-                          <i className="fa-solid fa-link-slash" aria-hidden="true" />
-                        </button>
-                      </div>
-                    ) : null}
 
                     <div className="tc-mod__meta">
                       <button
@@ -376,19 +487,6 @@ export function TransChapMenuGroupEditor({
                         />
                         Default
                       </button>
-                      {!option.tracking && supplies.length ? (
-                        <button
-                          type="button"
-                          className="tc-mod__link"
-                          onClick={() => patchOption(option.key, { tracking: true })}
-                        >
-                          <i className="fa-solid fa-box" aria-hidden="true" /> Uses stock
-                        </button>
-                      ) : supply ? (
-                        <span className="tc-mod__note">
-                          {supply.stock_quantity != null ? `${supply.stock_quantity} ${supply.product?.unit || ""} on hand` : ""}
-                        </span>
-                      ) : null}
                       <span className="tc-group__option-tools">
                         <button
                           type="button"
@@ -408,16 +506,118 @@ export function TransChapMenuGroupEditor({
                         </button>
                       </span>
                     </div>
+
+                    {showSources ? (
+                      <div className="tc-mod__source">
+                        <span>Uses</span>
+                        <select
+                          aria-label={`What ${option.name || "this option"} uses`}
+                          value={option.sourceKind}
+                          onChange={(e) =>
+                            patchOption(option.key, {
+                              sourceKind: e.target.value as ModifierSourceKind | "",
+                              sourceId: "",
+                            })
+                          }
+                        >
+                          {SOURCE_LABELS.map((choice) => (
+                            <option key={choice.kind || "none"} value={choice.kind}>
+                              {choice.label}
+                            </option>
+                          ))}
+                        </select>
+                        {option.sourceKind ? (
+                          <select
+                            aria-label="Choose what it uses"
+                            className={option.sourceId ? "" : "is-empty"}
+                            value={option.sourceId}
+                            onChange={(e) => {
+                              const picked = sourceChoices(sources, option.sourceKind).find(
+                                (choice) => choice.id === e.target.value,
+                              );
+                              patchOption(option.key, {
+                                sourceId: e.target.value,
+                                ...(picked && !option.name.trim() ? { name: picked.name } : {}),
+                              });
+                            }}
+                          >
+                            <option value="">Choose…</option>
+                            {sourceChoices(sources, option.sourceKind).map((choice) => (
+                              <option key={choice.id} value={choice.id}>
+                                {choice.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </li>
                 );
               })}
             </ul>
+            {showSources && sources.storeItems.length ? (
+              quickPicks ? (
+                <div className="tc-mod__quick">
+                  <div className="tc-mod__quick-head">
+                    <strong>Add from store</strong>
+                    <input
+                      type="search"
+                      placeholder="Search e.g. soda"
+                      aria-label="Search store items"
+                      value={quickSearch}
+                      onChange={(e) => setQuickSearch(e.target.value)}
+                    />
+                  </div>
+                  <ul className="tc-mod__quick-list">
+                    {quickChoices.map((item) => {
+                      const added = takenStoreIds.has(item.id);
+                      return (
+                        <li key={item.id}>
+                          <label className={added ? "is-added" : ""}>
+                            <input
+                              type="checkbox"
+                              disabled={added}
+                              checked={added || quickPicks.has(item.id)}
+                              onChange={() => toggleQuickPick(item.id)}
+                            />
+                            <span>{item.name}</span>
+                            {added ? <small>Added</small> : null}
+                          </label>
+                        </li>
+                      );
+                    })}
+                    {!quickChoices.length ? <li className="tc-mod__quick-empty">No store items match.</li> : null}
+                  </ul>
+                  <div className="tc-mod__quick-actions">
+                    <button type="button" className="rs-btn rs-btn--small" onClick={closeQuickAdd}>
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="rs-btn rs-btn--small rs-btn--primary"
+                      disabled={!quickPicks.size}
+                      onClick={addQuickPicks}
+                    >
+                      Add {quickPicks.size || ""} as options
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="tc-group__add-option tc-mod__add"
+                  onClick={() => setQuickPicks(new Set())}
+                >
+                  <i className="fa-solid fa-list-check" aria-hidden="true" /> Add from store (e.g. drinks)
+                </button>
+              )
+            ) : null}
             <button
               type="button"
               className="tc-group__add-option tc-mod__add"
-              onClick={() => setOptions((prev) => [...prev, blankOption()])}
+              onClick={() => setOptions((prev) => [...prev, blankOption(defaultPortionUnit)])}
             >
-              <i className="fa-solid fa-plus" aria-hidden="true" /> Add option
+              <i className="fa-solid fa-plus" aria-hidden="true" /> {isExtra ? "Add extra" : "Add option"}
             </button>
           </div>
 
@@ -428,7 +628,7 @@ export function TransChapMenuGroupEditor({
               </button>
             ) : null}
             <button type="submit" disabled={!canSave} className="pos-menu-modal__submit-btn">
-              {saving ? "Saving…" : group ? "Save modifier" : "Create modifier"}
+              {saving ? "Saving…" : isExtra ? (group ? "Save extras" : "Create extras") : group ? "Save modifier" : "Create modifier"}
             </button>
           </footer>
         </form>
@@ -437,11 +637,21 @@ export function TransChapMenuGroupEditor({
   );
 }
 
-/** Summary line under a group, e.g. "Small · Medium · Large +50". */
-export function modifierOptionsSummary(group: ModifierGroup): string {
+/** Summary line under a group, e.g. "Small · Medium · Large +50", or portion-wise "Half (0.5 portion) · Full (1 portion)". */
+export function modifierOptionsSummary(group: ModifierGroup, showMoney: boolean = true): string {
   return group.options
     .filter((option) => option.is_active)
     .map((option) => {
+      if (!showMoney) {
+        if (option.portion_unit) {
+          const qty = option.stock_qty ?? 1;
+          return `${option.name} (${qty} ${option.portion_unit})`;
+        }
+        if (option.stock_qty != null && option.stock_qty !== 1) {
+          return `${option.name} (${option.stock_qty}x)`;
+        }
+        return option.name;
+      }
       const price = group.included ? 0 : Number(option.price_delta) || 0;
       return price > 0 ? `${option.name} +${price}` : option.name;
     })
@@ -457,6 +667,7 @@ export function MenuOptionsField({
   onChange,
   onNewGroup,
   onEditGroup,
+  showMoney = true,
 }: {
   label: string;
   hint?: string;
@@ -465,6 +676,7 @@ export function MenuOptionsField({
   onChange: (ids: string[]) => void;
   onNewGroup: () => void;
   onEditGroup: (group: ModifierGroup) => void;
+  showMoney?: boolean;
 }) {
   const byId = new Map(groups.map((group) => [group.id, group]));
   const attached = attachedIds.map((id) => byId.get(id)).filter((g): g is ModifierGroup => !!g);
@@ -492,7 +704,7 @@ export function MenuOptionsField({
               <button type="button" className="tc-group__attached-body" onClick={() => onEditGroup(group)}>
                 <strong>{group.name}</strong>
                 <span className="tc-group__attached-rule">{modifierRuleLabel(group)}</span>
-                <span className="tc-group__attached-options">{modifierOptionsSummary(group)}</span>
+                <span className="tc-group__attached-options">{modifierOptionsSummary(group, showMoney)}</span>
               </button>
               <span className="tc-group__option-tools">
                 <button type="button" aria-label="Move up" disabled={index === 0} onClick={() => move(group.id, -1)}>

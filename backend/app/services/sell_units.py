@@ -109,13 +109,25 @@ def pack_units_from_attributes(attributes: Any) -> list[dict[str, Any]]:
         if key in seen:
             continue
         try:
-            factor = int(entry.get("factor"))
+            factor_value = round(float(entry.get("factor")), 4)
         except (TypeError, ValueError):
             continue
-        if factor < 2 or factor > 1_000_000:
+        if factor_value <= 0 or factor_value > 1_000_000:
             continue
+        factor = int(factor_value) if factor_value.is_integer() else factor_value
         seen.add(key)
         pack: dict[str, Any] = {"name": name, "factor": factor}
+        if entry.get("reverse") is True:
+            pack["reverse"] = True
+        reference_unit = str(entry.get("reference_unit") or "").strip()[:64]
+        if reference_unit:
+            pack["reference_unit"] = reference_unit
+        try:
+            conversion_amount = round(float(entry.get("conversion_amount")), 6)
+        except (TypeError, ValueError):
+            conversion_amount = None
+        if conversion_amount is not None and conversion_amount > 0:
+            pack["conversion_amount"] = conversion_amount
         for price_key in ("selling_price", "buying_price"):
             raw_price = entry.get(price_key)
             if raw_price is None or raw_price == "":
@@ -161,9 +173,10 @@ def sell_units_for_item(item: Any) -> list[dict[str, Any]]:
             pack_name = detected[0] if _normalize_name(detected[0]) != _normalize_name(base_name) else "Bulk"
             packs = [{"name": pack_name, "factor": detected[1]}]
     for pack in packs:
-        if _normalize_name(pack["name"]) == _normalize_name(base_name) and int(pack.get("factor", 1)) <= 1:
+        if _normalize_name(pack["name"]) == _normalize_name(base_name):
             continue
-        factor = int(pack["factor"])
+        factor_value = float(pack["factor"])
+        factor = int(factor_value) if factor_value.is_integer() else factor_value
         if pack.get("selling_price") is None and base_sell is not None:
             pack["selling_price"] = round(base_sell * factor, 2)
         if pack.get("buying_price") is None and base_buy is not None:

@@ -64,9 +64,9 @@ export function TransChapBarcodeScannerSheet({
               </strong>
               <p>
                 {permission === "denied"
-                  ? "Enable Camera for this site in your phone browser settings, then turn it on in Trans Chap Settings."
+                  ? "Enable Camera for this site in your phone browser settings, then turn it on in DukAI Merch Settings."
                   : permission === "insecure"
-                    ? "Open Trans Chap over https:// so the browser can ask for camera access."
+                    ? "Open DukAI Merch over https:// so the browser can ask for camera access."
                     : "Enable barcode camera in Settings first, then scan here."}
               </p>
               <Link

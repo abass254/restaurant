@@ -53,37 +53,37 @@ function getNavItems(restaurant: boolean): NavDef[] {
     { href: "/trans-chap", label: "Home", title: "Home", icon: "fa-house", exact: true },
     ...(restaurant
       ? [
-          {
-            href: "/trans-chap/menus",
-            label: "Menu",
-            title: "Menu",
-            icon: "fa-utensils",
-            section: "inventory" as MerchantSection,
-          },
-          {
-            href: "/trans-chap/stocks",
-            label: "Inventory",
-            title: "Store Inventory",
-            icon: "fa-boxes-stacked",
-            section: "inventory" as MerchantSection,
-          },
-          {
-            href: "/trans-chap/kitchen",
-            label: "Kitchen",
-            title: "Kitchen",
-            icon: "fa-fire-burner",
-            section: "inventory" as MerchantSection,
-          },
-        ]
+        {
+          href: "/trans-chap/menus",
+          label: "Menu",
+          title: "Menu",
+          icon: "fa-utensils",
+          section: "inventory" as MerchantSection,
+        },
+        {
+          href: "/trans-chap/stocks",
+          label: "Inventory",
+          title: "Store Inventory",
+          icon: "fa-boxes-stacked",
+          section: "inventory" as MerchantSection,
+        },
+        {
+          href: "/trans-chap/kitchen",
+          label: "Kitchen",
+          title: "Kitchen",
+          icon: "fa-fire-burner",
+          section: "inventory" as MerchantSection,
+        },
+      ]
       : [
-          {
-            href: "/trans-chap/stocks",
-            label: "Inventory",
-            title: "Inventory",
-            icon: "fa-boxes-stacked",
-            section: "inventory" as MerchantSection,
-          },
-        ]),
+        {
+          href: "/trans-chap/stocks",
+          label: "Inventory",
+          title: "Inventory",
+          icon: "fa-boxes-stacked",
+          section: "inventory" as MerchantSection,
+        },
+      ]),
     {
       href: "/trans-chap/sales",
       label: restaurant ? "Orders" : "Sales",
@@ -91,13 +91,17 @@ function getNavItems(restaurant: boolean): NavDef[] {
       icon: restaurant ? "fa-bell-concierge" : "fa-receipt",
       section: "pos",
     },
-    {
-      href: "/trans-chap/pos",
-      label: "POS",
-      title: "POS",
-      icon: "fa-cash-register",
-      section: "pos",
-    },
+    ...((restaurant
+      ? []
+      : [
+        {
+          href: "/trans-chap/pos",
+          label: "POS",
+          title: "POS",
+          icon: "fa-cash-register",
+          section: "pos" as MerchantSection,
+        },
+      ]) as NavDef[]),
     {
       href: "/trans-chap/customers",
       label: "Customers",
@@ -239,6 +243,12 @@ function headerMeta(
       backHref: "/trans-chap",
     };
   }
+  if (pathname.startsWith("/trans-chap/pos")) {
+    return {
+      title: restaurant ? "Take order" : "POS",
+      backHref: restaurant ? "/trans-chap/sales" : "/trans-chap",
+    };
+  }
   if (pathname.startsWith("/trans-chap/sales")) {
     return {
       title: restaurant ? "Orders" : "Sales",
@@ -296,7 +306,7 @@ function headerMeta(
   if (tab) {
     return { title: tab.title, backHref: tab.exact ? null : "/trans-chap" };
   }
-  return { title: "Trans Chap", backHref: "/trans-chap" };
+  return { title: "Dukai Merchant", backHref: "/trans-chap" };
 }
 
 export function TransChapShell({ children }: { children: React.ReactNode }) {
@@ -477,7 +487,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
             <header className="trans-chap-header">
               <div className="trans-chap-header__side">
                 {isHome ? (
-                  <span className="trans-chap-header__brand-logo" aria-label="Trans Chap">
+                  <span className="trans-chap-header__brand-logo" aria-label="Dukai Merchant">
                     <TransChapLogoMark size={28} color="var(--app-primary)" accentColor="#e8412a" />
                   </span>
                 ) : backHref ? (
@@ -525,14 +535,14 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                     "--mobile-nav-columns": phoneNavColumns,
                   } as React.CSSProperties
                 }
-                aria-label="Trans Chap navigation"
+                aria-label="Dukai Merchant navigation"
               >
                 <div className="mobile-nav__brand">
                   <span className="mobile-nav__brand-icon" aria-hidden>
                     <TransChapLogoMark size={30} color="var(--app-primary)" accentColor="#e8412a" />
                   </span>
                   <div className="mobile-nav__brand-meta">
-                    <strong className="mobile-nav__brand-title">Trans Chap</strong>
+                    <strong className="mobile-nav__brand-title">DukAI Merch</strong>
                     {user?.active_account?.business_name || user?.account?.business_name ? (
                       <span className="mobile-nav__brand-shop">
                         {user.active_account?.business_name || user.account?.business_name}
@@ -591,7 +601,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                           <TransChapLogoMark size={32} color="var(--app-primary)" accentColor="#e8412a" />
                         </span>
                         <div>
-                          <h3>Trans Chap</h3>
+                          <h3>DukAI Merch</h3>
                           {user?.active_account?.business_name || user?.account?.business_name ? (
                             <span>
                               {user.active_account?.business_name || user.account?.business_name}
@@ -616,7 +626,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                         const isActive = item.exact
                           ? pathname === item.href
                           : pathname === item.href ||
-                            pathname.startsWith(`${item.href}/`);
+                          pathname.startsWith(`${item.href}/`);
                         return (
                           <Link
                             key={item.href}

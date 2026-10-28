@@ -61,7 +61,9 @@ def media_url_in_product_pool(db: Session, product_id: str, url: str) -> bool:
 
 
 def inventory_media_for_item(item: InventoryItem) -> list[dict[str, Any]]:
-    return coerce_media(item.media)
+    # Some historical/imported records can be partially populated while they
+    # are being normalised. Treat missing media exactly like an empty gallery.
+    return coerce_media(getattr(item, "media", None))
 
 
 def absolute_media_url(path: str, settings: Settings, *, for_instagram: bool = False) -> str:

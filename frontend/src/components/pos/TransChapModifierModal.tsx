@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useState } from "react";
 import { formatMoney } from "@/lib/orders";
+import { formatQty } from "@/lib/restaurant-supplies";
 import {
   isOptionAvailable,
   itemModifierGroups,
@@ -43,9 +44,13 @@ function pickableOptions(group: ModifierGroup, availability: OptionAvailabilityM
   return group.options.filter((option) => isOptionAvailable(option, availability));
 }
 
-/** Paid extras can be picked several times (2× extra cheese); free and single-choice picks can't. */
+/** Multi-pick extras can repeat even when free; other repeats must carry a price. */
 function countable(group: ModifierGroup, option: ModifierOption): boolean {
-  return !group.included && group.max_select > 1 && modifierOptionPrice(option, group) > 0;
+  return (
+    !group.included &&
+    group.max_select > 1 &&
+    (group.is_extra || modifierOptionPrice(option, group) > 0)
+  );
 }
 
 function initialCounts(initialOptionIds: string[] | null | undefined): Record<string, number> {
@@ -98,8 +103,6 @@ export function TransChapModifierModal({
     (initialModifiers ?? []).filter((mod) => !mod.option_id && mod.group !== "Includes"),
   );
   const [notes, setNotes] = useState<string>(() => initialNotes || "");
-  const [customName, setCustomName] = useState("");
-  const [customPrice, setCustomPrice] = useState("");
 
   const basePrice = item.selling_price ?? 0;
   const baseName = item.product?.name ?? "Menu item";
@@ -158,16 +161,6 @@ export function TransChapModifierModal({
     setCounts((prev) => ({ ...prev, [optionId]: Math.min(MAX_COUNT, Math.max(1, count)) }));
   }
 
-  function addCustom(event: React.FormEvent) {
-    event.preventDefault();
-    const name = customName.trim();
-    if (!name) return;
-    const price = Math.max(0, parseFloat(customPrice) || 0);
-    setCustom((prev) => [...prev, { name, price, group: "Extras" }]);
-    setCustomName("");
-    setCustomPrice("");
-  }
-
   function confirm() {
     if (missing.length) return;
     onConfirm({
@@ -187,6 +180,99 @@ export function TransChapModifierModal({
       name: lineName,
     });
     onClose();
+  }
+
+  function renderGroups(isExtra: boolean) {
+    return entries.map((entry, index) => {
+      const { group, label } = entry;
+      if (group.is_extra !== isExtra) return null;
+      const chosen = selection[index];
+      const single = group.max_select === 1;
+      const full = !single && chosen.length >= group.max_select;
+      const required = (group.min_select || 0) > 0;
+      const done = chosen.length >= (group.min_select || 0);
+      return (
+        <section key={`${label ?? ""}-${group.id}`} className="pos-modifier-group">
+          <div className="pos-modifier-group__header">
+            <h4 className="pos-modifier-group__title">
+              {label ? <span className="pos-modifier-group__parent">{label}: </span> : null}
+              {group.name}
+            </h4>
+            <span
+              className={`pos-modifier-group__hint${required ? (done ? " is-done" : " is-required") : ""}`}
+            >
+              {modifierRuleLabel(group)}
+            </span>
+          </div>
+          <div className="pos-modifier-chips">
+            {group.options
+              .filter((option) => option.is_active !== false || availability?.has(option.id))
+              .map((option) => {
+                const active = chosen.includes(option.id);
+                const unavailable = optionUnavailableLabel(option, availability);
+                const price = modifierOptionPrice(option, group);
+                const count = counts[option.id] ?? 1;
+                const portion =
+                  isExtra && option.product_id
+                    ? `${formatQty(option.stock_qty ?? 1, option.product_unit || "units")} ${option.product_name ?? "supply"} per extra`
+                    : null;
+                return (
+                  <span key={option.id} className="pos-modifier-chip-wrap">
+                    <button
+                      type="button"
+                      className={`pos-modifier-chip${active ? " is-selected" : ""}${unavailable ? " is-unavailable" : ""}`}
+                      aria-pressed={active}
+                      disabled={!active && (full || !!unavailable)}
+                      onClick={() => toggle(index, option.id)}
+                    >
+                      <span className="pos-modifier-chip__check">
+                        <i
+                          className={
+                            active
+                              ? single
+                                ? "fa-solid fa-circle-dot"
+                                : "fa-solid fa-square-check"
+                              : single
+                                ? "fa-regular fa-circle"
+                                : "fa-regular fa-square"
+                          }
+                          aria-hidden="true"
+                        />
+                      </span>
+                      <span className="pos-modifier-chip__label">{option.name}</span>
+                      <span className="pos-modifier-chip__price">
+                        {unavailable ?? (price > 0 ? `+${formatMoney(price, currency)}` : "Free")}
+                      </span>
+                    </button>
+                    {portion ? <small className="pos-modifier-chip__portion">{portion}</small> : null}
+                    {active && countable(group, option) ? (
+                      <span className="pos-modifier-stepper" role="group" aria-label={`How many ${option.name}`}>
+                        <button
+                          type="button"
+                          aria-label={`One less ${option.name}`}
+                          disabled={count <= 1}
+                          onClick={() => setCount(option.id, count - 1)}
+                        >
+                          <i className="fa-solid fa-minus" aria-hidden="true" />
+                        </button>
+                        <strong>{count}×</strong>
+                        <button
+                          type="button"
+                          aria-label={`One more ${option.name}`}
+                          disabled={count >= MAX_COUNT}
+                          onClick={() => setCount(option.id, count + 1)}
+                        >
+                          <i className="fa-solid fa-plus" aria-hidden="true" />
+                        </button>
+                      </span>
+                    ) : null}
+                  </span>
+                );
+              })}
+          </div>
+        </section>
+      );
+    });
   }
 
   return (
@@ -221,137 +307,44 @@ export function TransChapModifierModal({
         </header>
 
         <div className="pos-modifier-modal__body">
-          {entries.map((entry, index) => {
-            const { group, label } = entry;
-            const chosen = selection[index];
-            const single = group.max_select === 1;
-            const full = !single && chosen.length >= group.max_select;
-            const required = (group.min_select || 0) > 0;
-            const done = chosen.length >= (group.min_select || 0);
-            return (
-              <section key={`${label ?? ""}-${group.id}`} className="pos-modifier-group">
-                <div className="pos-modifier-group__header">
-                  <h3 className="pos-modifier-group__title">
-                    {label ? <span className="pos-modifier-group__parent">{label}: </span> : null}
-                    {group.name}
-                  </h3>
-                  <span
-                    className={`pos-modifier-group__hint${required ? (done ? " is-done" : " is-required") : ""}`}
-                  >
-                    {modifierRuleLabel(group)}
-                  </span>
-                </div>
-                <div className="pos-modifier-chips">
-                  {group.options.filter((option) => option.is_active !== false || availability?.has(option.id)).map((option) => {
-                    const active = chosen.includes(option.id);
-                    const unavailable = optionUnavailableLabel(option, availability);
-                    const price = modifierOptionPrice(option, group);
-                    const count = counts[option.id] ?? 1;
-                    return (
-                      <span key={option.id} className="pos-modifier-chip-wrap">
-                      <button
-                        type="button"
-                        className={`pos-modifier-chip${active ? " is-selected" : ""}${unavailable ? " is-unavailable" : ""}`}
-                        aria-pressed={active}
-                        disabled={!active && (full || !!unavailable)}
-                        onClick={() => toggle(index, option.id)}
-                      >
-                        <span className="pos-modifier-chip__check">
-                          <i
-                            className={
-                              active
-                                ? single
-                                  ? "fa-solid fa-circle-dot"
-                                  : "fa-solid fa-square-check"
-                                : single
-                                  ? "fa-regular fa-circle"
-                                  : "fa-regular fa-square"
-                            }
-                            aria-hidden="true"
-                          />
-                        </span>
-                        <span className="pos-modifier-chip__label">{option.name}</span>
-                        <span className="pos-modifier-chip__price">
-                          {unavailable ?? (price > 0 ? `+${formatMoney(price, currency)}` : "Free")}
-                        </span>
-                      </button>
-                      {active && countable(group, option) ? (
-                        <span className="pos-modifier-stepper" role="group" aria-label={`How many ${option.name}`}>
-                          <button
-                            type="button"
-                            aria-label={`One less ${option.name}`}
-                            disabled={count <= 1}
-                            onClick={() => setCount(option.id, count - 1)}
-                          >
-                            <i className="fa-solid fa-minus" aria-hidden="true" />
-                          </button>
-                          <strong>{count}×</strong>
-                          <button
-                            type="button"
-                            aria-label={`One more ${option.name}`}
-                            disabled={count >= MAX_COUNT}
-                            onClick={() => setCount(option.id, count + 1)}
-                          >
-                            <i className="fa-solid fa-plus" aria-hidden="true" />
-                          </button>
-                        </span>
-                      ) : null}
-                      </span>
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })}
-
-          <section className="pos-modifier-group">
-            <div className="pos-modifier-group__header">
-              <h3 className="pos-modifier-group__title">Custom extra</h3>
-              <span className="pos-modifier-group__hint">Not on the menu</span>
-            </div>
-            <div className="pos-modifier-custom-row">
-              <input
-                type="text"
-                placeholder="e.g. Extra gravy"
-                value={customName}
-                maxLength={120}
-                onChange={(e) => setCustomName(e.target.value)}
-                className="pos-modifier-input"
-              />
-              <input
-                type="number"
-                placeholder={`+ Price (${currency})`}
-                value={customPrice}
-                onChange={(e) => setCustomPrice(e.target.value)}
-                min="0"
-                step="10"
-                className="pos-modifier-input pos-modifier-input--price"
-              />
-              <button
-                type="button"
-                onClick={addCustom}
-                disabled={!customName.trim()}
-                className="pos-modifier-custom-btn"
-              >
-                <i className="fa-solid fa-plus" aria-hidden="true" /> Add
-              </button>
-            </div>
-            {custom.map((mod, index) => (
-              <div key={`${mod.name}-${index}`} className="pos-modifier-custom-chip">
-                <span>
-                  <strong>+ {mod.name}</strong> ({mod.price > 0 ? formatMoney(mod.price, currency) : "Free"})
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setCustom((prev) => prev.filter((_, i) => i !== index))}
-                  className="pos-modifier-remove-btn"
-                  aria-label={`Remove ${mod.name}`}
-                >
-                  <i className="fa-solid fa-xmark" aria-hidden="true" />
-                </button>
+          {entries.some(({ group }) => !group.is_extra) ? (
+            <section className="pos-modifier-category">
+              <h3 className="pos-modifier-category__title">Modifiers</h3>
+              {renderGroups(false)}
+            </section>
+          ) : null}
+          {entries.some(({ group }) => group.is_extra) ? (
+            <section className="pos-modifier-category">
+              <h3 className="pos-modifier-category__title">Meal extras</h3>
+              <p className="pos-modifier-category__hint">
+                Each selected extra uses its configured supply portion.
+              </p>
+              {renderGroups(true)}
+            </section>
+          ) : null}
+          {custom.length ? (
+            <section className="pos-modifier-group">
+              <div className="pos-modifier-group__header">
+                <h3 className="pos-modifier-group__title">Previously added extras</h3>
+                <span className="pos-modifier-group__hint">Not linked to stock</span>
               </div>
-            ))}
-          </section>
+              {custom.map((mod, index) => (
+                <div key={`${mod.name}-${index}`} className="pos-modifier-custom-chip">
+                  <span>
+                    <strong>+ {mod.name}</strong> ({mod.price > 0 ? formatMoney(mod.price, currency) : "Free"})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCustom((prev) => prev.filter((_, i) => i !== index))}
+                    className="pos-modifier-remove-btn"
+                    aria-label={`Remove ${mod.name}`}
+                  >
+                    <i className="fa-solid fa-xmark" aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+            </section>
+          ) : null}
 
           <section className="pos-modifier-group">
             <div className="pos-modifier-group__header">

@@ -43,6 +43,7 @@ function NewIssue() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [rows, setRows] = useState<KitchenSuggestion[]>([]);
   const [qty, setQty] = useState<Record<string, string>>({});
+  const [units, setUnits] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState("");
@@ -73,6 +74,7 @@ function NewIssue() {
         const data = await fetchKitchenSuggestion();
         if (!alive) return;
         setRows(data);
+        setUnits(Object.fromEntries(data.map((row) => [row.inventory_item_id, row.unit])));
         const filled: Record<string, string> = {};
         for (const row of data) {
           if (picks.size) {
@@ -100,7 +102,9 @@ function NewIssue() {
   }, [picks, reloadKey]);
 
   const issuable = useMemo(() => rows.filter((row) => isKitchenIssuableRole(row.inventory_role)), [rows]);
-  const wantedOf = (row: KitchenSuggestion) => parseQty(qty[row.inventory_item_id] ?? "") ?? 0;
+  const selectedUnit = (row: KitchenSuggestion) => row.units.find((unit) => unit.name === units[row.inventory_item_id]) ?? row.units[0] ?? { name: row.unit, factor: 1 };
+  const wantedInputOf = (row: KitchenSuggestion) => parseQty(qty[row.inventory_item_id] ?? "") ?? 0;
+  const wantedOf = (row: KitchenSuggestion) => roundQty(wantedInputOf(row) * selectedUnit(row).factor);
   const isPicked = (row: KitchenSuggestion) => picks.has(row.inventory_item_id) || picks.has(row.name);
   const isNeeded = (row: KitchenSuggestion) => row.suggested_qty > 0 || isPicked(row);
 
@@ -130,14 +134,22 @@ function NewIssue() {
     setQty((prev) => ({ ...prev, [row.inventory_item_id]: value }));
   }
 
+  function changeUnit(row: KitchenSuggestion, nextName: string) {
+    const oldFactor = selectedUnit(row).factor || 1;
+    const nextFactor = row.units.find((unit) => unit.name === nextName)?.factor || 1;
+    const baseQty = wantedInputOf(row) * oldFactor;
+    setUnits((prev) => ({ ...prev, [row.inventory_item_id]: nextName }));
+    setRowQty(row, baseQty ? String(roundQty(baseQty / nextFactor)) : "");
+  }
+
   function stepRow(row: KitchenSuggestion, delta: number) {
-    setRowQty(row, String(Math.max(0, roundQty(wantedOf(row) + delta))));
+    setRowQty(row, String(Math.max(0, roundQty(wantedInputOf(row) + delta))));
   }
 
   function fillSuggested() {
     setQty((prev) => {
       const next = { ...prev };
-      for (const row of suggestedRows) next[row.inventory_item_id] = String(row.suggested_qty);
+      for (const row of suggestedRows) next[row.inventory_item_id] = String(roundQty(row.suggested_qty / (selectedUnit(row).factor || 1)));
       return next;
     });
   }
@@ -315,7 +327,16 @@ function NewIssue() {
                   <button type="button" aria-label="More" onClick={() => stepRow(row, 1)}>
                     <i className="fa-solid fa-plus" aria-hidden />
                   </button>
-                  <span className="rs-issue-stepper__unit">{row.unit}</span>
+                  {row.units.length > 1 ? (
+                    <select
+                      className="rs-issue-stepper__unit-select"
+                      aria-label={`Unit for ${row.name}`}
+                      value={selectedUnit(row).name}
+                      onChange={(event) => changeUnit(row, event.target.value)}
+                    >
+                      {row.units.map((unit) => <option key={unit.name} value={unit.name}>{unit.name}</option>)}
+                    </select>
+                  ) : <span className="rs-issue-stepper__unit">{row.unit}</span>}
                 </div>
               </li>
             );
@@ -381,6 +402,7 @@ function IssueDetail({ id }: { id: string }) {
   const router = useRouter();
   const [issue, setIssue] = useState<KitchenIssue | null>(null);
   const [given, setGiven] = useState<Record<string, string>>({});
+  const [givenUnits, setGivenUnits] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -393,6 +415,7 @@ function IssueDetail({ id }: { id: string }) {
         const filled: Record<string, string> = {};
         for (const line of data.lines ?? []) filled[line.id] = String(line.requested_qty ?? "");
         setGiven(filled);
+        setGivenUnits(Object.fromEntries((data.lines ?? []).map((line) => [line.id, line.unit])));
       })
       .catch((err) => {
         if (alive) void showError("Could not load the issue", extractErrorMessage(err));
@@ -410,6 +433,10 @@ function IssueDetail({ id }: { id: string }) {
 
   const lines = issue.lines ?? [];
   const pending = issue.status === "requested";
+  const givenUnitFor = (line: NonNullable<KitchenIssue["lines"]>[number]) =>
+    line.units.find((unit) => unit.name === givenUnits[line.id]) ?? line.units[0] ?? { name: line.unit, factor: 1 };
+  const givingBase = (line: NonNullable<KitchenIssue["lines"]>[number]) =>
+    roundQty((parseQty(given[line.id] ?? "") ?? 0) * (givenUnitFor(line).factor || 1));
 
   async function release() {
     if (!issue) return;
@@ -417,7 +444,7 @@ function IssueDetail({ id }: { id: string }) {
     try {
       const next = await releaseKitchenIssue(
         issue.id,
-        lines.map((line) => ({ line_id: line.id, quantity: parseQty(given[line.id] ?? "") ?? 0 })),
+        lines.map((line) => ({ line_id: line.id, quantity: givingBase(line) })),
       );
       setIssue(next);
       await toastSuccess("Issued to the kitchen");
@@ -487,7 +514,7 @@ function IssueDetail({ id }: { id: string }) {
           </thead>
           <tbody>
             {lines.map((line) => {
-              const giving = parseQty(given[line.id] ?? "") ?? 0;
+              const giving = givingBase(line);
               return (
                 <tr key={line.id}>
                   <td>
@@ -504,13 +531,30 @@ function IssueDetail({ id }: { id: string }) {
                   ) : null}
                   <td className="rs-num">
                     {pending ? (
-                      <input
-                        className="rs-input rs-input--qty"
-                        inputMode="decimal"
-                        value={given[line.id] ?? ""}
-                        aria-label={`Give ${line.item_name}`}
-                        onChange={(e) => setGiven((prev) => ({ ...prev, [line.id]: e.target.value }))}
-                      />
+                      <div className="rs-count-input">
+                        <input
+                          className="rs-input rs-input--qty"
+                          inputMode="decimal"
+                          value={given[line.id] ?? ""}
+                          aria-label={`Give ${line.item_name}`}
+                          onChange={(e) => setGiven((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                        />
+                        {line.units.length > 1 ? (
+                          <select
+                            aria-label={`Unit for ${line.item_name}`}
+                            value={givenUnitFor(line).name}
+                            onChange={(e) => {
+                              const oldFactor = givenUnitFor(line).factor || 1;
+                              const nextFactor = line.units.find((unit) => unit.name === e.target.value)?.factor || 1;
+                              const baseAmount = (parseQty(given[line.id] ?? "") ?? 0) * oldFactor;
+                              setGivenUnits((prev) => ({ ...prev, [line.id]: e.target.value }));
+                              setGiven((prev) => ({ ...prev, [line.id]: baseAmount ? String(roundQty(baseAmount / nextFactor)) : prev[line.id] ?? "" }));
+                            }}
+                          >
+                            {line.units.map((unit) => <option key={unit.name} value={unit.name}>{unit.name}</option>)}
+                          </select>
+                        ) : <small>{line.unit}</small>}
+                      </div>
                     ) : (
                       <span className={line.issued_qty !== line.requested_qty ? "rs-neg" : undefined}>
                         {formatQty(line.issued_qty)}

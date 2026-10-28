@@ -139,12 +139,13 @@ def list_purchase_orders(
 @router.get("/supply-items")
 def list_supply_items(
     q: str | None = Query(default=None, max_length=120),
+    active_only: bool = Query(default=False),
     db: Session = Depends(get_db),
     session: dict = Depends(get_request_session),
 ):
     """Core inventory rows that can be bought (ingredients and directly-sold goods)."""
     _, account_id = _shop(db, session)
-    rows = PurchaseOrderService(db).supply_items(account_id, q)
+    rows = PurchaseOrderService(db).supply_items(account_id, q, active_only=active_only)
     return {"data": [supply_item_out(item) for item in rows]}
 
 

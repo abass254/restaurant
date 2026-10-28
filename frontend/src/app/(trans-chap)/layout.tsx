@@ -10,12 +10,12 @@ import "@/styles/restaurant-supplies.css";
 import "@/styles/trans-chap-quotation.css";
 
 export const metadata: Metadata = {
-  title: "Trans Chap",
+  title: "Dukai Merchant",
   description: "Sales and receipts for DukAI merchants",
   manifest: "/trans-chap-manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "Trans Chap",
+    title: "Dukai Merchant",
     // Draw under the iOS status bar so the header color fills to the top edge
     // (no black gap). Header already pads with env(safe-area-inset-top).
     statusBarStyle: "black-translucent",

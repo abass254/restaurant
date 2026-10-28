@@ -1,7 +1,7 @@
 {
   "id": "/trans-chap",
-  "name": "Trans Chap",
-  "short_name": "Trans Chap",
+  "name": "Dukai Merchant",
+  "short_name": "Dukai Merchant",
   "description": "Sales and receipts for DukAI merchants",
   "start_url": "/trans-chap",
   "scope": "/trans-chap",
@@ -9,7 +9,10 @@
   "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#e8412a",
-  "categories": ["business", "productivity"],
+  "categories": [
+    "business",
+    "productivity"
+  ],
   "icons": [
     {
       "src": "/icons/trans-chap-192.png",

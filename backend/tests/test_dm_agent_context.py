@@ -76,7 +76,7 @@ def test_order_to_agent_dict_includes_line_summary():
     )
     payload = order_to_agent_dict(order)
     assert payload["order_number"] == "ORD-000042"
-    assert payload["status_label"] == "Awaiting payment"
+    assert payload["status_label"] == "Payment requested"
     assert payload["items_summary"] == "2× Blue Spray"
     assert payload["is_active"] is True
 
@@ -229,6 +229,6 @@ def test_build_conversation_context_includes_shop_profile_and_active_order():
     assert "1 service(s)" in context
     assert "KES 40/km" in context
     assert "ORD-000099" in context
-    assert "Awaiting payment" in context
+    assert "Payment requested" in context
     assert "get_shop_info" in context
     assert "recommend_products" in context

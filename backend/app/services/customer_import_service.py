@@ -281,12 +281,20 @@ def _parse_row(
             notes = join_notes(notes, f"Original {label.lower()} '{raw_value}' is not a valid amount - check and update")
         return value
 
+    # The import contract treats blank monetary columns as a zero balance,
+    # rather than as an unknown value. This makes a newly imported customer
+    # immediately safe to use in POS and matches the spreadsheet template.
     credit_limit = amount("credit_limit", "Credit limit")
+    if credit_limit is None and "credit_limit" in column_map:
+        credit_limit = 0.0
     opening = amount("opening_balance", "Opening balance")
     due = amount("amount_due", "Amount due")
 
+    # A supplied-but-blank balance column deliberately resets the imported
+    # value to zero. When the workbook contains no balance columns at all,
+    # keep None so merge imports preserve the customer's existing balance.
     opening_balance: float | None = None
-    if opening is not None or due is not None:
+    if opening is not None or due is not None or "opening_balance" in column_map or "amount_due" in column_map:
         opening_balance = max((opening or 0.0) + (due or 0.0), 0.0)
 
     parsed_rows.append(

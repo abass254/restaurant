@@ -46,7 +46,7 @@ function TransChapSignInBrand() {
     <div className="trans-chap-signin__brand">
       <TransChapLogoMark size={52} color="currentColor" accentColor="#e8412a" />
       <div className="trans-chap-signin__brand-copy">
-        <p className="trans-chap-signin__name">Trans Chap</p>
+        <p className="trans-chap-signin__name">DukAI Merch</p>
         <p className="trans-chap-signin__by">
           by <span>DukAI</span>
         </p>
@@ -79,9 +79,8 @@ function SignInStatusAlert({
     return (
       <p
         role={ok ? "status" : "alert"}
-        className={`auth-split__alert ${
-          ok ? "auth-split__alert--ok" : "auth-split__alert--error"
-        }`}
+        className={`auth-split__alert ${ok ? "auth-split__alert--ok" : "auth-split__alert--error"
+          }`}
       >
         {message}
       </p>
@@ -100,9 +99,8 @@ function SignInStatusAlert({
   return (
     <div
       role={ok ? "status" : "alert"}
-      className={`trans-chap-signin__alert ${
-        ok ? "trans-chap-signin__alert--ok" : "trans-chap-signin__alert--error"
-      }`}
+      className={`trans-chap-signin__alert ${ok ? "trans-chap-signin__alert--ok" : "trans-chap-signin__alert--error"
+        }`}
     >
       <span className="trans-chap-signin__alert-icon" aria-hidden="true">
         <i className={`fa-solid ${icon}`} />
@@ -128,7 +126,7 @@ function LoginFrame({
     return (
       <AuthShell
         className="auth-split--trans-chap"
-        heroLabel="TRANS CHAP"
+        heroLabel="Dukai Merchant"
         heroContent={<TransChapHeroContent />}
         brandHeader={<TransChapBrandHeader />}
         panelAction={<ThemeToggle />}
@@ -439,7 +437,7 @@ export default function LoginForm({
         {!embedded || isTransChap ? (
           <>
             <h1 className="auth-split__title">
-              {isTransChap ? "Sign in to Trans Chap" : "Sign in to your dashboard"}
+              {isTransChap ? "Sign in to Dukai Merchant" : "Sign in to your dashboard"}
             </h1>
             <p className="auth-split__subtitle">
               {isTransChap

@@ -233,6 +233,26 @@ button.rs-card {
     text-align: right;
 }
 
+.rs-count-input {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.rs-count-input select,
+.rs-issue-stepper__unit-select {
+    min-height: 2.1rem;
+    max-width: 7rem;
+    padding: 0.25rem 0.4rem;
+    border: 1px solid var(--app-border);
+    border-radius: 8px;
+    background: var(--app-surface);
+    color: var(--app-text-secondary);
+    font: inherit;
+    font-size: 0.74rem;
+    font-weight: 650;
+}
+
 .rs-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -624,7 +644,7 @@ button.rs-card {
     background: var(--app-surface-elevated, var(--app-surface));
     border: 1px solid var(--app-border);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    margin-bottom: 1.25rem;
+    margin-bottom: 0.55rem;
     width: fit-content;
     max-width: 100%;
     overflow-x: auto;
@@ -816,14 +836,14 @@ button.rs-card {
 .tc-kitchen-page {
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 0.75rem;
     width: 100%;
     max-width: 1180px;
     min-width: 0;
     box-sizing: border-box;
     align-self: stretch;
     margin: 0 auto;
-    padding: 1rem 0 3rem;
+    padding: 0.35rem 0 1.5rem;
     /* Without this the tables' min-content width stretches the phone shell grid past the screen. */
     container-type: inline-size;
 }
@@ -850,10 +870,10 @@ button.rs-card {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 1.25rem;
+    gap: 0.75rem;
     flex-wrap: wrap;
-    padding: 1.35rem 1.6rem;
-    border-radius: 18px;
+    padding: 0.75rem 0.9rem;
+    border-radius: 14px;
     background: var(--app-surface);
     border: 1px solid var(--app-border);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
@@ -877,13 +897,13 @@ button.rs-card {
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    margin-bottom: 0.45rem;
+    margin-bottom: 0.2rem;
     width: fit-content;
 }
 
 .tc-kitchen-header__title {
     margin: 0;
-    font-size: 1.45rem;
+    font-size: 1.15rem;
     font-weight: 850;
     letter-spacing: -0.02em;
     color: var(--app-text);
@@ -905,15 +925,15 @@ button.rs-card {
 
 .tc-kitchen-action {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.65rem;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.55rem;
     box-sizing: border-box;
-    width: 210px;
+    width: auto;
     min-width: 0;
-    padding: 0.9rem;
+    padding: 0.45rem 0.7rem;
     border: 1px solid var(--app-border);
-    border-radius: 16px;
+    border-radius: 12px;
     background: var(--app-surface-elevated, var(--app-surface));
     color: var(--app-text);
     font: inherit;
@@ -939,12 +959,13 @@ button.rs-card {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2.4rem;
-    height: 2.4rem;
-    border-radius: 12px;
+    width: 1.7rem;
+    height: 1.7rem;
+    border-radius: 8px;
     background: var(--app-accent-peach-soft, rgba(232, 65, 42, 0.12));
     color: var(--app-primary, #e8412a);
-    font-size: 1.05rem;
+    font-size: 0.8rem;
+    flex-shrink: 0;
 }
 
 .tc-kitchen-action__text {
@@ -1032,16 +1053,16 @@ button.rs-card {
 /* ── Live Kitchen KPI Stats Row ── */
 .tc-kitchen-stats {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 0.85rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
 }
 
 .tc-kitchen-stat-card {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    padding: 1.1rem 1.25rem;
-    border-radius: 16px;
+    gap: 0.6rem;
+    padding: 0.55rem 0.7rem;
+    border-radius: 12px;
     background: var(--app-surface);
     border: 1px solid var(--app-border);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
@@ -1051,10 +1072,10 @@ button.rs-card {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 46px;
-    height: 46px;
-    border-radius: 13px;
-    font-size: 1.2rem;
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    font-size: 0.9rem;
     flex-shrink: 0;
 }
 
@@ -1088,10 +1109,10 @@ button.rs-card {
 }
 
 .tc-kitchen-stat-val {
-    font-size: 1.25rem;
+    font-size: 0.95rem;
     font-weight: 850;
     color: var(--app-text);
-    margin-top: 0.15rem;
+    margin-top: 0;
 }
 
 .tc-kitchen-stat-sub {
@@ -1105,9 +1126,9 @@ button.rs-card {
 .tc-kitchen-section {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    padding: 1.4rem;
-    border-radius: 18px;
+    gap: 0.55rem;
+    padding: 0.75rem 0.85rem;
+    border-radius: 14px;
     background: var(--app-surface);
     border: 1px solid var(--app-border);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
@@ -1126,7 +1147,7 @@ button.rs-card {
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    font-size: 1.1rem;
+    font-size: 0.98rem;
     font-weight: 800;
     color: var(--app-text);
 }
@@ -1135,6 +1156,600 @@ button.rs-card {
     margin: 0.25rem 0 0;
     font-size: 0.82rem;
     color: var(--app-text-secondary);
+}
+
+.tc-kitchen-section__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+
+.tc-kitchen-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.45rem;
+    padding: 2.25rem 1.25rem;
+    border-radius: 16px;
+    background: var(--app-bg, var(--app-surface));
+    border: 1px dashed var(--app-border);
+}
+
+.tc-kitchen-empty i {
+    font-size: 2rem;
+    color: var(--app-text-secondary);
+}
+
+.tc-kitchen-empty h4 {
+    margin: 0.25rem 0 0;
+    font-size: 1.02rem;
+}
+
+.tc-kitchen-empty p {
+    margin: 0 0 0.6rem;
+    max-width: 28rem;
+    color: var(--app-text-secondary);
+    font-size: 0.86rem;
+}
+
+.tc-kitchen-supply-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 0.85rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.tc-kitchen-supply-card {
+    display: flex;
+}
+
+.tc-kitchen-supply-card__link {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    width: 100%;
+    gap: 0.75rem;
+    padding: 0.95rem 1.05rem;
+    border-radius: 14px;
+    border: 1px solid var(--app-border);
+    background: var(--app-surface);
+    color: var(--app-text);
+    text-decoration: none;
+    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tc-kitchen-supply-card__link:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--app-primary) 50%, var(--app-border));
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
+.tc-kitchen-supply-card__head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.tc-kitchen-supply-card__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--app-primary) 12%, var(--app-surface));
+    color: var(--app-primary);
+    font-size: 0.92rem;
+    flex-shrink: 0;
+}
+
+.tc-kitchen-supply-card__info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+    flex: 1;
+}
+
+.tc-kitchen-supply-card__title {
+    font-size: 0.92rem;
+    font-weight: 750;
+    color: var(--app-text);
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.tc-kitchen-supply-card__badge {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 6px;
+    letter-spacing: 0.01em;
+}
+
+.tc-kitchen-supply-card__badge.is-ok {
+    background: color-mix(in srgb, #22c55e 14%, var(--app-surface));
+    color: #16a34a;
+}
+
+.tc-kitchen-supply-card__badge.is-low {
+    background: color-mix(in srgb, #f59e0b 16%, var(--app-surface));
+    color: #d97706;
+}
+
+.tc-kitchen-supply-card__metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    padding-top: 0.55rem;
+    border-top: 1px dashed color-mix(in srgb, var(--app-border) 80%, transparent);
+}
+
+.tc-kitchen-supply-card__qty-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
+}
+
+.tc-kitchen-supply-card__qty {
+    font-size: 1.35rem;
+    font-weight: 850;
+    letter-spacing: -0.02em;
+    color: var(--app-text);
+}
+
+.tc-kitchen-supply-card__unit {
+    font-size: 0.78rem;
+    color: var(--app-text-secondary);
+    font-weight: 650;
+}
+
+.tc-kitchen-supply-card__portions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 8px;
+    background: color-mix(in srgb, #0ea5e9 12%, var(--app-surface));
+    border: 1px solid color-mix(in srgb, #0ea5e9 25%, transparent);
+    color: #0284c7;
+    font-size: 0.75rem;
+    font-weight: 750;
+    line-height: 1.25;
+}
+
+.tc-kitchen-supply-card__portions > i {
+    font-size: 0.78rem;
+    flex-shrink: 0;
+}
+
+.tc-kitchen-supply-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.tc-kitchen-supply-list a {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+    min-height: 64px;
+    min-width: 150px;
+    padding: 0.55rem 0.75rem;
+    border-radius: 12px;
+    border: 1px solid var(--app-border);
+    background: var(--app-bg, var(--app-surface));
+    color: var(--app-text);
+    font-weight: 750;
+    font-size: 0.88rem;
+    text-decoration: none;
+}
+
+.tc-kitchen-supply-list a:hover {
+    border-color: color-mix(in srgb, var(--app-primary) 40%, var(--app-border));
+}
+
+.tc-kitchen-supply-list i {
+    color: var(--app-text-secondary);
+    font-size: 0.8rem;
+}
+
+.tc-kitchen-supply-list small {
+    color: var(--app-text-secondary);
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.tc-kitchen-supply-list .tc-kitchen-supply-portions {
+    color: var(--app-accent-teal, #0f766e);
+    font-weight: 800;
+}
+
+.tc-kitchen-shift-tools {
+    border: 1px solid var(--app-border);
+    border-radius: 12px;
+    background: var(--app-surface);
+}
+
+.tc-kitchen-shift-tools > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.55rem 0.8rem;
+    color: var(--app-text-secondary);
+    font-size: 0.8rem;
+    font-weight: 750;
+    cursor: pointer;
+    list-style: none;
+}
+
+.tc-kitchen-shift-tools > summary::-webkit-details-marker {
+    display: none;
+}
+
+.tc-kitchen-shift-tools > summary > span:first-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.tc-kitchen-shift-tools[open] > .rs-card {
+    margin: 0 0.45rem 0.45rem;
+}
+
+.tc-kitchen-new-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--app-primary, #e8412a);
+    animation: tc-kitchen-pulse 1.1s ease-in-out infinite;
+}
+
+.tc-kitchen-tab-pill.is-pulsing,
+.tc-kitchen-orders__new {
+    animation: tc-kitchen-pulse 1.1s ease-in-out infinite;
+}
+
+.tc-kitchen-orders__new {
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-primary, #e8412a) 12%, transparent);
+    color: var(--app-primary, #e8412a);
+    font-size: 0.72rem;
+    font-weight: 850;
+}
+
+.tc-kitchen-order-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    gap: 0.65rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.tc-kitchen-order {
+    min-width: 0;
+    padding: 0.8rem;
+    border: 1px solid var(--app-border);
+    border-radius: 12px;
+    background: var(--app-bg, var(--app-surface));
+}
+
+.tc-kitchen-order.is-new {
+    border-color: color-mix(in srgb, var(--app-primary, #e8412a) 40%, var(--app-border));
+}
+
+.tc-kitchen-order__header,
+.tc-kitchen-order__header > div,
+.tc-kitchen-order__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.55rem;
+}
+
+.tc-kitchen-order__header > div {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+}
+
+.tc-kitchen-order__header > div > *:not(:first-child) {
+    color: var(--app-text-secondary);
+    font-size: 0.78rem;
+}
+
+.tc-kitchen-order__items {
+    display: grid;
+    gap: 0.55rem;
+    margin: 0.75rem 0;
+    padding: 0;
+    list-style: none;
+}
+
+.tc-kitchen-order__items li {
+    display: grid;
+    gap: 0.15rem;
+    padding-bottom: 0.45rem;
+    border-bottom: 1px solid var(--app-border);
+}
+
+.tc-kitchen-order__items li:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+
+.tc-kitchen-order__items small,
+.tc-kitchen-order__footer > span {
+    color: var(--app-text-secondary);
+    font-size: 0.76rem;
+}
+
+.tc-kitchen-order__item-new {
+    animation: tc-kitchen-pulse 1.1s ease-in-out infinite;
+}
+
+.tc-kitchen-order__progress {
+    color: var(--app-accent-teal, #0f766e);
+    font-size: 0.8rem;
+    font-weight: 800;
+}
+
+.tc-kitchen-orders__error {
+    margin: 0;
+    color: var(--app-danger, #b42318);
+    font-size: 0.85rem;
+}
+
+@keyframes tc-kitchen-pulse {
+    50% {
+        opacity: 0.45;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tc-kitchen-new-dot,
+    .tc-kitchen-tab-pill.is-pulsing,
+    .tc-kitchen-orders__new,
+    .tc-kitchen-order__item-new {
+        animation: none;
+    }
+}
+
+.tc-kitchen-meals {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.tc-kitchen-meal {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(8.5rem, 0.8fr) auto;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.5rem 0.7rem;
+    border-radius: 12px;
+    border: 1px solid var(--app-border);
+    background: var(--app-bg, var(--app-surface));
+}
+
+.tc-kitchen-meal.is-paused {
+    opacity: 0.72;
+}
+
+.tc-kitchen-meal__name {
+    font-weight: 800;
+    font-size: 0.98rem;
+    color: var(--app-text);
+}
+
+.tc-kitchen-meal__meta {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.25rem;
+    color: var(--app-text-secondary);
+    font-size: 0.76rem;
+}
+
+.tc-kitchen-meal__icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    margin: 0.35rem 0 0 0.15rem;
+    border: 1px solid var(--app-primary, #e8412a);
+    border-radius: 9px;
+    background: var(--app-primary, #e8412a);
+    color: #fff;
+    font-size: 0.92rem;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(15, 23, 42, 0.12);
+    transition: background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tc-kitchen-meal__icon-btn:hover {
+    background: color-mix(in srgb, var(--app-primary, #e8412a) 85%, #000);
+    box-shadow: 0 3px 8px rgba(15, 23, 42, 0.2);
+    transform: translateY(-1px);
+}
+
+.tc-kitchen-meal__icon-btn:active {
+    transform: translateY(0);
+}
+
+.tc-kitchen-meal__icon-btn:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--app-primary, #e8412a) 35%, transparent);
+    outline-offset: 2px;
+}
+
+.tc-kitchen-meal__portions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.2rem;
+}
+
+.tc-kitchen-meal__portions strong {
+    font-size: 1.15rem;
+    line-height: 1;
+    font-weight: 850;
+    letter-spacing: -0.03em;
+}
+
+.tc-kitchen-meal__portions > span {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--app-text-secondary);
+}
+
+.tc-kitchen-meal__portions small {
+    color: var(--app-text-secondary);
+}
+
+.tc-kitchen-meal__status {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+}
+
+.tc-kitchen-meal__status .theme-switch:disabled {
+    cursor: wait;
+}
+
+@media (min-width: 721px) {
+    .tc-kitchen-meals {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.55rem;
+    }
+
+    .tc-kitchen-meal {
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-rows: auto 1fr;
+        align-items: start;
+        gap: 0.5rem 0.6rem;
+        padding: 0.65rem 0.75rem;
+    }
+
+    .tc-kitchen-meal__name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .tc-kitchen-meal__main {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.35rem;
+    }
+
+    .tc-kitchen-meal__meta {
+        margin-top: 0;
+    }
+
+    .tc-kitchen-meal__status {
+        grid-column: 2;
+        grid-row: 1;
+        flex-direction: column-reverse;
+        align-items: flex-end;
+        gap: 0.3rem;
+    }
+
+    .tc-kitchen-meal__portions {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        align-self: end;
+        gap: 0.35rem 0.5rem;
+        padding-top: 0.5rem;
+        border-top: 1px dashed var(--app-border);
+    }
+
+    .tc-kitchen-meal__portions .rs-btn {
+        margin-left: auto;
+    }
+}
+
+@media (min-width: 721px) {
+    .tc-kitchen-extras__list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.55rem;
+    }
+
+    .tc-kitchen-extra {
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: start;
+        gap: 0.5rem 0.6rem;
+        padding: 0.65rem 0.75rem;
+    }
+
+    .tc-kitchen-extra .tc-kitchen-extras__name {
+        grid-column: 1;
+        grid-row: 1 / span 2;
+        min-width: 0;
+    }
+
+    .tc-kitchen-extra .theme-switch {
+        grid-column: 2;
+        grid-row: 1;
+        justify-self: end;
+    }
+
+    .tc-kitchen-extra .tc-kitchen-extras__pill {
+        grid-column: 2;
+        grid-row: 2;
+        justify-self: end;
+    }
+}
+
+@media (min-width: 1100px) {
+    .tc-kitchen-meals,
+    .tc-kitchen-extras__list {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 720px) {
+    .tc-kitchen-meal {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.4rem 0.6rem;
+        padding: 0.45rem 0.6rem;
+    }
+
+    .tc-kitchen-meal__portions {
+        grid-column: 1;
+    }
+
+    .tc-kitchen-meal__status {
+        grid-column: 2;
+        grid-row: 1;
+    }
 }
 
 .tc-kitchen-toolbar {
@@ -1207,8 +1822,8 @@ button.rs-card {
 /* ── Mobile & Small Screen Adaptations ── */
 @media (max-width: 768px) {
     .tc-kitchen-page {
-        gap: 1rem;
-        padding-top: 0.75rem;
+        gap: 0.6rem;
+        padding-top: 0.25rem;
         align-self: stretch;
     }
 
@@ -1243,8 +1858,8 @@ button.rs-card {
     .tc-kitchen-header {
         flex-direction: column;
         align-items: flex-start;
-        padding: 1.15rem;
-        gap: 1rem;
+        padding: 0.7rem;
+        gap: 0.6rem;
         box-sizing: border-box;
         width: 100%;
         min-width: 0;
@@ -1260,7 +1875,7 @@ button.rs-card {
 
     .tc-kitchen-action {
         width: 100%;
-        padding: 0.8rem;
+        padding: 0.55rem 0.6rem;
     }
 
     .tc-kitchen-btn {
@@ -1288,7 +1903,7 @@ button.rs-card {
     .tc-kitchen-stats {
         width: 100%;
         min-width: 0;
-        grid-template-columns: minmax(0, 1fr);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .tc-kitchen-stat-card,
@@ -1303,7 +1918,7 @@ button.rs-card {
     }
 
     .tc-kitchen-section {
-        padding: 1rem;
+        padding: 0.65rem;
     }
 
     .tc-kitchen-section__head,
@@ -1383,54 +1998,136 @@ button.rs-card {
 }
 
 /* Kitchen: modifier options with sold-out switches. */
-.tc-kitchen-modifiers {
+.tc-kitchen-extras {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  grid-template-columns: minmax(9rem, 0.7fr) minmax(0, 1.3fr);
+  align-items: start;
+  gap: 0.5rem;
+}
+
+.tc-kitchen-extras__meals {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.tc-kitchen-extras__meal {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--app-border);
+  color: var(--app-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.tc-kitchen-extras__meal strong {
+  font-size: 0.9rem;
+}
+
+.tc-kitchen-extras__meal span,
+.tc-kitchen-extras__detail-head p {
+  margin: 0;
+  color: var(--app-text-secondary);
+  font-size: 0.76rem;
+}
+
+.tc-kitchen-extras__meal.is-selected {
+  border-color: var(--app-primary, #0f766e);
+  box-shadow: 0 0 0 1px var(--app-primary, #0f766e);
+}
+
+.tc-kitchen-extras__detail {
+  min-width: 0;
+  padding: 0.55rem;
+}
+
+.tc-kitchen-extras__detail-head,
+.tc-kitchen-extras__group-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 0.75rem;
 }
 
-.tc-kitchen-modifiers__group {
-  padding: 0.85rem 0.95rem;
+.tc-kitchen-extras__detail-head {
+  margin-bottom: 0.75rem;
 }
 
-.tc-kitchen-modifiers__group-head {
+.tc-kitchen-extras__detail-head h4 {
+  margin: 0 0 0.2rem;
+  color: var(--app-text);
+  font-size: 0.98rem;
+}
+
+.tc-kitchen-extras__groups {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.tc-kitchen-extras__group {
+  min-width: 0;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+}
+
+.tc-kitchen-extras__group-head {
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.tc-kitchen-extras__group-head > div:first-child {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin: 0 0 0.5rem;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
-.tc-kitchen-modifiers__group-head span {
-  font-size: 0.74rem;
+.tc-kitchen-extras__group-head strong {
+  color: var(--app-text);
+  font-size: 0.9rem;
+}
+
+.tc-kitchen-extras__group-head span {
   color: var(--app-text-secondary);
+  font-size: 0.72rem;
 }
 
-.tc-kitchen-modifiers ul {
+.tc-kitchen-extras__group-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.tc-kitchen-extras__group ul {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.tc-kitchen-modifiers li {
+.tc-kitchen-extras__group li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.55rem;
   padding: 0.5rem 0;
   border-top: 1px solid var(--app-border);
 }
 
-.tc-kitchen-modifiers li:first-child {
+.tc-kitchen-extras__group li:first-child {
   border-top: 0;
 }
 
-.tc-kitchen-modifiers li.is-off .tc-kitchen-modifiers__name > span {
+.tc-kitchen-extras__group li.is-off .tc-kitchen-extras__name > span {
   color: var(--app-text-secondary);
   text-decoration: line-through;
 }
 
-.tc-kitchen-modifiers__name {
+.tc-kitchen-extras__name {
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -1438,18 +2135,92 @@ button.rs-card {
   font-size: 0.9rem;
 }
 
-.tc-kitchen-modifiers__name small {
+.tc-kitchen-extras__name small {
   font-weight: 500;
   font-size: 0.74rem;
   color: var(--app-text-secondary);
 }
 
-.tc-kitchen-modifiers__pill {
+.tc-kitchen-extras__pill {
   font-size: 0.7rem;
   white-space: nowrap;
 }
 
-.tc-kitchen-modifiers__warn {
+.tc-kitchen-extras__list {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tc-kitchen-extra {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: var(--app-bg, var(--app-surface));
+}
+
+.tc-kitchen-extra.is-off .tc-kitchen-extras__name > span:first-child {
+  color: var(--app-text-secondary);
+  text-decoration: line-through;
+}
+
+.tc-kitchen-extra__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.tc-extra-form {
+  max-width: 420px;
+}
+
+.tc-extra-form__price {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0 0.85rem;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: var(--app-surface);
+}
+
+.tc-extra-form__price.is-error {
+  border-color: #dc2626;
+}
+
+.tc-extra-form__price span {
+  font-weight: 800;
+  font-size: 0.82rem;
+  color: var(--app-text-secondary);
+}
+
+.tc-extra-form__price input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--app-text);
+  font: inherit;
+  font-weight: 700;
+}
+
+.tc-extra-form__hint {
+  display: block;
+  margin-top: 0.4rem;
+  color: var(--app-text-secondary);
+  font-size: 0.78rem;
+}
+
+.tc-kitchen-extras__warn {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
@@ -1462,8 +2233,303 @@ button.rs-card {
   font-weight: 600;
 }
 
-.tc-kitchen-modifiers__warn i {
+.tc-kitchen-extras__warn i {
   color: #d97706;
   margin-top: 0.15rem;
+}
+
+@media (max-width: 760px) {
+  .tc-kitchen-extras {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tc-kitchen-extras__meals {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .tc-kitchen-extras__group li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .tc-kitchen-extras__group .theme-switch {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .tc-kitchen-extras__pill {
+    grid-column: 1;
+  }
+}
+
+/* ── Measures & Batch Sizes Grid & Cards ── */
+.tc-kitchen-measure-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    width: 100%;
+}
+
+.tc-kitchen-measure-chips {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    overflow-x: auto;
+    padding-bottom: 0.15rem;
+    -webkit-overflow-scrolling: touch;
+}
+
+.tc-kitchen-measure-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.28rem 0.65rem;
+    border-radius: 999px;
+    border: 1px solid var(--app-border);
+    background: var(--app-bg, var(--app-surface));
+    color: var(--app-text-secondary);
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+
+.tc-kitchen-measure-chip:hover {
+    border-color: var(--app-primary);
+    color: var(--app-text);
+}
+
+.tc-kitchen-measure-chip.is-active {
+    background: var(--app-primary);
+    border-color: var(--app-primary);
+    color: #fff;
+}
+
+.tc-kitchen-measure-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 350px), 1fr));
+    gap: 0.85rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.tc-kitchen-measure-card {
+    display: flex;
+    flex-direction: column;
+    border-radius: 14px;
+    border: 1px solid var(--app-border);
+    background: var(--app-surface);
+    overflow: hidden;
+    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.tc-kitchen-measure-card:hover {
+    border-color: color-mix(in srgb, var(--app-primary) 35%, var(--app-border));
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+.tc-kitchen-measure-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    padding: 0.85rem 1rem;
+    background: color-mix(in srgb, var(--app-text) 2.5%, var(--app-surface));
+    border-bottom: 1px solid var(--app-border);
+}
+
+.tc-kitchen-measure-card__title-box {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+    flex: 1;
+}
+
+.tc-kitchen-measure-card__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--app-primary) 12%, transparent);
+    color: var(--app-primary);
+    font-size: 0.95rem;
+    flex-shrink: 0;
+}
+
+.tc-kitchen-measure-card__title {
+    margin: 0;
+    font-size: 0.98rem;
+    font-weight: 800;
+    color: var(--app-text);
+    line-height: 1.25;
+    word-break: break-word;
+}
+
+.tc-kitchen-measure-card__count {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--app-text-secondary);
+    margin-top: 0.12rem;
+}
+
+.tc-kitchen-measure-card__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.65rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, #10b981 14%, transparent);
+    border: 1px solid color-mix(in srgb, #10b981 35%, transparent);
+    color: #10b981;
+    font-size: 0.78rem;
+    font-weight: 750;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+html[data-theme="dark"] .tc-kitchen-measure-card__badge {
+    background: rgba(16, 185, 129, 0.16);
+    border-color: rgba(52, 211, 153, 0.4);
+    color: #34d399;
+}
+
+.tc-kitchen-measure-card__body {
+    padding: 0.75rem 1rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.tc-kitchen-measure-card__table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 0.45rem;
+    margin-bottom: 0.45rem;
+    border-bottom: 1px solid var(--app-border);
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--app-text-secondary);
+}
+
+.tc-kitchen-measure-card__col-amounts {
+    display: flex;
+    gap: 1.4rem;
+    text-align: right;
+}
+
+.tc-kitchen-measure-card__ingredients {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.tc-kitchen-measure-card__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.65rem;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--app-text) 2.5%, transparent);
+    transition: background 0.12s ease;
+}
+
+.tc-kitchen-measure-card__row:hover {
+    background: color-mix(in srgb, var(--app-text) 5%, transparent);
+}
+
+.tc-kitchen-measure-card__supply-name {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--app-text);
+    min-width: 0;
+    padding-right: 0.5rem;
+}
+
+.tc-kitchen-measure-card__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--app-primary);
+    flex-shrink: 0;
+}
+
+.tc-kitchen-measure-card__amounts {
+    display: flex;
+    align-items: baseline;
+    gap: 1.4rem;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.tc-kitchen-measure-card__batch-val {
+    font-size: 0.9rem;
+    font-weight: 850;
+    color: var(--app-text);
+    min-width: 4rem;
+}
+
+.tc-kitchen-measure-card__portion-val {
+    font-size: 0.8rem;
+    font-weight: 650;
+    color: var(--app-text-secondary);
+    min-width: 4.5rem;
+}
+
+.tc-kitchen-measure-card__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    padding: 0.65rem 1rem;
+    border-top: 1px solid var(--app-border);
+    background: color-mix(in srgb, var(--app-text) 1.5%, var(--app-surface));
+    font-size: 0.78rem;
+}
+
+.tc-kitchen-measure-card__ratio {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--app-text-secondary);
+}
+
+.tc-kitchen-measure-card__ratio strong {
+    color: var(--app-text);
+}
+
+.tc-kitchen-measure-card__action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: none;
+    background: transparent;
+    color: var(--app-primary);
+    font-size: 0.78rem;
+    font-weight: 750;
+    cursor: pointer;
+    padding: 0.2rem 0.4rem;
+    border-radius: 6px;
+    transition: all 0.15s ease;
+}
+
+.tc-kitchen-measure-card__action:hover {
+    background: color-mix(in srgb, var(--app-primary) 10%, transparent);
 }
 

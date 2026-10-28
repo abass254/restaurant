@@ -17,7 +17,7 @@ export function TransChapInstallPanel({
     const ok = await promptInstall();
     setStatus(
       ok
-        ? "Installed. Open Trans Chap from your home screen."
+        ? "Installed. Open Dukai Merchant from your home screen."
         : "Install dismissed. You can try again anytime.",
     );
   }
@@ -39,7 +39,7 @@ export function TransChapInstallPanel({
   return (
     <div className="trans-chap-install ios-settings-detail">
       <p className="ios-settings__footer ios-settings__footer--top">
-        Add Trans Chap to your home screen. It opens this sales app only — not the
+        Add Dukai Merchant to your home screen. It opens this sales app only — not the
         full merchant dashboard. No App Store required.
       </p>
 
@@ -96,7 +96,7 @@ export function TransChapInstallPanel({
                   </p>
                   <ol>
                     <li>Use the install icon in the address bar</li>
-                    <li>Or open the browser menu → Install Trans Chap</li>
+                    <li>Or open the browser menu → Install DukAI Merch</li>
                   </ol>
                 </>
               )}
@@ -115,7 +115,7 @@ export function TransChapInstallPanel({
           {showOpenLink ? (
             <Link href="/trans-chap" className="ios-settings__row">
               <span className="ios-settings__label ios-settings__label--action">
-                Open Trans Chap
+                Open DukAI Merch
               </span>
               <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
             </Link>

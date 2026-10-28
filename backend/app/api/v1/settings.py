@@ -172,6 +172,129 @@ def _normalize_menu_sections(sections: list[MenuSectionIn]) -> list[dict[str, st
     return out
 
 
+DEFAULT_RESTAURANT_TABLES: list[dict[str, str]] = [
+    {"id": "table_1", "label": "Table 1"},
+    {"id": "table_2", "label": "Table 2"},
+    {"id": "table_3", "label": "Table 3"},
+    {"id": "table_4", "label": "Table 4"},
+    {"id": "table_5", "label": "Table 5"},
+    {"id": "table_6", "label": "Table 6"},
+    {"id": "takeaway", "label": "Takeaway"},
+]
+
+DEFAULT_RESTAURANT_STATIONS: list[dict[str, str]] = [
+    {"id": "kitchen", "label": "Kitchen"},
+    {"id": "bar", "label": "Bar"},
+    {"id": "grill", "label": "Grill"},
+]
+
+
+class RestaurantTableIn(BaseModel):
+    id: str | None = Field(default=None, max_length=48)
+    label: str = Field(min_length=1, max_length=40)
+
+
+class RestaurantTablesUpdate(BaseModel):
+    tables: list[RestaurantTableIn] = Field(min_length=1, max_length=100)
+
+
+def restaurant_tables_for(account: Account | None) -> list[dict[str, str]]:
+    raw = getattr(account, "restaurant_tables", None) if account is not None else None
+    if not isinstance(raw, list):
+        return [dict(t) for t in DEFAULT_RESTAURANT_TABLES]
+    tables = [
+        {"id": str(t["id"]), "label": str(t["label"])}
+        for t in raw
+        if isinstance(t, dict) and t.get("id") and t.get("label")
+    ]
+    return tables or [dict(t) for t in DEFAULT_RESTAURANT_TABLES]
+
+
+def _normalize_restaurant_tables(tables: list[RestaurantTableIn]) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    seen_ids: set[str] = set()
+    seen_labels: set[str] = set()
+    for table in tables:
+        label = " ".join(table.label.split())
+        if not label:
+            continue
+        if label.lower() in seen_labels:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f'"{label}" is listed twice.',
+            )
+        base = _section_id(table.id or "") or _section_id(label) or "table"
+        table_id, n = base, 2
+        while table_id in seen_ids:
+            table_id, n = f"{base}_{n}", n + 1
+        seen_ids.add(table_id)
+        seen_labels.add(label.lower())
+        out.append({"id": table_id, "label": label})
+    if not out:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Add at least one table.",
+        )
+    return out
+
+
+class RestaurantStationIn(BaseModel):
+    id: str | None = Field(default=None, max_length=48)
+    label: str = Field(min_length=1, max_length=40)
+
+
+class RestaurantStationsUpdate(BaseModel):
+    stations: list[RestaurantStationIn] = Field(min_length=1, max_length=30)
+
+
+def restaurant_stations_for(account: Account | None) -> list[dict[str, str]]:
+    raw = getattr(account, "restaurant_stations", None) if account is not None else None
+    if not isinstance(raw, list):
+        return [dict(s) for s in DEFAULT_RESTAURANT_STATIONS]
+    stations = [
+        {"id": str(s["id"]), "label": str(s["label"])}
+        for s in raw
+        if isinstance(s, dict) and s.get("id") and s.get("label")
+    ]
+    return stations or [dict(s) for s in DEFAULT_RESTAURANT_STATIONS]
+
+
+def _normalize_restaurant_stations(stations: list[RestaurantStationIn]) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    seen_ids: set[str] = set()
+    seen_labels: set[str] = set()
+    has_kitchen = False
+    for station in stations:
+        label = " ".join(station.label.split())
+        if not label:
+            continue
+        if label.lower() in seen_labels:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f'"{label}" is listed twice.',
+            )
+        base = _section_id(station.id or "") or _section_id(label) or "station"
+        station_id, n = base, 2
+        while station_id in seen_ids:
+            station_id, n = f"{base}_{n}", n + 1
+        seen_ids.add(station_id)
+        seen_labels.add(label.lower())
+        if station_id == "kitchen" or "kitchen" in label.lower():
+            has_kitchen = True
+        out.append({"id": station_id, "label": label})
+    if not out:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Add at least one prep station.",
+        )
+    if not has_kitchen:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Kitchen must be one of the stations.",
+        )
+    return out
+
+
 class BusinessLocationUpdate(BaseModel):
     business_location: str = Field(min_length=1, max_length=255)
     latitude: float = Field(ge=-90, le=90)
@@ -342,6 +465,8 @@ def show_settings(
             account.force_mpesa_prompt if account else True
         ),
         "receipt_descriptions": receipt_descriptions_for(account),
+        "restaurant_tables": restaurant_tables_for(account),
+        "restaurant_stations": restaurant_stations_for(account),
         "can_set_opening_amount": bool(account is not None and can_manage_opening_amount),
         "can_set_opening_stock": bool(account is not None and can_manage_opening_amount),
         "can_set_opening_investment": bool(account is not None and can_manage_opening_amount),
@@ -453,6 +578,68 @@ def update_menu_sections(
     services.db.commit()
     services.db.refresh(account)
     return {"message": "Menu sections saved.", "sections": menu_sections_for(account)}
+
+
+@router.get("/tables")
+def show_restaurant_tables(
+    services: ServiceContainer = Depends(get_services),
+    session: dict = Depends(get_request_session),
+):
+    user = require_user(services.db, session)
+    assert_merchant_section_any_access(user, "settings", "inventory", "pos", "dashboard")
+    account = services.db.get(Account, require_merchant_account_id(user))
+    return {"tables": restaurant_tables_for(account)}
+
+
+@router.put("/tables")
+def update_restaurant_tables(
+    payload: RestaurantTablesUpdate,
+    request: Request,
+    services: ServiceContainer = Depends(get_services),
+    session: dict = Depends(get_request_session),
+):
+    validate_csrf(request, session)
+    user = require_user(services.db, session)
+    assert_merchant_section_access(user, "settings")
+    account = services.db.get(Account, require_merchant_account_id(user))
+    if account is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Business account not found.")
+
+    account.restaurant_tables = _normalize_restaurant_tables(payload.tables)
+    services.db.commit()
+    services.db.refresh(account)
+    return {"message": "Restaurant tables saved.", "tables": restaurant_tables_for(account)}
+
+
+@router.get("/stations")
+def show_restaurant_stations(
+    services: ServiceContainer = Depends(get_services),
+    session: dict = Depends(get_request_session),
+):
+    user = require_user(services.db, session)
+    assert_merchant_section_any_access(user, "settings", "inventory", "pos", "dashboard")
+    account = services.db.get(Account, require_merchant_account_id(user))
+    return {"stations": restaurant_stations_for(account)}
+
+
+@router.put("/stations")
+def update_restaurant_stations(
+    payload: RestaurantStationsUpdate,
+    request: Request,
+    services: ServiceContainer = Depends(get_services),
+    session: dict = Depends(get_request_session),
+):
+    validate_csrf(request, session)
+    user = require_user(services.db, session)
+    assert_merchant_section_access(user, "settings")
+    account = services.db.get(Account, require_merchant_account_id(user))
+    if account is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Business account not found.")
+
+    account.restaurant_stations = _normalize_restaurant_stations(payload.stations)
+    services.db.commit()
+    services.db.refresh(account)
+    return {"message": "Restaurant stations saved.", "stations": restaurant_stations_for(account)}
 
 
 @router.put("/receipt-descriptions")

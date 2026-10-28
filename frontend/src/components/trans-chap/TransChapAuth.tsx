@@ -11,7 +11,7 @@ export function TransChapBrandHeader() {
           <TransChapLogoMark size={52} color="#ffffff" accentColor="#ffdbcc" />
         </div>
         <div className="trans-chap-auth__brand-text">
-          <span className="trans-chap-auth__wordmark">Trans Chap</span>
+          <span className="trans-chap-auth__wordmark">DukAI Merch</span>
           <span className="trans-chap-auth__badge">by DukAI</span>
         </div>
       </Link>
@@ -34,7 +34,7 @@ export function TransChapHeroContent() {
 
       <div className="trans-chap-hero__card">
         <div className="trans-chap-hero__card-header">
-          <div className="trans-chap-hero__card-title">Trans Chap Register</div>
+          <div className="trans-chap-hero__card-title">Dukai Merchant Register</div>
           <div className="trans-chap-hero__card-sub">
             Built for retail shops, counters & quick dining
           </div>

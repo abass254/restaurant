@@ -41,6 +41,7 @@ export function RestaurantStockTake() {
   const canApply = isStoreAdmin(user);
   const [take, setTake] = useState<StockTake | null>(null);
   const [counts, setCounts] = useState<Counts>({});
+  const [units, setUnits] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
@@ -53,6 +54,7 @@ export function RestaurantStockTake() {
         if (!alive) return;
         setTake(data);
         setCounts(countsFor(data));
+        setUnits(Object.fromEntries((data.lines ?? []).map((line) => [line.id, line.unit])));
       })
       .catch((err) => {
         if (alive) void showError("Could not load stock count", extractErrorMessage(err));
@@ -68,12 +70,18 @@ export function RestaurantStockTake() {
   const lines = useMemo(() => take?.lines ?? [], [take]);
   const needle = search.trim().toLowerCase();
   const visible = needle ? lines.filter((line) => line.item_name.toLowerCase().includes(needle)) : lines;
-  const dirty = lines.some((line) => (line.counted_qty != null ? String(line.counted_qty) : "") !== (counts[line.id] ?? ""));
   const counted = lines.filter((line) => parseCount(counts[line.id] ?? "") != null).length;
   const draft = take?.status === "draft";
+  const unitFor = (line: NonNullable<StockTake["lines"]>[number]) =>
+    line.units.find((unit) => unit.name === units[line.id]) ?? line.units[0] ?? { name: line.unit, factor: 1 };
+  const countBase = (line: NonNullable<StockTake["lines"]>[number]) => {
+    const qty = parseCount(counts[line.id] ?? "");
+    return qty == null ? null : Math.round(qty * (unitFor(line).factor || 1) * 1000) / 1000;
+  };
+  const dirty = lines.some((line) => countBase(line) !== (line.counted_qty ?? null));
 
   const liveVariance = lines.reduce((sum, line) => {
-    const qty = parseCount(counts[line.id] ?? "");
+    const qty = countBase(line);
     if (qty == null || line.current_qty == null || line.unit_cost == null) return sum;
     return sum + (qty - line.current_qty) * line.unit_cost;
   }, 0);
@@ -84,10 +92,9 @@ export function RestaurantStockTake() {
     try {
       const next = await saveStockTakeCounts(
         take.id,
-        lines.map((line) => ({ line_id: line.id, counted_qty: parseCount(counts[line.id] ?? "") })),
+        lines.map((line) => ({ line_id: line.id, counted_qty: countBase(line) })),
       );
       setTake(next);
-      setCounts(countsFor(next));
       return next;
     } catch (err) {
       await showError("Could not save counts", extractErrorMessage(err));
@@ -204,7 +211,7 @@ export function RestaurantStockTake() {
           </thead>
           <tbody>
             {visible.map((line) => {
-              const qty = draft ? parseCount(counts[line.id] ?? "") : line.counted_qty;
+              const qty = draft ? countBase(line) : line.counted_qty;
               const system = draft ? line.current_qty : line.expected_qty;
               const diff = draft ? (qty != null && system != null ? qty - system : null) : line.variance_qty;
               return (
@@ -216,14 +223,31 @@ export function RestaurantStockTake() {
                   <td className="rs-num">{formatQty(system)}</td>
                   <td className="rs-num">
                     {draft ? (
-                      <input
-                        className="rs-input rs-input--qty"
-                        inputMode="decimal"
-                        value={counts[line.id] ?? ""}
-                        placeholder="—"
-                        aria-label={`Counted ${line.item_name}`}
-                        onChange={(e) => setCounts((prev) => ({ ...prev, [line.id]: e.target.value }))}
-                      />
+                      <div className="rs-count-input">
+                        <input
+                          className="rs-input rs-input--qty"
+                          inputMode="decimal"
+                          value={counts[line.id] ?? ""}
+                          placeholder="—"
+                          aria-label={`Counted ${line.item_name}`}
+                          onChange={(e) => setCounts((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                        />
+                        {line.units.length > 1 ? (
+                          <select
+                            aria-label={`Count unit for ${line.item_name}`}
+                            value={unitFor(line).name}
+                            onChange={(e) => {
+                              const oldFactor = unitFor(line).factor || 1;
+                              const nextFactor = line.units.find((unit) => unit.name === e.target.value)?.factor || 1;
+                              const currentBase = (parseCount(counts[line.id] ?? "") ?? 0) * oldFactor;
+                              setUnits((prev) => ({ ...prev, [line.id]: e.target.value }));
+                              setCounts((prev) => ({ ...prev, [line.id]: currentBase ? String(Math.round((currentBase / nextFactor) * 1000) / 1000) : prev[line.id] ?? "" }));
+                            }}
+                          >
+                            {line.units.map((unit) => <option key={unit.name} value={unit.name}>{unit.name}</option>)}
+                          </select>
+                        ) : <small>{line.unit}</small>}
+                      </div>
                     ) : (
                       formatQty(qty)
                     )}

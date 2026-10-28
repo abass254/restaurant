@@ -186,7 +186,13 @@ class PurchaseOrderService:
             .all()
         )
 
-    def supply_items(self, account_id: str, q: str | None = None) -> list[InventoryItem]:
+    def supply_items(
+        self,
+        account_id: str,
+        q: str | None = None,
+        *,
+        active_only: bool = False,
+    ) -> list[InventoryItem]:
         """Inventory rows that can go on a purchase order (no menu items / services)."""
         from app.models import Catalogue
 
@@ -199,6 +205,8 @@ class PurchaseOrderService:
                 ~func.lower(func.coalesce(Catalogue.product_type, "retail")).in_(NON_STOCK_TYPES),
             )
         )
+        if active_only:
+            query = query.filter(InventoryItem.is_active.is_(True))
         term = (q or "").strip()
         if term:
             query = query.filter(Catalogue.name.ilike(f"%{term}%"))

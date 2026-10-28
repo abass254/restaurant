@@ -64,11 +64,11 @@ from app.services.inventory_stock_service import (
 )
 from app.services.menu_options import (
     LineOptionsError,
-    line_stock_usage,
     resolve_line_options,
 )
-from app.services.order_stock_service import consume_for_order, release_order_holds
-from app.services.sell_units import resolve_sell_unit
+from app.services.order_stock_service import consume_for_order, order_line_usage, release_order_holds
+from app.services.kitchen_menu_service import supports_recipe
+from app.services.sell_units import base_unit_name, resolve_sell_unit
 from app.support.datetime_utils import naive_utc
 from app.support.store_type import is_restaurant
 from app.support.order_delivery_details import order_needs_delivery_details
@@ -182,6 +182,8 @@ class OrderItemPayload(BaseModel):
     unit_price: float | None = Field(default=None, ge=0, le=99_999_999.99)
     # Sell unit name. Stock deducts quantity × unit factor in the base unit.
     sell_unit: str | None = Field(default=None, max_length=64)
+    # Menu equivalence used to select the matching recipe/prepared portions.
+    serving_unit: str | None = Field(default=None, max_length=32)
     unit_factor: Decimal | None = Field(
         default=None,
         gt=0,
@@ -288,6 +290,13 @@ class OrderTransition(BaseModel):
     mpesa_receipt_number: str | None = Field(default=None, max_length=50)
     # Restaurant cancel / refund: food was made or not returned, so write the stock off as wastage.
     waste_stock: bool = False
+
+
+class OrderRecordPayment(BaseModel):
+    is_paid: bool
+    payment_method: Literal["cash", "mpesa", "card", "credit", "other"] | None = None
+    mpesa_receipt_number: str | None = Field(default=None, max_length=50)
+    note: str | None = Field(default=None, max_length=1000)
 
 
 class OrderMpesaTransactionUpdate(BaseModel):
@@ -1109,7 +1118,8 @@ def create_order(
             )
             sell_unit_label = (
                 str(resolved_unit["name"])
-                if unit_factor != 1
+                if str(resolved_unit["name"]).strip().casefold()
+                != base_unit_name(inv_item).strip().casefold()
                 else None
             )
 
@@ -1215,9 +1225,97 @@ def create_order(
             chosen_options = resolved.chosen
         elif line.modifiers:
             snapshot = [mod.model_dump(exclude_none=True) for mod in line.modifiers]
+        if inv_item and inv_item.product:
+            recipe_lines = [
+                recipe_line
+                for recipe_line in inv_item.product.recipe_lines or []
+                if recipe_line.account_id == account_id
+            ]
+            if (
+                is_restaurant(account)
+                and supports_recipe(inv_item.product.product_type, inv_item.product.category)
+                and not recipe_lines
+            ):
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "errors": {
+                            f"items.{idx}.inventory_item_id": [
+                                "Set this meal's recipe in Kitchen before adding it to a sale.",
+                            ],
+                        },
+                    },
+                )
+            if (
+                is_restaurant(account)
+                and supports_recipe(inv_item.product.product_type, inv_item.product.category)
+            ):
+                menu_price = (resolved_unit or {}).get("selling_price", inv_item.selling_price)
+                if menu_price is None or Decimal(str(menu_price)) <= 0:
+                    raise HTTPException(
+                        status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail={
+                            "errors": {
+                                f"items.{idx}.inventory_item_id": [
+                                    "Set this meal's price in Menu before adding it to a sale.",
+                                ],
+                            },
+                        },
+                    )
+            available_units = {
+                (recipe_line.serving_unit or "servings").strip()
+                for recipe_line in recipe_lines
+            }
+            if available_units:
+                preferred_unit = next(
+                    (
+                        setting.serving_unit
+                        for setting in (inv_item.product.recipe_serving_units or [])
+                        if setting.account_id == account_id
+                    ),
+                    sorted(available_units)[0],
+                )
+                requested_unit = (line.serving_unit or preferred_unit or "").strip()
+                matching_unit = next(
+                    (
+                        unit
+                        for unit in available_units
+                        if unit.casefold() == requested_unit.casefold()
+                    ),
+                    None,
+                )
+                if requested_unit and matching_unit is None:
+                    raise HTTPException(
+                        status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail={
+                            "errors": {
+                                f"items.{idx}.serving_unit": [
+                                    "Choose a serving option with a configured recipe.",
+                                ],
+                            },
+                        },
+                    )
+                if not matching_unit and len(available_units) > 1:
+                    raise HTTPException(
+                        status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail={
+                            "errors": {
+                                f"items.{idx}.serving_unit": [
+                                    "Choose a serving option for this menu item.",
+                                ],
+                            },
+                        },
+                    )
+                line.serving_unit = matching_unit or next(iter(available_units))
         line_modifiers.append(snapshot or None)
         line_usage.append(
-            line_stock_usage(db, account_id, inv_item.product, chosen_options) or None
+            order_line_usage(
+                db,
+                account_id,
+                inv_item,
+                chosen_options,
+                serving_unit=line.serving_unit,
+            ) or None
             if inv_item and inv_item.product
             else None
         )
@@ -1319,6 +1417,7 @@ def create_order(
             unit_price=price,
             line_total=(price * line.quantity).quantize(Decimal("0.01")),
             sell_unit=sell_unit_label,
+            serving_unit=line.serving_unit,
             unit_factor=unit_factor,
             modifiers=modifiers,
             stock_usage=usage,
@@ -1797,8 +1896,16 @@ def transition_order(
         order.paid_at = now
     if target == BEING_PREPARED and not order.prepared_at:
         order.prepared_at = now
-    if target == READY and not order.ready_at:
-        order.ready_at = now
+    if target == READY:
+        if not order.ready_at:
+            order.ready_at = now
+        if not order.stock_deducted:
+            shop = db.get(Account, account_id)
+            if is_restaurant(shop):
+                try:
+                    consume_for_order(db, order, order.items or [], account=shop, user_id=user.id)
+                except Exception:
+                    logger.exception("Failed to deduct restaurant stock on ready transition order_id=%s", order.id)
     if target == OUT_FOR_DELIVERY and not order.dispatched_at:
         order.dispatched_at = now
     if target in (DELIVERED, PICKED_UP) and not order.completed_at:
@@ -1842,6 +1949,129 @@ def transition_order(
             order,
             allowed_next=allowed_next_statuses(order.status, order.fulfillment_type),
         ),
+    }
+
+
+@router.post("/{order_id}/record-payment")
+def record_order_payment(
+    order_id: str,
+    payload: OrderRecordPayment,
+    request: Request,
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Explicitly record an order as paid or unpaid, regardless of preparation stage."""
+    validate_csrf(request, session)
+    user = _auth_orders_user(db, session, pos_ok=True)
+    account_id = _require_shop(user)
+    order = _get_owned_order(db, account_id, order_id)
+
+    if order.status in (CANCELLED, REFUNDED):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail=f"Cannot change payment on a {order.status} order.",
+        )
+
+    now = datetime.utcnow()
+    user_note = (payload.note or "").strip() or None
+    previous_credit = payment_portion(order, PAYMENT_CREDIT)
+
+    if payload.is_paid:
+        method = payload.payment_method or order.payment_method or PAYMENT_CASH
+        order.payment_method = method
+        order.payment_splits = None
+        if not order.paid_at:
+            order.paid_at = now
+
+        if previous_credit > 0 and method != PAYMENT_CREDIT:
+            try:
+                CustomerService(db).rebalance_order_credit(
+                    str(account_id),
+                    previous_phone=order.customer_phone,
+                    previous_amount=previous_credit,
+                    phone=order.customer_phone,
+                    name=order.customer_name,
+                    amount=0,
+                )
+            except Exception:
+                pass
+
+        receipt = (payload.mpesa_receipt_number or "").strip()
+        if method == PAYMENT_MPESA and receipt:
+            try:
+                matched_txn = confirm_mpesa_receipt_for_order(
+                    db,
+                    order,
+                    receipt,
+                    confirmed_by_user_id=user.id,
+                )
+                link_mpesa_transaction_to_order(db, order, matched_txn)
+            except Exception:
+                pass
+
+        if order.status in (PLACED, AWAITING_PAYMENT):
+            prev_status = order.status
+            order.status = PAYMENT_RECEIVED
+            db.add(
+                OrderStatusHistory(
+                    order_id=order.id,
+                    from_status=prev_status,
+                    to_status=PAYMENT_RECEIVED,
+                    changed_by_user_id=user.id,
+                    note=user_note or f"Payment recorded ({method}).",
+                    created_at=now,
+                ),
+            )
+        else:
+            db.add(
+                OrderStatusHistory(
+                    order_id=order.id,
+                    from_status=order.status,
+                    to_status=order.status,
+                    changed_by_user_id=user.id,
+                    note=user_note or f"Payment recorded ({method}). Bill settled.",
+                    created_at=now,
+                ),
+            )
+    else:
+        order.paid_at = None
+        if order.status == PAYMENT_RECEIVED:
+            order.status = AWAITING_PAYMENT
+            db.add(
+                OrderStatusHistory(
+                    order_id=order.id,
+                    from_status=PAYMENT_RECEIVED,
+                    to_status=AWAITING_PAYMENT,
+                    changed_by_user_id=user.id,
+                    note=user_note or "Recorded as unpaid.",
+                    created_at=now,
+                ),
+            )
+        else:
+            db.add(
+                OrderStatusHistory(
+                    order_id=order.id,
+                    from_status=order.status,
+                    to_status=order.status,
+                    changed_by_user_id=user.id,
+                    note=user_note or "Recorded as unpaid.",
+                    created_at=now,
+                ),
+            )
+
+    order.updated_at = now
+    db.commit()
+    db.refresh(order)
+    db.refresh(order, attribute_names=["items", "status_history", "mpesa_transaction", "mpesa_transactions"])
+
+    profile = mpesa_service.get_merchant_profile(db, account_id)
+    order_out = OrderOut.from_model(
+        order,
+        allowed_next=allowed_next_statuses(order.status, order.fulfillment_type),
+    )
+    return {
+        "message": "Payment recorded as paid." if payload.is_paid else "Payment recorded as unpaid.",
+        "data": attach_order_mpesa_settlement(order_out, profile),
     }
 
 

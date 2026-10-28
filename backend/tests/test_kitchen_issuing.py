@@ -7,11 +7,13 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 
-from app.api.v1 import kitchen_issues, settings as settings_api
+from app.api.v1 import inventory as inventory_api, kitchen_issues, menu as menu_api, orders, settings as settings_api
+from app.api.v1.inventory import InventoryCreate
 from app.api.v1.settings import BusinessProfileUpdate
 from app.api.v1.kitchen_issues import EquivalenceUnitsReplace
+from app.api.v1.menu import RecipeLineIn, RecipeReplace
 from app.models import Account, Catalogue, InventoryItem, KitchenEquivalenceUnit, KitchenIssue, RecipeServingUnit, StockMovement
 from app.services.kitchen_issue_service import (
     KitchenIssueError,
@@ -37,6 +39,7 @@ from app.services.restaurant_stock_service import (
     create_stock_take,
     kitchen_day_report,
     menu_costing,
+    prepare_recipe_batch,
     save_counts,
 )
 from test_restaurant_supplies import ACCOUNT, _cancel, _make_db, _order
@@ -474,6 +477,133 @@ def test_full_lifecycle_po_delivery_to_issue_to_sale_to_daily_count(rdb):
         + flour_report["adjusted"]
         + flour_report["count_variance"]
     ) == pytest.approx(flour_report["closing"])
+
+
+def test_purchase_new_inventory_issue_prepare_and_record_sale(rdb, monkeypatch):
+    """Exercise the merchant workflow from adding a raw supply through its POS sale."""
+    user = SimpleNamespace(id="u1")
+    monkeypatch.setattr(inventory_api, "validate_csrf", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(inventory_api, "_auth_inventory_user", lambda *_args, **_kwargs: user)
+    monkeypatch.setattr(inventory_api, "_require_shop", lambda _user: ACCOUNT)
+
+    supply_product = Catalogue(
+        id="qa-flour",
+        name="QA Flour",
+        slug="qa-flour",
+        product_type="retail",
+        unit="kg",
+        created_by_account_id=ACCOUNT,
+    )
+    rdb.add(supply_product)
+    rdb.commit()
+    added = inventory_api.create_inventory_item(
+        InventoryCreate(
+            product_id=supply_product.id,
+            stock_quantity=Decimal("0"),
+            buying_price=Decimal("100"),
+            inventory_role="raw_material",
+        ),
+        request=None,
+        response=Response(),
+        db=rdb,
+        session={},
+    )
+    supply = rdb.get(InventoryItem, added["data"].id)
+    assert supply is not None and supply.inventory_role == "raw_material"
+
+    enable_kitchen_issuing(rdb, _account(rdb), {}, user_id="owner")
+    rdb.commit()
+    po_service = PurchaseOrderService(rdb)
+    po = po_service.create(
+        ACCOUNT,
+        user_id="storekeeper",
+        supplier_id="sup-1",
+        status="ordered",
+        lines=[LineInput(supply.id, Decimal("20"), Decimal("100"))],
+    )
+    rdb.commit()
+    po_service.receive(
+        ACCOUNT,
+        po.id,
+        [ReceiveInput(po.lines[0].id, Decimal("20"))],
+        user_id="storekeeper",
+    )
+    rdb.commit()
+    assert _qty(rdb, supply.id) == (pytest.approx(20), pytest.approx(0))
+
+    issue = create_issue(rdb, _account(rdb), [(supply.id, Decimal("10"))], user_id="chef")
+    rdb.commit()
+    release_issue(rdb, _account(rdb), issue.id, None, user_id="storekeeper")
+    rdb.commit()
+    assert _qty(rdb, supply.id) == (pytest.approx(10), pytest.approx(10))
+
+    menu_api.replace_recipe(
+        "chapati",
+        RecipeReplace(
+            serving_unit="plates",
+            lines=[
+                RecipeLineIn(
+                    product_id=supply_product.id,
+                    quantity=0.1,
+                    batch_quantity=1,
+                    batch_yield=10,
+                    serving_unit="plates",
+                ),
+            ],
+        ),
+        request=None,
+        db=rdb,
+        session={},
+    )
+    prepared = prepare_recipe_batch(
+        rdb,
+        ACCOUNT,
+        "inv-chapati",
+        serving_unit="plates",
+        user_id="chef",
+    )
+    rdb.commit()
+    assert prepared["portions_added"] == pytest.approx(10)
+    assert _qty(rdb, supply.id) == (pytest.approx(10), pytest.approx(9))
+
+    order = _order(
+        rdb,
+        {"inventory_item_id": "inv-chapati", "quantity": 2, "serving_unit": "plates"},
+    )
+    rdb.commit()
+    assert order.source == "walkin"
+    assert float(rdb.get(InventoryItem, "inv-chapati").prepared_quantity) == pytest.approx(8)
+    assert _qty(rdb, supply.id) == (pytest.approx(10), pytest.approx(9))
+    sale = rdb.query(StockMovement).filter(StockMovement.order_id == order.id).one()
+    assert sale.reason == "sale" and sale.location == "prepared"
+
+    monkeypatch.setattr(orders, "require_user", lambda *_args, **_kwargs: user)
+    sales_response = orders.list_orders(
+        q=None,
+        status_filter="placed",
+        source="walkin",
+        fulfillment_type=None,
+        since=None,
+        until=None,
+        page=1,
+        per_page=100,
+        db=rdb,
+        session={},
+    )
+    kitchen_response = orders.list_orders(
+        q=None,
+        status_filter="placed",
+        source=None,
+        fulfillment_type=None,
+        since=None,
+        until=None,
+        page=1,
+        per_page=100,
+        db=rdb,
+        session={},
+    )
+    assert any(row.id == order.id for row in sales_response["data"])
+    assert any(row.id == order.id for row in kitchen_response["data"])
 
 
 def test_record_kitchen_used(rdb):

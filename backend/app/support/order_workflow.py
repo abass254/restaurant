@@ -42,6 +42,7 @@ ActionKind = Literal[
     "resend_completion_prompt",
     "cancel",
     "refund",
+    "record_payment",
     "delete",
 ]
 
@@ -415,6 +416,15 @@ def workflow_actions_for_order(order) -> list[dict[str, Any]]:
             )
 
     elif status in {DELIVERED, PICKED_UP}:
+        if not _order_payment_confirmed(order):
+            actions.append(
+                {
+                    "kind": "record_payment",
+                    "label": "Settle bill",
+                    "variant": "primary",
+                    "icon": "money-bill-wave",
+                },
+            )
         actions.append(
             {
                 "kind": "refund",

@@ -246,7 +246,7 @@ export function TransChapTeamSettings({ onClose }: { onClose: () => void }) {
       ...createForm.allowed_sections,
     ]);
     if (allowedSections.length === 0) {
-      await showError("Select access", "Choose at least one Trans Chap area.");
+      await showError("Select access", "Choose at least one DukAI Merch area.");
       return;
     }
 
@@ -343,7 +343,7 @@ export function TransChapTeamSettings({ onClose }: { onClose: () => void }) {
       ...editForm.allowed_sections,
     ]);
     if (allowedSections.length === 0) {
-      await showError("Select access", "Choose at least one Trans Chap area.");
+      await showError("Select access", "Choose at least one DukAI Merch area.");
       return;
     }
     setSavingEdit(true);
@@ -1091,7 +1091,7 @@ function SectionPicker({
         })}
       </div>
       <p className="ios-settings__footer">
-        Only Trans Chap areas. Home is always included so they can open the app.
+        Only DukAI Merch areas. Home is always included so they can open the app.
         Customers covers the directory and collecting on tab. POS & sales covers
         the register and walk-in receipts. Inventory covers stock and purchases.
         Settings controls the Settings menu (sign-out, camera, etc.).

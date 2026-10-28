@@ -15,6 +15,7 @@ import {
   detectPackFactor,
   isGroupUnit,
   mergeSellUnitsIntoAttributes,
+  normalizeUnitName,
   packUnits,
   type SellUnit,
 } from "@/lib/sell-units";
@@ -57,29 +58,80 @@ const ALL_ROLE_OPTIONS: { id: InventoryRole; label: string; hint: string }[] = [
 type PackDraft = {
   key: string;
   name: string;
+  /** Conversion amount shown in the Main column; canonical base factor is resolved on save. */
   factor: string;
+  reverse: boolean;
+  referenceUnit: string;
   sellingPrice: string;
+  buyingPrice: string;
 };
 
 function packDraftsFromItem(item: InventoryItem): PackDraft[] {
+  const baseUnit = baseUnitName(item);
   return packUnits(item).map((pack, index) => ({
     key: `pack-${index}-${pack.name}`,
     name: pack.name,
-    factor: String(pack.factor),
+    factor: pack.conversion_amount != null
+      ? String(pack.conversion_amount)
+      : pack.reverse
+        ? String(Math.round((1 / pack.factor) * 1_000_000) / 1_000_000)
+        : String(pack.factor),
+    reverse: pack.reverse === true,
+    referenceUnit: pack.reference_unit || baseUnit,
     sellingPrice:
       pack.selling_price == null ? "" : String(pack.selling_price),
+    buyingPrice:
+      pack.buying_price == null ? "" : String(pack.buying_price),
   }));
 }
 
-function draftsToSellUnits(drafts: PackDraft[]): SellUnit[] {
+function resolveDraftFactors(drafts: PackDraft[], baseUnit: string): Map<string, number> | null {
+  const byName = new Map(drafts.map((draft) => [normalizeUnitName(draft.name), draft]));
+  const factors = new Map<string, number>([[normalizeUnitName(baseUnit), 1]]);
+  const visiting = new Set<string>();
+
+  function resolve(name: string): number | null {
+    const key = normalizeUnitName(name);
+    const known = factors.get(key);
+    if (known != null) return known;
+    if (visiting.has(key)) return null;
+    const draft = byName.get(key);
+    if (!draft) return null;
+    const amount = Number(draft.factor);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+    visiting.add(key);
+    const referenceFactor = resolve(draft.referenceUnit);
+    visiting.delete(key);
+    if (referenceFactor == null) return null;
+    const factor = draft.reverse ? referenceFactor / amount : amount * referenceFactor;
+    const rounded = Math.round(factor * 10_000) / 10_000;
+    if (!Number.isFinite(rounded) || rounded <= 0 || rounded > 1_000_000) return null;
+    factors.set(key, rounded);
+    return rounded;
+  }
+
+  for (const draft of drafts) {
+    if (resolve(draft.name) == null) return null;
+  }
+  return factors;
+}
+
+function draftsToSellUnits(drafts: PackDraft[], factors: Map<string, number>): SellUnit[] {
   return drafts.map((draft) => {
     const unit: SellUnit = {
       name: draft.name.trim(),
-      factor: Math.floor(Number(draft.factor)),
+      factor: factors.get(normalizeUnitName(draft.name)) ?? 0,
+      reverse: draft.reverse,
+      reference_unit: draft.referenceUnit.trim(),
+      conversion_amount: Number(draft.factor),
     };
     const price = draft.sellingPrice.trim() === "" ? null : Number(draft.sellingPrice);
+    const cost = draft.buyingPrice.trim() === "" ? null : Number(draft.buyingPrice);
     if (price != null && Number.isFinite(price) && price >= 0) {
       unit.selling_price = price;
+    }
+    if (cost != null && Number.isFinite(cost) && cost >= 0) {
+      unit.buying_price = cost;
     }
     return unit;
   });
@@ -146,6 +198,7 @@ export function TransChapProductEditForm() {
 
   const hotel = item ? isHotelMenuItem(item) : false;
   const needsSellPrice = hotel || isSaleableRole(role);
+  const rawMaterial = role === "raw_material";
   const roleOptions = useMemo(() => {
     return ALL_ROLE_OPTIONS.filter(
       (option) =>
@@ -154,10 +207,12 @@ export function TransChapProductEditForm() {
   }, [restaurant, role]);
 
   function handleBaseUnitChange(nextUnit: string) {
+    const previousUnit = baseUnit.trim() || "Piece";
+    const normalizedNextUnit = nextUnit.trim() || "Piece";
     setBaseUnit(nextUnit);
-    const autoFactor = detectPackFactor(nextUnit, name);
+    const autoFactor = detectPackFactor(normalizedNextUnit, name);
     if (autoFactor) {
-      const packName = isGroupUnit(nextUnit) ? nextUnit.trim() : "Bulk";
+      const packName = isGroupUnit(normalizedNextUnit) ? normalizedNextUnit : "Bulk";
       setPacks((prev) => {
         if (prev.length === 0) {
           return [
@@ -165,7 +220,10 @@ export function TransChapProductEditForm() {
               key: `pack-${Date.now()}`,
               name: packName,
               factor: String(autoFactor),
+              reverse: false,
+              referenceUnit: normalizedNextUnit,
               sellingPrice: "",
+              buyingPrice: "",
             },
           ];
         } else if (
@@ -177,12 +235,19 @@ export function TransChapProductEditForm() {
               ...prev[0],
               name: prev[0].name || packName,
               factor: String(autoFactor),
+              reverse: false,
+              referenceUnit: normalizedNextUnit,
             },
           ];
         }
         return prev;
       });
     }
+    setPacks((prev) => prev.map((pack) =>
+      normalizeUnitName(pack.referenceUnit) === normalizeUnitName(previousUnit)
+        ? { ...pack, referenceUnit: normalizedNextUnit }
+        : pack,
+    ));
   }
 
   function addPack() {
@@ -192,9 +257,12 @@ export function TransChapProductEditForm() {
       ...prev,
       {
         key: `pack-${Date.now()}`,
-        name: autoName,
-        factor: autoFactor ? String(autoFactor) : "",
+        name: rawMaterial ? "" : autoName,
+        factor: rawMaterial ? "" : autoFactor ? String(autoFactor) : "",
+        reverse: false,
+        referenceUnit: baseUnit.trim() || "Piece",
         sellingPrice: "",
+        buyingPrice: "",
       },
     ]);
   }
@@ -202,12 +270,19 @@ export function TransChapProductEditForm() {
   function updatePack(key: string, patch: Partial<PackDraft>) {
     setPacks((prev) =>
       prev.map((pack) => {
-        if (pack.key !== key) return pack;
+        const target = prev.find((row) => row.key === key);
+        if (pack.key !== key) {
+          return patch.name !== undefined && target &&
+            normalizeUnitName(pack.referenceUnit) === normalizeUnitName(target.name)
+            ? { ...pack, referenceUnit: patch.name }
+            : pack;
+        }
         const next = { ...pack, ...patch };
         if (patch.name !== undefined && (!pack.factor || pack.factor.trim() === "")) {
           const auto = detectPackFactor(patch.name, name);
           if (auto) {
             next.factor = String(auto);
+            next.reverse = false;
           }
         }
         return next;
@@ -215,7 +290,35 @@ export function TransChapProductEditForm() {
     );
   }
 
+  function togglePackDirection(key: string) {
+    setPacks((prev) =>
+      prev.map((pack) => {
+        if (pack.key !== key) return pack;
+        const amount = Number(pack.factor);
+        const flippedAmount = 1 / amount;
+        const nearestInteger = Math.round(flippedAmount);
+        const reciprocal = Number.isFinite(amount) && amount > 0
+          ? Math.abs(flippedAmount - nearestInteger) <= 0.001
+            ? String(nearestInteger)
+            : String(Math.round(flippedAmount * 1_000_000) / 1_000_000)
+          : pack.factor;
+        return { ...pack, factor: reciprocal, reverse: !pack.reverse };
+      }),
+    );
+  }
+
   function removePack(key: string) {
+    const removed = packs.find((pack) => pack.key === key);
+    const dependent = removed && packs.find((pack) =>
+      pack.key !== key && normalizeUnitName(pack.referenceUnit) === normalizeUnitName(removed.name),
+    );
+    if (dependent) {
+      void showError(
+        "Unit is in use",
+        `${dependent.name || "Another unit"} converts through ${removed?.name}. Change that conversion first.`,
+      );
+      return;
+    }
     setPacks((prev) => prev.filter((pack) => pack.key !== key));
   }
 
@@ -227,33 +330,57 @@ export function TransChapProductEditForm() {
 
     const sellRaw = sellingPrice.trim();
     const sell = sellRaw === "" ? null : Number(sellRaw);
+    const nextBaseUnit = baseUnit.trim() || "Piece";
     if (needsSellPrice) {
       if (sell == null || !Number.isFinite(sell) || sell <= 0) return;
     } else if (sellRaw !== "" && (sell == null || !Number.isFinite(sell) || sell < 0)) {
       return;
     }
 
-    for (const pack of packs) {
+    const definedPacks = packs.filter(
+      (pack) => pack.name.trim() || pack.factor.trim() !== "",
+    );
+    const packNames = new Set<string>();
+    for (const pack of definedPacks) {
       const packName = pack.name.trim();
-      const factor = Number(pack.factor);
-      if (!packName && pack.factor.trim() === "" && pack.sellingPrice.trim() === "") {
-        continue;
-      }
+      const amount = Number(pack.factor);
       if (!packName) {
-        await showError("Pack name", "Enter a name like Crate or Dozen.");
+        await showError("Unit name", rawMaterial ? "Enter a name for this unit." : "Enter a name like Crate or Dozen.");
         return;
       }
-      if (!Number.isFinite(factor) || factor < 2) {
-        await showError("Pack size", "Enter how many stock units are in the pack (2 or more).");
+      const key = normalizeUnitName(packName);
+      if (key === normalizeUnitName(nextBaseUnit) || packNames.has(key)) {
+        await showError("Unit name", "Each unit must have a unique name different from the base unit.");
         return;
       }
-      if (pack.sellingPrice.trim() !== "") {
+      packNames.add(key);
+      if (!Number.isFinite(amount) || amount <= 0 || amount > 1_000_000) {
+        await showError(
+          "Unit conversion",
+          "Enter a conversion amount greater than zero.",
+        );
+        return;
+      }
+      if (!rawMaterial && pack.sellingPrice.trim() !== "") {
         const packPrice = Number(pack.sellingPrice);
         if (!Number.isFinite(packPrice) || packPrice < 0) {
-          await showError("Pack price", "Enter a valid pack selling price.");
+          await showError("Unit price", "Enter a valid selling price.");
           return;
         }
       }
+    }
+
+    if (definedPacks.some((pack) => !pack.referenceUnit.trim())) {
+      await showError("Unit conversion", "Choose a unit to convert against.");
+      return;
+    }
+    const draftFactors = resolveDraftFactors(definedPacks, nextBaseUnit);
+    if (!draftFactors) {
+      await showError(
+        "Unit conversion",
+        "Check the referenced units. Conversions must connect to the base unit and cannot form a loop.",
+      );
+      return;
     }
 
     setSaving(true);
@@ -266,7 +393,6 @@ export function TransChapProductEditForm() {
             : prev,
         );
       }
-      const nextBaseUnit = baseUnit.trim() || "Piece";
       if (!hotel && nextBaseUnit !== (item.product?.unit || "Piece")) {
         const product = await apiFetch<CatalogProductMutationResponse>(
           apiRoutes.product(item.product_id),
@@ -296,7 +422,7 @@ export function TransChapProductEditForm() {
       };
       if (!hotel) {
         payload.inventory_role = role;
-        let finalPacks = draftsToSellUnits(packs);
+        let finalPacks = draftsToSellUnits(definedPacks, draftFactors);
         if (finalPacks.length === 0) {
           const autoFactor = detectPackFactor(nextBaseUnit, nextName);
           if (autoFactor) {
@@ -304,6 +430,8 @@ export function TransChapProductEditForm() {
               {
                 name: isGroupUnit(nextBaseUnit) ? nextBaseUnit : "Bulk",
                 factor: autoFactor,
+                reference_unit: nextBaseUnit,
+                conversion_amount: autoFactor,
               },
             ];
           }
@@ -615,7 +743,7 @@ export function TransChapProductEditForm() {
                       onChange={(event) => handleBaseUnitChange(event.target.value)}
                     />
                     <span className="trans-chap-edit-field__hint">
-                      Inventory is always kept in this unit (e.g. Piece, Packet, Box, Kg).
+                      Inventory is always kept in this unit (e.g. Piece, Slice, Packet, or Kg).
                     </span>
                   </div>
                 ) : null}
@@ -823,15 +951,15 @@ export function TransChapProductEditForm() {
                   </div>
                 </div>
 
-                {/* Packs Configuration */}
+                {/* Unit conversions */}
                 <div className="trans-chap-packs-section">
                   <div className="trans-chap-packs-section__head">
                     <div>
-                      <h4>Also sell as packs</h4>
+                      <h4>{rawMaterial ? "Unit conversions" : "Other units & pack sizes"}</h4>
                       <p>
-                        Bundle multiple units into a pack (e.g. Crate of 30, Carton
-                        of 12). Stock deducts by individual units when a pack is
-                        sold.
+                        {rawMaterial
+                          ? "Convert each unit to the base unit or another defined unit. Use the arrows to switch which side of the equation starts at 1."
+                          : "Define how a unit converts to your base stock unit. For example, set the base unit to Slice and add Loaf = 10 slices. The conversion is used when buying or selling in that unit."}
                       </p>
                     </div>
                     <button
@@ -841,16 +969,95 @@ export function TransChapProductEditForm() {
                       disabled={saving}
                     >
                       <i className="fa-solid fa-plus" aria-hidden="true" />
-                      <span>Add pack</span>
+                      <span>{rawMaterial ? "Add unit" : "Add pack"}</span>
                     </button>
                   </div>
 
                   {packs.length > 0 ? (
+                    rawMaterial ? (
+                      <div className="trans-chap-raw-units">
+                        <div className="trans-chap-raw-units__header">
+                          <span>Unit</span>
+                          <span>Main</span>
+                          <span>Base unit</span>
+                          <span aria-hidden="true" />
+                        </div>
+                        {packs.map((pack) => {
+                          const unitName = pack.name.trim() || "unit";
+                          const baseName = baseUnit.trim() || "base unit";
+                          const referenceUnit = pack.referenceUnit.trim() || baseName;
+                          const referenceOptions = [
+                            baseName,
+                            ...packs
+                              .filter((candidate) => candidate.key !== pack.key && candidate.name.trim())
+                              .map((candidate) => candidate.name.trim()),
+                          ].filter((option, index, options) =>
+                            options.findIndex((candidate) => normalizeUnitName(candidate) === normalizeUnitName(option)) === index,
+                          );
+                          return (
+                            <div key={pack.key} className="trans-chap-raw-units__row">
+                              <div className="trans-chap-raw-units__unit">
+                                <input
+                                  type="text"
+                                  placeholder="e.g. Leg, Crate"
+                                  className="trans-chap-edit-input trans-chap-edit-input--sm"
+                                  aria-label="Unit name"
+                                  value={pack.name}
+                                  onChange={(event) => updatePack(pack.key, { name: event.target.value })}
+                                />
+                                <button
+                                  type="button"
+                                  className="trans-chap-packs-table__remove-btn"
+                                  title="Remove unit"
+                                  aria-label={`Remove ${unitName} unit`}
+                                  onClick={() => removePack(pack.key)}
+                                >
+                                  <i className="fa-solid fa-trash-can" aria-hidden="true" />
+                                </button>
+                              </div>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder={pack.reverse ? "e.g. 0.1" : "e.g. 10"}
+                                className="trans-chap-edit-input trans-chap-edit-input--sm"
+                                aria-label={`Main conversion amount for ${unitName}`}
+                                value={pack.factor}
+                                onChange={(event) => updatePack(pack.key, { factor: event.target.value })}
+                              />
+                              <select
+                                className="trans-chap-edit-input trans-chap-edit-input--sm trans-chap-raw-units__reference"
+                                aria-label={`Reference unit for ${unitName}`}
+                                value={referenceUnit}
+                                onChange={(event) => updatePack(pack.key, { referenceUnit: event.target.value })}
+                              >
+                                {referenceOptions.map((option) => (
+                                  <option key={option} value={option}>{option}</option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                className="trans-chap-raw-units__flip"
+                                title={pack.reverse ? "Show one unit in base units" : "Show one base unit in this unit"}
+                                aria-label={pack.reverse ? `Show 1 ${unitName} in ${baseName}` : `Show 1 ${baseName} in ${unitName}`}
+                                onClick={() => togglePackDirection(pack.key)}
+                              >
+                                <i className="fa-solid fa-right-left" aria-hidden="true" />
+                              </button>
+                              <small className="trans-chap-raw-units__equation">
+                                {pack.reverse
+                                  ? `1 ${referenceUnit} = ${pack.factor || "…"} ${unitName}`
+                                  : `1 ${unitName} = ${pack.factor || "…"} ${referenceUnit}`}
+                              </small>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
                     <div className="trans-chap-packs-table">
                       <div className="trans-chap-packs-table__header">
-                        <span>Pack name</span>
-                        <span>Units / pack</span>
-                        <span>Pack price (KES)</span>
+                        <span>Unit name</span>
+                        <span>Base units / unit</span>
+                        <span>Unit price (KES)</span>
                         <span>Unit equiv.</span>
                         <span></span>
                       </div>
@@ -870,7 +1077,7 @@ export function TransChapProductEditForm() {
                             <div>
                               <input
                                 type="text"
-                                placeholder="e.g. Crate, Carton"
+                                placeholder="e.g. Loaf, Crate"
                                 className="trans-chap-edit-input trans-chap-edit-input--sm"
                                 value={pack.name}
                                 onChange={(event) =>
@@ -879,12 +1086,19 @@ export function TransChapProductEditForm() {
                                   })
                                 }
                               />
+                              {pack.name.trim() && Number.isFinite(factorNum) && factorNum >= 2 ? (
+                                <small className="trans-chap-packs-table__conversion-preview">
+                                  1 {pack.name.trim()} = {factorNum} {baseUnit.trim() || "unit"}
+                                  <br />
+                                  {factorNum} {baseUnit.trim() || "unit"} = 1 {pack.name.trim()}
+                                </small>
+                              ) : null}
                             </div>
                             <div>
                               <input
                                 type="text"
                                 inputMode="numeric"
-                                placeholder="e.g. 12"
+                                placeholder="e.g. 10"
                                 className="trans-chap-edit-input trans-chap-edit-input--sm"
                                 value={pack.factor}
                                 onChange={(event) =>
@@ -930,12 +1144,13 @@ export function TransChapProductEditForm() {
                         );
                       })}
                     </div>
+                    )
                   ) : (
                     <div className="trans-chap-packs-empty">
                       <p>
-                        No pack bundles configured. Click{" "}
-                        <strong>+ Add pack</strong> to set up carton, six-pack, or
-                        crate sales.
+                        {rawMaterial
+                          ? <>No units configured. Click <strong>+ Add unit</strong> to set up an alternate purchase unit.</>
+                          : <>No pack bundles configured. Click <strong>+ Add pack</strong> to set up carton, six-pack, or crate sales.</>}
                       </p>
                     </div>
                   )}

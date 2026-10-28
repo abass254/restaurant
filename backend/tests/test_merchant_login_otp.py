@@ -57,10 +57,14 @@ def test_email_send_failure_raises_when_not_debug(_send, _echo) -> None:
 
 @patch("app.services.merchant_login_otp.allow_otp_echo", return_value=True)
 @patch(
+    "app.services.merchant_login_otp.with_optional_login_code",
+    side_effect=lambda payload, code: {**payload, "login_code": code},
+)
+@patch(
     "app.services.merchant_login_otp_email.send_merchant_login_otp_email",
     return_value=False,
 )
-def test_email_send_failure_echoes_code_in_debug(_send, _echo) -> None:
+def test_email_send_failure_echoes_code_in_debug(_send, _optional_code, _echo) -> None:
     db = MagicMock()
     service = MerchantLoginOtpService(db)
     service._find_user = MagicMock(return_value=_user())  # type: ignore[method-assign]
@@ -71,7 +75,11 @@ def test_email_send_failure_echoes_code_in_debug(_send, _echo) -> None:
 
 @patch("app.services.merchant_login_otp.sms_configured", return_value=False)
 @patch("app.services.merchant_login_otp.phone_otp_allowed", return_value=True)
-def test_phone_otp_echoes_code_in_debug(_phone_ok, _sms) -> None:
+@patch(
+    "app.services.merchant_login_otp.with_optional_login_code",
+    side_effect=lambda payload, code: {**payload, "login_code": code},
+)
+def test_phone_otp_echoes_code_in_debug(_optional_code, _phone_ok, _sms) -> None:
     db = MagicMock()
     service = MerchantLoginOtpService(db)
     service._find_user = MagicMock(return_value=_user())  # type: ignore[method-assign]

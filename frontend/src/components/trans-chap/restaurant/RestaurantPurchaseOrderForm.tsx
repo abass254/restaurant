@@ -73,11 +73,16 @@ function biggestUnit(item: SupplyItem): BuyUnit | undefined {
 }
 
 function baseUnit(item: SupplyItem): BuyUnit {
-  return item.buy_units.find((unit) => unit.factor === 1) ?? { name: item.base_unit, factor: 1 };
+  return item.buy_units.find((unit) => unit.name.toLowerCase() === item.base_unit.toLowerCase())
+    ?? item.buy_units.find((unit) => unit.factor === 1)
+    ?? { name: item.base_unit, factor: 1 };
 }
 
 function packUnits(item: SupplyItem): BuyUnit[] {
-  return item.buy_units.filter((unit) => unit.factor > 1).sort((a, b) => b.factor - a.factor);
+  const base = baseUnit(item);
+  return item.buy_units
+    .filter((unit) => unit.name.toLowerCase() !== base.name.toLowerCase())
+    .sort((a, b) => b.factor - a.factor);
 }
 
 /** Pack size from names like "Unga (pack of 24)" or "Water 12pcs". */
@@ -89,8 +94,12 @@ function detectPackSize(name: string): number | null {
   return pcs ? Number(pcs[1]) : null;
 }
 
-function bulkLine(line: DraftLine, factor: number): DraftLine {
-  const known = packUnits(line.item).find((unit) => unit.factor === factor);
+function bulkLine(line: DraftLine, factor: number, unitName?: string): DraftLine {
+  const known = packUnits(line.item).find((unit) =>
+    unitName
+      ? unit.name.toLowerCase() === unitName.toLowerCase()
+      : unit.factor === factor,
+  );
   const base = baseUnit(line.item);
   const cost =
     known?.buying_price != null
@@ -100,7 +109,7 @@ function bulkLine(line: DraftLine, factor: number): DraftLine {
         : line.cost;
   return {
     ...line,
-    unit: known?.name ?? `Pack of ${round(factor, 4)}`,
+    unit: known?.name ?? unitName ?? `Pack of ${round(factor, 4)}`,
     factor,
     packInput: String(round(factor, 4)),
     cost,
@@ -288,7 +297,7 @@ export function RestaurantPurchaseOrderForm() {
 
   function chooseBulk(index: number) {
     updateLine(index, (line) =>
-      line.factor > 1
+      line.unit.toLowerCase() !== baseUnit(line.item).name.toLowerCase()
         ? line
         : bulkLine(line, packUnits(line.item)[0]?.factor ?? detectPackSize(line.item.name) ?? 12),
     );
@@ -340,7 +349,9 @@ export function RestaurantPurchaseOrderForm() {
           quantity: round(parseNumber(line.qty) ?? 0, 3),
           unit_cost: round(parseNumber(line.cost) ?? 0, 2),
           purchase_unit: line.unit,
-          unit_factor: line.factor > 1 ? line.factor : null,
+          unit_factor: line.unit.toLowerCase() !== baseUnit(line.item).name.toLowerCase()
+            ? line.factor
+            : null,
         })),
       });
       await toastSuccess(
@@ -611,8 +622,8 @@ export function RestaurantPurchaseOrderForm() {
                 <div className="pos-cart__lines pos-ticket__lines">
                   <ul>
                     {lines.map((line, index) => {
-                      const bulk = line.factor > 1;
                       const base = baseUnit(line.item);
+                      const bulk = line.unit.toLowerCase() !== base.name.toLowerCase();
                       const qty = parseNumber(line.qty) ?? 0;
                       const cost = parseNumber(line.cost) ?? 0;
                       const lineTotal = lineCents(qty, cost) / 100;
@@ -689,7 +700,24 @@ export function RestaurantPurchaseOrderForm() {
                                 >
                                   Bulk
                                 </button>
-                                {bulk ? (
+                                {bulk && packUnits(line.item).length > 0 ? (
+                                  <select
+                                    className="pos-line__pack-input"
+                                    value={line.unit}
+                                    aria-label={`Purchase unit for ${line.item.name}`}
+                                    onChange={(e) => {
+                                      const unit = packUnits(line.item).find((row) => row.name === e.target.value);
+                                      if (unit) updateLine(index, (current) => bulkLine(current, unit.factor, unit.name));
+                                    }}
+                                  >
+                                    {!packUnits(line.item).some((unit) => unit.name === line.unit) ? (
+                                      <option value={line.unit}>{line.unit}</option>
+                                    ) : null}
+                                    {packUnits(line.item).map((unit) => (
+                                      <option key={unit.name} value={unit.name}>{unit.name}</option>
+                                    ))}
+                                  </select>
+                                ) : bulk ? (
                                   <input
                                     inputMode="decimal"
                                     className="pos-line__pack-input"

@@ -69,8 +69,7 @@ export function RestaurantSuppliesHub() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const tabParam = params.get("tab");
-  const tab: Tab = TABS.some((item) => item.id === tabParam) ? (tabParam as Tab) : "orders";
+  const tab: Tab = "purchases";
 
   function setTab(next: Tab) {
     const search = new URLSearchParams(params.toString());
@@ -96,14 +95,7 @@ export function RestaurantSuppliesHub() {
   );
 
   if (tab === "purchases") {
-    return (
-      <>
-        <div className="rs rs--tabs-only">
-          {tabs}
-        </div>
-        <TransChapPurchasesList />
-      </>
-    );
+    return <TransChapPurchasesList />;
   }
 
   return (
@@ -295,7 +287,7 @@ function StockTab() {
 
   useEffect(() => {
     let alive = true;
-    fetchSupplyItems()
+    fetchSupplyItems({ activeOnly: true })
       .then((rows) => {
         if (alive) setItems(rows);
       })

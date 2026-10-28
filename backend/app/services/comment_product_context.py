@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import InventoryItem, SocialPostLink
+from app.services.catalog.catalog_types import CatalogItem
 from app.services.dm_catalog_service import DmCatalogService
 
 
@@ -34,7 +35,17 @@ def load_linked_inventory_items(
     return [item for item in rows if item.product is not None]
 
 
-def _product_dict(item: InventoryItem) -> dict[str, Any]:
+def _product_dict(item: InventoryItem | CatalogItem) -> dict[str, Any]:
+    if isinstance(item, CatalogItem):
+        return {
+            "inventory_item_id": item.inventory_item_id,
+            "name": item.name,
+            "category": item.category,
+            "brand": item.brand,
+            "price_kes": item.price_kes,
+            "stock": item.stock,
+            "unit": item.unit,
+        }
     product = item.product
     assert product is not None
     return {
@@ -92,7 +103,7 @@ def search_shop_products(
     hits = catalog.search_products(merchant_account_id, query, limit=limit)
     results: list[dict[str, Any]] = []
     for index, hit in enumerate(hits, start=1):
-        if linked_item_ids and hit.item.id in linked_item_ids:
+        if linked_item_ids and hit.item.inventory_item_id in linked_item_ids:
             continue
         payload = _product_dict(hit.item)
         payload["matched_on"] = list(hit.match_reasons)

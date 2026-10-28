@@ -84,8 +84,8 @@ export function TransChapPanel({
           {children}
           <div className="trans-chap-panel__foot">
             {action}
-            <button type="button" className="trans-chap-panel__hide" onClick={onToggle}>
-              Hide
+            <button type="button" className="trans-chap-panel__hide trans-chap-panel__icon-action" onClick={onToggle} aria-label={`Hide ${title}`} title="Hide">
+              <i className="fa-solid fa-chevron-up" aria-hidden />
             </button>
           </div>
         </div>

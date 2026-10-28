@@ -66,7 +66,9 @@ def test_log_handler_captures_messages_and_tracebacks():
     finally:
         logger.removeHandler(handler)
 
-    first, second = list(log_buffer.log_buffer)
+    entries = [entry for entry in log_buffer.log_buffer if entry["logger"] == "tests.log_buffer"]
+    first = next(entry for entry in entries if entry["level"] == "warning")
+    second = next(entry for entry in entries if entry["level"] == "error")
     assert first["level"] == "warning"
     assert first["message"] == "hello world"
     assert first["logger"] == "tests.log_buffer"

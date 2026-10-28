@@ -1,10 +1,13 @@
-/** Pack / crate sell units on a single inventory item (stock stays in base units). */
+/** Alternate units with conversions to the inventory item's base stock unit. */
 
 import type { InventoryItem } from "@/lib/types";
 
 export type SellUnit = {
   name: string;
   factor: number;
+  reverse?: boolean;
+  reference_unit?: string;
+  conversion_amount?: number;
   selling_price?: number | null;
   buying_price?: number | null;
 };
@@ -38,9 +41,16 @@ export function packUnits(item: InventoryItem | null | undefined): SellUnit[] {
       const key = normalizeUnitName(name);
       if (seen.has(key)) continue;
       const factor = Number(row.factor);
-      if (!Number.isFinite(factor) || factor < 2 || factor > 1_000_000) continue;
+      if (!Number.isFinite(factor) || factor <= 0 || factor > 1_000_000) continue;
       seen.add(key);
-      const pack: SellUnit = { name, factor: Math.floor(factor) };
+      const pack: SellUnit = { name, factor: Math.round(factor * 10_000) / 10_000 };
+      if (row.reverse === true) pack.reverse = true;
+      const referenceUnit = String(row.reference_unit || "").trim();
+      if (referenceUnit) pack.reference_unit = referenceUnit;
+      const conversionAmount = Number(row.conversion_amount);
+      if (Number.isFinite(conversionAmount) && conversionAmount > 0) {
+        pack.conversion_amount = Math.round(conversionAmount * 1_000_000) / 1_000_000;
+      }
       for (const priceKey of ["selling_price", "buying_price"] as const) {
         const rawPrice = row[priceKey];
         if (rawPrice == null || rawPrice === "") continue;
@@ -87,7 +97,7 @@ export function allSellUnits(item: InventoryItem): SellUnit[] {
   return [
     base,
     ...packUnits(item)
-      .filter((pack) => normalizeUnitName(pack.name) !== baseKey || pack.factor > 1)
+      .filter((pack) => normalizeUnitName(pack.name) !== baseKey)
       .map((pack) => {
         const next = { ...pack };
         if (
@@ -148,7 +158,7 @@ function formatQtyNumber(value: number): string {
 export function groupedQtyBreakdown(item: InventoryItem): string | null {
   const qty = item.stock_quantity;
   if (qty == null || !Number.isFinite(qty) || qty <= 0) return null;
-  const packs = packUnits(item);
+  const packs = packUnits(item).filter((pack) => pack.factor > 1);
   if (!packs.length) return null;
   const largest = packs.reduce((best, pack) =>
     pack.factor > best.factor ? pack : best,
@@ -175,8 +185,13 @@ export function toSellUnitsPayload(packs: SellUnit[]): SellUnit[] {
   return packs
     .map((pack) => {
       const name = pack.name.trim();
-      const factor = Math.floor(Number(pack.factor));
+      const factor = Math.round(Number(pack.factor) * 10_000) / 10_000;
       const out: SellUnit = { name, factor };
+      if (pack.reverse === true) out.reverse = true;
+      if (pack.reference_unit?.trim()) out.reference_unit = pack.reference_unit.trim();
+      if (pack.conversion_amount != null && Number.isFinite(pack.conversion_amount) && pack.conversion_amount > 0) {
+        out.conversion_amount = Math.round(pack.conversion_amount * 1_000_000) / 1_000_000;
+      }
       if (
         pack.selling_price != null &&
         Number.isFinite(pack.selling_price) &&
@@ -197,7 +212,7 @@ export function toSellUnitsPayload(packs: SellUnit[]): SellUnit[] {
       (pack) =>
         pack.name.length > 0 &&
         Number.isFinite(pack.factor) &&
-        pack.factor >= 2 &&
+        pack.factor > 0 &&
         pack.factor <= 1_000_000,
     );
 }

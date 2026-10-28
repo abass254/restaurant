@@ -94,6 +94,8 @@ export const apiRoutes = {
   settingsOpeningStock: `${apiUrl}/api/v1/settings/opening-stock`,
   settingsOperations: `${apiUrl}/api/v1/settings/operations`,
   settingsMenuSections: `${apiUrl}/api/v1/settings/menu-sections`,
+  settingsTables: `${apiUrl}/api/v1/settings/tables`,
+  settingsStations: `${apiUrl}/api/v1/settings/stations`,
   settingsLogo: `${apiUrl}/api/v1/settings/logo`,
   autoRepliesSettings: `${apiUrl}/api/v1/settings/auto-replies`,
   settingsInventoryIntegration: `${apiUrl}/api/v1/settings/inventory-integration`,
@@ -209,6 +211,7 @@ export const apiRoutes = {
   orderRetryRiderSearch: (id: string) =>
     `${apiUrl}/api/v1/deliveries/${encodeURIComponent(id)}/retry-rider-search`,
   orderTransition: (id: string) => `${apiUrl}/api/v1/orders/${id}/transition`,
+  orderRecordPayment: (id: string) => `${apiUrl}/api/v1/orders/${id}/record-payment`,
   orderReturns: (id: string) => `${apiUrl}/api/v1/orders/${id}/returns`,
   orderMpesaStkPush: (id: string) =>
     `${apiUrl}/api/v1/orders/${id}/mpesa-stk-push`,
@@ -276,6 +279,8 @@ export const apiRoutes = {
   purchaseOrderReceiptVoid: (movementId: string) =>
     `${apiUrl}/api/v1/purchase-orders/receipts/${encodeURIComponent(movementId)}/void`,
   restaurantMenuCosting: `${apiUrl}/api/v1/restaurant-stock/menu-costing`,
+  restaurantMenuPrepare: (inventoryItemId: string) =>
+    `${apiUrl}/api/v1/restaurant-stock/menu/${encodeURIComponent(inventoryItemId)}/prepare`,
   restaurantStockCard: (itemId: string) =>
     `${apiUrl}/api/v1/restaurant-stock/items/${encodeURIComponent(itemId)}/movements`,
   restaurantStockTakes: `${apiUrl}/api/v1/restaurant-stock/stock-takes`,
@@ -311,7 +316,6 @@ export const apiRoutes = {
     `${apiUrl}/api/v1/kitchen-sessions/${action}`,
   kitchenSuggest: `${apiUrl}/api/v1/kitchen-issues/suggest`,
   kitchenReturn: `${apiUrl}/api/v1/kitchen-issues/return`,
-  kitchenUsed: `${apiUrl}/api/v1/kitchen-issues/used`,
   kitchenEnable: `${apiUrl}/api/v1/kitchen-issues/enable`,
   kitchenDisable: `${apiUrl}/api/v1/kitchen-issues/disable`,
   kitchenIssue: (id: string) => `${apiUrl}/api/v1/kitchen-issues/${encodeURIComponent(id)}`,

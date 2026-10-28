@@ -22,9 +22,11 @@ FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
 ARG BACKEND_URL=http://backend:7071
+ARG NEXT_PUBLIC_DEBUG=false
 ENV NEXT_TELEMETRY_DISABLED=1 \
     NODE_ENV=production \
-    BACKEND_URL=${BACKEND_URL}
+    BACKEND_URL=${BACKEND_URL} \
+    NEXT_PUBLIC_DEBUG=${NEXT_PUBLIC_DEBUG}
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

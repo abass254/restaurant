@@ -52,7 +52,6 @@ In the server `.env`:
 APP_URL=https://merchants.dukai.app
 FRONTEND_URL=https://merchants.dukai.app
 CORS_ALLOWED_ORIGINS=https://merchants.dukai.app
-UPLOADS_HOST_PATH=/home/ubuntu/agents/uploads
 UPLOADS_PUBLIC_BASE_URL=https://merchants.dukai.app
 ```
 
@@ -62,9 +61,11 @@ Then:
 docker compose up -d --build
 ```
 
-Compose bind-mounts `UPLOADS_HOST_PATH` → `/app/uploads`. The DB keeps relative
-paths like `/uploads/products/...`; browsers and Instagram resolve them against
-`UPLOADS_PUBLIC_BASE_URL` when set, otherwise `APP_URL` / `FRONTEND_URL`.
+The tracked Compose stack uses the persistent `backend_uploads` named volume.
+The DB keeps relative paths like `/uploads/products/...`; browsers and
+Instagram resolve them against `UPLOADS_PUBLIC_BASE_URL` when set, otherwise
+`APP_URL` / `FRONTEND_URL`. If production needs a host-managed uploads folder,
+add a reviewed Compose override that bind-mounts it at `/app/uploads`.
 
 Bare metal (no Docker): set `UPLOADS_DIR=/home/ubuntu/agents/uploads` instead
 of `UPLOADS_HOST_PATH`, or symlink that folder to `backend/uploads/`.
@@ -81,7 +82,6 @@ docker compose up -d --build
 ```
 
 - Files land in the Docker volume `backend_uploads` → container `/app/uploads`
-  (leave `UPLOADS_HOST_PATH` unset)
 - Browser URLs look like `http://localhost:7070/uploads/products/...`
 - Phone QR upload pages use `FRONTEND_URL` → e.g. `http://localhost:7070/m/upload/<token>`
 
