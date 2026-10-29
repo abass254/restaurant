@@ -723,7 +723,9 @@ export function PosWorkspace({
       );
       if (requestId !== inventoryRequestId.current) return;
       setItems(data.data);
-      setCachedInventory(data.data);
+      if (!term) {
+        setCachedInventory(data.data);
+      }
       inventoryLoadedOnce.current = true;
       setLoadedQuery(term);
       setCatalogById((prev) => {
@@ -740,7 +742,7 @@ export function PosWorkspace({
       setLoading(false);
       setSearching(false);
     }
-  }, [isRestaurant, items.length]);
+  }, [isRestaurant]);
 
   useEffect(() => {
     const firstLoad = !inventoryLoadedOnce.current;
@@ -2421,7 +2423,7 @@ export function PosWorkspace({
       if (isTransChapSale && usesMpesa) {
         suppressMerchantOrderNotification(order.id);
         clearCart();
-        void reload({ silent: true, q: search });
+        void reload({ silent: true });
         if (push?.status === "confirmed" || !isStk) {
           setReceiptOrder(order);
           printAfterSaleRef.current = autoPrintReceipt;
@@ -2460,7 +2462,7 @@ export function PosWorkspace({
       }
       suppressMerchantOrderNotification(order.id);
       clearCart();
-      void reload({ silent: true, q: search });
+      void reload({ silent: true });
 
       if (completeInPlace) {
         setReceiptOrder(order);
@@ -2748,11 +2750,10 @@ export function PosWorkspace({
                 </motion.div>
               ) : (
                 <motion.ul
-                  key={`pos-catalog-${loadedQuery}`}
+                  key="pos-catalog"
                   className="pos-cards"
-                  variants={reduce ? undefined : staggerContainer}
-                  initial={reduce ? false : "hidden"}
-                  animate={reduce ? undefined : "visible"}
+                  initial={false}
+                  animate={{ opacity: 1 }}
                   exit={reduce ? undefined : { opacity: 0 }}
                   transition={{ duration: motionDuration.micro }}
                 >
@@ -2783,7 +2784,8 @@ export function PosWorkspace({
                       item.product?.brand,
                     ].filter(Boolean) as string[];
                     const subtitle = subtitleParts.join(" · ");
-                    const hasPrice = item.selling_price !== null;
+                    const hasBasePrice = item.selling_price !== null && item.selling_price > 0;
+                    const hasPrice = hasBasePrice || hasOptions || (!isHotelDish && item.selling_price !== null);
                     const outOfStock = isOutOfStock(item);
                     const paused = !item.is_active;
                     const blockedBy = isHotelDish && !paused ? mealBlockedBy(item, optionAvailability) : null;
@@ -2811,11 +2813,11 @@ export function PosWorkspace({
                     return (
                       <motion.li
                         key={item.id}
-                        variants={reduce ? undefined : staggerItem}
+                        initial={false}
                         animate={
                           isPulsing && !reduce
-                            ? { scale: [1, 1.025, 1] }
-                            : { scale: 1 }
+                            ? { opacity: 1, y: 0, scale: [1, 1.025, 1] }
+                            : { opacity: 1, y: 0, scale: 1 }
                         }
                         transition={{
                           duration: motionDuration.base,
@@ -2879,10 +2881,10 @@ export function PosWorkspace({
                                   <span className="pos-card__price-unset">
                                     Out of stock
                                   </span>
-                                ) : hasPrice && item.selling_price !== null ? (
+                                ) : hasBasePrice || (!isHotelDish && item.selling_price !== null) ? (
                                   <>
                                     <span className="pos-card__price-amount">
-                                      {formatMoney(item.selling_price)}
+                                      {formatMoney(item.selling_price ?? 0)}
                                     </span>
                                     {item.product?.unit ? (
                                       <span className="pos-card__price-unit">
@@ -2890,6 +2892,10 @@ export function PosWorkspace({
                                       </span>
                                     ) : null}
                                   </>
+                                ) : hasOptions ? (
+                                  <span className="pos-card__price-amount">
+                                    By modifiers
+                                  </span>
                                 ) : (
                                   <span className="pos-card__price-unset">
                                     No price set
@@ -4236,7 +4242,7 @@ export function PosWorkspace({
       ) : null}
 
       <TransChapCustomerQuickAdd
-        open={addCustomerOpen}
+        open={addCustomerOpen && !modifyingItem}
         customers={customers}
         initialPhone={customerPhone}
         onClose={() => setAddCustomerOpen(false)}

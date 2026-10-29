@@ -39,7 +39,6 @@ from app.support.merchant_permissions import (
     active_account_id,
     assert_merchant_section_any_access,
 )
-from app.support.store_type import is_restaurant_account
 
 router = APIRouter(tags=["menu"])
 
@@ -560,15 +559,6 @@ def replace_item_modifier_groups(
     group_ids = payload.group_ids
     if len(set(group_ids)) != len(group_ids):
         raise _unprocessable("group_ids", "Each modifier can only be attached once.")
-    if (
-        group_ids
-        and is_restaurant_account(db, account_id)
-        and supports_recipe(product.product_type, product.category)
-        and not db.query(RecipeLine.id)
-        .filter(RecipeLine.account_id == account_id, RecipeLine.product_id == product.id)
-        .first()
-    ):
-        raise _unprocessable("group_ids", "Save this meal's recipe in Kitchen before adding modifiers.")
     owned = {
         group_id
         for (group_id,) in db.query(ModifierGroup.id).filter(
@@ -632,18 +622,6 @@ def replace_recipe(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Dish not found on your menu.")
     if not supports_recipe(dish.product_type, dish.category):
         raise _unprocessable("product_id", "Recipes can only be set on meals or food menu items.")
-    if not payload.lines and is_restaurant_account(db, account_id):
-        has_attached_modifiers = (
-            db.query(CatalogueModifierGroup.id)
-            .join(ModifierGroup, ModifierGroup.id == CatalogueModifierGroup.group_id)
-            .filter(
-                CatalogueModifierGroup.product_id == product_id,
-                ModifierGroup.account_id == account_id,
-            )
-            .first()
-        )
-        if has_attached_modifiers:
-            raise _unprocessable("lines", "Remove this meal's modifiers before clearing its recipe.")
     serving_unit = payload.serving_unit.strip() if payload.serving_unit is not None else None
     if payload.serving_unit is not None and not serving_unit:
         raise _unprocessable("serving_unit", "Enter what one portion of this meal is called.")

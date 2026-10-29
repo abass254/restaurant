@@ -30,6 +30,7 @@ from app.services.catalog.inventory_integration import (
 )
 from app.services.instagram_data_purge import InstagramDataPurgeService
 from app.services.kitchen_issue_service import disable_kitchen_issuing
+from app.services.merchant_operations_reset_service import MerchantOperationsResetService
 from app.services.order_stock_service import kitchen_issuing_on
 from app.services.platform_instagram import (
     SUPPORTED_PLATFORMS,
@@ -1105,3 +1106,87 @@ def test_inventory_integration(
         "count": len(products),
         "products": products,
     }
+
+
+class OperationsResetRequest(BaseModel):
+    confirm: bool = False
+    confirm_business_name: str | None = None
+    confirm_text: str | None = None
+
+
+@router.get("/operations-reset")
+def get_operations_reset_status(
+    services: ServiceContainer = Depends(get_services),
+    session: dict = Depends(get_request_session),
+):
+    user = require_user(services.db, session)
+    assert_merchant_section_access(user, "settings")
+    account_id = require_merchant_account_id(user)
+    if not (user.is_super_admin() or is_membership_owner(user, account_id)):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Only account owners can access operations data reset.",
+        )
+    reset_service = MerchantOperationsResetService(services.db)
+    return reset_service.get_operations_status(account_id)
+
+
+@router.post("/operations-reset")
+def reset_operations_data(
+    payload: OperationsResetRequest,
+    request: Request,
+    services: ServiceContainer = Depends(get_services),
+    session: dict = Depends(get_request_session),
+):
+    validate_csrf(request, session)
+    user = require_user(services.db, session)
+    assert_merchant_section_access(user, "settings")
+    account_id = require_merchant_account_id(user)
+    if not (user.is_super_admin() or is_membership_owner(user, account_id)):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Only account owners can reset operations data.",
+        )
+    if not payload.confirm:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Please confirm that you want to reset operations data to zero.",
+        )
+    if payload.confirm_text != "DELETE":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="You must type DELETE (case-sensitive) to confirm resetting operations data.",
+        )
+    account = services.db.get(Account, account_id)
+    if payload.confirm_business_name is not None and account:
+        if payload.confirm_business_name.strip().lower() != (account.business_name or "").strip().lower():
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="Business name confirmation does not match.",
+            )
+
+    reset_service = MerchantOperationsResetService(services.db)
+    return reset_service.reset_operations_data(account_id, user_id=user.id)
+
+
+@router.post("/operations-reset/reclaim")
+def reclaim_operations_data(
+    request: Request,
+    services: ServiceContainer = Depends(get_services),
+    session: dict = Depends(get_request_session),
+):
+    validate_csrf(request, session)
+    user = require_user(services.db, session)
+    assert_merchant_section_access(user, "settings")
+    account_id = require_merchant_account_id(user)
+    if not (user.is_super_admin() or is_membership_owner(user, account_id)):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Only account owners can reclaim operations data.",
+        )
+    reset_service = MerchantOperationsResetService(services.db)
+    try:
+        return reset_service.reclaim_operations_data(account_id, user_id=user.id)
+    except ValueError as err:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(err))
+

@@ -1251,7 +1251,13 @@ def create_order(
                 and supports_recipe(inv_item.product.product_type, inv_item.product.category)
             ):
                 menu_price = (resolved_unit or {}).get("selling_price", inv_item.selling_price)
-                if menu_price is None or Decimal(str(menu_price)) <= 0:
+                base_menu_price = (
+                    Decimal(str(menu_price)) if menu_price is not None else Decimal("0")
+                )
+                modifier_price = (
+                    price if line.modifier_option_ids is not None else Decimal("0")
+                )
+                if base_menu_price <= 0 and modifier_price <= 0:
                     raise HTTPException(
                         status.HTTP_422_UNPROCESSABLE_ENTITY,
                         detail={

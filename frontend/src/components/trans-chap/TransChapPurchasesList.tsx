@@ -28,15 +28,9 @@ import {
   type TransChapPurchase,
 } from "@/lib/trans-chap-purchases";
 
-type WhenFilter = "all" | "today" | "week" | "month";
+type WhenFilter = "all" | "single" | "range";
 type StatusFilter = "all" | "received" | "voided";
 type RoleFilter = "all" | InventoryRole;
-
-const WHEN_CHIPS: ChipOption<Exclude<WhenFilter, "all">>[] = [
-  { id: "today", label: "Today" },
-  { id: "week", label: "7 days" },
-  { id: "month", label: "30 days" },
-];
 
 const STATUS_CHIPS: ChipOption<Exclude<StatusFilter, "all">>[] = [
   { id: "received", label: "Received" },
@@ -138,16 +132,23 @@ export function TransChapPurchasesList() {
   const [cached] = useState(() => readPageCache<PurchasesSnapshot>(PURCHASES_CACHE_KEY));
   const [purchases, setPurchases] = useState<TransChapPurchase[]>(cached?.purchases ?? []);
   const [query, setQuery] = useState("");
+  const todayKey = nairobiDateKey(new Date());
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [when, setWhen] = useState<WhenFilter>(() => {
     if (typeof window !== "undefined") {
       const urlWhen = new URLSearchParams(window.location.search).get("when");
-      if (urlWhen === "all" || urlWhen === "today" || urlWhen === "week" || urlWhen === "month") {
-        return urlWhen;
-      }
+      if (urlWhen === "all") return "all";
+      if (urlWhen === "week" || urlWhen === "month" || urlWhen === "range") return "range";
     }
-    return "today";
+    return "single";
   });
+  const [selectedDate, setSelectedDate] = useState<string>(() => nairobiDateKey(new Date()));
+  const [rangeFrom, setRangeFrom] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return nairobiDateKey(d);
+  });
+  const [rangeTo, setRangeTo] = useState<string>(() => nairobiDateKey(new Date()));
   const [status, setStatus] = useState<StatusFilter>("all");
   const [role, setRole] = useState<RoleFilter>("all");
   const [supplier, setSupplier] = useState<string>("all");
@@ -203,13 +204,17 @@ export function TransChapPurchasesList() {
 
   useEffect(() => {
     const value = new URLSearchParams(window.location.search).get("when");
-    if (value === "all" || value === "today" || value === "week" || value === "month") {
-      setWhen(value);
-      if (value !== "today") {
-        setFiltersOpen(true);
-      }
+    if (value === "all") {
+      setWhen("all");
+      setFiltersOpen(true);
+    } else if (value === "week" || value === "month" || value === "range") {
+      setWhen("range");
+      setFiltersOpen(true);
+    } else if (value === "today") {
+      setWhen("single");
+      setSelectedDate(todayKey);
     }
-  }, []);
+  }, [todayKey]);
 
   useEffect(() => {
     function refreshDraft() {
@@ -239,7 +244,6 @@ export function TransChapPurchasesList() {
     }
   }
 
-  const todayKey = nairobiDateKey(new Date());
   const searched = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return purchases.filter((row) => {
@@ -263,10 +267,10 @@ export function TransChapPurchasesList() {
       if (when === "all") return true;
       const key = purchaseDateKey(row);
       if (!key) return false;
-      if (when === "today") return key === todayKey;
-      return isWithinLastDays(key, when === "week" ? 7 : 30, todayKey);
+      if (when === "single") return key === selectedDate;
+      return key >= rangeFrom && key <= rangeTo;
     });
-  }, [purchases, query, role, status, supplier, todayKey, when]);
+  }, [purchases, query, rangeFrom, rangeTo, role, selectedDate, status, supplier, when]);
 
   const supplierOptions = useMemo(() => {
     const set = new Set<string>();
@@ -290,7 +294,13 @@ export function TransChapPurchasesList() {
   const filtersOn =
     activeFilterCount > 0 || selectedCategory !== "all" || query.trim() !== "";
   const filterSummary = [
-    WHEN_CHIPS.find((chip) => chip.id === when)?.label,
+    when === "single"
+      ? selectedDate === todayKey
+        ? `Date: ${selectedDate}`
+        : selectedDate
+      : when === "range"
+        ? `${rangeFrom} – ${rangeTo}`
+        : null,
     STATUS_CHIPS.find((chip) => chip.id === status)?.label,
     ROLE_CHIPS.find((chip) => chip.id === role)?.label,
     supplier !== "all" ? supplier : null,
@@ -323,7 +333,7 @@ export function TransChapPurchasesList() {
 
   useEffect(() => {
     setVisibleCount(INITIAL_VISIBLE_COUNT);
-  }, [query, selectedCategory, when, status, role, supplier]);
+  }, [query, selectedCategory, when, selectedDate, rangeFrom, rangeTo, status, role, supplier]);
 
   const displayedBatches = useMemo(() => {
     if (selecting) return batches;
@@ -644,37 +654,121 @@ export function TransChapPurchasesList() {
           ) : null}
         </div>
         {filtersOpen ? (
-          <div id="trans-chap-purchases-filters" className="trans-chap-sales__chips">
-            <TransChapFilterChips label="When" value={when} options={WHEN_CHIPS} onChange={setWhen} />
-            <TransChapFilterChips label="Status" value={status} options={STATUS_CHIPS} onChange={setStatus} />
-            {roleOptions.length > 1 ? (
-              <TransChapFilterChips label="Type" value={role} options={roleOptions} onChange={setRole} />
-            ) : null}
-            {supplierOptions.length > 1 ? (
-              <div className="trans-chap-sales__chips-group">
-                <select
-                  className={`trans-chap-sales__chip trans-chap-sales__select${supplier !== "all" ? " is-active" : ""}`}
-                  value={supplier}
-                  aria-label="Supplier"
-                  onChange={(event) => setSupplier(event.target.value)}
+          <div id="trans-chap-purchases-filters" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <div className="trans-chap-sales__chips">
+              <div className="trans-chap-sales__chips-group" role="group" aria-label="When">
+                <label
+                  className={`trans-chap-sales__chip${when === "single" ? " is-active" : ""}`}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", cursor: "pointer" }}
                 >
-                  <option value="all">All suppliers</option>
-                  {supplierOptions.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
+                  <i className="fa-regular fa-calendar" aria-hidden />
+                  <input
+                    type="date"
+                    aria-label="Filter by date"
+                    value={selectedDate}
+                    max={todayKey}
+                    onClick={() => {
+                      if (when !== "single") setWhen("single");
+                    }}
+                    onChange={(event) => {
+                      const picked = event.target.value;
+                      if (!picked) {
+                        setWhen("all");
+                        return;
+                      }
+                      const clamped = picked > todayKey ? todayKey : picked;
+                      setSelectedDate(clamped);
+                      setWhen("single");
+                    }}
+                    style={{
+                      border: 0,
+                      background: "transparent",
+                      color: "inherit",
+                      font: "inherit",
+                      fontSize: "0.78rem",
+                      fontWeight: 700,
+                      padding: 0,
+                      outline: "none",
+                      cursor: "pointer",
+                      colorScheme: "dark light",
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className={`trans-chap-sales__chip${when === "range" ? " is-active" : ""}`}
+                  aria-pressed={when === "range"}
+                  onClick={() => setWhen(when === "range" ? "all" : "range")}
+                >
+                  Get range
+                </button>
               </div>
-            ) : null}
-            {activeFilterCount ? (
-              <button
-                type="button"
-                className="trans-chap-sales__chip trans-chap-sales__chip--clear"
-                onClick={clearFilters}
-              >
-                Clear
-              </button>
+              <TransChapFilterChips label="Status" value={status} options={STATUS_CHIPS} onChange={setStatus} />
+              {roleOptions.length > 1 ? (
+                <TransChapFilterChips label="Type" value={role} options={roleOptions} onChange={setRole} />
+              ) : null}
+              {supplierOptions.length > 1 ? (
+                <div className="trans-chap-sales__chips-group">
+                  <select
+                    className={`trans-chap-sales__chip trans-chap-sales__select${supplier !== "all" ? " is-active" : ""}`}
+                    value={supplier}
+                    aria-label="Supplier"
+                    onChange={(event) => setSupplier(event.target.value)}
+                  >
+                    <option value="all">All suppliers</option>
+                    {supplierOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              {activeFilterCount ? (
+                <button
+                  type="button"
+                  className="trans-chap-sales__chip trans-chap-sales__chip--clear"
+                  onClick={clearFilters}
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
+            {when === "range" ? (
+              <div className="trans-chap-range__custom">
+                <label>
+                  <span>From</span>
+                  <input
+                    type="date"
+                    value={rangeFrom}
+                    max={todayKey}
+                    onChange={(event) => {
+                      const picked = event.target.value;
+                      if (!picked) return;
+                      const nextFrom = picked > todayKey ? todayKey : picked;
+                      setRangeFrom(nextFrom);
+                      if (nextFrom > rangeTo) setRangeTo(nextFrom);
+                      setWhen("range");
+                    }}
+                  />
+                </label>
+                <label>
+                  <span>To</span>
+                  <input
+                    type="date"
+                    value={rangeTo}
+                    min={rangeFrom}
+                    max={todayKey}
+                    onChange={(event) => {
+                      const picked = event.target.value;
+                      if (!picked) return;
+                      const nextTo = picked > todayKey ? todayKey : picked;
+                      setRangeTo(nextTo < rangeFrom ? rangeFrom : nextTo);
+                      setWhen("range");
+                    }}
+                  />
+                </label>
+              </div>
             ) : null}
           </div>
         ) : filterSummary ? (
@@ -757,7 +851,7 @@ export function TransChapPurchasesList() {
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: "center", padding: "1.5rem 1rem" }}>
             <p className="trans-chap-sales__empty" style={{ margin: "0 0 0.75rem" }}>
-              {when === "today" && activeFilterCount === 1 && selectedCategory === "all" && !query.trim()
+              {when === "single" && selectedDate === todayKey && activeFilterCount === 1 && selectedCategory === "all" && !query.trim()
                 ? restaurant
                   ? "No kitchen supplies or purchases recorded today."
                   : "No purchases recorded today."
@@ -765,7 +859,7 @@ export function TransChapPurchasesList() {
                   ? "No kitchen supplies match these filters."
                   : "No purchases match these filters."}
             </p>
-            {when === "today" && purchases.length > 0 && selectedCategory === "all" && !query.trim() && activeFilterCount === 1 ? (
+            {when !== "all" && purchases.length > 0 && selectedCategory === "all" && !query.trim() && activeFilterCount === 1 ? (
               <button
                 type="button"
                 className="trans-chap-sales__chip"

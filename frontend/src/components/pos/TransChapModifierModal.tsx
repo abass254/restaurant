@@ -368,11 +368,15 @@ export function TransChapModifierModal({
                 ? `No ${exhausted.map(entryName).join(", ")} available`
                 : missing.length
                 ? `Choose: ${missing.map(entryName).join(", ")}`
-                : `Base ${formatMoney(basePrice, currency)}${
+                : basePrice > 0
+                ? `Base ${formatMoney(basePrice, currency)}${
                     optionsTotal + customTotal > 0
                       ? ` + extras ${formatMoney(optionsTotal + customTotal, currency)}`
                       : ""
-                  }`}
+                  }`
+                : optionsTotal + customTotal > 0
+                ? `Modifiers ${formatMoney(optionsTotal + customTotal, currency)}`
+                : "Choose priced options"}
             </span>
             <span className="pos-modifier-summary__total">
               Each: <strong>{formatMoney(unitTotal, currency)}</strong>
@@ -385,7 +389,7 @@ export function TransChapModifierModal({
             <button
               type="button"
               className="pos-btn-primary pos-modifier-confirm-btn"
-              disabled={missing.length > 0}
+              disabled={missing.length > 0 || unitTotal <= 0}
               onClick={confirm}
             >
               <i className="fa-solid fa-check" aria-hidden="true" /> Add to order · {formatMoney(unitTotal, currency)}

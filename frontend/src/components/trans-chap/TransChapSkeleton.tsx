@@ -7,9 +7,8 @@ export function TransChapTodaySkeleton() {
     <div className="trans-chap-dash__analytics" aria-busy="true" aria-label="Loading today’s totals">
       <article className="trans-chap-dash__spotlight">
         <div className="trans-chap-dash__spotlight-copy">
-          <span>Net profit today</span>
+          <span>Net sales today</span>
           <Skeleton variant="text" width="62%" height={36} />
-          <Skeleton variant="text" width="78%" height={14} />
         </div>
       </article>
       <div className="trans-chap-dash__stat-grid">

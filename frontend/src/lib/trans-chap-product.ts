@@ -369,7 +369,7 @@ export type MenuProductType = "meal" | "combo" | "addon";
 /** Save a hotel dish, meal or add-on to the catalogue and price it for this shop. */
 export async function createMenuItem(input: {
   name: string;
-  price: number;
+  price: number | null;
   productType: MenuProductType;
   section?: string;
 }): Promise<InventoryItem> {
@@ -408,7 +408,7 @@ export async function createKitchenMeal(name: string): Promise<InventoryItem> {
 
 export async function updateMenuItem(
   item: InventoryItem,
-  input: { name: string; price: number; productType: MenuProductType; section?: string },
+  input: { name: string; price: number | null; productType: MenuProductType; section?: string },
 ): Promise<InventoryItem> {
   const product = item.product;
   if (product) {
@@ -485,7 +485,9 @@ export function canSellInventoryItem(item: InventoryItem): boolean {
   if (!item.is_active) return false;
   if (!isSaleableRole(inventoryRole(item))) return false;
   if (item.stock_quantity != null && item.stock_quantity <= 0) return false;
-  return allSellUnits(item).some((unit) => unitHasSellPrice(unit));
+  if (allSellUnits(item).some((unit) => unitHasSellPrice(unit))) return true;
+  if (isHotelMenuItem(item) && itemModifierGroups(item).length > 0) return true;
+  return false;
 }
 
 /** Active shop inventory except hotel menu — available on Purchases select/scan. */
@@ -603,6 +605,12 @@ export async function updateInventoryActive(
     },
   );
   return inventory.data;
+}
+
+export async function deleteInventoryItem(itemId: string): Promise<void> {
+  await apiFetch(apiRoutes.inventoryItem(itemId), {
+    method: "DELETE",
+  });
 }
 
 export async function updateInventoryItem(

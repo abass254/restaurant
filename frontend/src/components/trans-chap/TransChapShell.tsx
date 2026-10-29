@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useOptionalAuthUser } from "@/components/app/AuthProvider";
 import { FullscreenToggle } from "@/components/app/FullscreenToggle";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
+import { MerchantNotificationPoller } from "@/components/app/MerchantNotificationPoller";
 import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import {
   isShopOwner,
@@ -383,6 +384,10 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
     pathname,
     enabled: {
       orders: !isSignIn && items.some((item) => item.href === TRANS_CHAP_NAV_COUNT_PATHS.orders),
+      kitchen:
+        !isSignIn &&
+        restaurant &&
+        items.some((item) => item.href === TRANS_CHAP_NAV_COUNT_PATHS.kitchen),
       kitchenRequests:
         !isSignIn &&
         restaurant &&
@@ -391,6 +396,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
   });
   const badgeByHref: Record<string, number> = {
     [TRANS_CHAP_NAV_COUNT_PATHS.orders]: navCounts.orders,
+    [TRANS_CHAP_NAV_COUNT_PATHS.kitchen]: navCounts.kitchen,
     [TRANS_CHAP_NAV_COUNT_PATHS.kitchenRequests]: navCounts.kitchenRequests,
   };
 
@@ -479,6 +485,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={`auth-split trans-chap-root${isSignIn ? " trans-chap-root--signin" : ""}`}>
+      {!isSignIn ? <MerchantNotificationPoller /> : null}
       <section className="auth-split__panel">
         <div
           className={`mobile-root trans-chap-app${isNewPost ? " trans-chap-app--new-post" : ""}${isPos ? " trans-chap-app--pos" : ""}${navCollapsed ? " trans-chap-app--nav-collapsed" : ""}`}
@@ -627,6 +634,8 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                           ? pathname === item.href
                           : pathname === item.href ||
                           pathname.startsWith(`${item.href}/`);
+                        const badgeCount = badgeByHref[item.href] ?? 0;
+                        const badgeLabel = formatNavBadgeCount(badgeCount);
                         return (
                           <Link
                             key={item.href}
@@ -637,6 +646,19 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                           >
                             <i className={`fa-solid ${item.icon}`} aria-hidden />
                             <span>{item.label}</span>
+                            {badgeLabel ? (
+                              <span
+                                className="mobile-nav__badge"
+                                aria-hidden
+                                style={{
+                                  position: "static",
+                                  marginLeft: "auto",
+                                  marginRight: "0.5rem",
+                                }}
+                              >
+                                {badgeLabel}
+                              </span>
+                            ) : null}
                             <i
                               className="fa-solid fa-chevron-right trans-chap-more-sheet__chevron"
                               aria-hidden

@@ -30,6 +30,7 @@ import {
 } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
 import { fetchShopSuppliers } from "@/lib/trans-chap-suppliers";
+import { nairobiDateKey, parseIso } from "@/lib/nairobi-time";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import { useTransChapIsPhone } from "@/lib/trans-chap-list-view";
 import type {
@@ -90,6 +91,20 @@ function paymentMethodLabel(method?: string | null): string {
 
 type View = "list" | "create" | "import";
 type SupplierLayoutView = "grid" | "list";
+type WhenFilter = "all" | "single" | "range";
+
+function supplierDateKeys(row: ShopSupplier): string[] {
+  const keys = new Set<string>();
+  if (row.balance_due_date) {
+    const k = row.balance_due_date.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(k)) keys.add(k);
+  }
+  for (const raw of [row.updated_at, row.created_at]) {
+    const parsed = parseIso(raw);
+    if (parsed) keys.add(nairobiDateKey(parsed));
+  }
+  return Array.from(keys);
+}
 
 const SUPPLIERS_VIEW_KEY = "trans-chap-suppliers-view";
 
@@ -237,6 +252,14 @@ export function TransChapSuppliersList() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [owingOnly, setOwingOnly] = useState(true);
+  const [when, setWhen] = useState<WhenFilter>("all");
+  const [selectedDate, setSelectedDate] = useState<string>(() => nairobiDateKey(new Date()));
+  const [rangeFrom, setRangeFrom] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return nairobiDateKey(d);
+  });
+  const [rangeTo, setRangeTo] = useState<string>(() => nairobiDateKey(new Date()));
   const [openId, setOpenId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<SupplierForm>(EMPTY_FORM);
   const [createForm, setCreateForm] = useState<SupplierForm>(EMPTY_FORM);
@@ -294,6 +317,13 @@ export function TransChapSuppliersList() {
     const needle = query.trim().toLowerCase();
     return suppliers.filter((row) => {
       if (owingOnly && !(Number(row.balance || 0) > 0)) return false;
+      if (when === "single") {
+        const keys = supplierDateKeys(row);
+        if (!keys.includes(selectedDate)) return false;
+      } else if (when === "range") {
+        const keys = supplierDateKeys(row);
+        if (!keys.some((k) => k >= rangeFrom && k <= rangeTo)) return false;
+      }
       if (!needle) return true;
       return [
         row.name,
@@ -308,7 +338,7 @@ export function TransChapSuppliersList() {
         .toLowerCase()
         .includes(needle);
     });
-  }, [owingOnly, query, suppliers]);
+  }, [owingOnly, query, rangeFrom, rangeTo, selectedDate, suppliers, when]);
 
   async function handleDownloadTemplate(format: "xlsx" | "csv") {
     setDownloadingFormat(format);
@@ -1859,6 +1889,58 @@ export function TransChapSuppliersList() {
             <i className="fa-solid fa-scale-unbalanced" aria-hidden />
             <span>{owingOnly ? "You owe" : "All suppliers"}</span>
           </button>
+          <label
+            className={`trans-chap-chip${when === "single" ? " trans-chap-chip--primary" : ""}`}
+            style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", cursor: "pointer" }}
+          >
+            <i className="fa-regular fa-calendar" aria-hidden />
+            <input
+              type="date"
+              aria-label="Filter suppliers by date"
+              value={selectedDate}
+              onClick={() => {
+                if (when !== "single") setWhen("single");
+              }}
+              onChange={(event) => {
+                const picked = event.target.value;
+                if (!picked) {
+                  setWhen("all");
+                  return;
+                }
+                setSelectedDate(picked);
+                setWhen("single");
+              }}
+              style={{
+                border: 0,
+                background: "transparent",
+                color: "inherit",
+                font: "inherit",
+                fontSize: "0.78rem",
+                fontWeight: 700,
+                padding: 0,
+                outline: "none",
+                cursor: "pointer",
+                colorScheme: "dark light",
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className={`trans-chap-chip${when === "range" ? " trans-chap-chip--primary" : ""}`}
+            aria-pressed={when === "range"}
+            onClick={() => setWhen((cur) => (cur === "range" ? "all" : "range"))}
+          >
+            <span>Get range</span>
+          </button>
+          {when !== "all" ? (
+            <button
+              type="button"
+              className="trans-chap-chip"
+              onClick={() => setWhen("all")}
+            >
+              <span>All dates</span>
+            </button>
+          ) : null}
           <button
             type="button"
             className="trans-chap-chip"
@@ -1868,6 +1950,36 @@ export function TransChapSuppliersList() {
             <span>Import</span>
           </button>
         </div>
+        {when === "range" ? (
+          <div className="trans-chap-range__custom">
+            <label>
+              <span>From</span>
+              <input
+                type="date"
+                value={rangeFrom}
+                onChange={(event) => {
+                  const picked = event.target.value;
+                  if (!picked) return;
+                  setRangeFrom(picked);
+                  if (picked > rangeTo) setRangeTo(picked);
+                }}
+              />
+            </label>
+            <label>
+              <span>To</span>
+              <input
+                type="date"
+                value={rangeTo}
+                min={rangeFrom}
+                onChange={(event) => {
+                  const picked = event.target.value;
+                  if (!picked) return;
+                  setRangeTo(picked < rangeFrom ? rangeFrom : picked);
+                }}
+              />
+            </label>
+          </div>
+        ) : null}
       </div>
 
       {loading ? (
@@ -1882,9 +1994,9 @@ export function TransChapSuppliersList() {
         </TransChapStatus>
       ) : filtered.length === 0 ? (
         <p className="trans-chap-sales__empty">
-          {owingOnly && !query.trim()
+          {owingOnly && !query.trim() && when === "all"
             ? "You don't owe any suppliers right now. Show all suppliers to see everyone."
-            : "No suppliers match this search."}
+            : "No suppliers match these filters."}
         </p>
       ) : layoutView === "list" ? (
         <div className="trans-chap-sales__list">

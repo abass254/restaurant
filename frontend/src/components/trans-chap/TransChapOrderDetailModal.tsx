@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useId } from "react";
+import { useEffect, useState, useId } from "react";
 import Link from "next/link";
 import { MotionModal } from "@/components/app/MotionModal";
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
+import { markTransChapOrderOpened } from "@/lib/use-trans-chap-nav-counts";
 import {
   confirmAction,
   extractErrorMessage,
@@ -48,6 +49,12 @@ export function TransChapOrderDetailModal({
   const [note, setNote] = useState("");
   const [isBusy, setIsBusy] = useState(false);
   const [editPaymentOpen, setEditPaymentOpen] = useState(false);
+
+  useEffect(() => {
+    if (open && order?.id) {
+      markTransChapOrderOpened(order.account_id, order.id);
+    }
+  }, [open, order?.id, order?.account_id]);
 
   if (!order) return null;
 

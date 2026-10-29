@@ -363,7 +363,7 @@ export function RestaurantKitchenExtras({
         />
       ) : null}
 
-      {recipeEditor ? (
+      {recipeEditor && !extraForm ? (
         <div
           className="pos-menu-modal-backdrop"
           onClick={() => !savingRecipe && setRecipeEditor(null)}

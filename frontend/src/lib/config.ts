@@ -93,6 +93,8 @@ export const apiRoutes = {
   settingsReceiptDescriptions: `${apiUrl}/api/v1/settings/receipt-descriptions`,
   settingsOpeningStock: `${apiUrl}/api/v1/settings/opening-stock`,
   settingsOperations: `${apiUrl}/api/v1/settings/operations`,
+  settingsOperationsReset: `${apiUrl}/api/v1/settings/operations-reset`,
+  settingsOperationsResetReclaim: `${apiUrl}/api/v1/settings/operations-reset/reclaim`,
   settingsMenuSections: `${apiUrl}/api/v1/settings/menu-sections`,
   settingsTables: `${apiUrl}/api/v1/settings/tables`,
   settingsStations: `${apiUrl}/api/v1/settings/stations`,

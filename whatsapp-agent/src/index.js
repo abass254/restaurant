@@ -122,30 +122,6 @@ async function fetchHostIdentity() {
     // ignore
   }
 
-  try {
-    const page = client.getPage();
-    if (page && !hostNumber) {
-      const storageHost = await page.evaluate(() => {
-        const lastWid = window.localStorage?.getItem("last-wid-md") || window.localStorage?.getItem("last-wid");
-        if (lastWid) {
-          const match = String(lastWid).match(/\d{7,15}/);
-          if (match) return match[0];
-        }
-        const wid = window.Store?.Conn?.wid?._serialized || window.Store?.Me?.wid?._serialized;
-        if (wid) {
-          const match = String(wid).match(/\d{7,15}/);
-          if (match) return match[0];
-        }
-        return null;
-      });
-      if (storageHost) {
-        hostNumber = storageHost;
-      }
-    }
-  } catch {
-    // ignore
-  }
-
   function isPhone(val) {
     if (!val) return false;
     const digits = String(val).replace(/\D/g, "");
@@ -302,89 +278,6 @@ app.get("/status", requireAuth, async (_req, res) => {
   res.json(statusPayload());
 });
 
-
-async function sendDirect(c, chatId, text) {
-  const page = c.getPage();
-  if (!page) throw new Error("WhatsApp page is not available.");
-
-  return await page.evaluate(async (to, msg) => {
-    const Store = window.Store;
-    if (!Store) throw new Error("WhatsApp Web Store is not loaded.");
-
-    // Resolve target WID
-    let targetWid = null;
-    try {
-      targetWid = Store.WidFactory ? Store.WidFactory.createWid(to) : null;
-    } catch {
-      // ignore
-    }
-    if (!targetWid) targetWid = to;
-
-    // 1. Find or create the chat using modern WAWebFindChatAction
-    let chat = null;
-    if (typeof window.require === "function") {
-      try {
-        const findChatMod = window.require("WAWebFindChatAction");
-        if (findChatMod?.findOrCreateLatestChat) {
-          const res = await findChatMod.findOrCreateLatestChat(targetWid);
-          chat = res?.chat || res;
-        } else if (findChatMod?.findExistingChat) {
-          chat = await findChatMod.findExistingChat(targetWid);
-        }
-      } catch (err) {
-        console.warn("[whatsapp-agent] findOrCreateLatestChat error:", err);
-      }
-    }
-
-    // 2. Fallbacks to find chat
-    if (!chat && Store.Chat?.get) {
-      chat = Store.Chat.get(targetWid) || Store.Chat.get(to);
-    }
-    if (!chat && Store.Chat?.getLatestChatForWid) {
-      chat = Store.Chat.getLatestChatForWid(targetWid);
-    }
-
-    if (!chat) {
-      throw new Error(`Could not find or open WhatsApp chat for ${to}`);
-    }
-
-    // 3. Send text message via modern WAWebSendTextMsgChatAction
-    if (typeof window.require === "function") {
-      try {
-        const sendActionMod = window.require("WAWebSendTextMsgChatAction");
-        if (typeof sendActionMod?.sendTextMsgToChat === "function") {
-          const sendResult = await sendActionMod.sendTextMsgToChat(chat, msg);
-          const sentId = sendResult?.message?.id?._serialized ||
-                         sendResult?._serialized ||
-                         chat.lastReceivedKey?._serialized ||
-                         "ok";
-          return sentId;
-        }
-      } catch (sendErr) {
-        console.warn("[whatsapp-agent] sendTextMsgToChat error:", sendErr);
-      }
-    }
-
-    // 4. Fallback to Store.SendTextMsgToChat
-    if (typeof Store.SendTextMsgToChat === "function") {
-      try {
-        const sendResult = await Store.SendTextMsgToChat(chat, msg);
-        return chat.lastReceivedKey?._serialized || sendResult?._serialized || "ok";
-      } catch (sendErr2) {
-        console.warn("[whatsapp-agent] Store.SendTextMsgToChat error:", sendErr2);
-      }
-    }
-
-    // 5. Fallback to chat.sendMessage if defined
-    if (typeof chat.sendMessage === "function") {
-      const res = await chat.sendMessage(msg);
-      return (typeof res === "string" ? res : null) || chat.lastReceivedKey?._serialized || "ok";
-    }
-
-    throw new Error("No available message transport could deliver the text.");
-  }, chatId, text);
-}
-
 async function injectWapiBypass(c) {
   if (!c) return;
   try {
@@ -394,57 +287,23 @@ async function injectWapiBypass(c) {
       if (!window.WAPI) return;
       window.WAPI.sendMessage = async function (id, message) {
         if (id === "status@broadcast") return "Not able to send message to broadcast";
-        try {
-          const Store = window.Store;
-          const targetWid = (Store?.Contact ? Store.Contact.get(id)?.id : null) ||
-                            (Store?.WidFactory ? Store.WidFactory.createWid(id) : null) ||
-                            id;
-
-          let chat = null;
-          if (typeof window.require === "function") {
-            try {
-              const findChatMod = window.require("WAWebFindChatAction");
-              if (findChatMod?.findOrCreateLatestChat) {
-                const res = await findChatMod.findOrCreateLatestChat(targetWid);
-                chat = res?.chat || res;
-              }
-            } catch {
-              // ignore
+        let chat = window.WAPI.getChat(id);
+        if (!chat || !chat.msgs || chat.msgs.models.length === 0) {
+          try {
+            const contactObj = window.Store?.Contact ? window.Store.Contact.get(id) : null;
+            const targetWid = (contactObj && contactObj.id) || (window.Store?.WidFactory && window.Store.WidFactory.createWid(id)) || id;
+            if (window.Store?.Chat && window.Store.Chat.find) {
+              await window.Store.Chat.find(targetWid);
             }
+            chat = window.WAPI.getChat(id);
+          } catch (e) {
+            console.warn("[wapi bypass] Chat.find failed:", e);
           }
-          if (!chat && Store?.Chat?.get) {
-            chat = Store.Chat.get(id) || Store.Chat.get(targetWid);
-          }
-          if (!chat) return false;
-
-          if (typeof window.require === "function") {
-            try {
-              const sendActionMod = window.require("WAWebSendTextMsgChatAction");
-              if (typeof sendActionMod?.sendTextMsgToChat === "function") {
-                const sendResult = await sendActionMod.sendTextMsgToChat(chat, message);
-                return sendResult?.message?.id?._serialized ||
-                       sendResult?._serialized ||
-                       chat.lastReceivedKey?._serialized ||
-                       true;
-              }
-            } catch {
-              // ignore
-            }
-          }
-
-          if (typeof Store?.SendTextMsgToChat === "function") {
-            const sendResult = await Store.SendTextMsgToChat(chat, message);
-            return chat.lastReceivedKey?._serialized || sendResult?._serialized || true;
-          }
-
-          if (typeof chat.sendMessage === "function") {
-            return await chat.sendMessage(message).then((_) => chat.lastReceivedKey?._serialized || true);
-          }
-
-          return false;
-        } catch {
-          return false;
         }
+        if (chat !== undefined && chat.sendMessage) {
+          return await chat.sendMessage(message).then((_) => chat.lastReceivedKey?._serialized || true);
+        }
+        return false;
       };
     });
   } catch (err) {
@@ -470,19 +329,13 @@ app.post("/send", requireAuth, async (req, res) => {
     return res.status(422).json({ ok: false, error: "Message text is required." });
   }
 
-  try {
-    let messageId = null;
-    try {
-      messageId = await sendDirect(client, chatId, text);
-    } catch (directErr) {
-      console.warn(`[whatsapp-agent] sendDirect failed for ${chatId}, attempting fallback:`, directErr?.message || directErr);
-      await injectWapiBypass(client);
-      messageId = await client.sendText(chatId, text);
-    }
+  await injectWapiBypass(client);
 
+  try {
+    const messageId = await client.sendText(chatId, text);
     if (!messageId || (typeof messageId === "string" && messageId.toLowerCase().includes("error"))) {
       const err = typeof messageId === "string" ? messageId : "Failed to deliver WhatsApp message.";
-      console.warn(`[whatsapp-agent] send failed for ${chatId}: ${err}`);
+      console.warn(`[whatsapp-agent] sendText failed for ${chatId}: ${err}`);
       return res.status(422).json({ ok: false, error: err });
     }
     return res.json({

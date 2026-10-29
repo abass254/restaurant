@@ -1189,6 +1189,7 @@ class ModifierOptionRecipe(Base):
     __table_args__ = (
         UniqueConstraint("option_id", "menu_product_id", "product_id", name="uq_modifier_option_recipes"),
         Index("modifier_option_recipes_option_idx", "option_id"),
+        {"mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_unicode_ci"},
     )
 
     id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
@@ -1314,6 +1315,7 @@ class PreparedMenuStock(Base):
             name="uq_prepared_menu_stocks_item_unit",
         ),
         Index("ix_prepared_menu_stocks_item", "inventory_item_id"),
+        {"mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_unicode_ci"},
     )
 
     id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
@@ -2625,3 +2627,39 @@ class QaIssue(Base):
 
     reporter: Mapped[User] = relationship(foreign_keys=[reporter_id])
     assignee: Mapped[User | None] = relationship(foreign_keys=[assignee_id])
+
+
+class MerchantOperationsResetArchive(Base):
+    """30-day reclaimable archive of merchant-centric operations data after a zero-reset."""
+
+    __tablename__ = "merchant_operations_reset_archives"
+    __table_args__ = (
+        Index("ix_reset_archives_account_created", "account_id", "created_at"),
+        Index("ix_reset_archives_account_status", "account_id", "status"),
+        {"mysql_charset": "utf8mb4", "mysql_collate": "utf8mb4_unicode_ci"},
+    )
+
+    id: Mapped[str] = mapped_column(String(PK_LEN), primary_key=True, default=_new_uuid)
+    account_id: Mapped[str] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("accounts.id"),
+        index=True,
+    )
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(PK_LEN),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    # status: "active" (reclaimable within 30 days), "reclaimed", "expired", "purged"
+    status: Mapped[str] = mapped_column(String(32), default="active")
+    summary_json: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    snapshot_json: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    reclaimed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    account: Mapped[Account] = relationship()
+    created_by: Mapped[User | None] = relationship()
+

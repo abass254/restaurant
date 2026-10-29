@@ -10,8 +10,10 @@ few headline counts. Mounted at ``/api/v1/admin`` and gated behind a
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+import math
+from datetime import datetime, timedelta, timezone
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -221,6 +223,21 @@ class AdminStatsResponse(BaseModel):
     ai_agent_configured: bool
 
 
+class AdminOrdersStats(BaseModel):
+    total_orders: int
+    total_revenue: float
+    average_order_value: float = 0.0
+    active_orders: int = 0
+    today_orders: int = 0
+    today_revenue: float = 0.0
+    all_time_orders: int = 0
+    all_time_revenue: float = 0.0
+    status_counts: dict[str, int] = {}
+    period_label: str = "All time"
+    date_from: str | None = None
+    date_to: str | None = None
+
+
 class AdminOrderSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -237,6 +254,7 @@ class AdminOrderSummary(BaseModel):
     currency: str
     payment_method: str | None
     items_count: int
+    lines_count: int = 0
     created_at: datetime | None
     updated_at: datetime | None
     placed_at: datetime | None
@@ -247,6 +265,10 @@ class AdminOrderSummary(BaseModel):
 class AdminOrdersResponse(BaseModel):
     data: list[AdminOrderSummary]
     total: int
+    page: int = 1
+    per_page: int = 50
+    total_pages: int = 1
+    stats: AdminOrdersStats | None = None
 
 
 class AdminOrderDetailResponse(BaseModel):
@@ -731,62 +753,254 @@ def update_merchant_coords(
 def list_orders(
     q: str | None = None,
     status_filter: str | None = None,
-    limit: int = 200,
+    account_id: str | None = None,
+    source: str | None = None,
+    fulfillment_type: str | None = None,
+    date_range: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    page: int = 1,
+    per_page: int = 50,
+    limit: int | None = None,
+    offset: int | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(require_super_admin),
 ):
-    cap = max(1, min(int(limit or 200), 1000))
+    # Support legacy limit / offset params
+    if limit is not None and limit > 0:
+        per_page = limit
+    if offset is not None and offset >= 0:
+        page = (offset // per_page) + 1
+
+    page = max(1, int(page or 1))
+    per_page = max(1, min(int(per_page or 50), 200))
+
     query = (
         db.query(Order)
         .outerjoin(Account, Order.account_id == Account.id)
         .options(joinedload(Order.account), joinedload(Order.items))
-        .order_by(
-            Order.created_at.is_(None),
-            Order.created_at.desc(),
-            Order.id.desc(),
-        )
     )
-    if status_filter:
+
+    if status_filter and status_filter.strip().lower() != "all":
         query = query.filter(func.lower(Order.status) == status_filter.strip().lower())
+
+    if account_id and account_id.strip() and account_id.strip().lower() != "all":
+        query = query.filter(Order.account_id == account_id.strip())
+
+    if source and source.strip() and source.strip().lower() != "all":
+        query = query.filter(func.lower(Order.source) == source.strip().lower())
+
+    if fulfillment_type and fulfillment_type.strip() and fulfillment_type.strip().lower() != "all":
+        query = query.filter(func.lower(Order.fulfillment_type) == fulfillment_type.strip().lower())
+
+    # Date bounds resolution (Nairobi timezone aligned)
+    now_nairobi = datetime.now(ZoneInfo("Africa/Nairobi"))
+    dr = (date_range or "all").strip().lower()
+    start_utc = None
+    end_utc = None
+    period_label = "All time"
+    clean_date_from = date_from.strip() if date_from and date_from.strip() else None
+    clean_date_to = date_to.strip() if date_to and date_to.strip() else None
+
+    if dr == "today":
+        st = now_nairobi.replace(hour=0, minute=0, second=0, microsecond=0)
+        start_utc = st.astimezone(timezone.utc).replace(tzinfo=None)
+        period_label = "Today"
+    elif dr == "yesterday":
+        st = (now_nairobi - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        et = now_nairobi.replace(hour=0, minute=0, second=0, microsecond=0)
+        start_utc = st.astimezone(timezone.utc).replace(tzinfo=None)
+        end_utc = et.astimezone(timezone.utc).replace(tzinfo=None)
+        period_label = "Yesterday"
+    elif dr == "7d":
+        st = (now_nairobi - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_utc = st.astimezone(timezone.utc).replace(tzinfo=None)
+        period_label = "Last 7 days"
+    elif dr == "30d":
+        st = (now_nairobi - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_utc = st.astimezone(timezone.utc).replace(tzinfo=None)
+        period_label = "Last 30 days"
+    elif dr == "this_month":
+        st = now_nairobi.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        start_utc = st.astimezone(timezone.utc).replace(tzinfo=None)
+        period_label = "This month"
+    elif dr == "custom" or clean_date_from or clean_date_to:
+        nairobi = ZoneInfo("Africa/Nairobi")
+        if clean_date_from:
+            try:
+                d = datetime.strptime(clean_date_from, "%Y-%m-%d").date()
+                dt = datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=nairobi)
+                start_utc = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            except ValueError:
+                pass
+        if clean_date_to:
+            try:
+                d = datetime.strptime(clean_date_to, "%Y-%m-%d").date()
+                dt = datetime(d.year, d.month, d.day, 23, 59, 59, 999999, tzinfo=nairobi)
+                end_utc = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            except ValueError:
+                pass
+        f_disp = clean_date_from or "start"
+        t_disp = clean_date_to or "today"
+        period_label = f"{f_disp} to {t_disp}"
+
+    date_col = func.coalesce(Order.placed_at, Order.created_at)
+    if start_utc:
+        query = query.filter(date_col >= start_utc)
+    if end_utc:
+        query = query.filter(date_col <= end_utc)
 
     if q and q.strip():
         term = f"%{q.strip()}%"
-        from sqlalchemy import or_
-
         query = query.filter(
             or_(
                 Order.order_number.ilike(term),
                 Order.customer_name.ilike(term),
                 Order.customer_phone.ilike(term),
+                Order.customer_email.ilike(term),
                 Account.business_name.ilike(term),
             ),
         )
 
-    rows: list[Order] = query.limit(cap).all()
-    data = [
-        AdminOrderSummary(
-            id=row.id,
-            account_id=row.account_id,
-            merchant_name=row.account.business_name if row.account else None,
-            order_number=row.order_number,
-            source=row.source,
-            fulfillment_type=row.fulfillment_type,
-            status=row.status,
-            customer_name=row.customer_name,
-            customer_phone=row.customer_phone,
-            total=float(row.total or 0),
-            currency=row.currency,
-            payment_method=row.payment_method,
-            items_count=len(row.items or []),
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-            placed_at=row.placed_at,
-            completed_at=row.completed_at,
-            cancelled_at=row.cancelled_at,
+    # Accurate count of matching orders
+    total_count = query.order_by(None).count()
+    total_pages = max(1, math.ceil(total_count / per_page)) if total_count > 0 else 1
+
+    query = query.order_by(
+        Order.created_at.is_(None),
+        Order.created_at.desc(),
+        Order.id.desc(),
+    )
+
+    offset_val = (page - 1) * per_page
+    rows: list[Order] = query.offset(offset_val).limit(per_page).all()
+
+    data = []
+    for row in rows:
+        total_qty = sum(item.quantity or 0 for item in (row.items or []))
+        items_count = total_qty if total_qty > 0 else len(row.items or [])
+        lines_count = len(row.items or [])
+        data.append(
+            AdminOrderSummary(
+                id=row.id,
+                account_id=row.account_id,
+                merchant_name=row.account.business_name if row.account else None,
+                order_number=row.order_number,
+                source=row.source,
+                fulfillment_type=row.fulfillment_type,
+                status=row.status,
+                customer_name=row.customer_name,
+                customer_phone=row.customer_phone,
+                total=float(row.total or 0),
+                currency=row.currency,
+                payment_method=row.payment_method,
+                items_count=items_count,
+                lines_count=lines_count,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+                placed_at=row.placed_at,
+                completed_at=row.completed_at,
+                cancelled_at=row.cancelled_at,
+            )
         )
-        for row in rows
+
+    # Dynamic stats calculation based on the active date range & merchant filter
+    filters = []
+    if account_id and account_id.strip() and account_id.strip().lower() != "all":
+        filters.append(Order.account_id == account_id.strip())
+
+    date_filters = list(filters)
+    if start_utc:
+        date_filters.append(date_col >= start_utc)
+    if end_utc:
+        date_filters.append(date_col <= end_utc)
+
+    paid_statuses = ["payment_received", "delivered", "picked_up", "completed"]
+    active_statuses = [
+        "placed",
+        "awaiting_payment",
+        "being_prepared",
+        "ready",
+        "out_for_delivery",
+        "awaiting_delivery_confirmation",
+        "awaiting_pickup_confirmation",
     ]
-    return AdminOrdersResponse(data=data, total=len(data))
+
+    period_orders = db.query(func.count(Order.id)).filter(*date_filters).scalar() or 0
+    period_rev = float(
+        db.query(func.sum(Order.total))
+        .filter(*date_filters, Order.status.in_(paid_statuses))
+        .scalar()
+        or 0
+    )
+    paid_count = (
+        db.query(func.count(Order.id))
+        .filter(*date_filters, Order.status.in_(paid_statuses))
+        .scalar()
+        or 0
+    )
+    aov = round(period_rev / paid_count, 2) if paid_count > 0 else 0.0
+    active_orders = (
+        db.query(func.count(Order.id))
+        .filter(*date_filters, Order.status.in_(active_statuses))
+        .scalar()
+        or 0
+    )
+    status_counts = dict(
+        db.query(Order.status, func.count(Order.id))
+        .filter(*date_filters)
+        .group_by(Order.status)
+        .all()
+    )
+
+    # Today baseline
+    today_start_nairobi = now_nairobi.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start_utc = today_start_nairobi.astimezone(timezone.utc).replace(tzinfo=None)
+    today_orders = (
+        db.query(func.count(Order.id))
+        .filter(*filters, date_col >= today_start_utc)
+        .scalar()
+        or 0
+    )
+    today_rev = float(
+        db.query(func.sum(Order.total))
+        .filter(*filters, date_col >= today_start_utc, Order.status.in_(paid_statuses))
+        .scalar()
+        or 0
+    )
+
+    # All time baseline
+    all_time_orders = db.query(func.count(Order.id)).filter(*filters).scalar() or 0
+    all_time_rev = float(
+        db.query(func.sum(Order.total))
+        .filter(*filters, Order.status.in_(paid_statuses))
+        .scalar()
+        or 0
+    )
+
+    stats = AdminOrdersStats(
+        total_orders=period_orders,
+        total_revenue=period_rev,
+        average_order_value=aov,
+        active_orders=active_orders,
+        today_orders=today_orders,
+        today_revenue=today_rev,
+        all_time_orders=all_time_orders,
+        all_time_revenue=all_time_rev,
+        status_counts=status_counts,
+        period_label=period_label,
+        date_from=clean_date_from,
+        date_to=clean_date_to,
+    )
+
+    return AdminOrdersResponse(
+        data=data,
+        total=total_count,
+        page=page,
+        per_page=per_page,
+        total_pages=total_pages,
+        stats=stats,
+    )
 
 
 @router.get("/orders/{order_id}", response_model=AdminOrderDetailResponse)

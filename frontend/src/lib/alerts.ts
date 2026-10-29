@@ -233,6 +233,42 @@ export async function confirmAction(
   return result.isConfirmed;
 }
 
+export async function confirmTypedAction(
+  title: string,
+  textOrHtml: string,
+  expectedWord = "DELETE",
+  confirmText = "Reset to Zero",
+): Promise<boolean> {
+  const result = await fireDialog({
+    icon: "warning",
+    title,
+    html: textOrHtml,
+    input: "text",
+    inputPlaceholder: `Type ${expectedWord} to confirm`,
+    inputAttributes: {
+      autocapitalize: "off",
+      autocorrect: "off",
+      spellcheck: "false",
+      autocomplete: "off",
+    },
+    showCancelButton: true,
+    confirmButtonText: confirmText,
+    cancelButtonText: "Cancel",
+    preConfirm: (value) => {
+      const typed = String(value ?? "");
+      if (typed !== expectedWord) {
+        dukaiSwal.showValidationMessage(
+          `Please type "${expectedWord}" exactly (case-sensitive) to proceed.`,
+        );
+        return false;
+      }
+      return true;
+    },
+  });
+
+  return Boolean(result.isConfirmed && result.value === true);
+}
+
 export async function promptPendingStk(): Promise<
   "resend" | "check" | "enter_code" | null
 > {
@@ -643,6 +679,42 @@ export async function toastInfo(title: string, text?: string, durationMs = 4200)
     timer: durationMs,
     timerProgressBar: true,
   }).fire({ icon: "info", iconHtml: TOAST_ICON_HTML.info, title, text });
+}
+
+export async function toastNotification({
+  title,
+  text,
+  icon = "info",
+  durationMs = 5000,
+  onClick,
+}: {
+  title: string;
+  text?: string;
+  icon?: "info" | "success" | "warning";
+  durationMs?: number;
+  onClick?: () => void;
+}) {
+  const iconKey = icon === "success" ? "success" : "info";
+  return toastMixin({
+    timer: durationMs,
+    timerProgressBar: true,
+    showCloseButton: true,
+    didOpen: (toastEl) => {
+      if (onClick) {
+        toastEl.style.cursor = "pointer";
+        toastEl.addEventListener("click", (e) => {
+          if ((e.target as HTMLElement)?.closest(".swal2-close")) return;
+          onClick();
+          Swal.close();
+        });
+      }
+    },
+  }).fire({
+    icon: iconKey,
+    iconHtml: TOAST_ICON_HTML[iconKey],
+    title,
+    html: text,
+  });
 }
 
 let loadingToastOpen = false;

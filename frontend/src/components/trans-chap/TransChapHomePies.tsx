@@ -394,7 +394,6 @@ export function TransChapHomePies({
     owingTotal,
     owingCount,
   } = stats;
-  const profit = salesTotal - expenseTotal;
   const period = rangeLabel(dataRange, todayKey);
   const paySlices = useMemo<Slice[]>(
     () => [
@@ -421,7 +420,7 @@ export function TransChapHomePies({
       aria-label="Sales analytics"
       aria-busy={refreshing || undefined}
     >
-      <article className={`trans-chap-dash__spotlight${profit < 0 ? " is-loss" : ""}`}>
+      <article className={`trans-chap-dash__spotlight${salesTotal < 0 ? " is-loss" : ""}`}>
         <TransChapRangeFilter
           value={range}
           onChange={changeRange}
@@ -431,19 +430,11 @@ export function TransChapHomePies({
 
         <div className="trans-chap-dash__spotlight-main">
           <div className="trans-chap-dash__spotlight-copy">
-            <span>
-              {profit < 0 ? "Net loss" : "Net profit"} {period}
-            </span>
-            <Money amount={profit} />
-            <p>
-              Sales {formatKsh(salesTotal)} − Expenses {formatKsh(expenseTotal)}
-              {grossProfit !== 0 || cogs > 0
-                ? ` · Mark up ${formatKsh(grossProfit)}${cogs > 0 ? ` (+${markupPercent}%)` : ""}`
-                : ""}
-            </p>
+            <span>Net sales {period}</span>
+            <Money amount={salesTotal} />
           </div>
           <i
-            className={`fa-solid ${profit < 0 ? "fa-arrow-trend-down" : "fa-arrow-trend-up"}`}
+            className={`fa-solid ${salesTotal < 0 ? "fa-arrow-trend-down" : "fa-arrow-trend-up"}`}
             aria-hidden
           />
         </div>

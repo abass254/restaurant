@@ -1253,11 +1253,11 @@ export function TransChapPurchaseForm() {
                     return (
                       <motion.li
                         key={item.id}
-                        variants={reduce ? undefined : staggerItem}
+                        initial={false}
                         animate={
                           isPulsing && !reduce
-                            ? { scale: [1, 1.025, 1] }
-                            : { scale: 1 }
+                            ? { opacity: 1, y: 0, scale: [1, 1.025, 1] }
+                            : { opacity: 1, y: 0, scale: 1 }
                         }
                         transition={{
                           duration: motionDuration.base,
@@ -1425,11 +1425,11 @@ export function TransChapPurchaseForm() {
                     return (
                       <motion.li
                         key={`catalog:${product.id}`}
-                        variants={reduce ? undefined : staggerItem}
+                        initial={false}
                         animate={
                           isPulsing && !reduce
-                            ? { scale: [1, 1.025, 1] }
-                            : { scale: 1 }
+                            ? { opacity: 1, y: 0, scale: [1, 1.025, 1] }
+                            : { opacity: 1, y: 0, scale: 1 }
                         }
                         transition={{
                           duration: motionDuration.base,

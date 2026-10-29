@@ -312,6 +312,21 @@ export type AdminMerchantsResponse = {
   total: number;
 };
 
+export type AdminOrdersStats = {
+  total_orders: number;
+  total_revenue: number;
+  average_order_value?: number;
+  active_orders: number;
+  today_orders: number;
+  today_revenue: number;
+  all_time_orders?: number;
+  all_time_revenue?: number;
+  status_counts: Record<string, number>;
+  period_label?: string;
+  date_from?: string | null;
+  date_to?: string | null;
+};
+
 export type AdminOrderSummary = {
   id: string;
   account_id: string;
@@ -326,6 +341,7 @@ export type AdminOrderSummary = {
   currency: string;
   payment_method: OrderPaymentMethod | null;
   items_count: number;
+  lines_count?: number;
   created_at: string | null;
   updated_at: string | null;
   placed_at: string | null;
@@ -336,6 +352,10 @@ export type AdminOrderSummary = {
 export type AdminOrdersResponse = {
   data: AdminOrderSummary[];
   total: number;
+  page?: number;
+  per_page?: number;
+  total_pages?: number;
+  stats?: AdminOrdersStats | null;
 };
 
 export type AdminWebhookEvent = {
@@ -655,6 +675,44 @@ export type SettingsOperationsResponse = {
   force_mpesa_prompt: boolean;
   block_sale_on_low_ingredients?: boolean;
   kitchen_issuing_enabled?: boolean;
+};
+
+export type OperationsResetCounts = {
+  orders: number;
+  expenses: number;
+  purchases: number;
+  stock_movements: number;
+  deliveries: number;
+  supplier_payments: number;
+  bookings: number;
+  inventory_items: number;
+  menu_items?: number;
+  recipes?: number;
+};
+
+export type OperationsResetArchiveInfo = {
+  id: string;
+  created_at: string | null;
+  expires_at: string | null;
+  days_remaining: number;
+  hours_remaining: number;
+  summary: Record<string, number>;
+};
+
+export type OperationsResetStatusResponse = {
+  can_reset: boolean;
+  has_active_archive: boolean;
+  active_archive: OperationsResetArchiveInfo | null;
+  current_counts: OperationsResetCounts;
+};
+
+export type OperationsResetActionResponse = {
+  success: boolean;
+  archive_id: string;
+  expires_at?: string;
+  days_remaining?: number;
+  summary: Record<string, number>;
+  reclaimed_at?: string;
 };
 
 export type ChannelPlatform =

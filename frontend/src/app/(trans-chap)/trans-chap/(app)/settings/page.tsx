@@ -11,6 +11,7 @@ import { TransChapMpesaSettings } from "@/components/trans-chap/TransChapMpesaSe
 import { TransChapStationsSettings } from "@/components/trans-chap/TransChapStationsSettings";
 import { TransChapTablesSettings } from "@/components/trans-chap/TransChapTablesSettings";
 import { TransChapTeamSettings } from "@/components/trans-chap/TransChapTeamSettings";
+import { TransChapOperationsResetSettings } from "@/components/trans-chap/TransChapOperationsResetSettings";
 import { apiFetch } from "@/lib/api";
 import {
   confirmAction,
@@ -48,7 +49,8 @@ type SettingsPane =
   | "tables"
   | "stations"
   | "receipt"
-  | "team";
+  | "team"
+  | "operations-reset";
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -123,6 +125,8 @@ export default function TransChapSettingsPage() {
       setPane("stations");
     } else if (next === "team" && owner) {
       setPane("team");
+    } else if (next === "operations-reset" && owner) {
+      setPane("operations-reset");
     }
   }, [owner, restaurant]);
 
@@ -796,6 +800,19 @@ export default function TransChapSettingsPage() {
     return <TransChapTeamSettings onClose={backToList} />;
   }
 
+  if (pane === "operations-reset" && owner) {
+    return (
+      <div className="ios-settings">
+        <button type="button" className="ios-settings__back" onClick={backToList}>
+          <i className="fa-solid fa-chevron-left" aria-hidden />
+          Settings
+        </button>
+        <h2 className="ios-settings__screen-title">Reset Operations Data</h2>
+        <TransChapOperationsResetSettings />
+      </div>
+    );
+  }
+
   return (
     <div className="ios-settings">
       <section className="ios-settings__profile" aria-label="Account">
@@ -1354,6 +1371,31 @@ export default function TransChapSettingsPage() {
               </span>
             </div>
           </div>
+        </section>
+      ) : null}
+
+      {owner && groupMatches("reset zero delete reclaim operations clear data account transactions sales") ? (
+        <section className="ios-settings__group" aria-label="Operations Data">
+          <h3 className="ios-settings__caption">Operations Data</h3>
+          <div className="ios-settings__card">
+            <button
+              type="button"
+              className="ios-settings__row"
+              onClick={() => setPane("operations-reset")}
+            >
+              <span className="ios-settings__icon ios-settings__icon--reset" aria-hidden>
+                <i className="fa-solid fa-rotate-left" />
+              </span>
+              <span className="ios-settings__label">Reset data to zero</span>
+              <span className="ios-settings__value" style={{ color: "#d97706", fontWeight: 500 }}>
+                30-day reclaim
+              </span>
+              <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+            </button>
+          </div>
+          <p className="ios-settings__footer">
+            Zero out sales, expenses, inventory, and menu. Backups are kept for 30 days to reclaim if needed.
+          </p>
         </section>
       ) : null}
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { confirmAction, extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
@@ -14,10 +14,7 @@ import {
   type ModifierSources,
 } from "@/components/trans-chap/TransChapMenuGroupEditor";
 import {
-  clockInKitchenShift,
-  clockOutKitchenShift,
   enableKitchenIssuing,
-  fetchKitchenShift,
   fetchKitchenEquivalenceUnits,
   fetchKitchenStock,
   fetchSupplyItems,
@@ -28,13 +25,13 @@ import {
   prepareMenuRecipeBatch,
   type MenuCosting,
   type KitchenIssue,
-  type KitchenShiftState,
   type KitchenStock,
   type KitchenItem,
   type SupplyItem,
 } from "@/lib/restaurant-supplies";
 import {
   createKitchenMeal,
+  deleteInventoryItem,
   fetchModifierGroups,
   inventoryProductName,
   inventoryRole,
@@ -47,6 +44,7 @@ import {
   updateInventoryActive,
 } from "@/lib/trans-chap-product";
 import { RestaurantKitchenExtras } from "@/components/trans-chap/restaurant/RestaurantKitchenExtras";
+import { TransChapProductThumb } from "@/components/trans-chap/TransChapProductThumb";
 import {
   RecipeField,
   recipeDraftHasMismatchedYield,
@@ -63,7 +61,6 @@ import type {
   OrderMutationResponse,
   OrdersListResponse,
 } from "@/lib/types";
-import { formatNairobiStamp24 } from "@/lib/nairobi-time";
 import { fetchAllPages } from "@/lib/paged-fetch";
 
 function parseQty(value: string): number | null {
@@ -93,20 +90,13 @@ export function issueStatusTone(status: KitchenIssue["status"]): string {
 
 export function RestaurantKitchenTab() {
   const [stock, setStock] = useState<KitchenStock | null>(null);
-  const [shift, setShift] = useState<KitchenShiftState | null>(null);
-  const [shiftLoadFailed, setShiftLoadFailed] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
       const next = await fetchKitchenStock();
       setStock(next);
-      if (next.enabled) {
-        setShift(await fetchKitchenShift());
-      }
-      setShiftLoadFailed(false);
     } catch (err) {
-      setShiftLoadFailed(true);
       await showError("Could not load the kitchen", extractErrorMessage(err));
     } finally {
       setLoading(false);
@@ -119,31 +109,16 @@ export function RestaurantKitchenTab() {
 
   async function onEnabled(next: KitchenStock) {
     setStock(next);
-    try {
-      setShift(await fetchKitchenShift());
-      setShiftLoadFailed(false);
-    } catch (err) {
-      setShiftLoadFailed(true);
-      await showError("Could not load the kitchen shift", extractErrorMessage(err));
-    }
   }
 
   if (loading) return <p className="rs-empty">Loading kitchen…</p>;
   if (!stock) return null;
   if (!stock.enabled) return <KitchenSetup onEnabled={(next) => void onEnabled(next)} />;
-  if (!shift) {
-    return (
-      <p className="rs-empty">
-        {shiftLoadFailed ? "Kitchen shift could not be loaded. Refresh the page to try again." : "Loading kitchen shift…"}
-      </p>
-    );
-  }
+
   return (
     <KitchenBoard
       stock={stock}
       onStock={setStock}
-      shift={shift}
-      onShift={setShift}
     />
   );
 }
@@ -311,15 +286,12 @@ export function KitchenSetup({ onEnabled }: { onEnabled: (stock: KitchenStock) =
 function KitchenBoard({
   stock,
   onStock,
-  shift,
-  onShift,
 }: {
   stock: KitchenStock;
   onStock: (stock: KitchenStock) => void;
-  shift: KitchenShiftState;
-  onShift: (shift: KitchenShiftState) => void;
 }) {
   const [activeView, setActiveView] = useState<"menu" | "orders" | "measures">("menu");
+  const [orderStageFilter, setOrderStageFilter] = useState<"all" | "new" | "preparing" | "ready">("all");
   const [inventoryQuery, setInventoryQuery] = useState("");
   const [measureQuery, setMeasureQuery] = useState("");
   const [measureUnitFilter, setMeasureUnitFilter] = useState("all");
@@ -400,9 +372,17 @@ function KitchenBoard({
       void loadOrders();
       void refreshKitchenSupplies();
     }, 10_000);
+    const onEvent = () => {
+      void loadOrders();
+      void refreshKitchenSupplies();
+    };
+    window.addEventListener("trans-chap:refresh-counts", onEvent);
+    window.addEventListener("dukai:notification", onEvent);
     return () => {
       window.clearTimeout(initialLoad);
       window.clearInterval(timer);
+      window.removeEventListener("trans-chap:refresh-counts", onEvent);
+      window.removeEventListener("dukai:notification", onEvent);
     };
   }, [loadOrders, refreshKitchenSupplies]);
 
@@ -575,33 +555,24 @@ function KitchenBoard({
       .join(" · ");
   }
 
-  async function refreshShift(next: KitchenShiftState) {
-    onShift(next);
-    try {
-      onStock(await fetchKitchenStock());
-    } catch (err) {
-      await showError("Shift updated, but kitchen stock could not be refreshed", extractErrorMessage(err));
-    }
-  }
-
-  if (!shift.session) {
-    return (
-      <div className="tc-kitchen-page">
-        <KitchenShiftPanel shift={shift} onShift={(next) => void refreshShift(next)} />
-        <p className="rs-empty">Confirm the store handover and clock in to access the kitchen order queue.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="tc-kitchen-page">
-      <details className="tc-kitchen-shift-tools">
-        <summary>
-          <span><i className="fa-solid fa-clock" aria-hidden /> Shift tools</span>
-          <span className="rs-badge rs-badge--ok">On duty</span>
-        </summary>
-        <KitchenShiftPanel shift={shift} onShift={(next) => void refreshShift(next)} />
-      </details>
+
+      {/* ── Order Preparation Stages Bar ── */}
+      <KitchenStageSummaryBar
+        orders={orders}
+        loading={ordersLoading}
+        activeStage={activeView === "orders" ? orderStageFilter : undefined}
+        onSelectStage={(stage) => {
+          setOrderStageFilter(stage);
+        }}
+        onRefresh={() => void loadOrders()}
+        onStartPreparing={(order) => void startPreparing(order)}
+        onMarkReady={(order) => void markReady(order)}
+        onConfirmHandoff={(order) => void confirmHandoff(order)}
+        canStartPreparing={canStartPreparing}
+        startingOrderId={startingOrderId}
+      />
 
       <section className="tc-kitchen-section" aria-label="Released kitchen supplies">
           <div className="tc-kitchen-section__head">
@@ -770,6 +741,8 @@ function KitchenBoard({
           loading={ordersLoading}
           error={ordersError}
           startingOrderId={startingOrderId}
+          activeFilter={orderStageFilter}
+          onFilterChange={setOrderStageFilter}
           onRefresh={() => {
             void loadOrders();
             void refreshKitchenSupplies();
@@ -945,11 +918,317 @@ function KitchenBoard({
   );
 }
 
+export function KitchenStageSummaryBar({
+  orders,
+  loading = false,
+  activeStage,
+  onSelectStage,
+  onRefresh,
+  onStartPreparing,
+  onMarkReady,
+  onConfirmHandoff,
+  canStartPreparing,
+  startingOrderId,
+}: {
+  orders: Order[];
+  loading?: boolean;
+  activeStage?: "all" | "new" | "preparing" | "ready";
+  onSelectStage?: (stage: "all" | "new" | "preparing" | "ready") => void;
+  onRefresh?: () => void;
+  onStartPreparing?: (order: Order) => void;
+  onMarkReady?: (order: Order) => void;
+  onConfirmHandoff?: (order: Order) => void;
+  canStartPreparing?: (order: Order) => boolean;
+  startingOrderId?: string | null;
+}) {
+  const [dropdownStage, setDropdownStage] = useState<"all" | "new" | "preparing" | "ready" | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!dropdownStage) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setDropdownStage(null);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [dropdownStage]);
+
+  const newOrders = orders.filter(
+    (order) =>
+      order.status === "placed" ||
+      order.status === "awaiting_payment" ||
+      order.status === "payment_received",
+  );
+  const preparingOrders = orders.filter((order) => order.status === "being_prepared");
+  const readyOrders = orders.filter((order) => order.status === "ready");
+  const newCount = newOrders.length;
+  const preparingCount = preparingOrders.length;
+  const readyCount = readyOrders.length;
+  const totalCount = orders.length;
+
+  const stages: {
+    id: "all" | "new" | "preparing" | "ready";
+    label: string;
+    sublabel: string;
+    count: number;
+    icon: string;
+    tone: "new" | "preparing" | "ready" | "total";
+    pulsing?: boolean;
+  }[] = [
+    {
+      id: "new",
+      label: "New",
+      sublabel: "Waiting to start",
+      count: newCount,
+      icon: "fa-solid fa-bell",
+      tone: "new",
+      pulsing: newCount > 0,
+    },
+    {
+      id: "preparing",
+      label: "In preparation",
+      sublabel: "Currently cooking",
+      count: preparingCount,
+      icon: "fa-solid fa-fire-burner",
+      tone: "preparing",
+    },
+    {
+      id: "ready",
+      label: "Ready to serve",
+      sublabel: "Ready for tables",
+      count: readyCount,
+      icon: "fa-solid fa-bell-concierge",
+      tone: "ready",
+    },
+    {
+      id: "all",
+      label: "All active",
+      sublabel: "Live in kitchen",
+      count: totalCount,
+      icon: "fa-solid fa-receipt",
+      tone: "total",
+    },
+  ];
+
+  const activeStageDef = stages.find((s) => s.id === dropdownStage);
+  const dropdownOrders =
+    dropdownStage === "new"
+      ? newOrders
+      : dropdownStage === "preparing"
+        ? preparingOrders
+        : dropdownStage === "ready"
+          ? readyOrders
+          : orders;
+
+  function handleCardClick(stageId: "all" | "new" | "preparing" | "ready") {
+    if (dropdownStage === stageId) {
+      setDropdownStage(null);
+    } else {
+      setDropdownStage(stageId);
+    }
+    onSelectStage?.(stageId);
+  }
+
+  return (
+    <div className="tc-kitchen-stage-bar" role="region" aria-label="Order preparation stages" ref={dropdownRef}>
+      <div className="tc-kitchen-stage-grid">
+        {stages.map((stage) => {
+          const isOpen = dropdownStage === stage.id;
+          const isActive = activeStage === stage.id || isOpen;
+          return (
+            <button
+              key={stage.id}
+              type="button"
+              className={`tc-kitchen-stage-card tc-kitchen-stage-card--${stage.tone}${isActive ? " is-active" : ""}${isOpen ? " is-open" : ""}`}
+              onClick={() => handleCardClick(stage.id)}
+              aria-expanded={isOpen}
+              aria-label={`${stage.label}: ${stage.count} orders (${stage.sublabel}). Click to open orders dropdown.`}
+            >
+              <div className="tc-kitchen-stage-card__head">
+                <span className="tc-kitchen-stage-card__icon" aria-hidden>
+                  <i className={stage.icon} />
+                </span>
+                <span className="tc-kitchen-stage-card__count">
+                  {loading ? "…" : stage.count}
+                  {stage.pulsing ? <span className="tc-kitchen-new-dot" aria-hidden /> : null}
+                </span>
+                <span className="tc-kitchen-stage-card__toggle-hint" aria-hidden>
+                  <i className={`fa-solid ${isOpen ? "fa-chevron-up" : "fa-chevron-down"}`} />
+                </span>
+              </div>
+              <div className="tc-kitchen-stage-card__body">
+                <span className="tc-kitchen-stage-card__label">{stage.label}</span>
+                <span className="tc-kitchen-stage-card__sublabel">{stage.sublabel}</span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {dropdownStage ? (
+        <div className="tc-kitchen-stage-dropdown" role="dialog" aria-label={`${activeStageDef?.label} orders dropdown`}>
+          <div className="tc-kitchen-stage-dropdown__head">
+            <div className="tc-kitchen-stage-dropdown__title">
+              <span className={`tc-kitchen-stage-card__icon tc-kitchen-stage-card--${activeStageDef?.tone} tc-kitchen-stage-card__icon--dropdown`} aria-hidden>
+                <i className={activeStageDef?.icon || "fa-solid fa-bell"} />
+              </span>
+              <div>
+                <h4>{activeStageDef?.label} orders ({dropdownOrders.length})</h4>
+                <p>{activeStageDef?.sublabel}</p>
+              </div>
+            </div>
+            <div className="tc-kitchen-stage-dropdown__actions">
+              {onRefresh ? (
+                <button
+                  type="button"
+                  className="rs-btn rs-btn--small"
+                  onClick={onRefresh}
+                  disabled={loading}
+                  title="Refresh orders"
+                >
+                  <i className={`fa-solid fa-rotate${loading ? " fa-spin" : ""}`} aria-hidden /> Refresh
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="tc-kitchen-stage-dropdown__close"
+                onClick={() => setDropdownStage(null)}
+                aria-label="Close orders dropdown"
+              >
+                <i className="fa-solid fa-xmark" aria-hidden />
+              </button>
+            </div>
+          </div>
+
+          <div className="tc-kitchen-stage-dropdown__chips">
+            {stages.map((st) => (
+              <button
+                key={st.id}
+                type="button"
+                className={`tc-kitchen-filter-chip tc-kitchen-filter-chip--${st.tone}${dropdownStage === st.id ? " is-active" : ""}`}
+                onClick={() => setDropdownStage(st.id)}
+              >
+                <i className={st.icon} aria-hidden />
+                <span>{st.label}</span>
+                <span className="tc-kitchen-filter-count">{st.count}</span>
+              </button>
+            ))}
+          </div>
+
+          {dropdownOrders.length === 0 ? (
+            <div className="tc-kitchen-stage-dropdown__empty">
+              <i className="fa-solid fa-circle-check" aria-hidden />
+              <p>No {activeStageDef?.label.toLowerCase()} orders right now.</p>
+            </div>
+          ) : (
+            <ul className="tc-kitchen-stage-dropdown__list">
+              {dropdownOrders.map((order) => {
+                const isNew =
+                  order.status === "placed" ||
+                  order.status === "awaiting_payment" ||
+                  order.status === "payment_received";
+                const canStart = isNew && (canStartPreparing ? canStartPreparing(order) : true);
+                const tableLabel = order.table_number
+                  ? order.table_number.trim().toLowerCase().startsWith("table")
+                    ? order.table_number.trim()
+                    : `Table ${order.table_number.trim()}`
+                  : null;
+                return (
+                  <li key={order.id} className={`tc-kitchen-order${isNew ? " is-new" : ""}`}>
+                    <div className="tc-kitchen-order__header">
+                      <div>
+                        <strong>Order {order.order_number}</strong>
+                        {tableLabel ? <span>{tableLabel}</span> : null}
+                        {order.customer_name ? <span>{order.customer_name}</span> : null}
+                      </div>
+                      <span
+                        className={`rs-badge ${order.status === "ready" ? "rs-badge--ok" : order.status === "being_prepared" ? "rs-badge--ok" : "rs-badge--warn"}`}
+                        style={order.status === "ready" ? { background: "rgba(34, 197, 94, 0.15)", color: "#15803d" } : undefined}
+                      >
+                        {order.status === "ready"
+                          ? "Ready to serve"
+                          : order.status === "being_prepared"
+                            ? "Preparing"
+                            : order.status === "payment_received"
+                              ? "New · paid"
+                              : order.status === "awaiting_payment"
+                                ? "Awaiting payment"
+                                : orderUsesPayment(order, "mpesa") && !orderHasSuccessfulMpesa(order)
+                                  ? "New · payment needed"
+                                  : "New order"}
+                      </span>
+                    </div>
+                    <ul className="tc-kitchen-order__items">
+                      {(order.items ?? []).map((item) => (
+                        <li key={item.id}>
+                          <strong className={isNew ? "tc-kitchen-order__item-new" : ""}>
+                            {item.quantity} × {item.product_name}
+                            {item.serving_unit ? ` · ${item.serving_unit}` : ""}
+                          </strong>
+                          {item.modifiers?.length ? (
+                            <small>{item.modifiers.map((modifier) => modifier.name).join(", ")}</small>
+                          ) : null}
+                          {item.notes ? <small>Note: {item.notes}</small> : null}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="tc-kitchen-order__footer">
+                      <span>
+                        {order.placed_at
+                          ? `Placed ${new Date(order.placed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                          : ""}
+                      </span>
+                      {canStart ? (
+                        <button
+                          type="button"
+                          className="rs-btn rs-btn--primary"
+                          disabled={startingOrderId != null}
+                          onClick={() => onStartPreparing?.(order)}
+                        >
+                          {startingOrderId === order.id ? "Starting…" : "Start preparing"}
+                        </button>
+                      ) : order.status === "being_prepared" ? (
+                        <button
+                          type="button"
+                          className="rs-btn rs-btn--primary"
+                          style={{ background: "#2563eb", color: "#fff", border: "none" }}
+                          disabled={startingOrderId != null}
+                          onClick={() => onMarkReady?.(order)}
+                        >
+                          {startingOrderId === order.id ? "Updating…" : "Mark ready"}
+                        </button>
+                      ) : order.status === "ready" ? (
+                        <button
+                          type="button"
+                          className="rs-btn rs-btn--success"
+                          style={{ background: "#16a34a", color: "#fff", border: "none" }}
+                          disabled={startingOrderId != null}
+                          onClick={() => onConfirmHandoff?.(order)}
+                        >
+                          {startingOrderId === order.id ? "Updating…" : "Serve to table"}
+                        </button>
+                      ) : isNew ? (
+                        <span className="tc-kitchen-order__progress">Waiting for payment confirmation</span>
+                      ) : null}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function KitchenOrderQueue({
   orders,
   loading,
   error,
   startingOrderId,
+  activeFilter = "all",
+  onFilterChange,
   onRefresh,
   onStartPreparing,
   onMarkReady,
@@ -960,18 +1239,35 @@ function KitchenOrderQueue({
   loading: boolean;
   error: string | null;
   startingOrderId: string | null;
+  activeFilter?: "all" | "new" | "preparing" | "ready";
+  onFilterChange?: (filter: "all" | "new" | "preparing" | "ready") => void;
   onRefresh: () => void;
   onStartPreparing: (order: Order) => void;
   onMarkReady: (order: Order) => void;
   onConfirmHandoff: (order: Order) => void;
   canStartPreparing: (order: Order) => boolean;
 }) {
+  const [internalFilter, setInternalFilter] = useState<"all" | "new" | "preparing" | "ready">("all");
+  const currentFilter = activeFilter ?? internalFilter;
+  const setFilter = onFilterChange ?? setInternalFilter;
+
   const newOrders = orders.filter(
     (order) =>
       order.status === "placed" ||
       order.status === "awaiting_payment" ||
       order.status === "payment_received",
-  ).length;
+  );
+  const preparingOrders = orders.filter((order) => order.status === "being_prepared");
+  const readyOrders = orders.filter((order) => order.status === "ready");
+
+  const filteredOrders =
+    currentFilter === "new"
+      ? newOrders
+      : currentFilter === "preparing"
+        ? preparingOrders
+        : currentFilter === "ready"
+          ? readyOrders
+          : orders;
 
   return (
     <section className="tc-kitchen-section tc-kitchen-orders" aria-label="Kitchen order queue">
@@ -980,7 +1276,9 @@ function KitchenOrderQueue({
           <h3 className="tc-kitchen-section__title">
             <i className="fa-solid fa-bell" aria-hidden />
             <span>Kitchen orders</span>
-            {newOrders > 0 ? <span className="tc-kitchen-orders__new">{newOrders} new</span> : null}
+            {newOrders.length > 0 ? (
+              <span className="tc-kitchen-orders__new">{newOrders.length} new</span>
+            ) : null}
           </h3>
           <p className="tc-kitchen-section__subtitle">
             New orders appear here automatically. Start preparing, mark ready when cooked, and serve to tables.
@@ -988,6 +1286,45 @@ function KitchenOrderQueue({
         </div>
         <button type="button" className="rs-btn rs-btn--small" onClick={onRefresh} disabled={loading}>
           <i className="fa-solid fa-rotate" aria-hidden /> Refresh
+        </button>
+      </div>
+
+      <div className="tc-kitchen-order-filters" role="tablist" aria-label="Order stages">
+        <button
+          type="button"
+          className={`tc-kitchen-filter-chip ${currentFilter === "all" ? "is-active" : ""}`}
+          onClick={() => setFilter("all")}
+        >
+          <span>All</span>
+          <span className="tc-kitchen-filter-count">{orders.length}</span>
+        </button>
+        <button
+          type="button"
+          className={`tc-kitchen-filter-chip tc-kitchen-filter-chip--new ${currentFilter === "new" ? "is-active" : ""}`}
+          onClick={() => setFilter("new")}
+        >
+          <i className="fa-solid fa-bell" aria-hidden />
+          <span>New</span>
+          <span className="tc-kitchen-filter-count">{newOrders.length}</span>
+          {newOrders.length > 0 ? <span className="tc-kitchen-new-dot" aria-hidden /> : null}
+        </button>
+        <button
+          type="button"
+          className={`tc-kitchen-filter-chip tc-kitchen-filter-chip--preparing ${currentFilter === "preparing" ? "is-active" : ""}`}
+          onClick={() => setFilter("preparing")}
+        >
+          <i className="fa-solid fa-fire-burner" aria-hidden />
+          <span>In preparation</span>
+          <span className="tc-kitchen-filter-count">{preparingOrders.length}</span>
+        </button>
+        <button
+          type="button"
+          className={`tc-kitchen-filter-chip tc-kitchen-filter-chip--ready ${currentFilter === "ready" ? "is-active" : ""}`}
+          onClick={() => setFilter("ready")}
+        >
+          <i className="fa-solid fa-bell-concierge" aria-hidden />
+          <span>Ready to serve</span>
+          <span className="tc-kitchen-filter-count">{readyOrders.length}</span>
         </button>
       </div>
 
@@ -999,11 +1336,32 @@ function KitchenOrderQueue({
 
       {loading ? (
         <p className="rs-empty">Loading kitchen orders…</p>
-      ) : orders.length === 0 ? (
+      ) : filteredOrders.length === 0 ? (
         <div className="tc-kitchen-empty">
           <i className="fa-solid fa-bell-slash" aria-hidden />
-          <h4>No active orders</h4>
-          <p>New orders will show here while the kitchen is open.</p>
+          <h4>
+            {currentFilter === "new"
+              ? "No new orders"
+              : currentFilter === "preparing"
+                ? "No orders currently in preparation"
+                : currentFilter === "ready"
+                  ? "No orders waiting to be served"
+                  : "No active orders"}
+          </h4>
+          <p>
+            {currentFilter !== "all" && orders.length > 0 ? (
+              <button
+                type="button"
+                className="rs-btn rs-btn--small"
+                onClick={() => setFilter("all")}
+                style={{ marginTop: "0.5rem" }}
+              >
+                Show all {orders.length} orders
+              </button>
+            ) : (
+              "New orders will show here while the kitchen is open."
+            )}
+          </p>
         </div>
       ) : (
         <ul className="tc-kitchen-order-list">
@@ -1108,250 +1466,7 @@ function KitchenOrderQueue({
   );
 }
 
-function KitchenShiftPanel({
-  shift,
-  onShift,
-}: {
-  shift: KitchenShiftState;
-  onShift: (shift: KitchenShiftState) => void;
-}) {
-  const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
-  const [clockOut, setClockOut] = useState(false);
-  const [counts, setCounts] = useState<Record<string, string>>({});
-  const [countUnits, setCountUnits] = useState<Record<string, string>>({});
-  const [note, setNote] = useState("");
-  const [ordersCleared, setOrdersCleared] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const session = shift.session;
-  const countUnitFor = (item: KitchenItem) =>
-    item.units.find((unit) => unit.name === countUnits[item.inventory_item_id]) ?? item.units[0] ?? { name: item.unit, factor: 1 };
-  const countBase = (item: KitchenItem, value: string) => {
-    const qty = parseQty(value);
-    return qty == null ? null : roundQty(qty * (countUnitFor(item).factor || 1));
-  };
 
-  async function startShift() {
-    if (!shift.items.length) {
-      await showError("No kitchen stock to confirm", "Ask the store to issue supplies before clocking in.");
-      return;
-    }
-    if (shift.items.some((item) => !confirmed[item.inventory_item_id])) {
-      await showError("Confirm every item", "Review and confirm each issued quantity before clocking in.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const next = await clockInKitchenShift(
-        shift.items.map((item) => ({
-          inventory_item_id: item.inventory_item_id,
-          quantity: item.kitchen_quantity,
-        })),
-      );
-      onShift(next);
-      await toastSuccess("Kitchen shift started");
-    } catch (err) {
-      await showError("Could not clock in", extractErrorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function finishShift() {
-    const parsed = shift.items.map((item) => ({
-      inventory_item_id: item.inventory_item_id,
-      quantity: countBase(item, counts[item.inventory_item_id] ?? ""),
-    }));
-    if (parsed.some((item) => item.quantity == null)) {
-      await showError("Complete every count", "Enter the physical closing count for every kitchen item.");
-      return;
-    }
-    const hasVariance = parsed.some((row, index) => row.quantity !== shift.items[index].kitchen_quantity);
-    if (hasVariance && !note.trim()) {
-      await showError("Explain the difference", "Add a note describing the stock difference before clocking out.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const validCounts = parsed.flatMap((item) =>
-        item.quantity == null
-          ? []
-          : [{ inventory_item_id: item.inventory_item_id, quantity: item.quantity }],
-      );
-      if (validCounts.length !== parsed.length) return;
-      const next = await clockOutKitchenShift(validCounts, note, ordersCleared);
-      onShift(next);
-      setClockOut(false);
-      setConfirmed({});
-      setCounts({});
-      setCountUnits({});
-      setNote("");
-      setOrdersCleared(false);
-      await toastSuccess("Kitchen shift closed and stock reconciled");
-    } catch (err) {
-      await showError("Could not clock out", extractErrorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section className="rs-card" aria-label="Kitchen shift handover">
-      <div className="rs-row rs-row--between">
-        <div>
-          <p className="rs-card__title">{session ? "Kitchen shift in progress" : "Confirm stock to clock in"}</p>
-          <p className="rs-card__meta">
-            {session
-              ? `Clocked in ${formatNairobiStamp24(session.clocked_in_at)}. Confirm closing counts before signing out.`
-              : "Check the quantities handed over by the store. You can only start the order queue after confirming all items."}
-          </p>
-        </div>
-        <span className={`rs-badge ${session ? "rs-badge--ok" : "rs-badge--warn"}`}>
-          {session ? "On duty" : "Awaiting handover"}
-        </span>
-      </div>
-
-      {!session ? (
-        <>
-          {shift.items.length ? (
-            <div className="rs-table-wrap">
-              <table className="rs-table">
-                <thead>
-                  <tr><th>Issued supply</th><th className="rs-num">Quantity to confirm</th><th className="rs-num">Confirmed</th></tr>
-                </thead>
-                <tbody>
-                  {shift.items.map((item) => (
-                    <tr key={item.inventory_item_id}>
-                      <td>{item.name}<div className="rs-muted">{item.unit}</div></td>
-                      <td className="rs-num"><strong>{formatQty(item.kitchen_quantity, item.unit)}</strong></td>
-                      <td className="rs-num">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(confirmed[item.inventory_item_id])}
-                          aria-label={`Confirm ${item.name} handover`}
-                          onChange={(event) =>
-                            setConfirmed((previous) => ({
-                              ...previous,
-                              [item.inventory_item_id]: event.target.checked,
-                            }))
-                          }
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : <p className="rs-empty">The store has not issued any stock to the kitchen yet.</p>}
-          <div className="rs-row" style={{ justifyContent: "flex-end" }}>
-            <button type="button" className="rs-btn rs-btn--primary" disabled={busy || !shift.items.length} onClick={() => void startShift()}>
-              {busy ? "Starting shift…" : "Confirm handover & clock in"}
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <p className="rs-card__meta">
-            Current kitchen stock is reconciled from sales, recorded use, and store issues. Count what is physically left at the end of the shift.
-          </p>
-          {clockOut ? (
-            <>
-              {shift.items.length ? (
-                <div className="rs-table-wrap">
-                  <table className="rs-table">
-                    <thead><tr><th>Supply</th><th className="rs-num">System quantity</th><th className="rs-num">Physical count</th></tr></thead>
-                    <tbody>
-                      {shift.items.map((item) => (
-                        <tr key={item.inventory_item_id}>
-                          <td>{item.name}<div className="rs-muted">{item.unit}</div></td>
-                          <td className="rs-num">{formatQty(item.kitchen_quantity, item.unit)}</td>
-                          <td className="rs-num">
-                            <div className="rs-count-input">
-                              <input
-                                className="rs-input rs-input--qty"
-                                inputMode="decimal"
-                                value={counts[item.inventory_item_id] ?? ""}
-                                aria-label={`Closing count for ${item.name}`}
-                                placeholder="Enter count"
-                                onChange={(event) =>
-                                  setCounts((previous) => ({
-                                    ...previous,
-                                    [item.inventory_item_id]: event.target.value,
-                                  }))
-                                }
-                              />
-                              {item.units.length > 1 ? (
-                                <select
-                                  aria-label={`Count unit for ${item.name}`}
-                                  value={countUnitFor(item).name}
-                                  onChange={(event) => {
-                                    const oldFactor = countUnitFor(item).factor || 1;
-                                    const nextFactor = item.units.find((unit) => unit.name === event.target.value)?.factor || 1;
-                                    const baseAmount = (parseQty(counts[item.inventory_item_id] ?? "") ?? 0) * oldFactor;
-                                    setCountUnits((previous) => ({ ...previous, [item.inventory_item_id]: event.target.value }));
-                                    setCounts((previous) => ({ ...previous, [item.inventory_item_id]: baseAmount ? String(roundQty(baseAmount / nextFactor)) : previous[item.inventory_item_id] ?? "" }));
-                                  }}
-                                >
-                                  {item.units.map((unit) => <option key={unit.name} value={unit.name}>{unit.name}</option>)}
-                                </select>
-                              ) : <small>{item.unit}</small>}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : <p className="rs-empty">No stock lines to count for this shift.</p>}
-              <label style={{ display: "block", marginTop: "1rem" }}>
-                <span className="rs-card__meta">Variance note (required if counts differ)</span>
-                <textarea
-                  className="rs-input"
-                  rows={2}
-                  maxLength={1000}
-                  value={note}
-                  onChange={(event) => setNote(event.target.value)}
-                  placeholder="Explain any missing, damaged, or wasted stock"
-                  style={{ display: "block", width: "100%", marginTop: "0.4rem" }}
-                />
-              </label>
-              <label style={{ display: "flex", alignItems: "flex-start", gap: "0.55rem", marginTop: "0.8rem" }}>
-                <input
-                  type="checkbox"
-                  checked={ordersCleared}
-                  onChange={(event) => setOrdersCleared(event.target.checked)}
-                />
-                <span className="rs-card__meta">
-                  I have completed or handed over every active order.{" "}
-                  <Link href="/trans-chap/sales" target="_blank" rel="noreferrer">
-                    Review the order queue
-                  </Link>{" "}
-                  before closing this shift.
-                </span>
-              </label>
-              <div className="rs-row" style={{ justifyContent: "flex-end" }}>
-                <button type="button" className="rs-btn" disabled={busy} onClick={() => setClockOut(false)}>Back</button>
-                <button
-                  type="button"
-                  className="rs-btn rs-btn--primary"
-                  disabled={busy || !ordersCleared}
-                  onClick={() => void finishShift()}
-                >
-                  {busy ? "Reconciling…" : "Confirm counts & clock out"}
-                </button>
-              </div>
-            </>
-          ) : (
-            <div className="rs-row" style={{ justifyContent: "flex-end" }}>
-              <button type="button" className="rs-btn rs-btn--danger" onClick={() => setClockOut(true)}>
-                Count stock &amp; clock out
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </section>
-  );
-}
 
 function CurrentMenuSection({
   dishes,
@@ -1376,6 +1491,7 @@ function CurrentMenuSection({
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [preparingId, setPreparingId] = useState<string | null>(null);
+  const [deletingDishId, setDeletingDishId] = useState<string | null>(null);
   const [selectedServingUnitByDish, setSelectedServingUnitByDish] = useState<Record<string, string>>({});
   const [batchCountByDish, setBatchCountByDish] = useState<Record<string, string>>({});
   const [recipeEditor, setRecipeEditor] = useState<InventoryItem | null>(null);
@@ -1450,6 +1566,17 @@ function CurrentMenuSection({
     () => modifierGroups.filter((group) => !group.is_extra),
     [modifierGroups],
   );
+  const modifierGroupsById = useMemo(
+    () => new Map(modifierGroups.map((group) => [group.id, group])),
+    [modifierGroups],
+  );
+  const supplyNameByProductId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of supplies) {
+      if (s.product_id) map.set(s.product_id, inventoryProductName(s));
+    }
+    return map;
+  }, [supplies]);
   const modifierSources = useMemo<ModifierSources>(
     () => ({
       storeItems: supplies
@@ -1584,7 +1711,7 @@ function CurrentMenuSection({
       setDishes((previous) => [created, ...previous]);
       setNewMealName("");
       setShowNewMeal(false);
-      await toastSuccess(`“${name}” created in Kitchen. Add its recipe before pricing it in Menu.`);
+      await toastSuccess(`“${name}” created in Kitchen. Set up its recipe batch and portions.`);
       await openRecipeEditor(created);
     } catch (err) {
       await showError("Could not create meal", extractErrorMessage(err));
@@ -1699,6 +1826,31 @@ function CurrentMenuSection({
       }
     } finally {
       setSavingRecipe(false);
+    }
+  }
+
+  async function handleDeleteDish(dish: InventoryItem) {
+    if (deletingDishId || savingRecipe) return;
+    const name = inventoryProductName(dish);
+    const ok = await confirmAction(
+      `Delete "${name}"?`,
+      `This permanently deletes "${name}" from your kitchen menu and inventory.`,
+      "Delete meal",
+    );
+    if (!ok) return;
+    setDeletingDishId(dish.id);
+    try {
+      await deleteInventoryItem(dish.id);
+      setDishes((previous) => previous.filter((d) => d.id !== dish.id));
+      if (recipeEditor?.id === dish.id) {
+        setRecipeEditor(null);
+      }
+      await toastSuccess(`"${name}" deleted from kitchen menu`);
+      await refreshCosting();
+    } catch (err) {
+      await showError("Could not delete meal", extractErrorMessage(err));
+    } finally {
+      setDeletingDishId(null);
     }
   }
 
@@ -1826,7 +1978,7 @@ function CurrentMenuSection({
         <div className="tc-kitchen-empty">
           <i className="fa-solid fa-utensils" aria-hidden />
           <h4>No meals created yet</h4>
-          <p>Create a meal here, add its recipe, then assign its price in Menu.</p>
+          <p>Create a meal here and set up its recipe batches and portions.</p>
           <button type="button" className="tc-kitchen-btn tc-kitchen-btn--primary" onClick={() => setShowNewMeal(true)}>
             <i className="fa-solid fa-plus" aria-hidden /> Create first meal
           </button>
@@ -1847,101 +1999,94 @@ function CurrentMenuSection({
             );
             const batchCount = Number(batchCountByDish[dish.id] || "1");
             const batchLimit = equivalence?.batches_producible ?? 0;
+            const portionsReady = equivalence?.portions_available ?? meal?.portions_available;
+            const recipeLines = dish.product?.recipe ?? [];
+            const recipeYield = recipeLines[0]?.batch_yield || 1;
+            const recipeServingUnit =
+              recipeLines[0]?.serving_unit || dish.product?.recipe_serving_unit || servingUnit || "servings";
+            const attachedGroups = (dish.product?.modifier_groups ?? [])
+              .map((g) => modifierGroupsById.get(g.id) ?? g)
+              .filter(Boolean);
+
             return (
-              <li key={dish.id} className={`tc-kitchen-meal${dish.is_active ? "" : " is-paused"}`}>
-                <div className="tc-kitchen-meal__main">
-                  <div className="tc-kitchen-meal__name">{dish.product?.name ?? "Dish"}</div>
-                  <div className="tc-kitchen-meal__meta">
-                    <span className="rs-badge">
-                      {dish.product?.product_type === "combo" ? "Combo" : "Meal"}
+              <li key={dish.id} className={`tc-kitchen-meal-item${dish.is_active ? "" : " is-paused"}`}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className={`tc-menu__card tc-kitchen-meal__card${dish.is_active ? "" : " tc-menu__card--paused"}`}
+                  onClick={() => openRecipeEditor(dish)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openRecipeEditor(dish);
+                    }
+                  }}
+                  title="Click to edit recipe and modifiers"
+                >
+                  <TransChapProductThumb item={dish} size="md" />
+                  <span className="tc-menu__card-body">
+                    <span className="tc-menu__card-head">
+                      <span className="tc-kitchen-meal__title-group">
+                        <strong className="tc-kitchen-meal__name">{dish.product?.name ?? "Dish"}</strong>
+                        <span className="tc-kitchen-meal__meta">
+                          <span className="rs-badge">
+                            {dish.product?.product_type === "combo" ? "Combo" : "Meal"}
+                          </span>
+                          {dish.product?.category ? <span>{dish.product.category}</span> : null}
+                        </span>
+                      </span>
+
+                      {/* Portions mapped to it (replaces Ksh from Menu card) */}
+                      <span className="tc-kitchen-meal__portions-stat-wrap">
+                        {costingLoading ? (
+                          <span className="tc-kitchen-meal__portions-stat rs-muted">Loading…</span>
+                        ) : costingLoadFailed ? (
+                          <span className="tc-kitchen-meal__portions-stat is-warn">Unavailable</span>
+                        ) : !meal?.has_recipe ? (
+                          <span className="tc-kitchen-meal__portions-stat is-none">
+                            <i className="fa-solid fa-circle-exclamation" aria-hidden="true" /> Recipe not set
+                          </span>
+                        ) : portionsReady == null ? (
+                          <span className="tc-kitchen-meal__portions-stat is-untracked">Stock untracked</span>
+                        ) : (
+                          <span className={`tc-kitchen-meal__portions-stat${portionsReady <= 0 ? " is-out" : ""}`}>
+                            <strong>{portionsReady}</strong> {servingUnit} ready
+                          </span>
+                        )}
+                      </span>
                     </span>
-                    {dish.product?.category ? <span>{dish.product.category}</span> : null}
-                  </div>
-                  {supportsKitchenRecipe(dish) ? (
-                    <button
-                      type="button"
-                      className="tc-kitchen-meal__icon-btn"
-                      onClick={() => openRecipeEditor(dish)}
-                      title={meal?.has_recipe ? "Edit meal" : "Set recipe"}
-                      aria-label={meal?.has_recipe ? "Edit meal" : "Set recipe"}
-                    >
-                      <i className="fa-solid fa-list-check" aria-hidden="true" />
-                    </button>
-                  ) : (
-                    <span className="tc-kitchen-table__recipe-note">
-                      {dish.product?.product_type === "combo"
-                        ? "Availability comes from included meal recipes"
-                        : dish.product?.product_type === "addon"
-                          ? "Add-on stock tracked separately"
-                          : "Recipe setup not available for this item"}
-                    </span>
-                  )}
-                </div>
-                <div className="tc-kitchen-meal__portions">
-                  {costingLoading ? (
-                    <span className="rs-muted">Loading…</span>
-                  ) : costingLoadFailed ? (
-                    <span className="rs-badge rs-badge--warn">Unavailable</span>
-                  ) : !meal?.has_recipe ? (
-                    <span className="rs-badge rs-badge--warn">Recipe not set</span>
-                  ) : (equivalence?.portions_available ?? meal.portions_available) == null ? (
-                    <span className="rs-badge rs-badge--warn">Stock not tracked</span>
-                  ) : (
-                    <>
-                      {meal.equivalences?.length > 1 ? (
-                        <label>
-                          <span className="sr-only">Serving option for {dish.product?.name ?? "meal"}</span>
-                          <select
-                            aria-label={`Serving option for ${dish.product?.name ?? "meal"}`}
-                            value={servingUnit}
-                            onChange={(event) => {
-                              setSelectedServingUnitByDish((prev) => ({
+
+                    {/* Batch preparation info & controls if batching is enabled */}
+                    {equivalence?.prepared_quantity != null ? (
+                      <div className="tc-kitchen-meal__batch-row" onClick={(e) => e.stopPropagation()}>
+                        <span className="tc-kitchen-meal__batch-limit">
+                          {batchLimit > 0
+                            ? `${batchLimit} batch${batchLimit === 1 ? "" : "es"} can be made${
+                                equivalence.limiting_ingredient
+                                  ? ` · limited by ${equivalence.limiting_ingredient}`
+                                  : ""
+                              }`
+                            : `Limited by ${equivalence.limiting_ingredient || "available supplies"}`}
+                        </span>
+                        <div className="tc-kitchen-meal__batch-actions">
+                          <input
+                            type="number"
+                            min={1}
+                            max={batchLimit || undefined}
+                            step={1}
+                            value={batchCountByDish[dish.id] ?? "1"}
+                            onChange={(event) =>
+                              setBatchCountByDish((prev) => ({
                                 ...prev,
                                 [dish.id]: event.target.value,
-                              }));
-                              setBatchCountByDish((prev) => ({ ...prev, [dish.id]: "1" }));
-                            }}
-                          >
-                            {meal.equivalences.map((entry) => (
-                              <option key={entry.serving_unit} value={entry.serving_unit}>
-                                {entry.serving_unit}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      ) : null}
-                      <strong>{equivalence?.portions_available ?? meal.portions_available}</strong>
-                      <span>{servingUnit} ready</span>
-                      {equivalence?.prepared_quantity != null ? (
-                        <>
-                          <small>
-                            {batchLimit > 0
-                              ? `${batchLimit} batch${batchLimit === 1 ? "" : "es"} can be made${
-                                  equivalence.limiting_ingredient
-                                    ? `; limited by ${equivalence.limiting_ingredient}`
-                                    : ""
-                                }`
-                              : `Limited by ${equivalence.limiting_ingredient || "available supplies"}`}
-                          </small>
-                          <label>
-                            <span className="sr-only">Batches to prepare for {dish.product?.name ?? "meal"}</span>
-                            <input
-                              type="number"
-                              min={1}
-                              max={batchLimit || undefined}
-                              step={1}
-                              value={batchCountByDish[dish.id] ?? "1"}
-                              onChange={(event) =>
-                                setBatchCountByDish((prev) => ({
-                                  ...prev,
-                                  [dish.id]: event.target.value,
-                                }))
-                              }
-                            />
-                          </label>
+                              }))
+                            }
+                            className="tc-kitchen-meal__batch-input"
+                            aria-label={`Batches to prepare for ${dish.product?.name ?? "meal"}`}
+                          />
                           <button
                             type="button"
-                            className="rs-btn rs-btn--small"
+                            className="rs-btn rs-btn--small rs-btn--primary"
                             disabled={
                               preparingId != null ||
                               batchLimit < 1 ||
@@ -1951,30 +2096,165 @@ function CurrentMenuSection({
                             }
                             onClick={() => void handlePrepareBatch(dish)}
                           >
-                            {preparingId === dish.id ? "Preparing…" : `Prepare ${batchCount} batch${batchCount === 1 ? "" : "es"}`}
+                            {preparingId === dish.id
+                              ? "Preparing…"
+                              : `Prepare ${batchCount} batch${batchCount === 1 ? "" : "es"}`}
                           </button>
-                        </>
-                      ) : meal.limiting_ingredient ? (
-                        <small>Limited by {meal.limiting_ingredient}</small>
-                      ) : null}
-                    </>
-                  )}
-                </div>
-                <div className="tc-kitchen-meal__status">
-                  <button
-                    type="button"
-                    role="switch"
-                    className={`theme-switch ${dish.is_active ? "is-on" : ""}`}
-                    aria-checked={dish.is_active}
-                    aria-label={dish.is_active ? `Disable ${dish.product?.name}` : `Enable ${dish.product?.name}`}
-                    disabled={togglingId === dish.id}
-                    onClick={() => void handleToggle(dish)}
-                  >
-                    <span className="theme-switch__thumb" aria-hidden />
-                  </button>
-                  <span className={`rs-badge ${dish.is_active ? "rs-badge--ok" : "rs-badge--warn"}`}>
-                    {dish.is_active ? "Available" : "Paused"}
+                        </div>
+                      </div>
+                    ) : meal?.limiting_ingredient ? (
+                      <span className="tc-kitchen-meal__limiting">
+                        Limited by {meal.limiting_ingredient}
+                      </span>
+                    ) : null}
                   </span>
+                </div>
+
+                {/* Bottom row: Availability switch on left, recipe and modifier badge counts on lower right */}
+                <div className="tc-menu__card-side tc-kitchen-meal__side">
+                  <div className="tc-menu__card-status">
+                    <button
+                      type="button"
+                      role="switch"
+                      className={`theme-switch ${dish.is_active ? "is-on" : ""}`}
+                      aria-checked={dish.is_active}
+                      aria-label={dish.is_active ? `Pause ${dish.product?.name}` : `Enable ${dish.product?.name}`}
+                      disabled={togglingId === dish.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleToggle(dish);
+                      }}
+                    >
+                      <span className="theme-switch__thumb" aria-hidden />
+                    </button>
+                    <span className={`rs-badge ${dish.is_active ? "rs-badge--ok" : "rs-badge--warn"}`}>
+                      {dish.is_active ? "Available" : "Paused"}
+                    </span>
+                  </div>
+
+                  <div className="tc-kitchen-meal__badges">
+                    {/* Recipe count badge with hover details tooltip */}
+                    <div className="tc-kitchen-badge-wrapper">
+                      <button
+                        type="button"
+                        className={`tc-kitchen-count-badge tc-kitchen-count-badge--recipe${
+                          recipeLines.length === 0 ? " is-empty" : ""
+                        }`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openRecipeEditor(dish);
+                        }}
+                        aria-label={`Recipe: ${recipeLines.length} ingredients`}
+                      >
+                        <i className="fa-solid fa-utensils" aria-hidden="true" />
+                        <span>
+                          {recipeLines.length
+                            ? `${recipeLines.length} recipe item${recipeLines.length === 1 ? "" : "s"}`
+                            : "No recipe"}
+                        </span>
+                      </button>
+                      <div className="tc-kitchen-tooltip" role="tooltip">
+                        <div className="tc-kitchen-tooltip__head">
+                          <i className="fa-solid fa-book-open" aria-hidden="true" />
+                          <strong>Recipe details</strong>
+                        </div>
+                        {recipeLines.length > 0 ? (
+                          <>
+                            <ul className="tc-kitchen-tooltip__list">
+                              {recipeLines.map((line, idx) => {
+                                const name =
+                                  supplyNameByProductId.get(line.ingredient_product_id) ||
+                                  `Item #${line.ingredient_product_id}`;
+                                const qty = line.batch_quantity ?? line.quantity;
+                                const unit = line.ingredient_unit || line.unit || "";
+                                return (
+                                  <li key={idx}>
+                                    <span>{name}</span>
+                                    <strong>
+                                      {qty} {unit}
+                                    </strong>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                            {recipeYield ? (
+                              <div className="tc-kitchen-tooltip__footer">
+                                Batch yield: <strong>{recipeYield} {recipeServingUnit}</strong>
+                              </div>
+                            ) : null}
+                          </>
+                        ) : (
+                          <p className="tc-kitchen-tooltip__empty">No recipe configured yet. Click to set ingredients.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Modifier count badge with hover details tooltip */}
+                    <div className="tc-kitchen-badge-wrapper">
+                      <button
+                        type="button"
+                        className={`tc-kitchen-count-badge tc-kitchen-count-badge--modifier${
+                          attachedGroups.length === 0 ? " is-empty" : ""
+                        }`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openRecipeEditor(dish);
+                        }}
+                        aria-label={`Modifiers: ${attachedGroups.length} attached`}
+                      >
+                        <i className="fa-solid fa-list-check" aria-hidden="true" />
+                        <span>
+                          {attachedGroups.length
+                            ? `${attachedGroups.length} modifier${attachedGroups.length === 1 ? "" : "s"}`
+                            : "No modifiers"}
+                        </span>
+                      </button>
+                      <div className="tc-kitchen-tooltip" role="tooltip">
+                        <div className="tc-kitchen-tooltip__head">
+                          <i className="fa-solid fa-layer-group" aria-hidden="true" />
+                          <strong>Meal modifiers</strong>
+                        </div>
+                        {attachedGroups.length > 0 ? (
+                          <ul className="tc-kitchen-tooltip__list">
+                            {attachedGroups.map((group) => {
+                              const min = (group as any).min_select ?? (group as any).min_selections ?? 0;
+                              const rule = min > 0 ? `Required (min ${min})` : "Optional";
+                              const opts = group.options?.map((o) => o.name).join(", ");
+                              return (
+                                <li key={group.id} className="tc-kitchen-tooltip__group-item">
+                                  <div className="tc-kitchen-tooltip__group-row">
+                                    <strong>{group.name}</strong>
+                                    <span className="rs-muted">{rule}</span>
+                                  </div>
+                                  {opts ? (
+                                    <div className="tc-kitchen-tooltip__sublist">{opts}</div>
+                                  ) : null}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        ) : (
+                          <p className="tc-kitchen-tooltip__empty">No modifiers attached. Click to add options.</p>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="tc-menu__card-del-btn"
+                      title={`Delete ${inventoryProductName(dish)}`}
+                      aria-label={`Delete ${inventoryProductName(dish)}`}
+                      disabled={deletingDishId === dish.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleDeleteDish(dish);
+                      }}
+                    >
+                      <i
+                        className={`fa-solid ${deletingDishId === dish.id ? "fa-spinner fa-spin" : "fa-trash-can"}`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                  </div>
                 </div>
               </li>
             );
@@ -2024,7 +2304,7 @@ function CurrentMenuSection({
                 />
               </div>
               <p className="rs-card__meta">
-                Set the recipe and portion sizes in Kitchen. The meal will appear in Menu for pricing after its recipe is saved.
+                Set the recipe batch and portion sizes in Kitchen.
               </p>
               <footer className="pos-menu-modal__footer">
                 <button
@@ -2048,7 +2328,7 @@ function CurrentMenuSection({
           </div>
         </div>
       ) : null}
-      {recipeEditor ? (
+      {recipeEditor && !groupEditor && !showNewMeal ? (
         <div
           className="pos-menu-modal-backdrop"
           onClick={() => !savingRecipe && !loadingRecipeStock && setRecipeEditor(null)}
@@ -2111,7 +2391,7 @@ function CurrentMenuSection({
                     equivalenceUnits={enableKitchenMeasures ? equivalenceUnits : undefined}
                     onSaveEquivalenceUnits={enableKitchenMeasures ? updateEquivalenceUnits : undefined}
                     rows={recipeDraft}
-                    price={recipeEditor.selling_price}
+                    price={null}
                     showMoney={false}
                     servingUnit={recipeServingUnit}
                     onServingUnitChange={setRecipeServingUnit}
@@ -2120,25 +2400,26 @@ function CurrentMenuSection({
                 </>
               )}
               {!loadingRecipeStock && !recipeStockLoadFailed ? (
-                recipeEditor.product?.recipe?.length || recipeDraft.some((row) => row.productId) ? (
-                  <MenuOptionsField
-                    label="Meal modifiers"
-                    hint="Portion-wise options configured with the meal recipe"
-                    groups={regularModifierGroups}
-                    attachedIds={selectedModifierGroupIds}
-                    onChange={setSelectedModifierGroupIds}
-                    onNewGroup={() => setGroupEditor({ group: null, attach: true })}
-                    onEditGroup={(group) => setGroupEditor({ group, attach: false })}
-                    showMoney={false}
-                  />
-                ) : (
-                  <div className="pos-menu-modal__field">
-                    <label>Meal modifiers</label>
-                    <p>Add a recipe portion before attaching modifiers.</p>
-                  </div>
-                )
+                <MenuOptionsField
+                  label="Meal modifiers"
+                  hint="Portion-wise options configured with this meal"
+                  groups={regularModifierGroups}
+                  attachedIds={selectedModifierGroupIds}
+                  onChange={setSelectedModifierGroupIds}
+                  onNewGroup={() => setGroupEditor({ group: null, attach: true })}
+                  onEditGroup={(group) => setGroupEditor({ group, attach: false })}
+                  showMoney={false}
+                />
               ) : null}
               <footer className="pos-menu-modal__footer tc-menu__footer tc-menu__recipe-footer">
+                <button
+                  type="button"
+                  className="tc-menu__remove"
+                  onClick={() => void handleDeleteDish(recipeEditor)}
+                  disabled={savingRecipe || loadingRecipeStock || Boolean(deletingDishId)}
+                >
+                  {deletingDishId === recipeEditor.id ? "Deleting…" : "Delete meal"}
+                </button>
                 <button
                   type="button"
                   className="rs-btn"

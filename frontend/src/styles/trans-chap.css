@@ -52,6 +52,19 @@ html[data-theme="dark"] .trans-chap-root.auth-split {
     background: var(--app-surface);
 }
 
+.trans-chap-root.auth-split .auth-split__panel:has(.tc-kitchen-page) {
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 0;
+}
+
+.trans-chap-app:has(.tc-kitchen-page),
+.trans-chap-app.mobile-root:has(.tc-kitchen-page) {
+    max-width: none !important;
+    width: 100% !important;
+    margin-inline: 0 !important;
+}
+
 .trans-chap-app {
     --trans-chap-sale: var(--app-primary);
     --trans-chap-cash: #15803d;
@@ -7056,6 +7069,10 @@ html[data-trans-chap-machine="phone"] .trans-chap-app .mobile-nav--7 span.is-dis
 
 .ios-settings__icon--inventory {
     background: var(--trans-chap-stock, #d94a2b);
+}
+
+.ios-settings__icon--reset {
+    background: #dc2626;
 }
 
 .ios-settings__secret {
@@ -14297,9 +14314,19 @@ html[data-trans-chap-machine="tablet"] .trans-chap-header__center h1 {
     height: auto;
     grid-column: 1 / -1;
     grid-row: 1 / -1;
-    z-index: 40;
+    z-index: 10050;
     overflow: hidden;
     background: color-mix(in srgb, var(--app-text) 38%, transparent) !important;
+}
+
+/* Never show two modals at the same time: hide underlying app modals while a SweetAlert dialog is open. */
+body:has(.swal2-container:not(.trans-chap-swal--toast):not(.trans-chap-swal--loading):not(.dukai-swal-toast-container)) .pos-menu-modal-backdrop,
+body:has(.swal2-container:not(.trans-chap-swal--toast):not(.trans-chap-swal--loading):not(.dukai-swal-toast-container)) .trans-chap-modal-backdrop,
+body:has(.swal2-container:not(.trans-chap-swal--toast):not(.trans-chap-swal--loading):not(.dukai-swal-toast-container)) .pos-modal-backdrop,
+body:has(.swal2-container:not(.trans-chap-swal--toast):not(.trans-chap-swal--loading):not(.dukai-swal-toast-container)) .inventory-modal-backdrop {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
 }
 
 .trans-chap-app > .swal2-container.trans-chap-swal.trans-chap-swal--toast {
@@ -15333,9 +15360,91 @@ html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/mpesa"] 
     transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 
+.tc-menu__recipe-link {
+    text-decoration: none;
+    font-size: 0.78rem;
+    font-weight: 750;
+    min-height: 32px;
+    padding: 0 0.65rem;
+    margin: 0;
+}
+
+.tc-menu__recipe-link.is-missing {
+    background: transparent;
+    color: var(--app-primary, #e8412a);
+    border: 1px dashed var(--app-primary, #e8412a);
+    box-shadow: none;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__cards li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.tc-menu__card--paused {
+    opacity: 0.72;
+    border-style: dashed;
+}
+
+.tc-menu__card-side {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.1rem 0.25rem;
+}
+
+.tc-menu__card-status {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.tc-menu__card-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.tc-menu__card-del-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, #dc2626 35%, var(--app-border));
+    background: transparent;
+    color: #dc2626;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.tc-menu__card-del-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, #dc2626 12%, transparent);
+    border-color: #dc2626;
+    transform: scale(1.05);
+}
+
+.tc-menu__card-del-btn:focus-visible {
+    outline: 2px solid #dc2626;
+    outline-offset: 1px;
+}
+
+.tc-menu__card-del-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .tc-menu__recipe-action:hover {
     background: color-mix(in srgb, var(--app-primary, #e8412a) 85%, #000);
     box-shadow: 0 3px 8px rgba(15, 23, 42, 0.2);
+}
+
+.tc-menu__recipe-link.is-missing:hover {
+    background: color-mix(in srgb, var(--app-primary, #e8412a) 10%, transparent);
 }
 
 .tc-menu__recipe-action:focus-visible {
@@ -15385,6 +15494,16 @@ html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/mpesa"] 
     font-weight: 850;
     color: var(--app-primary);
     white-space: nowrap;
+}
+
+.trans-chap-pos-host.fb-app .tc-menu__card-price.is-unpriced {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--app-primary, #ff5722);
+    padding: 0.15rem 0.55rem;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--app-primary, #ff5722) 12%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--app-primary, #ff5722) 40%, transparent);
 }
 
 .trans-chap-pos-host.fb-app .tc-menu__card-addons {

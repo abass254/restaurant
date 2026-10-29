@@ -214,7 +214,7 @@ def test_recipe_backed_restaurant_meal_needs_a_menu_price(rdb):
     assert "price" in str(exc.value.detail).lower()
 
 
-def test_restaurant_meal_without_recipe_cannot_receive_modifiers(rdb):
+def test_restaurant_meal_without_recipe_can_receive_modifiers(rdb):
     rdb.query(RecipeLine).filter(
         RecipeLine.account_id == ACCOUNT,
         RecipeLine.product_id == "chapati",
@@ -229,20 +229,18 @@ def test_restaurant_meal_without_recipe_cannot_receive_modifiers(rdb):
     rdb.add(group)
     rdb.commit()
 
-    with pytest.raises(HTTPException) as exc:
-        menu.replace_item_modifier_groups(
-            "chapati",
-            ItemGroupsReplace(group_ids=[group.id]),
-            request=None,
-            db=rdb,
-            session={},
-        )
+    res = menu.replace_item_modifier_groups(
+        "chapati",
+        ItemGroupsReplace(group_ids=[group.id]),
+        request=None,
+        db=rdb,
+        session={},
+    )
 
-    assert exc.value.status_code == 422
-    assert "recipe" in str(exc.value.detail).lower()
+    assert [g["id"] for g in res["data"]] == [group.id]
 
 
-def test_restaurant_meal_with_modifiers_cannot_have_recipe_cleared(rdb):
+def test_restaurant_meal_with_modifiers_can_have_recipe_cleared(rdb):
     group = ModifierGroup(
         id="chapati-modifier",
         account_id=ACCOUNT,
@@ -260,17 +258,15 @@ def test_restaurant_meal_with_modifiers_cannot_have_recipe_cleared(rdb):
         session={},
     )
 
-    with pytest.raises(HTTPException) as exc:
-        menu.replace_recipe(
-            "chapati",
-            RecipeReplace(lines=[]),
-            request=None,
-            db=rdb,
-            session={},
-        )
+    res = menu.replace_recipe(
+        "chapati",
+        RecipeReplace(lines=[]),
+        request=None,
+        db=rdb,
+        session={},
+    )
 
-    assert exc.value.status_code == 422
-    assert "modifiers" in str(exc.value.detail).lower()
+    assert res["data"] == []
 
 
 def test_preparing_batch_consumes_kitchen_supplies_and_sales_consume_ready_portions(rdb):

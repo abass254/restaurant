@@ -17,6 +17,7 @@ from fastapi import (
 )
 from pydantic import BaseModel, Field
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -42,6 +43,7 @@ from app.models import (
     MealAddon,
     Order,
     OrderItem,
+    PreparedMenuStock,
     Product,
     PurchaseOrder,
     ShopSupplier,
@@ -1015,8 +1017,38 @@ def delete_inventory_item(
     account_id = _require_shop(user)
 
     item = _get_owned_item(db, account_id, item_id)
+    product = item.product
+    product_id = item.product_id
+
+    # Clean up associated prepared menu stock if any
+    db.query(PreparedMenuStock).filter(
+        PreparedMenuStock.inventory_item_id == item.id
+    ).delete(synchronize_session=False)
+
     db.delete(item)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete this item because it has existing orders or stock history. You can pause it instead.",
+        )
+
+    # Clean up custom catalog product if owned by this account and not used elsewhere
+    if product and product.created_by_account_id == account_id:
+        other_items = (
+            db.query(InventoryItem)
+            .filter(InventoryItem.product_id == product_id)
+            .count()
+        )
+        if other_items == 0:
+            try:
+                db.delete(product)
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+
     return {"message": "Removed from inventory."}
 
 

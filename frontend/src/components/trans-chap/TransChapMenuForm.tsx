@@ -39,14 +39,13 @@ import Link from "next/link";
 import {
   DEFAULT_MENU_SECTIONS,
   createMenuItem,
+  deleteInventoryItem,
   fetchMenuSections,
   fetchModifierGroups,
   hasKitchenRecipe,
   inventoryProductName,
   inventoryRole,
   isHotelMenuItem,
-  isMenuComboItem,
-  isMenuAddonItem,
   isSaleableRole,
   isSupplyItem,
   menuSection,
@@ -55,7 +54,6 @@ import {
   saveItemModifierGroups,
   saveModifierGroup,
   saveRecipe,
-  supportsKitchenRecipe,
   type ModifierGroupInput,
   recipeCost,
   updateInventoryActive,
@@ -230,22 +228,42 @@ export function TransChapMenuForm() {
     };
   }, [items]);
 
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const groupsById = useMemo(() => new Map(groups.map((group) => [group.id, group])), [groups]);
   const modifierGroups = useMemo(() => groups.filter((group) => !group.is_extra), [groups]);
   const menuItems = useMemo(
     () =>
-      items.filter(
-        (item) =>
-          item.is_active &&
-          isHotelMenuItem(item) &&
-          !isMenuAddonItem(item) &&
-          (!restaurant ||
-            isMenuComboItem(item) ||
-            !supportsKitchenRecipe(item) ||
-            hasKitchenRecipe(item)),
-      ),
-    [items, restaurant],
+      items.filter((item) => isHotelMenuItem(item)),
+    [items],
   );
+  const allCount = menuItems.length;
+  const activeCount = menuItems.filter((d) => d.is_active).length;
+  const inactiveCount = menuItems.filter((d) => !d.is_active).length;
+
+  async function handleToggle(dish: InventoryItem) {
+    const nextState = !dish.is_active;
+    setTogglingId(dish.id);
+    setItems((prev) =>
+      prev.map((d) => (d.id === dish.id ? { ...d, is_active: nextState } : d)),
+    );
+    try {
+      await updateInventoryActive(dish.id, nextState);
+      await toastSuccess(
+        `"${inventoryProductName(dish)}" is now ${nextState ? "available" : "paused"}`,
+      );
+    } catch (err) {
+      setItems((prev) =>
+        prev.map((d) => (d.id === dish.id ? { ...d, is_active: !nextState } : d)),
+      );
+      await showError("Could not update meal availability", extractErrorMessage(err));
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
   const supplies = useMemo(
     () =>
       items
@@ -279,13 +297,13 @@ export function TransChapMenuForm() {
   const visible = useMemo(
     () =>
       menuItems
-        .filter(
-          (item) =>
-            !needle ||
-            inventoryProductName(item).toLowerCase().includes(needle),
-        )
+        .filter((item) => {
+          if (statusFilter === "active" && !item.is_active) return false;
+          if (statusFilter === "inactive" && item.is_active) return false;
+          return !needle || inventoryProductName(item).toLowerCase().includes(needle);
+        })
         .sort((a, b) => inventoryProductName(a).localeCompare(inventoryProductName(b))),
-    [menuItems, needle],
+    [menuItems, statusFilter, needle],
   );
 
   const sections = useMemo(
@@ -401,6 +419,9 @@ export function TransChapMenuForm() {
       groupIds: itemGroupIds(item),
       extraPrices: {},
     });
+    if (item.selling_price == null) {
+      focusField(priceRef);
+    }
   }, [menuSections]);
 
   const openRecipeEditor = useCallback((item: InventoryItem) => {
@@ -448,10 +469,19 @@ export function TransChapMenuForm() {
     event.preventDefault();
     if (!editor || saving) return;
     const current = editor.item;
-    if (restaurant && !current) return;
-    const name = restaurant && current ? inventoryProductName(current) : editor.name.trim();
-    const price = parsePrice(editor.price);
-    if (!name || price == null || price <= 0) return;
+    const name = editor.name.trim();
+    const rawPrice = editor.price.trim();
+    const parsedPrice = parsePrice(rawPrice);
+    if (!name || (rawPrice !== "" && parsedPrice == null)) return;
+    const price = rawPrice === "" ? null : parsedPrice;
+    const hasAttachedModifiers = editor.groupIds.some((id) => !isExtraGroupId(id));
+    if ((price == null || price <= 0) && !hasAttachedModifiers) {
+      await showError(
+        "Price or modifier required",
+        "Enter a meal price or attach modifiers that determine the price.",
+      );
+      return;
+    }
     const extraChanges = changedExtraGroups();
     if (!extraChanges) {
       await showError("Check extra prices", "Extra prices must be zero or more.");
@@ -577,36 +607,44 @@ export function TransChapMenuForm() {
     }
   }
 
-  async function handleRemove() {
-    const current = editor?.item;
-    if (!current || saving) return;
-    const name = inventoryProductName(current);
+  async function handleDelete(item: InventoryItem) {
+    if (saving || deletingId) return;
+    const name = inventoryProductName(item);
     const ok = await confirmAction(
-      `Remove "${name}" from the menu?`,
-      "It stays in your catalogue and can be turned back on from Stocks.",
-      "Remove",
+      `Delete "${name}"?`,
+      `This permanently deletes "${name}" from your menu and inventory.`,
+      "Delete menu",
     );
     if (!ok) return;
+    setDeletingId(item.id);
     setSaving(true);
     try {
-      await updateInventoryActive(current.id, false);
-      setItems((prev) => prev.filter((row) => row.id !== current.id));
-      setEditor(null);
-      await toastSuccess(`"${name}" removed`);
+      await deleteInventoryItem(item.id);
+      setItems((prev) => prev.filter((row) => row.id !== item.id));
+      if (editor?.item?.id === item.id) {
+        setEditor(null);
+      }
+      await toastSuccess(`"${name}" deleted from menu`);
     } catch (err) {
-      await showError("Could not remove", extractErrorMessage(err));
+      await showError("Could not delete menu", extractErrorMessage(err));
     } finally {
+      setDeletingId(null);
       setSaving(false);
     }
   }
 
   const editorPrice = editor ? parsePrice(editor.price) : null;
+  const editorPriceRaw = editor ? editor.price.trim() : "";
+  const editorHasModifiers = editor ? editor.groupIds.some((id) => !isExtraGroupId(id)) : false;
+  const editorHasValidPrice =
+    editorPriceRaw === ""
+      ? editorHasModifiers
+      : editorPrice != null && (editorPrice > 0 || editorHasModifiers);
   const canSave =
     !!editor &&
     !saving &&
     !!editor.name.trim() &&
-    editorPrice != null &&
-    editorPrice > 0;
+    editorHasValidPrice;
   const overlayOpen = !!editor || !!recipeEditor || !!groupEditor || showGroups;
 
   return (
@@ -624,6 +662,30 @@ export function TransChapMenuForm() {
         </label>
       </div>
 
+      <div className="tc-kitchen-search-chips" style={{ marginBottom: "0.75rem" }}>
+        <button
+          type="button"
+          className={`trans-chap-sales__chip ${statusFilter === "all" ? "is-active" : ""}`}
+          onClick={() => setStatusFilter("all")}
+        >
+          All ({allCount})
+        </button>
+        <button
+          type="button"
+          className={`trans-chap-sales__chip ${statusFilter === "active" ? "is-active" : ""}`}
+          onClick={() => setStatusFilter("active")}
+        >
+          Available ({activeCount})
+        </button>
+        <button
+          type="button"
+          className={`trans-chap-sales__chip ${statusFilter === "inactive" ? "is-active" : ""}`}
+          onClick={() => setStatusFilter("inactive")}
+        >
+          Paused ({inactiveCount})
+        </button>
+      </div>
+
       {sections.length > 1 ? (
         <nav className="tc-menu__nav" aria-label="Menu sections">
           {sections.map((section) => (
@@ -635,7 +697,7 @@ export function TransChapMenuForm() {
         </nav>
       ) : null}
 
-      {needle && !exactMatch && !restaurant ? (
+      {needle && !exactMatch ? (
         <button type="button" className="tc-menu__add-row" onClick={() => openNew(search.trim())}>
           <i className="fa-solid fa-plus" aria-hidden="true" />
           Add &ldquo;{search.trim()}&rdquo; to the menu
@@ -645,16 +707,14 @@ export function TransChapMenuForm() {
       {loading ? (
         <p className="tc-menu__empty">Loading menu…</p>
       ) : menuItems.length === 0 ? (
-        restaurant ? (
-          <div className="tc-menu__empty">
-            <p>No recipe-backed meals are ready for pricing yet.</p>
-            <Link href="/trans-chap/kitchen">Create meals and set their recipes in Kitchen</Link>
-          </div>
-        ) : (
-          <p className="tc-menu__empty">
-            Your menu is empty. Tap + to add the first meal you serve.
-          </p>
-        )
+        <div className="tc-menu__empty">
+          <p>Your menu is empty. Tap + to add the first meal you serve.</p>
+          {restaurant ? (
+            <Link href="/trans-chap/kitchen">Or manage meals and recipes in Kitchen</Link>
+          ) : null}
+        </div>
+      ) : visible.length === 0 ? (
+        <p className="tc-menu__empty">No meals match your search or filter.</p>
       ) : (
         sections.map((section) => (
           <section key={section.id} id={`menu-${section.id}`} className="tc-menu__section">
@@ -666,10 +726,10 @@ export function TransChapMenuForm() {
                 const itemExtras = itemGroups.filter((group) => group.is_extra);
                 const cost = plateCost(item);
                 return (
-                  <li key={item.id}>
+                  <li key={item.id} className={item.is_active ? "" : "is-paused"}>
                     <button
                       type="button"
-                      className="tc-menu__card"
+                      className={`tc-menu__card${item.is_active ? "" : " tc-menu__card--paused"}`}
                       onClick={() => openExisting(item)}
                     >
                       <TransChapProductThumb item={item} size="md" />
@@ -678,10 +738,18 @@ export function TransChapMenuForm() {
                           <strong>
                             {inventoryProductName(item)}
                           </strong>
-                          <span className="tc-menu__card-price">
-                            {item.selling_price != null
+                          <span
+                            className={`tc-menu__card-price${
+                              (item.selling_price == null || item.selling_price <= 0) && !itemModifiers.length
+                                ? " is-unpriced"
+                                : ""
+                            }`}
+                          >
+                            {item.selling_price != null && item.selling_price > 0
                               ? `${itemModifiers.length || itemExtras.length ? "from " : ""}${formatKsh(item.selling_price)}`
-                              : "—"}
+                              : itemModifiers.length
+                                ? "By modifiers"
+                                : "Set price"}
                           </span>
                         </span>
                         {itemModifiers.length ? (
@@ -717,16 +785,75 @@ export function TransChapMenuForm() {
                         {stockLine(costing.get(item.id))}
                       </span>
                     </button>
-                    {!restaurant ? (
-                      <button
-                        type="button"
-                        className="tc-menu__recipe-action"
-                        onClick={() => openRecipeEditor(item)}
-                      >
-                        <i className="fa-solid fa-list-check" aria-hidden="true" />
-                        {item.product?.recipe?.length ? "Edit recipe" : "Set recipe"}
-                      </button>
-                    ) : null}
+                    <div className="tc-menu__card-side">
+                      <div className="tc-menu__card-status">
+                        <button
+                          type="button"
+                          role="switch"
+                          className={`theme-switch ${item.is_active ? "is-on" : ""}`}
+                          aria-checked={item.is_active}
+                          disabled={togglingId === item.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleToggle(item);
+                          }}
+                          aria-label={item.is_active ? `Pause ${inventoryProductName(item)}` : `Enable ${inventoryProductName(item)}`}
+                        >
+                          <span className="theme-switch__thumb" aria-hidden />
+                        </button>
+                        <span className={`rs-badge ${item.is_active ? "rs-badge--ok" : "rs-badge--warn"}`}>
+                          {item.is_active ? "Available" : "Paused"}
+                        </span>
+                      </div>
+                      <div className="tc-menu__card-actions">
+                        {restaurant ? (
+                          hasKitchenRecipe(item) ? (
+                            <Link
+                              href="/trans-chap/kitchen"
+                              className="tc-menu__recipe-action tc-menu__recipe-link"
+                              title="View recipe in Kitchen"
+                            >
+                              <i className="fa-solid fa-utensils" aria-hidden="true" />
+                              Recipe in Kitchen
+                            </Link>
+                          ) : (
+                            <Link
+                              href="/trans-chap/kitchen"
+                              className="tc-menu__recipe-action tc-menu__recipe-link is-missing"
+                              title="Define recipe in Kitchen"
+                            >
+                              <i className="fa-solid fa-utensils" aria-hidden="true" />
+                              Set recipe in Kitchen
+                            </Link>
+                          )
+                        ) : (
+                          <button
+                            type="button"
+                            className="tc-menu__recipe-action"
+                            onClick={() => openRecipeEditor(item)}
+                          >
+                            <i className="fa-solid fa-list-check" aria-hidden="true" />
+                            {item.product?.recipe?.length ? "Edit recipe" : "Set recipe"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="tc-menu__card-del-btn"
+                          title={`Delete ${inventoryProductName(item)}`}
+                          aria-label={`Delete ${inventoryProductName(item)}`}
+                          disabled={deletingId === item.id || saving}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleDelete(item);
+                          }}
+                        >
+                          <i
+                            className={`fa-solid ${deletingId === item.id ? "fa-spinner fa-spin" : "fa-trash-can"}`}
+                            aria-hidden="true"
+                          />
+                        </button>
+                      </div>
+                    </div>
                   </li>
                 );
               })}
@@ -736,7 +863,7 @@ export function TransChapMenuForm() {
       )}
       </div>
 
-      {overlayOpen || restaurant ? null : (
+      {overlayOpen ? null : (
         <TransChapFab
           label="Add to menu"
           options={[
@@ -746,7 +873,7 @@ export function TransChapMenuForm() {
         />
       )}
 
-      {showGroups && !groupEditor ? (
+      {showGroups && !groupEditor && !editor && !recipeEditor ? (
         <TransChapMenuGroupsSheet
           groups={modifierGroups}
           onClose={() => setShowGroups(false)}
@@ -755,7 +882,7 @@ export function TransChapMenuForm() {
         />
       ) : null}
 
-      {recipeEditor ? (
+      {recipeEditor && !groupEditor && !editor ? (
         <div
           className="pos-menu-modal-backdrop"
           onClick={() => !saving && setRecipeEditor(null)}
@@ -825,12 +952,11 @@ export function TransChapMenuForm() {
         </div>
       ) : null}
 
-      {editor ? (
+      {editor && !groupEditor && !recipeEditor ? (
         <div
           className="pos-menu-modal-backdrop"
           onClick={() => !saving && !groupEditor && setEditor(null)}
           role="presentation"
-          style={groupEditor ? { display: "none" } : undefined}
         >
           <div
             className="pos-menu-modal"
@@ -843,7 +969,7 @@ export function TransChapMenuForm() {
             <header className="pos-menu-modal__header">
               <div className="pos-menu-modal__title-row">
                 <h2 id="menu-editor-title" className="pos-menu-modal__title">
-                  {restaurant ? "Meal pricing" : editor.item ? "Edit meal" : "New meal"}
+                  {editor.item ? (editor.item.selling_price != null ? "Edit meal" : "Price meal") : "New meal"}
                 </h2>
                 <button
                   type="button"
@@ -858,7 +984,7 @@ export function TransChapMenuForm() {
 
             <form onSubmit={(e) => void handleSave(e)} className="pos-menu-modal__body">
               <div className="pos-menu-modal__field">
-                <label htmlFor="menu-editor-name">{restaurant ? "Kitchen meal" : "Name"}</label>
+                <label htmlFor="menu-editor-name">Name</label>
                 <div className="pos-menu-modal__input-wrap">
                   <input
                     id="menu-editor-name"
@@ -869,23 +995,24 @@ export function TransChapMenuForm() {
                     placeholder="e.g. Beef stew meal"
                     value={editor.name}
                     onChange={(e) => patchEditor({ name: e.target.value })}
-                    readOnly={restaurant}
                     className="pos-menu-modal__text-input"
                   />
                 </div>
               </div>
 
               <div className="pos-menu-modal__field">
-                <label htmlFor="menu-editor-price">Price</label>
+                <div className="pos-menu-modal__label-row">
+                  <label htmlFor="menu-editor-price">Price</label>
+                  <span className="pos-menu-modal__label-hint">Optional if priced by modifiers</span>
+                </div>
                 <div className="pos-menu-modal__price-wrap">
                   <span className="pos-menu-modal__price-prefix">KES</span>
                   <input
                     id="menu-editor-price"
                     ref={priceRef}
                     type="text"
-                    required
                     inputMode="decimal"
-                    placeholder="0"
+                    placeholder="0 (optional with modifiers)"
                     value={editor.price}
                     onChange={(e) => patchEditor({ price: e.target.value })}
                     className="pos-menu-modal__price-input"
@@ -917,38 +1044,22 @@ export function TransChapMenuForm() {
                 </div>
               </div>
 
-              {restaurant ? (
-                <div className="pos-menu-modal__field">
-                  <div className="pos-menu-modal__label-row">
-                    <label>Modifiers</label>
-                    <span className="pos-menu-modal__label-hint">Set up in Kitchen with the recipe</span>
-                  </div>
-                  <p>
-                    {editor.groupIds
-                      .filter((id) => !isExtraGroupId(id))
-                      .map((id) => groupsById.get(id)?.name)
-                      .filter(Boolean)
-                      .join(", ") || "No modifiers"}
-                  </p>
-                </div>
-              ) : (
-                <MenuOptionsField
-                  label="Modifiers"
-                  hint="Meal choices such as size, drink or preparation"
-                  groups={modifierGroups}
-                  attachedIds={editor.groupIds.filter((id) => !isExtraGroupId(id))}
-                  onChange={(groupIds) =>
-                    patchEditor({
-                      groupIds: [
-                        ...groupIds,
-                        ...editor.groupIds.filter(isExtraGroupId),
-                      ],
-                    })
-                  }
-                  onNewGroup={() => setGroupEditor({ group: null, attach: true })}
-                  onEditGroup={(group) => setGroupEditor({ group, attach: false })}
-                />
-              )}
+              <MenuOptionsField
+                label="Modifiers"
+                hint="Meal choices such as size, drink or preparation"
+                groups={modifierGroups}
+                attachedIds={editor.groupIds.filter((id) => !isExtraGroupId(id))}
+                onChange={(groupIds) =>
+                  patchEditor({
+                    groupIds: [
+                      ...groupIds,
+                      ...editor.groupIds.filter(isExtraGroupId),
+                    ],
+                  })
+                }
+                onNewGroup={() => setGroupEditor({ group: null, attach: true })}
+                onEditGroup={(group) => setGroupEditor({ group, attach: false })}
+              />
               <div className="pos-menu-modal__field tc-menu__extras-note">
                 <div className="pos-menu-modal__label-row">
                   <label>Extras</label>
@@ -988,17 +1099,19 @@ export function TransChapMenuForm() {
                   <button
                     type="button"
                     className="tc-menu__remove"
-                    disabled={saving}
-                    onClick={() => void handleRemove()}
+                    disabled={saving || Boolean(deletingId)}
+                    onClick={() => void handleDelete(editor.item!)}
                   >
-                    Remove
+                    {deletingId === editor.item.id ? "Deleting…" : "Delete menu"}
                   </button>
                 ) : null}
                 <button type="submit" disabled={!canSave} className="pos-menu-modal__submit-btn">
                   {saving
                     ? "Saving…"
                     : editor.item
-                      ? "Save changes"
+                      ? editor.item.selling_price != null
+                        ? "Save changes"
+                        : "Save price"
                       : "Add meal"}
                 </button>
               </footer>

@@ -33,7 +33,7 @@ import { apiRoutes } from "@/lib/config";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { fetchShopCustomers } from "@/lib/trans-chap-customers";
 import { buildDebtReminderWhatsAppUrl } from "@/lib/trans-chap-credit";
-import { formatNairobiDate } from "@/lib/nairobi-time";
+import { formatNairobiDate, nairobiDateKey, parseIso } from "@/lib/nairobi-time";
 import { formatKsh } from "@/lib/trans-chap-receipt";
 import { checkKenyanPhone } from "@/lib/phone-checker";
 import type {
@@ -57,6 +57,20 @@ type CustomerForm = {
 
 type View = "list" | "create" | "import";
 type CustomerLayoutView = "grid" | "list";
+type WhenFilter = "all" | "single" | "range";
+
+function customerDateKeys(row: ShopCustomer): string[] {
+  const keys = new Set<string>();
+  if (row.date_to_pay) {
+    const k = row.date_to_pay.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(k)) keys.add(k);
+  }
+  for (const raw of [row.updated_at, row.created_at]) {
+    const parsed = parseIso(raw);
+    if (parsed) keys.add(nairobiDateKey(parsed));
+  }
+  return Array.from(keys);
+}
 
 const CUSTOMERS_VIEW_KEY = "trans-chap-customers-view";
 
@@ -127,6 +141,14 @@ export function TransChapCustomersList() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [owingOnly, setOwingOnly] = useState(true);
+  const [when, setWhen] = useState<WhenFilter>("all");
+  const [selectedDate, setSelectedDate] = useState<string>(() => nairobiDateKey(new Date()));
+  const [rangeFrom, setRangeFrom] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return nairobiDateKey(d);
+  });
+  const [rangeTo, setRangeTo] = useState<string>(() => nairobiDateKey(new Date()));
   const [openId, setOpenId] = useState<string | null>(null);
   const [tabOpenId, setTabOpenId] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState<CustomerForm>(EMPTY_FORM);
@@ -283,13 +305,20 @@ export function TransChapCustomersList() {
     const needle = query.trim().toLowerCase();
     return customers.filter((row) => {
       if (owingOnly && !(row.outstanding_balance > 0)) return false;
+      if (when === "single") {
+        const keys = customerDateKeys(row);
+        if (!keys.includes(selectedDate)) return false;
+      } else if (when === "range") {
+        const keys = customerDateKeys(row);
+        if (!keys.some((k) => k >= rangeFrom && k <= rangeTo)) return false;
+      }
       if (!needle) return true;
       return [row.name, row.phone, row.physical_location ?? "", row.address ?? "", row.notes ?? ""]
         .join(" ")
         .toLowerCase()
         .includes(needle);
     });
-  }, [customers, owingOnly, query]);
+  }, [customers, owingOnly, query, rangeFrom, rangeTo, selectedDate, when]);
 
   const owingCount = useMemo(
     () => customers.filter((row) => row.outstanding_balance > 0).length,
@@ -884,6 +913,58 @@ export function TransChapCustomersList() {
             <i className="fa-solid fa-scale-unbalanced" aria-hidden />
             <span>{owingOnly ? "Owing you" : "All customers"}</span>
           </button>
+          <label
+            className={`trans-chap-chip${when === "single" ? " trans-chap-chip--primary" : ""}`}
+            style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", cursor: "pointer" }}
+          >
+            <i className="fa-regular fa-calendar" aria-hidden />
+            <input
+              type="date"
+              aria-label="Filter customers by date"
+              value={selectedDate}
+              onClick={() => {
+                if (when !== "single") setWhen("single");
+              }}
+              onChange={(event) => {
+                const picked = event.target.value;
+                if (!picked) {
+                  setWhen("all");
+                  return;
+                }
+                setSelectedDate(picked);
+                setWhen("single");
+              }}
+              style={{
+                border: 0,
+                background: "transparent",
+                color: "inherit",
+                font: "inherit",
+                fontSize: "0.78rem",
+                fontWeight: 700,
+                padding: 0,
+                outline: "none",
+                cursor: "pointer",
+                colorScheme: "dark light",
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className={`trans-chap-chip${when === "range" ? " trans-chap-chip--primary" : ""}`}
+            aria-pressed={when === "range"}
+            onClick={() => setWhen((cur) => (cur === "range" ? "all" : "range"))}
+          >
+            <span>Get range</span>
+          </button>
+          {when !== "all" ? (
+            <button
+              type="button"
+              className="trans-chap-chip"
+              onClick={() => setWhen("all")}
+            >
+              <span>All dates</span>
+            </button>
+          ) : null}
           <button
             type="button"
             className="trans-chap-chip"
@@ -893,6 +974,36 @@ export function TransChapCustomersList() {
             <span>Import</span>
           </button>
         </div>
+        {when === "range" ? (
+          <div className="trans-chap-range__custom">
+            <label>
+              <span>From</span>
+              <input
+                type="date"
+                value={rangeFrom}
+                onChange={(event) => {
+                  const picked = event.target.value;
+                  if (!picked) return;
+                  setRangeFrom(picked);
+                  if (picked > rangeTo) setRangeTo(picked);
+                }}
+              />
+            </label>
+            <label>
+              <span>To</span>
+              <input
+                type="date"
+                value={rangeTo}
+                min={rangeFrom}
+                onChange={(event) => {
+                  const picked = event.target.value;
+                  if (!picked) return;
+                  setRangeTo(picked < rangeFrom ? rangeFrom : picked);
+                }}
+              />
+            </label>
+          </div>
+        ) : null}
         {!loading && owingCount > 0 ? (
           <p className="trans-chap-credit__total">
             <Link href="/trans-chap/credit">
@@ -914,9 +1025,9 @@ export function TransChapCustomersList() {
         </TransChapStatus>
       ) : filtered.length === 0 ? (
         <p className="trans-chap-sales__empty">
-          {owingOnly && !query.trim()
+          {owingOnly && !query.trim() && when === "all"
             ? "No customers owe you right now. Show all customers to see everyone."
-            : "No names match this search."}
+            : "No customers match these filters."}
         </p>
       ) : layoutView === "list" ? (
         <div className="trans-chap-sales__list">
