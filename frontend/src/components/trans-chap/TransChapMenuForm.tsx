@@ -68,6 +68,10 @@ import {
 import {
   isRestaurantStore,
 } from "@/lib/onboarding";
+import {
+  allowsFractionalSelling,
+  mergeFractionalIntoAttributes,
+} from "@/lib/sell-units";
 import type { InventoryItem, InventoryResponse, ModifierGroup, ModifierOption } from "@/lib/types";
 
 type Editor = {
@@ -78,6 +82,7 @@ type Editor = {
   groupIds: string[];
   /** Edited extra prices by option id. */
   extraPrices: Record<string, string>;
+  allowFractional: boolean;
 };
 
 type GroupEditorState = { group: ModifierGroup | null; attach: boolean };
@@ -406,6 +411,7 @@ export function TransChapMenuForm() {
       section: menuSections[0]?.id ?? "mains",
       groupIds: [],
       extraPrices: {},
+      allowFractional: false,
     });
     focusField(name ? priceRef : nameRef);
   }
@@ -418,6 +424,7 @@ export function TransChapMenuForm() {
       section: menuSection(item, menuSections),
       groupIds: itemGroupIds(item),
       extraPrices: {},
+      allowFractional: allowsFractionalSelling(item),
     });
     if (item.selling_price == null) {
       focusField(priceRef);
@@ -496,7 +503,17 @@ export function TransChapMenuForm() {
       return;
     }
 
-    const input = { name, price, productType: "meal" as const, section: editor.section };
+    const attributes = mergeFractionalIntoAttributes(
+      current?.attributes,
+      editor.allowFractional,
+    );
+    const input = {
+      name,
+      price,
+      productType: "meal" as const,
+      section: editor.section,
+      attributes,
+    };
     const priorGroups = itemGroupIds(current);
     const catalogueChanged =
       !!current?.product &&
@@ -760,6 +777,17 @@ export function TransChapMenuForm() {
                                 <em>{modifierRuleLabel(group).split(" · ")[0].toLowerCase()}</em>
                               </span>
                             ))}
+                            {allowsFractionalSelling(item) ? (
+                              <span className="tc-menu__addon-tag">
+                                1/4 · 1/2 · 3/4 · Full
+                              </span>
+                            ) : null}
+                          </span>
+                        ) : allowsFractionalSelling(item) ? (
+                          <span className="tc-menu__card-addons">
+                            <span className="tc-menu__addon-tag">
+                              1/4 · 1/2 · 3/4 · Full
+                            </span>
                           </span>
                         ) : (
                           <span className="tc-menu__card-hint">No modifiers</span>
@@ -1042,6 +1070,28 @@ export function TransChapMenuForm() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="pos-menu-modal__field">
+                <label className="trans-chap-purchase-modal__bundle-toggle">
+                  <input
+                    type="checkbox"
+                    className="trans-chap-purchase-modal__bundle-check"
+                    checked={editor.allowFractional}
+                    onChange={(e) =>
+                      patchEditor({ allowFractional: e.target.checked })
+                    }
+                  />
+                  <span>
+                    <strong>
+                      Enable fractional selling (1/4, 1/2, 3/4, Full)
+                    </strong>
+                    <small>
+                      Show 1/4, 1/2, 3/4, and Full portion buttons for this meal
+                      on New Sale.
+                    </small>
+                  </span>
+                </label>
               </div>
 
               <MenuOptionsField

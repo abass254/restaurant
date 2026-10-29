@@ -60,16 +60,22 @@ export type TransChapReceipt = {
   paymentSplits: OrderPaymentSplit[] | null;
 };
 
-export function transChapPayLabel(payMode: TransChapPayMode): string {
+export function transChapPayLabel(
+  payMode: TransChapPayMode,
+  restaurant = true,
+): string {
   if (payMode === "mpesa") return "M-PESA";
   if (payMode === "credit") return "Credit";
   if (payMode === "cash") return "Cash";
-  return "Unpaid (Pay after meal)";
+  return restaurant ? "Unpaid (Pay after meal)" : "Cash";
 }
 
 /** "Cash" or, for split payments, "Cash Ksh500.00 + M-PESA Ksh300.00". */
-export function transChapReceiptPayLabel(receipt: TransChapReceipt): string {
-  if (!receipt.paymentSplits?.length) return transChapPayLabel(receipt.payMode);
+export function transChapReceiptPayLabel(
+  receipt: TransChapReceipt,
+  restaurant = true,
+): string {
+  if (!receipt.paymentSplits?.length) return transChapPayLabel(receipt.payMode, restaurant);
   return receipt.paymentSplits
     .map((p) => `${PAYMENT_LABELS[p.method] ?? p.method} ${formatKsh(Number(p.amount))}`)
     .join(" + ");

@@ -124,8 +124,8 @@ def _exact_and_recipe_lines(items: list[OrderItem]) -> tuple[list[LedgerLine], l
             and (not row.get("option") or str(row.get("stock_item_id")) == str(item.inventory_item_id))
             for row in usage
         )
+        factor = Decimal(str(getattr(item, "unit_factor", None) or 1))
         if item.inventory_item_id and not uses_prepared_stock:
-            factor = Decimal(str(getattr(item, "unit_factor", None) or 1))
             exact.append(LedgerLine(str(item.inventory_item_id), quantity * factor, item.id))
         if isinstance(usage, list):
             for row in usage:
@@ -133,15 +133,15 @@ def _exact_and_recipe_lines(items: list[OrderItem]) -> tuple[list[LedgerLine], l
                     exact.append(
                         LedgerLine(
                             str(row["stock_item_id"]),
-                            quantity * Decimal(str(row.get("qty") or 1)),
+                            quantity * factor * Decimal(str(row.get("qty") or 1)),
                             item.id,
                             location="prepared",
                             serving_unit=str(row.get("serving_unit") or "servings"),
                         )
                     )
-        for stock_id, qty in stock_usage_lines(usage, quantity, recipe=False):
+        for stock_id, qty in stock_usage_lines(usage, quantity * factor, recipe=False):
             exact.append(LedgerLine(stock_id, qty, item.id))
-        for stock_id, qty in stock_usage_lines(usage, quantity, recipe=True):
+        for stock_id, qty in stock_usage_lines(usage, quantity * factor, recipe=True):
             recipe.append(LedgerLine(stock_id, qty, item.id, location="kitchen"))
     return exact, recipe
 

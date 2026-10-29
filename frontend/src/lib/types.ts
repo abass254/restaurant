@@ -1966,6 +1966,7 @@ export type OrderCreatePayload = {
     sell_unit?: string | null;
     serving_unit?: string | null;
     unit_factor?: number | null;
+    allow_fractional?: boolean | null;
     notes?: string | null;
     modifiers?: OrderItemModifier[] | null;
     /** Option-group picks; the server validates and prices them. */

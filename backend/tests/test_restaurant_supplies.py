@@ -171,6 +171,31 @@ def test_restaurant_sale_writes_ledger_and_cost(rdb):
     assert rdb.get(Order, out.id).stock_deducted is True
 
 
+def test_fractional_selling_preference_is_saved_with_sale(rdb):
+    item = rdb.get(InventoryItem, "inv-eggs")
+    item.attributes = {"existing_setting": "keep"}
+    rdb.commit()
+
+    order = _order(
+        rdb,
+        {
+            "inventory_item_id": "inv-eggs",
+            "quantity": 1,
+            "sell_unit": "1/4 piece",
+            "unit_factor": 0.25,
+            "allow_fractional": True,
+        },
+    )
+
+    rdb.refresh(item)
+    assert item.attributes == {
+        "existing_setting": "keep",
+        "allow_fractional": True,
+    }
+    assert order.items[0].sell_unit == "1/4 piece"
+    assert Decimal(str(order.items[0].unit_factor)) == Decimal("0.25")
+
+
 def test_restaurant_meal_without_recipe_cannot_be_sold(rdb):
     rdb.add(
         Catalogue(

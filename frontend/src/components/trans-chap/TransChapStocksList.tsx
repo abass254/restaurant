@@ -19,10 +19,12 @@ import { confirmAction, showError, showInternalError, toastSuccess, internalErro
 import { apiRoutes } from "@/lib/config";
 import { formatKesDigits, formatKsh } from "@/lib/trans-chap-receipt";
 import {
+  allowsFractionalSelling,
   allSellUnits,
   baseUnitName,
   formatGroupedQty,
   groupedQtyBreakdown,
+  mergeFractionalIntoAttributes,
   mergeSellUnitsIntoAttributes,
   packUnits,
   type SellUnit,
@@ -332,6 +334,28 @@ export function TransChapStocksList() {
       updateCachedInventoryItem(updated);
       if (openId === item.id) setOpenId(null);
       await toastSuccess(next ? "Item enabled" : "Item disabled");
+    } catch {
+      await showInternalError();
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function toggleFractional(item: InventoryItem) {
+    if (savingId || selecting) return;
+    const next = !allowsFractionalSelling(item);
+    const nextAttrs = mergeFractionalIntoAttributes(item.attributes, next);
+    setSavingId(item.id);
+    try {
+      const updated = await updateInventoryItem(item.id, {
+        attributes: nextAttrs,
+      });
+      applyUpdatedItem(updated);
+      await toastSuccess(
+        next
+          ? "Fractional selling (1/4, 1/2, 3/4, Full) enabled"
+          : "Fractional selling disabled",
+      );
     } catch {
       await showInternalError();
     } finally {
@@ -1152,6 +1176,7 @@ export function TransChapStocksList() {
                   <th className="trans-chap-stock-table__money" scope="col" title="Selling price, bulk">SP bulk</th>
                   <th className="trans-chap-stock-table__money" scope="col" title="Markup, single">Mkup single</th>
                   <th className="trans-chap-stock-table__money" scope="col" title="Markup, bulk">Mkup bulk</th>
+                  <th scope="col" title="Enable 1/4, 1/2, 3/4, Full fractional selling">1/4 · 1/2</th>
                   <th scope="col">Active</th>
                   <th className="trans-chap-stock-table__actions" scope="col">
                     Action
@@ -1529,6 +1554,28 @@ export function TransChapStocksList() {
                         <span className="trans-chap-stock-table__mono">{markupText(bulkUnit?.selling_price, bulkUnit?.buying_price)}</span>
                       </td>
                       <td>
+                        {selecting || inventoryRole(item) === "raw_material" ? (
+                          <span className="trans-chap-stock-table__muted">—</span>
+                        ) : (
+                          <button
+                            type="button"
+                            role="switch"
+                            className={`theme-switch trans-chap-panel__switch${allowsFractionalSelling(item) ? " is-on" : ""}`}
+                            aria-checked={allowsFractionalSelling(item)}
+                            aria-label={
+                              allowsFractionalSelling(item)
+                                ? `Disable fractional selling (1/4, 1/2, 3/4) for ${name}`
+                                : `Enable fractional selling (1/4, 1/2, 3/4) for ${name}`
+                            }
+                            title="Allow selling 1/4, 1/2, 3/4, and Full portions on POS"
+                            disabled={savingId === item.id}
+                            onClick={() => void toggleFractional(item)}
+                          >
+                            <span className="theme-switch__thumb" aria-hidden />
+                          </button>
+                        )}
+                      </td>
+                      <td>
                         {selecting ? (
                           <span className="trans-chap-stock-table__muted">—</span>
                         ) : (
@@ -1741,6 +1788,28 @@ export function TransChapStocksList() {
                       </dd>
                     </div>
                   )}
+                  {inventoryRole(item) !== "raw_material" ? (
+                    <div>
+                      <dt>Fractional sale (1/4, 1/2, 3/4)</dt>
+                      <dd>
+                        <button
+                          type="button"
+                          role="switch"
+                          className={`theme-switch trans-chap-panel__switch${allowsFractionalSelling(item) ? " is-on" : ""}`}
+                          aria-checked={allowsFractionalSelling(item)}
+                          aria-label={
+                            allowsFractionalSelling(item)
+                              ? `Disable fractional selling for ${name}`
+                              : `Enable fractional selling for ${name}`
+                          }
+                          disabled={savingId === item.id}
+                          onClick={() => void toggleFractional(item)}
+                        >
+                          <span className="theme-switch__thumb" aria-hidden />
+                        </button>
+                      </dd>
+                    </div>
+                  ) : null}
                 </dl>
               </TransChapPanel>
               </MotionItem>

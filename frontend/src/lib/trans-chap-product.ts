@@ -372,6 +372,7 @@ export async function createMenuItem(input: {
   price: number | null;
   productType: MenuProductType;
   section?: string;
+  attributes?: Record<string, unknown> | null;
 }): Promise<InventoryItem> {
   const created = await apiFetch<CatalogProductMutationResponse>(apiRoutes.products, {
     method: "POST",
@@ -386,6 +387,7 @@ export async function createMenuItem(input: {
     selling_price: input.price,
     stock_quantity: null,
     inventory_role: "for_sale",
+    attributes: input.attributes,
   });
 }
 
@@ -408,7 +410,13 @@ export async function createKitchenMeal(name: string): Promise<InventoryItem> {
 
 export async function updateMenuItem(
   item: InventoryItem,
-  input: { name: string; price: number | null; productType: MenuProductType; section?: string },
+  input: {
+    name: string;
+    price: number | null;
+    productType: MenuProductType;
+    section?: string;
+    attributes?: Record<string, unknown> | null;
+  },
 ): Promise<InventoryItem> {
   const product = item.product;
   if (product) {
@@ -433,6 +441,7 @@ export async function updateMenuItem(
     selling_price: input.price,
     stock_quantity: null,
     inventory_role: "for_sale",
+    ...(input.attributes !== undefined ? { attributes: input.attributes } : {}),
   });
 }
 
@@ -521,6 +530,7 @@ export async function addInventoryFromCatalogProduct(
     selling_price?: number | null;
     stock_quantity?: number | null;
     inventory_role?: InventoryRole;
+    attributes?: Record<string, unknown> | null;
   },
 ): Promise<InventoryItem> {
   const inventory = await apiFetch<InventoryItemMutationResponse>(
@@ -534,6 +544,7 @@ export async function addInventoryFromCatalogProduct(
         stock_quantity: extras && "stock_quantity" in extras ? extras.stock_quantity : 0,
         inventory_role: extras?.inventory_role ?? "both",
         is_active: true,
+        ...(extras?.attributes ? { attributes: extras.attributes } : {}),
       }),
     },
   );
@@ -659,6 +670,7 @@ export async function addLiteInventoryProduct(
     category?: string | null;
     unit?: string | null;
     inventory_role?: InventoryRole;
+    attributes?: Record<string, unknown> | null;
   },
 ): Promise<InventoryItem> {
   const sku = extras?.sku?.trim() || undefined;
@@ -694,6 +706,7 @@ export async function addLiteInventoryProduct(
         stock_quantity: extras?.stock_quantity ?? null,
         inventory_role: extras?.inventory_role ?? "both",
         is_active: true,
+        ...(extras?.attributes ? { attributes: extras.attributes } : {}),
       }),
     },
   );

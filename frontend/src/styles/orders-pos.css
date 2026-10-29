@@ -1098,8 +1098,14 @@ html[data-theme="dark"] .fb-app .pos-cart__head h2 > i {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 132px;
+  max-height: 220px;
   overflow-y: auto;
+}
+
+.fb-app .pos-held__hint {
+  margin: 0;
+  font-size: 0.6875rem;
+  color: var(--app-text-secondary);
 }
 
 .fb-app .pos-held__item {
@@ -1147,6 +1153,10 @@ html[data-theme="dark"] .fb-app .pos-cart__head h2 > i {
 }
 
 .fb-app .pos-held__resume > span {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.6875rem;
   color: var(--app-text-secondary);
   font-variant-numeric: tabular-nums;

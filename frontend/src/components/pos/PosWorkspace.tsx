@@ -43,13 +43,17 @@ import {
   paymentStatusFromOrder,
   receiptFromOrder,
   receiptHeaderLines,
-  saveTransChapReceipt,
-  transChapReceiptHref,
 } from "@/lib/trans-chap-receipt";
 import { TransChapReceiptPrint } from "@/components/trans-chap/TransChapReceiptSlip";
 import { TransChapCustomerQuickAdd } from "@/components/trans-chap/TransChapCustomerQuickAdd";
 import { findInventoryByBarcode } from "@/lib/barcode";
-import { normalizeUnitName, packUnits } from "@/lib/sell-units";
+import {
+  allowsFractionalSelling,
+  baseUnitName,
+  fractionalSellUnits,
+  normalizeUnitName,
+  packUnits,
+} from "@/lib/sell-units";
 import { formatCategoryLabel } from "@/lib/product-categories";
 import {
   hasKitchenRecipe,
@@ -65,7 +69,10 @@ import {
   type OptionAvailabilityMap,
 } from "@/lib/trans-chap-product";
 import { formatNairobiDateTime } from "@/lib/nairobi-time";
-import { getCachedInventory, setCachedInventory } from "@/lib/inventory-cache";
+import {
+  getCachedInventory,
+  setCachedInventory,
+} from "@/lib/inventory-cache";
 import { useOptionalAuthUser } from "@/components/app/AuthProvider";
 import { isRestaurantStore } from "@/lib/onboarding";
 import {
@@ -144,6 +151,7 @@ type CartLine = {
   unitFactor?: number;
   bulkFactor?: number;
   autoPackFactor?: number;
+  fractionalEnabled?: boolean;
 };
 
 /** A cart key is a line id, or an inventory id for lines that have none (product-card buttons). */
@@ -172,22 +180,36 @@ function readPreferredSellUnit(item: InventoryItem): PreferredSellUnit | null {
       return null;
     }
 
-    const fractionalUnit = fractionalSellUnits(item).find(
+    const itemAllowsFractional = allowsFractionalSelling(item);
+    const fractionalUnits = fractionalSellUnits(item);
+    const fractionalUnit = fractionalUnits.find(
       (unit) => unit.name === sellUnit && unit.factor === unitFactor,
     );
     if (fractionalUnit) return { sellUnit, unitFactor };
 
-    if (
-      fractionalSellUnits(item).length === 0 &&
-      sellUnit === "Bulk" &&
-      unitFactor >= 2
-    ) {
+    if (itemAllowsFractional && [0.25, 0.5, 0.75, 1].includes(unitFactor)) {
+      return { sellUnit, unitFactor };
+    }
+
+    if (fractionalUnits.length === 0 && sellUnit === "Bulk" && unitFactor >= 2) {
       return { sellUnit, unitFactor };
     }
     return null;
   } catch {
     return null;
   }
+}
+
+function fractionalUnitsForCartLine(
+  item: InventoryItem | null | undefined,
+  enabled: boolean,
+) {
+  if (!item || !enabled) return [];
+  if (allowsFractionalSelling(item)) return fractionalSellUnits(item);
+  return fractionalSellUnits({
+    ...item,
+    attributes: { ...(item.attributes || {}), allow_fractional: true },
+  });
 }
 
 function rememberPreferredSellUnit(
@@ -221,40 +243,6 @@ function detectPackSize(name: string): number | null {
   if (pcsMatch) return parseInt(pcsMatch[1], 10);
 
   return null;
-}
-
-function fractionalSellUnits(item: InventoryItem | null | undefined) {
-  const unit = item?.product?.unit?.trim().toLowerCase();
-  const normalized = unit?.replace(/\.$/, "");
-  const kilogramUnits = [
-    "kg",
-    "kgs",
-    "kg(s)",
-    "kilogram",
-    "kilograms",
-    "kilogram(s)",
-  ];
-  const litreUnits = [
-    "l",
-    "ls",
-    "l(s)",
-    "liter",
-    "liters",
-    "litre",
-    "litres",
-    "liter(s)",
-    "litre(s)",
-  ];
-  if (!normalized || (!kilogramUnits.includes(normalized) && !litreUnits.includes(normalized))) {
-    return [];
-  }
-  const baseUnit = litreUnits.includes(normalized) ? "L" : "KG";
-  return [
-    { name: `1/4 ${baseUnit}`, factor: 0.25 },
-    { name: `1/2 ${baseUnit}`, factor: 0.5 },
-    { name: `3/4 ${baseUnit}`, factor: 0.75 },
-    { name: baseUnit, factor: 1 },
-  ];
 }
 
 type SplitMethod = OrderPaymentSplit["method"];
@@ -349,6 +337,8 @@ type PosHeldSession = {
   paymentSplits?: SplitDraft[];
   customerName: string;
   customerPhone: string;
+  mpesaReceiptCode: string;
+  creditDueDate: string;
   selectedCustomerId: string;
   deliveryAddress: string;
   deliveryCoords: { lat: number; lng: number } | null;
@@ -378,15 +368,24 @@ function cartSubtotal(cart: CartLine[]): number {
 
 function labelForHeldSession(input: {
   tableNumber?: string;
+  fulfillment: OrderFulfillmentType;
   customerName: string;
   customerPhone: string;
   cart: CartLine[];
 }): string {
-  if (input.tableNumber?.trim()) return input.tableNumber.trim();
+  if (input.fulfillment === "dine_in" && input.tableNumber?.trim()) {
+    return input.tableNumber.trim();
+  }
   const name = input.customerName.trim();
   if (name) return name;
   const phone = input.customerPhone.trim();
   if (phone) return phone;
+  const firstItem = input.cart[0]?.name.trim();
+  if (firstItem) {
+    return input.cart.length > 1
+      ? `${firstItem} + ${input.cart.length - 1} more`
+      : firstItem;
+  }
   const count = cartItemCount(input.cart);
   return count === 1 ? "1 item" : `${count} items`;
 }
@@ -418,18 +417,31 @@ function parseHeldSessions(raw: string | null): PosHeldSession[] {
         typeof row.customerName === "string" ? row.customerName : "";
       const customerPhone =
         typeof row.customerPhone === "string" ? row.customerPhone : "";
+      const fulfillment =
+        typeof row.fulfillment === "string"
+          ? (row.fulfillment as OrderFulfillmentType)
+          : "pickup";
+      const tableNumber =
+        typeof row.tableNumber === "string" ? row.tableNumber : undefined;
+      const storedLabel =
+        typeof row.label === "string" && row.label.trim() ? row.label : "";
       sessions.push({
         id: row.id,
         label:
-          typeof row.label === "string" && row.label.trim()
-            ? row.label
-            : labelForHeldSession({ customerName, customerPhone, cart }),
+          storedLabel &&
+          (fulfillment === "dine_in" || storedLabel !== (tableNumber || "Table 1"))
+            ? storedLabel
+            : labelForHeldSession({
+                fulfillment,
+                tableNumber,
+                customerName,
+                customerPhone,
+                cart,
+              }),
         cart,
         source: typeof row.source === "string" ? (row.source as OrderSource) : "walkin",
-        fulfillment:
-          typeof row.fulfillment === "string"
-            ? (row.fulfillment as OrderFulfillmentType)
-            : "pickup",
+        fulfillment,
+        tableNumber,
         paymentMethod:
           typeof row.paymentMethod === "string"
             ? (row.paymentMethod as OrderPaymentMethod | "")
@@ -437,6 +449,10 @@ function parseHeldSessions(raw: string | null): PosHeldSession[] {
         paymentSplits: parseSplitDrafts(row.paymentSplits),
         customerName,
         customerPhone,
+        mpesaReceiptCode:
+          typeof row.mpesaReceiptCode === "string" ? row.mpesaReceiptCode : "",
+        creditDueDate:
+          typeof row.creditDueDate === "string" ? row.creditDueDate : "",
         selectedCustomerId:
           typeof row.selectedCustomerId === "string" ? row.selectedCustomerId : "",
         deliveryAddress:
@@ -457,7 +473,11 @@ function parseHeldSessions(raw: string | null): PosHeldSession[] {
         discount: typeof row.discount === "string" ? row.discount : "",
         notes: typeof row.notes === "string" ? row.notes : "",
         updatedAt:
-          typeof row.updatedAt === "number" ? row.updatedAt : Date.now(),
+          typeof row.updatedAt === "number" &&
+          Number.isFinite(row.updatedAt) &&
+          Number.isFinite(new Date(row.updatedAt).getTime())
+            ? row.updatedAt
+            : Date.now(),
       });
       if (sessions.length >= MAX_HELD_SESSIONS) break;
     }
@@ -533,7 +553,7 @@ export function PosWorkspace({
     return map;
   });
   const inventoryLoadedOnce = useRef(Boolean(initialCached && initialCached.length > 0));
-  const [loading, setLoading] = useState(() => !inventoryLoadedOnce.current);
+  const [loading, setLoading] = useState(() => !(initialCached && initialCached.length > 0));
   const [searching, setSearching] = useState(false);
   const [loadedQuery, setLoadedQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -546,6 +566,7 @@ export function PosWorkspace({
   const inventoryRequestId = useRef(0);
 
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [qtyDrafts, setQtyDrafts] = useState<Record<string, string>>({});
   const [bulkFactorDrafts, setBulkFactorDrafts] = useState<Record<string, string>>({});
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
   const [mobileScreen, setMobileScreen] = useState<"catalog" | "order">("catalog");
@@ -697,6 +718,10 @@ export function PosWorkspace({
     }
     return map;
   }, [heldSessions]);
+  const newestHeldSessions = useMemo(
+    () => [...heldSessions].sort((a, b) => b.updatedAt - a.updatedAt),
+    [heldSessions],
+  );
 
   const [optionAvailability, setOptionAvailability] = useState<OptionAvailabilityMap | null>(null);
 
@@ -945,6 +970,7 @@ export function PosWorkspace({
           image_url: item.product?.image_url ?? null,
           autoPackFactor,
           unitFactor: initialUnitFactor,
+          fractionalEnabled: allowsFractionalSelling(item),
           bulkFactor:
             preferredSellUnit?.sellUnit === "Bulk"
               ? initialUnitFactor
@@ -1189,6 +1215,7 @@ export function PosWorkspace({
           buying_price: item.buying_price ?? null,
           quantity: quickAddQty || 1,
           image_url: item.product?.image_url ?? null,
+          fractionalEnabled: allowsFractionalSelling(item),
           ...picked,
         },
       ];
@@ -1216,6 +1243,12 @@ export function PosWorkspace({
         : Math.floor(
             availableStock / Math.max(0.0001, target.unitFactor ?? 1),
           );
+    setQtyDrafts((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
     setCart((prev) =>
       prev
         .map((c) => {
@@ -1229,6 +1262,15 @@ export function PosWorkspace({
   }
 
   function setQuantity(key: string, value: string) {
+    const draft = value.replace(/\D/g, "");
+    setQtyDrafts((prev) => ({ ...prev, [key]: draft }));
+    if (!draft) {
+      return;
+    }
+    const parsed = Math.floor(Number(draft));
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      return;
+    }
     const target = cart.find((c) => lineKeyMatches(cart, c, key));
     const item = target ? itemsById.get(target.inventoryItemId) : null;
     const stockCap = item ? maxCartQty(item) : null;
@@ -1241,17 +1283,27 @@ export function PosWorkspace({
         : Math.floor(
             availableStock / Math.max(0.0001, target.unitFactor ?? 1),
           );
-    let next = Math.max(0, Math.floor(Number(value) || 0));
-    if (maxLineQty !== null) next = Math.min(next, maxLineQty);
+    let next = parsed;
+    if (maxLineQty !== null) {
+      next = Math.max(1, Math.min(next, maxLineQty));
+    }
+    if (next !== parsed) {
+      setQtyDrafts((prev) => ({ ...prev, [key]: String(next) }));
+    }
     setCart((prev) =>
-      prev
-        .map((c) =>
-          lineKeyMatches(prev, c, key)
-            ? { ...c, quantity: next }
-            : c,
-        )
-        .filter((c) => c.quantity > 0),
+      prev.map((c) =>
+        lineKeyMatches(prev, c, key) ? { ...c, quantity: next } : c,
+      ),
     );
+  }
+
+  function finishQuantityInput(key: string) {
+    setQtyDrafts((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   }
 
   function setUnitPrice(key: string, value: string) {
@@ -1265,7 +1317,12 @@ export function PosWorkspace({
     );
   }
 
-  function updateLineUnit(key: string, sellUnit: string | null, unitFactor: number) {
+  function updateLineUnit(
+    key: string,
+    sellUnit: string | null,
+    unitFactor: number,
+    unitPrice?: number,
+  ) {
     const target = cart.find(
       (line) =>
         lineKeyMatches(cart, line, key),
@@ -1308,10 +1365,30 @@ export function PosWorkspace({
             maxLineQty === null
               ? line.quantity
               : Math.min(line.quantity, maxLineQty),
-          unit_price: basePrice * unitFactor,
+          unit_price: unitPrice ?? basePrice * unitFactor,
         };
       }),
     );
+  }
+
+  function toggleItemFractionalSelling(
+    stockItem: InventoryItem,
+    lineKey: string,
+  ) {
+    const target = cart.find((line) => lineKeyMatches(cart, line, lineKey));
+    const nextAllow = !(
+      target?.fractionalEnabled ?? allowsFractionalSelling(stockItem)
+    );
+    setCart((prev) =>
+      prev.map((line) =>
+        lineKeyMatches(prev, line, lineKey)
+          ? { ...line, fractionalEnabled: nextAllow }
+          : line,
+      ),
+    );
+    if (!nextAllow && target?.unitFactor != null && target.unitFactor < 1) {
+      updateLineUnit(lineKey, null, 1);
+    }
   }
 
   function updateLineBulkFactor(key: string, value: string) {
@@ -1453,6 +1530,7 @@ export function PosWorkspace({
 
   function clearCart() {
     setCart([]);
+    setQtyDrafts({});
     setCustomerName("");
     setCustomerPhone("");
     setMpesaReceiptCode("");
@@ -1479,7 +1557,13 @@ export function PosWorkspace({
   function snapshotCurrentSale(): PosHeldSession {
     return {
       id: newHeldSessionId(),
-      label: labelForHeldSession({ tableNumber, customerName, customerPhone, cart }),
+      label: labelForHeldSession({
+        tableNumber,
+        fulfillment,
+        customerName,
+        customerPhone,
+        cart,
+      }),
       cart: cart.map((line) => ({ ...line })),
       source,
       fulfillment,
@@ -1489,6 +1573,8 @@ export function PosWorkspace({
         paymentMethod === "split" ? splitRows.map((row) => ({ ...row })) : undefined,
       customerName,
       customerPhone,
+      mpesaReceiptCode,
+      creditDueDate,
       selectedCustomerId,
       deliveryAddress,
       deliveryCoords,
@@ -1502,6 +1588,7 @@ export function PosWorkspace({
 
   function applyHeldSession(session: PosHeldSession) {
     setCart(session.cart.map((line) => ({ ...line })));
+    setQtyDrafts({});
     setBulkFactorDrafts({});
     setPriceDrafts({});
     setSource(isTransChapSale ? "walkin" : session.source);
@@ -1527,6 +1614,8 @@ export function PosWorkspace({
     setSplitRows(restoredSplits ?? []);
     setCustomerName(session.customerName);
     setCustomerPhone(session.customerPhone);
+    setMpesaReceiptCode(session.mpesaReceiptCode);
+    setCreditDueDate(session.creditDueDate);
     setSelectedCustomerId(session.selectedCustomerId);
     setDeliveryAddress(session.deliveryAddress);
     setDeliveryCoords(session.deliveryCoords);
@@ -2384,6 +2473,9 @@ export function PosWorkspace({
           sell_unit: c.sellUnit,
           unit_factor:
             c.sellUnit ? c.unitFactor : undefined,
+          allow_fractional:
+            c.fractionalEnabled ??
+            allowsFractionalSelling(itemsById.get(c.inventoryItemId)),
           ...(c.optionIds
             ? {
                 modifier_option_ids: c.optionIds,
@@ -3050,7 +3142,27 @@ export function PosWorkspace({
                         stockItem,
                         priceDrafts[lineKey],
                       );
-                      const fractionalUnits = fractionalSellUnits(stockItem);
+                      const fractionalEnabled =
+                        line.fractionalEnabled ??
+                        allowsFractionalSelling(stockItem);
+                      const fractionalUnits = fractionalUnitsForCartLine(
+                        stockItem,
+                        fractionalEnabled,
+                      );
+                      const baseUnit = stockItem ? baseUnitName(stockItem) : "Piece";
+                      const baseUnitLabel =
+                        ["piece", "pieces", "pc", "pcs", "item", "items"].includes(
+                          normalizeUnitName(baseUnit),
+                        )
+                          ? "pc"
+                          : baseUnit;
+                      const configuredSellUnits = stockItem
+                        ? packUnits(stockItem).filter(
+                            (unit) =>
+                              normalizeUnitName(unit.name) !==
+                              normalizeUnitName(baseUnit),
+                          )
+                        : [];
                       const isHotelDish = stockItem ? isHotelMenuItem(stockItem) : false;
                       const stockCap = stockItem ? maxCartQty(stockItem) : null;
                       const heldQty = heldQtyByItemId.get(line.inventoryItemId) ?? 0;
@@ -3210,7 +3322,86 @@ export function PosWorkspace({
                             </div>
                           ) : null}
                           <div className="pos-line__qty-wrap">
-                            {fractionalUnits.length > 0 ? (
+                            {stockItem &&
+                            configuredSellUnits.length > 0 &&
+                            !optionPriced ? (
+                              <div className="pos-line__unit-toggle">
+                                <select
+                                  className="pos-line__unit-select"
+                                  aria-label={`Unit of measure for ${line.name}`}
+                                  value={line.sellUnit ?? ""}
+                                  onChange={(event) => {
+                                    const selectedName = event.target.value;
+                                    if (!selectedName) {
+                                      updateLineUnit(lineKey, null, 1);
+                                      return;
+                                    }
+                                    const configuredUnit = configuredSellUnits.find(
+                                      (unit) => unit.name === selectedName,
+                                    );
+                                    if (configuredUnit) {
+                                      updateLineUnit(
+                                        lineKey,
+                                        configuredUnit.name,
+                                        configuredUnit.factor,
+                                        configuredUnit.selling_price ?? undefined,
+                                      );
+                                      return;
+                                    }
+                                    const fractionalUnit = fractionalUnits.find(
+                                      (unit) => unit.name === selectedName,
+                                    );
+                                    if (fractionalUnit) {
+                                      updateLineUnit(
+                                        lineKey,
+                                        fractionalUnit.name,
+                                        fractionalUnit.factor,
+                                      );
+                                    }
+                                  }}
+                                >
+                                  <option value="">{baseUnitLabel}</option>
+                                  {configuredSellUnits.map((unit) => (
+                                    <option key={unit.name} value={unit.name}>
+                                      {unit.name}
+                                    </option>
+                                  ))}
+                                  {fractionalUnits
+                                    .filter(
+                                      (unit) =>
+                                        !configuredSellUnits.some(
+                                          (configuredUnit) =>
+                                            normalizeUnitName(configuredUnit.name) ===
+                                            normalizeUnitName(unit.name),
+                                        ),
+                                    )
+                                    .map((unit) => (
+                                      <option key={unit.name} value={unit.name}>
+                                        {unit.label}
+                                      </option>
+                                    ))}
+                                </select>
+                                {stockItem ? (
+                                  <button
+                                    type="button"
+                                    className={fractionalEnabled ? "is-active" : ""}
+                                    onClick={() =>
+                                      toggleItemFractionalSelling(
+                                        stockItem,
+                                        lineKey,
+                                      )
+                                    }
+                                    title={`${fractionalEnabled ? "Disable" : "Enable"} fractional selling for this sale`}
+                                    aria-label={`${fractionalEnabled ? "Disable" : "Enable"} fractional selling for ${line.name}`}
+                                    aria-pressed={fractionalEnabled}
+                                  >
+                                    {fractionalEnabled
+                                      ? "Fractions On"
+                                      : "Fractions Off"}
+                                  </button>
+                                ) : null}
+                              </div>
+                            ) : fractionalUnits.length > 0 ? (
                               <div className="pos-line__unit-toggle">
                                 {fractionalUnits.map((unit) => (
                                   <button
@@ -3236,13 +3427,32 @@ export function PosWorkspace({
                                         unit.factor,
                                     )}`}
                                   >
-                                    {unit.factor === 1
-                                      ? "Full"
-                                      : unit.name.split(" ")[0]}
+                                    {unit.label}
                                   </button>
                                 ))}
+                                {stockItem ? (
+                                  <button
+                                    type="button"
+                                    className={fractionalEnabled ? "is-active" : ""}
+                                    onClick={() =>
+                                      toggleItemFractionalSelling(
+                                        stockItem,
+                                        lineKey,
+                                      )
+                                    }
+                                    title={`${fractionalEnabled ? "Disable" : "Enable"} fractional selling for this sale`}
+                                    aria-label={`${fractionalEnabled ? "Disable" : "Enable"} fractional selling for ${line.name}`}
+                                    aria-pressed={fractionalEnabled}
+                                  >
+                                    {fractionalEnabled
+                                      ? "Fractions On"
+                                      : "Fractions Off"}
+                                  </button>
+                                ) : null}
                               </div>
-                            ) : isTransChapSale || line.autoPackFactor !== undefined ? (
+                            ) : !isHotelDish &&
+                              (isTransChapSale ||
+                                line.autoPackFactor !== undefined) ? (
                               <div className="pos-line__unit-toggle">
                                 <button
                                   type="button"
@@ -3268,6 +3478,61 @@ export function PosWorkspace({
                                 >
                                   Bulk
                                 </button>
+                                {stockItem && !optionPriced ? (
+                                  <button
+                                    type="button"
+                                    className={fractionalEnabled ? "is-active" : ""}
+                                    onClick={() =>
+                                      toggleItemFractionalSelling(
+                                        stockItem,
+                                        lineKey,
+                                      )
+                                    }
+                                    title={
+                                      fractionalEnabled
+                                        ? "Disable 1/4, 1/2, 3/4, Full fractional selling on this product"
+                                        : "Enable 1/4, 1/2, 3/4, Full fractional selling on this product"
+                                    }
+                                    aria-label={
+                                      fractionalEnabled
+                                        ? `Disable fractional selling for ${line.name}`
+                                        : `Enable fractional selling for ${line.name}`
+                                    }
+                                    aria-pressed={fractionalEnabled}
+                                  >
+                                    {fractionalEnabled
+                                      ? "Fractions On"
+                                      : "Fractions Off"}
+                                  </button>
+                                ) : null}
+                              </div>
+                            ) : stockItem && !optionPriced ? (
+                              <div className="pos-line__unit-toggle">
+                                <button
+                                  type="button"
+                                  className={fractionalEnabled ? "is-active" : ""}
+                                  onClick={() =>
+                                    toggleItemFractionalSelling(
+                                      stockItem,
+                                      lineKey,
+                                    )
+                                  }
+                                  title={
+                                    fractionalEnabled
+                                      ? "Disable 1/4, 1/2, 3/4, Full fractional selling on this product"
+                                      : "Enable 1/4, 1/2, 3/4, Full fractional selling on this product"
+                                  }
+                                  aria-label={
+                                    fractionalEnabled
+                                      ? `Disable fractional selling for ${line.name}`
+                                      : `Enable fractional selling for ${line.name}`
+                                  }
+                                  aria-pressed={fractionalEnabled}
+                                >
+                                  {fractionalEnabled
+                                    ? "Fractions On"
+                                    : "Fractions Off"}
+                                </button>
                               </div>
                             ) : null}
                             <div className="pos-line__qty">
@@ -3284,16 +3549,16 @@ export function PosWorkspace({
                                 />
                               </button>
                               <input
-                                type="number"
-                                min={0}
-                                max={effectiveLineCap ?? undefined}
-                                value={line.quantity}
+                                type="text"
+                                inputMode="numeric"
+                                value={qtyDrafts[lineKey] ?? String(line.quantity)}
                                 onChange={(e) =>
                                   setQuantity(
                                     lineKey,
                                     e.target.value,
                                   )
                                 }
+                                onBlur={() => finishQuantityInput(lineKey)}
                                 aria-label={`Quantity of ${line.name}`}
                               />
                               <button
@@ -3489,8 +3754,16 @@ export function PosWorkspace({
                       type="button"
                       className="pos-cart__hold"
                       onClick={() => void holdCurrentSale()}
-                      title="Hold this sale and start a new one"
-                      disabled={submitting || Boolean(pendingMpesa)}
+                      title={
+                        heldSessions.length >= MAX_HELD_SESSIONS
+                          ? `You can hold up to ${MAX_HELD_SESSIONS} sales. Discard a held sale to make room.`
+                          : "Hold this sale and start a new one"
+                      }
+                      disabled={
+                        submitting ||
+                        Boolean(pendingMpesa) ||
+                        heldSessions.length >= MAX_HELD_SESSIONS
+                      }
                     >
                       <i className="fa-solid fa-pause" aria-hidden="true" />
                       Hold
@@ -3528,14 +3801,24 @@ export function PosWorkspace({
               </header>
 
           {heldSessions.length > 0 ? (
-            <div className="pos-held" aria-label="Held sales">
+            <section className="pos-held" aria-label="Held sales">
               <div className="pos-held__label">
-                Held
-                <span>{heldSessions.length}</span>
+                Held sales
+                <span>{heldSessions.length}/{MAX_HELD_SESSIONS}</span>
               </div>
+              {cart.length > 0 || heldSessions.length >= MAX_HELD_SESSIONS ? (
+                <p className="pos-held__hint">
+                  {heldSessions.length >= MAX_HELD_SESSIONS
+                    ? `Maximum of ${MAX_HELD_SESSIONS} held sales reached. Resume with an empty order or discard one to make room.`
+                    : "Resuming a held sale will hold your current order first."}
+                </p>
+              ) : null}
               <ul className="pos-held__list">
-                {heldSessions.map((session) => {
+                {newestHeldSessions.map((session) => {
                   const sessionCount = cartItemCount(session.cart);
+                  const heldAt = formatNairobiDateTime(
+                    new Date(session.updatedAt).toISOString(),
+                  );
                   const sessionTotal = Math.max(
                     0,
                     cartSubtotal(session.cart) +
@@ -3549,11 +3832,13 @@ export function PosWorkspace({
                         className="pos-held__resume"
                         onClick={() => void resumeHeldSale(session.id)}
                         disabled={submitting || Boolean(pendingMpesa)}
-                        title={`Resume “${session.label}”`}
+                        title={`Resume “${session.label}” held ${heldAt}`}
                       >
                         <strong>{session.label}</strong>
                         <span>
-                          {sessionCount} · {formatMoney(sessionTotal)}
+                          Held {heldAt} · {sessionCount}{" "}
+                          {sessionCount === 1 ? "item" : "items"} ·{" "}
+                          {formatMoney(sessionTotal)}
                         </span>
                       </button>
                       <button
@@ -3570,7 +3855,7 @@ export function PosWorkspace({
                   );
                 })}
               </ul>
-            </div>
+            </section>
           ) : null}
 
           <div className="pos-cart__body">

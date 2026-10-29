@@ -16,8 +16,9 @@ import { formatNairobiDateTime } from "@/lib/nairobi-time";
 import {
   orderPaymentLabel,
   orderUsesPayment,
-  orderHasSuccessfulMpesa,
 } from "@/lib/orders";
+import { transChapReceiptHref } from "@/lib/trans-chap-receipt";
+import { isOrderSettled, saleStatus } from "@/components/trans-chap/TransChapSalesList";
 import type { Order, OrderMutationResponse, OrderPaymentMethod } from "@/lib/types";
 
 function formatKsh(amount: number): string {
@@ -58,10 +59,11 @@ export function TransChapOrderDetailModal({
 
   if (!order) return null;
 
-  const isPaid = Boolean(order.paid_at);
+  const isPaid = isOrderSettled(order, restaurant);
+  const statusInfo = saleStatus(order, restaurant);
   const items = order.items ?? [];
   const totalQty = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
-  const hasReturns = Number(order.returned_total || 0) > 0;
+  const hasReturns = !restaurant && Number(order.returned_total || 0) > 0;
   const isCancelled = order.status === "cancelled" || order.status === "refunded";
 
   async function handleRecordPayment(markAsPaid: boolean) {
@@ -169,7 +171,7 @@ export function TransChapOrderDetailModal({
                 </span>
               ) : null}
               <span className={`trans-chap-order-detail__status-badge is-${order.status}`}>
-                {order.status.replace(/_/g, " ").toUpperCase()}
+                {statusInfo.label.toUpperCase()}
               </span>
             </div>
             <p className="trans-chap-order-detail__date">
@@ -192,9 +194,11 @@ export function TransChapOrderDetailModal({
           {/* Customer & Dining Info */}
           <div className="trans-chap-order-detail__meta-grid">
             <div className="trans-chap-order-detail__meta-box">
-              <span className="trans-chap-order-detail__meta-label">Customer</span>
+              <span className="trans-chap-order-detail__meta-label">
+                {restaurant ? "Guest" : "Customer"}
+              </span>
               <strong className="trans-chap-order-detail__meta-val">
-                {order.customer_name?.trim() || "Walk-in Guest"}
+                {order.customer_name?.trim() || (restaurant ? "Walk-in Guest" : "Walk-in")}
               </strong>
               {order.customer_phone ? (
                 <a
@@ -207,13 +211,19 @@ export function TransChapOrderDetailModal({
             </div>
 
             <div className="trans-chap-order-detail__meta-box">
-              <span className="trans-chap-order-detail__meta-label">Order Type</span>
+              <span className="trans-chap-order-detail__meta-label">
+                {restaurant ? "Order Type" : "Sale Type"}
+              </span>
               <strong className="trans-chap-order-detail__meta-val">
-                {order.fulfillment_type === "dine_in"
-                  ? "Dine-in"
+                {restaurant
+                  ? order.fulfillment_type === "dine_in"
+                    ? "Dine-in"
+                    : order.fulfillment_type === "delivery"
+                      ? "Delivery"
+                      : "Takeaway / Pickup"
                   : order.fulfillment_type === "delivery"
                     ? "Delivery"
-                    : "Takeaway / Pickup"}
+                    : "Counter Sale"}
               </strong>
               <span className="trans-chap-order-detail__source">
                 Source: {order.source || "POS"}
@@ -237,7 +247,17 @@ export function TransChapOrderDetailModal({
                   }
                   aria-hidden
                 />
-                <span>{isPaid ? "Bill Paid" : "Bill Unpaid / Pending"}</span>
+                <span>
+                  {isPaid
+                    ? restaurant
+                      ? "Bill Paid"
+                      : "Payment Received"
+                    : orderUsesPayment(order, "credit")
+                      ? "On Credit"
+                      : restaurant
+                        ? "Bill Unpaid / Pending"
+                        : "Payment Pending"}
+                </span>
               </div>
               <strong className="trans-chap-order-detail__payment-total">
                 {formatKsh(order.total)}
@@ -269,16 +289,18 @@ export function TransChapOrderDetailModal({
 
                 {!isCancelled ? (
                   <div className="trans-chap-order-detail__payment-actions">
-                    <button
-                      type="button"
-                      className="trans-chap-order-detail__btn-outline-danger"
-                      disabled={isBusy}
-                      onClick={() => void handleRecordPayment(false)}
-                      title="Mark order as unpaid"
-                    >
-                      <i className="fa-solid fa-arrow-rotate-left" aria-hidden />{" "}
-                      Mark as Unpaid
-                    </button>
+                    {restaurant ? (
+                      <button
+                        type="button"
+                        className="trans-chap-order-detail__btn-outline-danger"
+                        disabled={isBusy}
+                        onClick={() => void handleRecordPayment(false)}
+                        title="Mark order as unpaid"
+                      >
+                        <i className="fa-solid fa-arrow-rotate-left" aria-hidden />{" "}
+                        Mark as Unpaid
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="trans-chap-order-detail__btn-outline"
@@ -399,7 +421,9 @@ export function TransChapOrderDetailModal({
           {/* Items breakdown */}
           <div className="trans-chap-order-detail__items-section">
             <div className="trans-chap-order-detail__section-head">
-              <h4>Ordered Items ({totalQty})</h4>
+              <h4>
+                {restaurant ? "Ordered Items" : "Items Sold"} ({totalQty})
+              </h4>
             </div>
 
             <div className="trans-chap-order-detail__items-list">
@@ -437,7 +461,7 @@ export function TransChapOrderDetailModal({
                           <em>Note:</em> {item.notes}
                         </p>
                       ) : null}
-                      {Number(item.returned_quantity || 0) > 0 ? (
+                      {!restaurant && Number(item.returned_quantity || 0) > 0 ? (
                         <span className="trans-chap-order-detail__returned-badge">
                           <i className="fa-solid fa-arrow-rotate-left" aria-hidden />{" "}
                           {item.returned_quantity} returned
@@ -495,7 +519,7 @@ export function TransChapOrderDetailModal({
               <i className="fa-solid fa-arrow-up-right-from-square" aria-hidden /> Full Order Page
             </Link>
             <Link
-              href={`/trans-chap/sales/receipt?id=${order.id}`}
+              href={transChapReceiptHref(order.id)}
               className="trans-chap-order-detail__footer-link"
               title="Open customer receipt"
             >

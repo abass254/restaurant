@@ -92,6 +92,7 @@ type BasketLine = {
   unitFactor: number;
   autoPackFactor?: number;
   availablePacks?: { name: string; factor: number }[];
+  allowFractional?: boolean;
 };
 
 /**
@@ -218,6 +219,7 @@ function lineFromNewProduct(
     role?: InventoryRole;
     sku?: string | null;
     productCode?: string | null;
+    allowFractional?: boolean;
   },
 ): BasketLine {
   const productName = name.trim();
@@ -240,6 +242,7 @@ function lineFromNewProduct(
     unitFactor: autoPackFactor ?? 1,
     autoPackFactor: autoPackFactor ?? undefined,
     availablePacks: [],
+    allowFractional: extras?.allowFractional,
   };
 }
 
@@ -296,6 +299,7 @@ export function TransChapPurchaseForm() {
   const [buyModalOpen, setBuyModalOpen] = useState(false);
   const [buyModalName, setBuyModalName] = useState("");
   const [quickAddQty, setQuickAddQty] = useState(1);
+  const [qtyDrafts, setQtyDrafts] = useState<Record<string, string>>({});
   const [adjustSellingPrice, setAdjustSellingPrice] = useState(true);
   const [draftReady, setDraftReady] = useState(false);
 
@@ -687,6 +691,7 @@ export function TransChapPurchaseForm() {
       ...lineFromNewProduct(trimmed, {
         role: draft?.role,
         sku: draft?.sku,
+        allowFractional: draft?.allowFractional,
       }),
       quantity: Math.max(1, quickAddQty),
     };
@@ -714,6 +719,12 @@ export function TransChapPurchaseForm() {
   }
 
   function setQty(key: string, quantity: number) {
+    setQtyDrafts((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
     if (quantity <= 0) {
       setBasket((prev) => prev.filter((line) => line.key !== key));
       return;
@@ -721,6 +732,32 @@ export function TransChapPurchaseForm() {
     setBasket((prev) =>
       prev.map((line) => (line.key === key ? { ...line, quantity } : line)),
     );
+  }
+
+  function handleQtyInput(key: string, value: string) {
+    const draft = value.replace(/\D/g, "");
+    setQtyDrafts((prev) => ({ ...prev, [key]: draft }));
+    if (!draft) {
+      return;
+    }
+    const parsed = Math.floor(Number(draft));
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      return;
+    }
+    setBasket((prev) =>
+      prev.map((line) =>
+        line.key === key ? { ...line, quantity: parsed } : line,
+      ),
+    );
+  }
+
+  function finishQtyInput(key: string) {
+    setQtyDrafts((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   }
 
   function changeQuantity(key: string, delta: number) {
@@ -932,6 +969,9 @@ export function TransChapPurchaseForm() {
               inventory_role: line.role,
               sku: line.sku,
               product_code: line.productCode,
+              ...(line.allowFractional
+                ? { attributes: { allow_fractional: true } }
+                : {}),
             },
           );
         } else {
@@ -1746,12 +1786,13 @@ export function TransChapPurchaseForm() {
                                   />
                                 </button>
                                 <input
-                                  type="number"
-                                  min={0}
-                                  value={line.quantity}
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={qtyDrafts[line.key] ?? String(line.quantity)}
                                   onChange={(e) =>
-                                    setQty(line.key, Number(e.target.value) || 0)
+                                    handleQtyInput(line.key, e.target.value)
                                   }
+                                  onBlur={() => finishQtyInput(line.key)}
                                   aria-label={`Quantity of ${line.productName}`}
                                 />
                                 <button

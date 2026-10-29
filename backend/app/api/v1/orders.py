@@ -190,6 +190,7 @@ class OrderItemPayload(BaseModel):
         le=1_000_000,
         decimal_places=4,
     )
+    allow_fractional: bool | None = None
     notes: str | None = Field(default=None, max_length=1000)
     # Choices from the item's option groups; the server prices and snapshots them.
     modifier_option_ids: list[str] | None = Field(default=None, max_length=60)
@@ -453,13 +454,15 @@ def list_orders(
         .all()
     )
 
+    account = db.get(Account, account_id)
     is_walkin = source == "walkin"
+    include_workflow = (not is_walkin) or is_restaurant(account)
     items = [
         OrderOut.from_model(
             row,
             include_items=True,
             include_history=False,
-            include_workflow=not is_walkin,
+            include_workflow=include_workflow,
             allowed_next=allowed_next_statuses(row.status, row.fulfillment_type),
         )
         for row in rows
@@ -1045,15 +1048,13 @@ def create_order(
                             if inv_item.product
                             else ""
                         )
-                        allowed_fraction = {
-                            "1/4 kg": Decimal("0.25"),
-                            "1/2 kg": Decimal("0.5"),
-                            "3/4 kg": Decimal("0.75"),
-                            "1/4 l": Decimal("0.25"),
-                            "1/2 l": Decimal("0.5"),
-                            "3/4 l": Decimal("0.75"),
+                        allowed_fraction_prefixes = {
+                            "1/4": Decimal("0.25"),
+                            "1/2": Decimal("0.5"),
+                            "3/4": Decimal("0.75"),
                         }
                         normalized_label = line.sell_unit.strip().lower()
+                        fraction_prefix = normalized_label.split(" ", 1)[0]
                         is_weight_volume = product_unit in {
                             "kg",
                             "kgs",
@@ -1070,10 +1071,25 @@ def create_order(
                             "litres",
                             "liter(s)",
                             "litre(s)",
+                        } and normalized_label in {
+                            "1/4 kg",
+                            "1/2 kg",
+                            "3/4 kg",
+                            "1/4 l",
+                            "1/2 l",
+                            "3/4 l",
                         }
-                        expected_factor = allowed_fraction.get(normalized_label)
+                        item_allows_fractional = bool(
+                            isinstance(getattr(inv_item, "attributes", None), dict)
+                            and inv_item.attributes.get("allow_fractional") is True
+                        )
+                        expected_factor = allowed_fraction_prefixes.get(fraction_prefix)
                         if (
-                            not is_weight_volume
+                            not (
+                                item_allows_fractional
+                                or is_weight_volume
+                                or line.allow_fractional is True
+                            )
                             or expected_factor is None
                             or line.unit_factor != expected_factor
                         ):
@@ -1381,6 +1397,12 @@ def create_order(
             )
 
     now = datetime.utcnow()
+    paid_upfront = (
+        payload.source == SOURCE_WALKIN
+        and payment_method is not None
+        and not uses_mpesa
+        and not uses_credit
+    )
     order = Order(
         account_id=account_id,
         order_number=next_order_number(db, account_id),
@@ -1403,6 +1425,7 @@ def create_order(
         payment_splits=payment_splits,
         placed_by_user_id=user.id,
         placed_at=now,
+        paid_at=now if paid_upfront else None,
         notes=(payload.notes or "").strip() or None,
         created_at=now,
         updated_at=now,
@@ -1554,6 +1577,25 @@ def create_order(
                 f"M-PESA code {matched_txn.mpesa_receipt_number} recorded. Sale closed."
             ),
         }
+
+    fractional_preferences: dict[str, bool] = {}
+    fractional_items: dict[str, InventoryItem] = {}
+    for line, inv_item, *_ in resolved_lines:
+        if inv_item is None or line.allow_fractional is None:
+            continue
+        fractional_items[inv_item.id] = inv_item
+        fractional_preferences[inv_item.id] = (
+            fractional_preferences.get(inv_item.id, False)
+            or line.allow_fractional
+        )
+    for item_id, allow_fractional in fractional_preferences.items():
+        inv_item = fractional_items[item_id]
+        attrs = dict(inv_item.attributes or {})
+        if allow_fractional:
+            attrs["allow_fractional"] = True
+        else:
+            attrs.pop("allow_fractional", None)
+        inv_item.attributes = attrs or None
 
     db.commit()
     db.refresh(order)
@@ -2041,6 +2083,8 @@ def record_order_payment(
             )
     else:
         order.paid_at = None
+        order.payment_method = None
+        order.payment_splits = None
         if order.status == PAYMENT_RECEIVED:
             order.status = AWAITING_PAYMENT
             db.add(

@@ -11,9 +11,11 @@ import { showError, showInternalError, toastSuccess, internalErrorMessage } from
 import { apiRoutes } from "@/lib/config";
 import { isRestaurantStore } from "@/lib/onboarding";
 import {
+  allowsFractionalSelling,
   baseUnitName,
   detectPackFactor,
   isGroupUnit,
+  mergeFractionalIntoAttributes,
   mergeSellUnitsIntoAttributes,
   normalizeUnitName,
   packUnits,
@@ -159,6 +161,7 @@ export function TransChapProductEditForm() {
   const [baseUnit, setBaseUnit] = useState("Piece");
   const [packs, setPacks] = useState<PackDraft[]>([]);
   const [role, setRole] = useState<InventoryRole>("for_sale");
+  const [allowFractional, setAllowFractional] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -181,6 +184,7 @@ export function TransChapProductEditForm() {
         setBaseUnit(baseUnitName(row));
         setPacks(packDraftsFromItem(row));
         setRole(inventoryRole(row));
+        setAllowFractional(allowsFractionalSelling(row));
         setError(null);
       })
       .catch(() => {
@@ -436,9 +440,18 @@ export function TransChapProductEditForm() {
             ];
           }
         }
-        payload.attributes = mergeSellUnitsIntoAttributes(
+        const withPacks = mergeSellUnitsIntoAttributes(
           item.attributes,
           finalPacks,
+        );
+        payload.attributes = mergeFractionalIntoAttributes(
+          withPacks,
+          needsSellPrice && allowFractional,
+        );
+      } else {
+        payload.attributes = mergeFractionalIntoAttributes(
+          item.attributes,
+          allowFractional,
         );
       }
       let updated = await updateInventoryItem(item.id, payload);
@@ -745,6 +758,30 @@ export function TransChapProductEditForm() {
                     <span className="trans-chap-edit-field__hint">
                       Inventory is always kept in this unit (e.g. Piece, Slice, Packet, or Kg).
                     </span>
+                  </div>
+                ) : null}
+
+                {needsSellPrice ? (
+                  <div className="trans-chap-edit-field">
+                    <label className="trans-chap-purchase-modal__bundle-toggle">
+                      <input
+                        type="checkbox"
+                        className="trans-chap-purchase-modal__bundle-check"
+                        checked={allowFractional}
+                        onChange={(event) =>
+                          setAllowFractional(event.target.checked)
+                        }
+                      />
+                      <span>
+                        <strong>
+                          Enable fractional selling (1/4, 1/2, 3/4, Full)
+                        </strong>
+                        <small>
+                          Show 1/4, 1/2, 3/4, and Full buttons for this product
+                          on New Sale.
+                        </small>
+                      </span>
+                    </label>
                   </div>
                 ) : null}
               </div>

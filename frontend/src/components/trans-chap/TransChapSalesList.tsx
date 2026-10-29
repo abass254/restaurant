@@ -58,7 +58,21 @@ const STATUS_CHIPS: ChipOption<Exclude<StatusFilter, "all">>[] = [
   { id: "voided", label: "Voided" },
 ];
 
-function saleStatus(order: Order): { label: string; tone: "ok" | "wait" | "fail" | "credit" } {
+export function isOrderSettled(order: Order, restaurant = false): boolean {
+  if (order.status === "cancelled" || order.status === "refunded") return false;
+  if (orderUsesPayment(order, "credit")) return false;
+  if (orderUsesPayment(order, "mpesa")) return orderHasSuccessfulMpesa(order);
+  if (order.paid_at) return true;
+  if (order.status === "awaiting_payment") return false;
+  if (!restaurant) return true;
+  if (order.payment_method) return true;
+  return false;
+}
+
+export function saleStatus(
+  order: Order,
+  restaurant = false,
+): { label: string; tone: "ok" | "wait" | "fail" | "credit" } {
   if (order.status === "cancelled") {
     return { label: "Voided", tone: "fail" };
   }
@@ -74,12 +88,14 @@ function saleStatus(order: Order): { label: string; tone: "ok" | "wait" | "fail"
   if (orderUsesPayment(order, "credit")) {
     return { label: "On credit", tone: "credit" };
   }
-  if (!order.paid_at) {
+  if (restaurant && !isOrderSettled(order, true)) {
     if (order.status === "placed") return { label: "In Kitchen", tone: "wait" };
     if (order.status === "being_prepared") return { label: "Preparing", tone: "wait" };
     if (order.status === "ready") return { label: "Ready", tone: "ok" };
-    if (order.status === "picked_up") return { label: "Served · Unpaid", tone: "wait" };
-    if (order.status === "awaiting_payment") return { label: "Unpaid", tone: "wait" };
+    if (order.status === "picked_up" || order.status === "delivered") {
+      return { label: "Served · Unpaid", tone: "wait" };
+    }
+    return { label: "Unpaid", tone: "wait" };
   }
   return { label: "Paid", tone: "ok" };
 }
@@ -89,31 +105,55 @@ function orderDateKey(order: Order): string | null {
   return date ? nairobiDateKey(date) : null;
 }
 
-const SALES_CACHE_KEY = "trans-chap:sales";
-const SALES_STORAGE_KEY = "trans-chap:sales:cache:v1";
+const LEGACY_SALES_STORAGE_KEY = "trans-chap:sales:cache:v1";
 const INITIAL_VISIBLE_COUNT = 50;
 const VISIBLE_INCREMENT = 50;
+
+function salesCacheKey(accountId: string | number | undefined): string {
+  return `trans-chap:sales:${accountId ?? "default"}`;
+}
+
+function salesStorageKey(accountId: string | number | undefined): string {
+  return `trans-chap:sales:cache:v2:${accountId ?? "default"}`;
+}
+
+function filterAccountOrders(orders: Order[], accountId: string | number | undefined): Order[] {
+  if (!accountId) return orders;
+  const target = String(accountId);
+  return orders.filter((o) => !o.account_id || String(o.account_id) === target);
+}
 
 type SalesSnapshot = { orders: Order[]; truncated: boolean; timestamp?: number };
 
 type IndexedOrder = Order & {
   _searchText?: string;
   _saleStatus?: { label: string; tone: "ok" | "wait" | "fail" | "credit" };
+  _saleStatusRestaurant?: boolean;
   _dateKey?: string | null;
   _receipt?: TransChapReceipt;
 };
 
-function readSalesCache(): SalesSnapshot | null {
-  const mem = readPageCache<SalesSnapshot>(SALES_CACHE_KEY);
-  if (mem && mem.orders && mem.orders.length > 0) return mem;
+function readSalesCache(accountId: string | number | undefined): SalesSnapshot | null {
+  const cacheKey = salesCacheKey(accountId);
+  const mem = readPageCache<SalesSnapshot>(cacheKey);
+  if (mem && mem.orders && mem.orders.length > 0) {
+    return { ...mem, orders: filterAccountOrders(mem.orders, accountId) };
+  }
   if (typeof window === "undefined") return null;
   try {
-    const raw = sessionStorage.getItem(SALES_STORAGE_KEY);
+    sessionStorage.removeItem(LEGACY_SALES_STORAGE_KEY);
+    const raw = sessionStorage.getItem(salesStorageKey(accountId));
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && Array.isArray(parsed.orders) && parsed.orders.length > 0) {
-      writePageCache(SALES_CACHE_KEY, parsed);
-      return parsed as SalesSnapshot;
+    if (parsed && typeof parsed === "object" && Array.isArray(parsed.orders)) {
+      const scopedOrders = filterAccountOrders(parsed.orders as Order[], accountId);
+      const snapshot: SalesSnapshot = {
+        ...parsed,
+        orders: scopedOrders,
+        truncated: Boolean(parsed.truncated),
+      };
+      writePageCache(cacheKey, snapshot);
+      return snapshot;
     }
   } catch {
     // Ignore storage errors
@@ -121,11 +161,19 @@ function readSalesCache(): SalesSnapshot | null {
   return null;
 }
 
-function writeSalesCache(snapshot: SalesSnapshot) {
-  writePageCache(SALES_CACHE_KEY, snapshot);
+function writeSalesCache(accountId: string | number | undefined, snapshot: SalesSnapshot) {
+  const scoped: SalesSnapshot = {
+    ...snapshot,
+    orders: filterAccountOrders(snapshot.orders, accountId),
+  };
+  writePageCache(salesCacheKey(accountId), scoped);
   if (typeof window === "undefined") return;
   try {
-    sessionStorage.setItem(SALES_STORAGE_KEY, JSON.stringify({ ...snapshot, timestamp: Date.now() }));
+    sessionStorage.removeItem(LEGACY_SALES_STORAGE_KEY);
+    sessionStorage.setItem(
+      salesStorageKey(accountId),
+      JSON.stringify({ ...scoped, timestamp: Date.now() }),
+    );
   } catch {
     // Ignore quota errors
   }
@@ -137,6 +185,7 @@ function getOrderSearchText(order: IndexedOrder): string {
   const hay = [
     ...items.map((line) => line.product_name),
     order.order_number,
+    order.table_number,
     order.customer_name,
     order.customer_phone,
     order.mpesa_transaction?.mpesa_receipt_number,
@@ -149,10 +198,13 @@ function getOrderSearchText(order: IndexedOrder): string {
   return hay;
 }
 
-function getCachedSaleStatus(order: IndexedOrder) {
-  if (order._saleStatus !== undefined) return order._saleStatus;
-  const s = saleStatus(order);
+function getCachedSaleStatus(order: IndexedOrder, restaurant: boolean) {
+  if (order._saleStatus !== undefined && order._saleStatusRestaurant === restaurant) {
+    return order._saleStatus;
+  }
+  const s = saleStatus(order, restaurant);
   order._saleStatus = s;
+  order._saleStatusRestaurant = restaurant;
   return s;
 }
 
@@ -172,9 +224,11 @@ function getCachedReceipt(order: IndexedOrder, shopName: string): TransChapRecei
 
 export function TransChapSalesList() {
   const user = useAuthUser();
-  const restaurant = isRestaurantStore(user.active_account ?? user.account);
+  const activeAccount = user.active_account ?? user.account;
+  const accountId = activeAccount?.id;
+  const restaurant = isRestaurantStore(activeAccount);
   const listId = useId();
-  const [cached] = useState(() => readSalesCache());
+  const [cached] = useState(() => readSalesCache(accountId));
   const [orders, setOrders] = useState<Order[]>(cached?.orders ?? []);
   const initialLoadedRef = useRef(Boolean(cached?.orders?.length));
   const allLoadedRef = useRef(false);
@@ -223,7 +277,8 @@ export function TransChapSalesList() {
   const canVoid = isStoreAdmin(user);
   const undoActionFor = (order: Order) => (canVoid ? walkinUndoAction(order) : null);
   const canReturnGoods = (order: Order) => {
-    if (order.status === "cancelled") return false;
+    if (restaurant) return false;
+    if (order.status === "cancelled" || order.status === "refunded") return false;
     const items = order.items ?? [];
     if (!items.length) return false;
     return items.some((i) => i.quantity - (i.returned_quantity || 0) > 0);
@@ -234,7 +289,7 @@ export function TransChapSalesList() {
     "DukAI";
 
   const reload = useCallback(async (opts?: { silent?: boolean; forceAll?: boolean }) => {
-    const hasData = initialLoadedRef.current || Boolean(readSalesCache()?.orders?.length);
+    const hasData = initialLoadedRef.current || Boolean(readSalesCache(accountId)?.orders?.length);
     if (!opts?.silent && !hasData) {
       setLoading(true);
     }
@@ -249,10 +304,12 @@ export function TransChapSalesList() {
     const result = await fetchWalkinOrders({
       untilPastDateKey,
       onProgress: (progressiveOrders, meta) => {
+        const scopedProgress = filterAccountOrders(progressiveOrders, accountId);
         setOrders((existing) => {
-          const freshIds = new Set(progressiveOrders.map((o) => o.id));
-          const older = existing.filter((o) => !freshIds.has(o.id));
-          return [...progressiveOrders, ...older];
+          const scopedExisting = filterAccountOrders(existing, accountId);
+          const freshIds = new Set(scopedProgress.map((o) => o.id));
+          const older = scopedExisting.filter((o) => !freshIds.has(o.id));
+          return [...scopedProgress, ...older];
         });
         initialLoadedRef.current = true;
         setLoading(false);
@@ -262,17 +319,27 @@ export function TransChapSalesList() {
       },
     });
 
-    if (result.orders.length > 0) {
+    const scopedResult = filterAccountOrders(result.orders, accountId);
+    if (scopedResult.length > 0) {
       setOrders((existing) => {
-        const freshIds = new Set(result.orders.map((o) => o.id));
-        const older = existing.filter((o) => !freshIds.has(o.id));
-        const merged = [...result.orders, ...older];
-        writeSalesCache({
+        const scopedExisting = filterAccountOrders(existing, accountId);
+        const freshIds = new Set(scopedResult.map((o) => o.id));
+        const older = scopedExisting.filter((o) => !freshIds.has(o.id));
+        const merged = [...scopedResult, ...older];
+        writeSalesCache(accountId, {
           orders: merged,
           truncated: result.truncated,
         });
         return merged;
       });
+    } else if (!result.error && !untilPastDateKey) {
+      setOrders([]);
+      writeSalesCache(accountId, {
+        orders: [],
+        truncated: false,
+      });
+    } else {
+      setOrders((existing) => filterAccountOrders(existing, accountId));
     }
 
     if (!untilPastDateKey) {
@@ -283,7 +350,7 @@ export function TransChapSalesList() {
     setBackgroundSyncing(false);
     initialLoadedRef.current = true;
     setLoading(false);
-  }, [rangeFrom, selectedDate, when]);
+  }, [accountId, rangeFrom, selectedDate, when]);
 
   useEffect(() => {
     void reload();
@@ -296,19 +363,23 @@ export function TransChapSalesList() {
       const result = await fetchWalkinOrders({
         untilPastDateKey: targetDateKey,
         onProgress: (progressiveOrders) => {
+          const scopedProgress = filterAccountOrders(progressiveOrders, accountId);
           setOrders((existing) => {
-            const freshIds = new Set(progressiveOrders.map((o) => o.id));
-            const older = existing.filter((o) => !freshIds.has(o.id));
-            return [...progressiveOrders, ...older];
+            const scopedExisting = filterAccountOrders(existing, accountId);
+            const freshIds = new Set(scopedProgress.map((o) => o.id));
+            const older = scopedExisting.filter((o) => !freshIds.has(o.id));
+            return [...scopedProgress, ...older];
           });
         },
       });
-      if (result.orders.length > 0) {
+      const scopedResult = filterAccountOrders(result.orders, accountId);
+      if (scopedResult.length > 0) {
         setOrders((existing) => {
-          const freshIds = new Set(result.orders.map((o) => o.id));
-          const older = existing.filter((o) => !freshIds.has(o.id));
-          const merged = [...result.orders, ...older];
-          writeSalesCache({
+          const scopedExisting = filterAccountOrders(existing, accountId);
+          const freshIds = new Set(scopedResult.map((o) => o.id));
+          const older = scopedExisting.filter((o) => !freshIds.has(o.id));
+          const merged = [...scopedResult, ...older];
+          writeSalesCache(accountId, {
             orders: merged,
             truncated: result.truncated,
           });
@@ -321,7 +392,7 @@ export function TransChapSalesList() {
     } finally {
       setBackgroundSyncing(false);
     }
-  }, []);
+  }, [accountId]);
 
   const handleWhenChange = useCallback(
     (nextWhen: WhenFilter, targetDate?: string) => {
@@ -474,7 +545,7 @@ export function TransChapSalesList() {
       if (needle && !getOrderSearchText(idxOrder).includes(needle)) return false;
       if (method === "credit" && !orderUsesPayment(order, "credit")) return false;
       if (method === "mpesa" && !orderUsesPayment(order, "mpesa")) return false;
-      const tone = getCachedSaleStatus(idxOrder).tone;
+      const tone = getCachedSaleStatus(idxOrder, restaurant).tone;
       if (status === "paid" && tone !== "ok") return false;
       if (status === "waiting" && tone !== "wait") return false;
       if (status === "failed" && (tone !== "fail" || order.status === "cancelled" || order.status === "refunded")) {
@@ -489,7 +560,7 @@ export function TransChapSalesList() {
       if (when === "single") return key === selectedDate;
       return key >= rangeFrom && key <= rangeTo;
     });
-  }, [deferredQuery, method, orders, rangeFrom, rangeTo, selectedDate, status, when]);
+  }, [deferredQuery, method, orders, rangeFrom, rangeTo, restaurant, selectedDate, status, when]);
 
   useEffect(() => {
     setVisibleCount(INITIAL_VISIBLE_COUNT);
@@ -622,12 +693,93 @@ export function TransChapSalesList() {
   }
 
   function renderTableActions(order: Order, product: string) {
-    const sale = saleStatus(order);
     const undo = undoActionFor(order);
     const busy = stkBusyId === order.id || undoingId === order.id || bulkUndoing;
+    const isPaid = isOrderSettled(order, restaurant);
+    const isUndone = order.status === "cancelled" || order.status === "refunded";
+    const needsMpesaAction =
+      orderUsesPayment(order, "mpesa") &&
+      !orderHasSuccessfulMpesa(order) &&
+      !isUndone;
+
     return (
       <>
-        {sale.tone === "wait" || (orderUsesPayment(order, "mpesa") && sale.tone === "fail" && order.status !== "cancelled" && order.status !== "refunded") ? (
+        {restaurant && !isPaid && !isUndone && !orderUsesPayment(order, "credit") && !needsMpesaAction ? (
+          <button
+            type="button"
+            className="trans-chap-stock-table__icon-btn"
+            disabled={busy}
+            title={`Record payment (${formatKsh(order.total)})`}
+            aria-label={`Record payment for ${product}`}
+            onClick={() => setViewingOrder(order)}
+          >
+            <i className="fa-solid fa-money-bill-wave" aria-hidden />
+          </button>
+        ) : null}
+        {restaurant && order.workflow_actions ? (
+          (() => {
+            const stepAction = order.workflow_actions.find(
+              (a) =>
+                a.kind === "transition" &&
+                a.to_status !== "cancelled" &&
+                a.to_status !== "payment_received",
+            );
+            if (!stepAction) return null;
+            const stepIcon =
+              stepAction.to_status === "being_prepared"
+                ? "fa-fire-burner"
+                : stepAction.to_status === "ready"
+                  ? "fa-bell-concierge"
+                  : stepAction.to_status === "picked_up"
+                    ? "fa-utensils"
+                    : "fa-circle-check";
+            return (
+              <button
+                type="button"
+                className="trans-chap-stock-table__icon-btn"
+                title={stepAction.label}
+                aria-label={stepAction.label}
+                disabled={busy}
+                onClick={async () => {
+                  setStkBusyId(order.id);
+                  try {
+                    let updated: Order;
+                    if (stepAction.to_status === "picked_up") {
+                      const res = await apiFetch<OrderMutationResponse>(
+                        apiRoutes.orderConfirmHandoff(order.id),
+                        { method: "POST", body: "{}" },
+                      );
+                      updated = res.data;
+                    } else {
+                      const res = await apiFetch<OrderMutationResponse>(
+                        apiRoutes.orderTransition(order.id),
+                        {
+                          method: "POST",
+                          body: JSON.stringify({ to_status: stepAction.to_status }),
+                        },
+                      );
+                      updated = res.data;
+                    }
+                    setOrders((prev) =>
+                      prev.map((row) => (row.id === updated.id ? updated : row)),
+                    );
+                    if (viewingOrder?.id === updated.id) {
+                      setViewingOrder(updated);
+                    }
+                    await toastSuccess(stepAction.label);
+                  } catch (err) {
+                    await showError("Could not update order", extractErrorMessage(err));
+                  } finally {
+                    setStkBusyId(null);
+                  }
+                }}
+              >
+                <i className={`fa-solid ${stepIcon}`} aria-hidden />
+              </button>
+            );
+          })()
+        ) : null}
+        {needsMpesaAction ? (
           <button
             type="button"
             className="trans-chap-stock-table__icon-btn"
@@ -682,24 +834,27 @@ export function TransChapSalesList() {
   }
 
   function renderActions(order: Order, product: string) {
-    const sale = saleStatus(order);
     const undo = undoActionFor(order);
     const busy = stkBusyId === order.id || undoingId === order.id || bulkUndoing;
-    const isPaid = Boolean(order.paid_at);
+    const isPaid = isOrderSettled(order, restaurant);
     const isUndone = order.status === "cancelled" || order.status === "refunded";
+    const needsMpesaAction =
+      orderUsesPayment(order, "mpesa") &&
+      !orderHasSuccessfulMpesa(order) &&
+      !isUndone;
 
     return (
       <div className="trans-chap-actions-group">
         <button
           type="button"
           className="trans-chap-action-btn trans-chap-action-btn--view"
-          title={`View order ${order.order_number}`}
-          aria-label={`View order ${order.order_number}`}
+          title={`View ${restaurant ? "order" : "sale"} ${order.order_number}`}
+          aria-label={`View ${restaurant ? "order" : "sale"} ${order.order_number}`}
           onClick={() => setViewingOrder(order)}
         >
           <i className="fa-solid fa-eye" aria-hidden />
         </button>
-        {!isPaid && !isUndone ? (
+        {restaurant && !isPaid && !isUndone && !orderUsesPayment(order, "credit") && !needsMpesaAction ? (
           <button
             type="button"
             className="trans-chap-action-btn trans-chap-action-btn--pay"
@@ -710,7 +865,7 @@ export function TransChapSalesList() {
           >
             <i className="fa-solid fa-money-bill-wave" aria-hidden />
           </button>
-        ) : isPaid && !isUndone ? (
+        ) : restaurant && isPaid && !isUndone ? (
           <button
             type="button"
             className="trans-chap-action-btn trans-chap-action-btn--paid"
@@ -785,7 +940,7 @@ export function TransChapSalesList() {
             );
           })()
         ) : null}
-        {sale.tone === "wait" || (orderUsesPayment(order, "mpesa") && sale.tone === "fail" && !isUndone) ? (
+        {needsMpesaAction ? (
           <button
             type="button"
             className="trans-chap-action-btn trans-chap-action-btn--mpesa"
@@ -842,8 +997,8 @@ export function TransChapSalesList() {
             <input
               type="search"
               value={query}
-              placeholder="Search sales…"
-              aria-label="Search sales"
+              placeholder={restaurant ? "Search orders…" : "Search sales…"}
+              aria-label={restaurant ? "Search orders" : "Search sales"}
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>
@@ -1009,19 +1164,25 @@ export function TransChapSalesList() {
           <TransChapStatus tone="error">{error}</TransChapStatus>
         ) : orders.length === 0 ? (
           <TransChapStatus
-            actionHref="/trans-chap/sales/new"
-            actionLabel="Make a sale"
+            actionHref="/trans-chap/pos"
+            actionLabel={restaurant ? "Take order" : "Make a sale"}
           >
-            No sales yet.
+            {restaurant ? "No orders yet." : "No sales yet."}
           </TransChapStatus>
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: "center", padding: "1.5rem 1rem" }}>
             <p className="trans-chap-sales__empty" style={{ margin: "0 0 0.75rem" }}>
               {when === "single" && selectedDate === todayKey && activeFilterCount === 1 && !query.trim()
-                ? "No sales recorded today."
+                ? restaurant
+                  ? "No orders recorded today."
+                  : "No sales recorded today."
                 : filtersOn
-                  ? "No sales match these filters."
-                  : "No sales yet."}
+                  ? restaurant
+                    ? "No orders match these filters."
+                    : "No sales match these filters."
+                  : restaurant
+                    ? "No orders yet."
+                    : "No sales yet."}
             </p>
             {when !== "all" && orders.length > 0 && !query.trim() && activeFilterCount === 1 ? (
               <button
@@ -1030,7 +1191,7 @@ export function TransChapSalesList() {
                 onClick={() => handleWhenChange("all")}
                 style={{ padding: "0.5rem 1rem", fontSize: "0.85rem", cursor: "pointer" }}
               >
-                View all sales
+                {restaurant ? "View all orders" : "View all sales"}
               </button>
             ) : null}
           </div>
@@ -1040,12 +1201,12 @@ export function TransChapSalesList() {
               <thead>
                 <tr>
                   {selecting ? <th className="trans-chap-stock-table__check" scope="col"> </th> : null}
-                  <th scope="col">Items</th>
+                  <th scope="col">{restaurant ? "Order" : "Items"}</th>
                   <th scope="col">Ref</th>
                   <th scope="col">Qty</th>
                   <th scope="col">Total</th>
                   <th scope="col">Method</th>
-                  <th scope="col">Customer</th>
+                  <th scope="col">{restaurant ? "Table / Guest" : "Customer"}</th>
                   <th scope="col">Time</th>
                   <th scope="col">Status</th>
                   <th className="trans-chap-stock-table__actions" scope="col">
@@ -1056,10 +1217,14 @@ export function TransChapSalesList() {
               <tbody>
                 {displayedOrders.map((order) => {
                   const items = order.items ?? [];
-                  const product = items[0]?.product_name || "Sale";
+                  const rawProduct = items[0]?.product_name || (restaurant ? "Order" : "Sale");
+                  const product =
+                    restaurant && order.table_number
+                      ? `${order.table_number} · ${rawProduct}`
+                      : rawProduct;
                   const extra = items.length > 1 ? ` +${items.length - 1}` : "";
                   const qty = items.reduce((sum, line) => sum + (line.quantity || 0), 0);
-                  const sale = saleStatus(order);
+                  const sale = saleStatus(order, restaurant);
                   const receipt = receiptFromOrder(order, shopName);
                   const picked = selectedIds.has(order.id);
                   const undone = order.status === "cancelled" || order.status === "refunded";
@@ -1077,10 +1242,10 @@ export function TransChapSalesList() {
                         className="trans-chap-stock-table__product"
                         onClick={() => setViewingOrder(order)}
                         style={{ cursor: "pointer" }}
-                        title="Click to view order details"
+                        title="Click to view details"
                       >
                         <div>{`${product}${extra}`}</div>
-                        {Number(order.returned_total || 0) > 0 ? (
+                        {!restaurant && Number(order.returned_total || 0) > 0 ? (
                           <span
                             style={{
                               display: "inline-block",
@@ -1101,19 +1266,23 @@ export function TransChapSalesList() {
                         className="trans-chap-stock-table__mono"
                         onClick={() => setViewingOrder(order)}
                         style={{ cursor: "pointer" }}
-                        title="Click to view order details"
+                        title="Click to view details"
                       >
                         {receipt.orderNumber}
                       </td>
                       <td className="trans-chap-stock-table__mono">{qty}</td>
                       <td className="trans-chap-stock-table__strong">{formatKsh(order.total)}</td>
-                      <td title={transChapReceiptPayLabel(receipt)}>
+                      <td title={transChapReceiptPayLabel(receipt, restaurant)}>
                         {receipt.paymentSplits
                           ? receipt.paymentSplits.map((p) => PAYMENT_LABELS[p.method]).join(" + ")
-                          : transChapPayLabel(receipt.payMode)}
+                          : order.payment_method && order.payment_method !== "split"
+                            ? (PAYMENT_LABELS[order.payment_method] ?? transChapPayLabel(receipt.payMode, restaurant))
+                            : transChapPayLabel(receipt.payMode, restaurant)}
                       </td>
                       <td className="trans-chap-stock-table__wrap">
-                        {receipt.customerName?.trim() || "Walk-in"}
+                        {restaurant
+                          ? receipt.customerName?.trim() || order.table_number || "Walk-in guest"
+                          : receipt.customerName?.trim() || "Walk-in"}
                       </td>
                       <td className="trans-chap-stock-table__mono">
                         {formatNairobiStamp24(receipt.paidAt) || "—"}
@@ -1151,7 +1320,7 @@ export function TransChapSalesList() {
               (sum, line) => sum + (line.quantity || 0),
               0,
             );
-            const sale = saleStatus(order);
+            const sale = saleStatus(order, restaurant);
             const undoable = undoActionFor(order) !== null;
             const open = !selecting && openId === order.id;
             const panelId = `${listId}-${order.id}`;
@@ -1198,9 +1367,13 @@ export function TransChapSalesList() {
                         ? "On the customer’s tab. Not paid yet."
                         : sale.tone === "ok"
                           ? "Payment received."
-                          : sale.tone === "wait"
+                          : orderUsesPayment(order, "mpesa") && sale.tone === "wait"
                             ? "Waiting for M-PESA. Tap Complete M-PESA to send a prompt or enter the SMS code."
-                            : "M-PESA didn’t go through. Tap Complete M-PESA to try again or enter the SMS code."}
+                            : orderUsesPayment(order, "mpesa") && sale.tone === "fail"
+                              ? "M-PESA didn’t go through. Tap Complete M-PESA to try again or enter the SMS code."
+                              : restaurant
+                                ? "Bill has not been settled yet. Tap Record payment when the guest pays."
+                                : "Payment received."}
                 </p>
                 {orderUsesPayment(order, "mpesa") && order.mpesa_transaction ? (
                   <MpesaFlowStatus
@@ -1218,7 +1391,7 @@ export function TransChapSalesList() {
                       <span>
                         {line.product_name}
                         {line.quantity > 1 ? ` × ${line.quantity}` : ""}
-                        {Number(line.returned_quantity || 0) > 0 ? (
+                        {!restaurant && Number(line.returned_quantity || 0) > 0 ? (
                           <em style={{ fontStyle: "normal", color: "#b45309", fontSize: "0.74rem", marginLeft: 6 }}>
                             ({line.returned_quantity} returned)
                           </em>
@@ -1228,7 +1401,7 @@ export function TransChapSalesList() {
                     </li>
                   ))}
                 </ul>
-                {Number(order.returned_total || 0) > 0 || (order.returns && order.returns.length > 0) ? (
+                {!restaurant && (Number(order.returned_total || 0) > 0 || (order.returns && order.returns.length > 0)) ? (
                   <div
                     style={{
                       margin: "0.6rem 0",
@@ -1266,11 +1439,15 @@ export function TransChapSalesList() {
                   </div>
                   <div>
                     <dt>Method</dt>
-                    <dd>{transChapReceiptPayLabel(receipt)}</dd>
+                    <dd>{transChapReceiptPayLabel(receipt, restaurant)}</dd>
                   </div>
                   <div>
-                    <dt>Customer</dt>
-                    <dd>{receipt.customerName?.trim() || "Walk-in"}</dd>
+                    <dt>{restaurant ? "Table / Guest" : "Customer"}</dt>
+                    <dd>
+                      {restaurant
+                        ? receipt.customerName?.trim() || order.table_number || "Walk-in guest"
+                        : receipt.customerName?.trim() || "Walk-in"}
+                    </dd>
                   </div>
                   {receipt.mpesaReceiptNumber ? (
                     <div>
@@ -1324,14 +1501,16 @@ export function TransChapSalesList() {
       ) : (
         <TransChapFab label={restaurant ? "Take order" : "New sale"} href="/trans-chap/pos" />
       )}
-      <TransChapGoodsOnReturnModal
-        order={returnOrder}
-        open={Boolean(returnOrder)}
-        onClose={() => setReturnOrder(null)}
-        onSuccess={(updated) => {
-          setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
-        }}
-      />
+      {!restaurant ? (
+        <TransChapGoodsOnReturnModal
+          order={returnOrder}
+          open={Boolean(returnOrder)}
+          onClose={() => setReturnOrder(null)}
+          onSuccess={(updated) => {
+            setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+          }}
+        />
+      ) : null}
       <TransChapOrderDetailModal
         order={viewingOrder}
         open={Boolean(viewingOrder)}
@@ -1340,7 +1519,7 @@ export function TransChapSalesList() {
           setOrders((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
           setViewingOrder(updated);
         }}
-        onReturnGoods={(order) => setReturnOrder(order)}
+        onReturnGoods={!restaurant ? (order) => setReturnOrder(order) : undefined}
         onVoidOrder={(order) => void undoSale(order)}
         restaurant={restaurant}
       />

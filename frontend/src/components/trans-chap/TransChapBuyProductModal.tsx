@@ -15,6 +15,7 @@ export type BuyProductDraft = {
   weight: string;
   isBundle?: boolean;
   bundleQuantity?: string;
+  allowFractional?: boolean;
 };
 
 const ALL_ROLE_OPTIONS: { id: InventoryRole; label: string; hint: string }[] = [
@@ -30,6 +31,7 @@ const EMPTY: BuyProductDraft = {
   weight: "",
   isBundle: false,
   bundleQuantity: "",
+  allowFractional: false,
 };
 
 type Props = {
@@ -80,6 +82,7 @@ export function TransChapBuyProductModal({
       weight: draft.weight.trim(),
       isBundle: draft.isBundle,
       bundleQuantity: draft.bundleQuantity?.trim(),
+      allowFractional: Boolean(draft.allowFractional),
     });
   }
 
@@ -220,6 +223,23 @@ export function TransChapBuyProductModal({
               <small className="trans-chap-purchase-modal__field-hint">
                 For example, enter 30 if each crate contains 30 pieces.
               </small>
+            </div>
+          ) : null}
+
+          {draft.role !== "raw_material" ? (
+            <div className="trans-chap-purchase-modal__bundle trans-chap-purchase-modal__span">
+              <label className="trans-chap-purchase-modal__bundle-toggle">
+                <input
+                  type="checkbox"
+                  className="trans-chap-purchase-modal__bundle-check"
+                  checked={Boolean(draft.allowFractional)}
+                  onChange={(e) => patch({ allowFractional: e.target.checked })}
+                />
+                <span>
+                  <strong>Enable fractional selling (1/4, 1/2, 3/4, Full)</strong>
+                  <small>Allow selling quarter, half, three-quarter, and full units at POS.</small>
+                </span>
+              </label>
             </div>
           ) : null}
 

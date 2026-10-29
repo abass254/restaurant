@@ -26,6 +26,75 @@ export function baseUnitName(item: InventoryItem): string {
   return unit || "Piece";
 }
 
+const KILOGRAM_UNITS = new Set([
+  "kg",
+  "kgs",
+  "kg(s)",
+  "kilogram",
+  "kilograms",
+  "kilogram(s)",
+]);
+
+const LITRE_UNITS = new Set([
+  "l",
+  "ls",
+  "l(s)",
+  "liter",
+  "liters",
+  "litre",
+  "litres",
+  "liter(s)",
+  "litre(s)",
+]);
+
+export function allowsFractionalSelling(
+  item: InventoryItem | null | undefined,
+): boolean {
+  const attrs = asRecord(item?.attributes);
+  return attrs?.allow_fractional === true;
+}
+
+export function mergeFractionalIntoAttributes(
+  attributes: Record<string, unknown> | null | undefined,
+  allowFractional: boolean,
+): Record<string, unknown> | null {
+  const next = { ...(attributes || {}) };
+  if (allowFractional) {
+    next.allow_fractional = true;
+  } else {
+    delete next.allow_fractional;
+  }
+  return Object.keys(next).length ? next : null;
+}
+
+export function fractionalBaseUnitLabel(
+  item: InventoryItem | null | undefined,
+): string {
+  const rawUnit = item?.product?.unit?.trim() || "";
+  const normalized = rawUnit.toLowerCase().replace(/\.$/, "");
+  if (KILOGRAM_UNITS.has(normalized)) return "KG";
+  if (LITRE_UNITS.has(normalized)) return "L";
+  const servingUnit = item?.product?.recipe_serving_unit?.trim();
+  if (servingUnit) return servingUnit;
+  if (rawUnit) return rawUnit;
+  return "Unit";
+}
+
+export function fractionalSellUnits(
+  item: InventoryItem | null | undefined,
+): { name: string; label: string; factor: number }[] {
+  if (!allowsFractionalSelling(item)) {
+    return [];
+  }
+  const baseUnit = fractionalBaseUnitLabel(item);
+  return [
+    { name: `1/4 ${baseUnit}`, label: "1/4", factor: 0.25 },
+    { name: `1/2 ${baseUnit}`, label: "1/2", factor: 0.5 },
+    { name: `3/4 ${baseUnit}`, label: "3/4", factor: 0.75 },
+    { name: baseUnit, label: "Full", factor: 1 },
+  ];
+}
+
 export function packUnits(item: InventoryItem | null | undefined): SellUnit[] {
   const attrs = asRecord(item?.attributes);
   const raw = attrs?.sell_units;
