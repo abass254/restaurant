@@ -206,7 +206,7 @@ export function TransChapMenuGroupEditor({
       : rule === "optional_one"
         ? [0, 1]
         : [showMin ? parseCount(minText, 0) : 0, Math.max(2, parseCount(maxText, 3))];
-  const priceError = !isKitchen && filled.some((option) => option.price.trim() && parseAmount(option.price) == null && Number(option.price) !== 0);
+  const priceError = filled.some((option) => option.price.trim() && parseAmount(option.price) == null && Number(option.price) !== 0);
   const portionError = isKitchen && filled.some((option) => option.portion.trim() && (Number(option.portion) <= 0 || !Number.isFinite(Number(option.portion))));
   const ruleError =
     minSelect > maxSelect
@@ -254,11 +254,10 @@ export function TransChapMenuGroupEditor({
           const portionNum = Number(option.portion);
           const stockQty = Number.isFinite(portionNum) && portionNum > 0 ? portionNum : (option.recipe?.stock_qty ?? 1);
           const portionUnit = (option.portionUnit || defaultPortionUnit || option.recipe?.portion_unit || "").trim() || null;
-          const existingPrice = group?.options.find((o) => o.id === option.id)?.price_delta ?? 0;
           return {
             ...(option.id ? { id: option.id } : {}),
             name: option.name.trim(),
-            price_delta: isKitchen ? existingPrice : (parseAmount(option.price) ?? 0),
+            price_delta: parseAmount(option.price) ?? 0,
             ...(option.recipe
               ? {
                   product_id: option.recipe.product_id,
@@ -400,7 +399,7 @@ export function TransChapMenuGroupEditor({
               <label>{isExtra ? "Extras" : "Options"}</label>
               <span className="pos-menu-modal__label-hint">
                 {isKitchen
-                  ? `Kitchen modifiers use meal unit (${mealUnit}) · Prices are set on the meal in Menu`
+                  ? `Kitchen modifiers track portion sizes (${mealUnit}) and optional extra pricing (+KES)`
                   : isExtra
                     ? "Set each extra’s recipe from Kitchen after saving"
                     : "Leave price empty if free · Uses deducts stock when picked"}
@@ -408,7 +407,7 @@ export function TransChapMenuGroupEditor({
             </div>
             <ul className="tc-mod__options">
               {options.map((option, index) => {
-                const badPrice = !isKitchen && !!option.price.trim() && parseAmount(option.price) == null && Number(option.price) !== 0;
+                const badPrice = !!option.price.trim() && parseAmount(option.price) == null && Number(option.price) !== 0;
                 const badPortion = isKitchen && !!option.portion.trim() && (Number(option.portion) <= 0 || !Number.isFinite(Number(option.portion)));
                 const currentUnit = option.portionUnit || mealUnit;
                 return (
@@ -423,7 +422,7 @@ export function TransChapMenuGroupEditor({
                         onChange={(e) => patchOption(option.key, { name: e.target.value })}
                       />
                       {isKitchen ? (
-                        <label className={`tc-mod__price${badPortion ? " is-error" : ""}`} title={`Quantity in ${currentUnit}`}>
+                        <label className={`tc-mod__portion-field${badPortion ? " is-error" : ""}`} title={`Portion in ${currentUnit}`}>
                           {unitOptions.length > 1 ? (
                             <select
                               className="tc-mod__unit-select"
@@ -438,7 +437,7 @@ export function TransChapMenuGroupEditor({
                               ))}
                             </select>
                           ) : (
-                            <span style={{ textTransform: "capitalize" }}>{currentUnit}</span>
+                            <span className="tc-mod__unit-label" style={{ textTransform: "capitalize" }}>{currentUnit}</span>
                           )}
                           <input
                             type="number"
@@ -451,19 +450,18 @@ export function TransChapMenuGroupEditor({
                             onChange={(e) => patchOption(option.key, { portion: e.target.value })}
                           />
                         </label>
-                      ) : (
-                        <label className={`tc-mod__price${badPrice ? " is-error" : ""}`}>
-                          <span>+KES</span>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            placeholder="0"
-                            aria-label={isExtra ? "Extra price" : "Option price"}
-                            value={option.price}
-                            onChange={(e) => patchOption(option.key, { price: e.target.value })}
-                          />
-                        </label>
-                      )}
+                      ) : null}
+                      <label className={`tc-mod__price${badPrice ? " is-error" : ""}`}>
+                        <span>+KES</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="0"
+                          aria-label={isExtra ? "Extra price" : "Option price"}
+                          value={option.price}
+                          onChange={(e) => patchOption(option.key, { price: e.target.value })}
+                        />
+                      </label>
                       <button
                         type="button"
                         className="tc-mod__icon"
@@ -642,18 +640,23 @@ export function modifierOptionsSummary(group: ModifierGroup, showMoney: boolean 
   return group.options
     .filter((option) => option.is_active)
     .map((option) => {
-      if (!showMoney) {
-        if (option.portion_unit) {
-          const qty = option.stock_qty ?? 1;
-          return `${option.name} (${qty} ${option.portion_unit})`;
-        }
-        if (option.stock_qty != null && option.stock_qty !== 1) {
-          return `${option.name} (${option.stock_qty}x)`;
-        }
-        return option.name;
+      const parts: string[] = [];
+      if (option.portion_unit) {
+        const qty = option.stock_qty ?? 1;
+        parts.push(`${qty} ${option.portion_unit}`);
+      } else if (option.stock_qty != null && option.stock_qty !== 1) {
+        parts.push(`${option.stock_qty}x`);
       }
-      const price = group.included ? 0 : Number(option.price_delta) || 0;
-      return price > 0 ? `${option.name} +${price}` : option.name;
+      if (showMoney) {
+        const price = group.included ? 0 : Number(option.price_delta) || 0;
+        if (price > 0) {
+          parts.push(`+KSh ${price.toLocaleString()}`);
+        }
+      }
+      if (parts.length > 0) {
+        return `${option.name} (${parts.join(" · ")})`;
+      }
+      return option.name;
     })
     .join(" · ");
 }

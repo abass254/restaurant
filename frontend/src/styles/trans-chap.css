@@ -17160,7 +17160,37 @@ html[data-trans-chap-machine="phone"] .mobile-nav > a[href="/trans-chap/mpesa"] 
     text-transform: capitalize;
 }
 
+.tc-mod__portion-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex: none;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--app-text-muted);
+}
+
+.tc-mod__portion-field input {
+    width: 3.8rem;
+    min-height: 38px;
+    border: 1px solid var(--app-border);
+    border-radius: 9px;
+    background: var(--app-surface);
+    color: var(--app-text);
+    font-size: 0.9rem;
+    font-weight: 700;
+    padding: 0 0.45rem;
+}
+
+.tc-mod__unit-label {
+    max-width: 5.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .tc-mod__price.is-error input,
+.tc-mod__portion-field.is-error input,
 .tc-mod__stock input.is-error {
     border-color: #dc2626;
 }

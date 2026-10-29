@@ -1771,6 +1771,15 @@ function CurrentMenuSection({
         updatedProduct = response.data;
         savedParts.push("Meal name");
       }
+      const previousGroups = recipeEditor.product?.modifier_groups ?? [];
+      const previousIds = previousGroups.map((group) => group.id);
+      const groupsChanged =
+        previousIds.length !== selectedModifierGroupIds.length ||
+        previousIds.some((id, index) => id !== selectedModifierGroupIds[index]);
+      const attachedGroups = groupsChanged
+        ? await saveItemModifierGroups(recipeEditor.product_id, selectedModifierGroupIds)
+        : previousGroups;
+      if (groupsChanged) savedParts.push("Modifiers");
       const saved = await saveRecipe(
         recipeEditor.product_id,
         recipeDraftLines(recipeDraft, supplies).map((line) => ({
@@ -1784,15 +1793,6 @@ function CurrentMenuSection({
         recipeServingUnit.trim(),
       );
       savedParts.push("Recipe");
-      const previousGroups = recipeEditor.product?.modifier_groups ?? [];
-      const previousIds = previousGroups.map((group) => group.id);
-      const groupsChanged =
-        previousIds.length !== selectedModifierGroupIds.length ||
-        previousIds.some((id, index) => id !== selectedModifierGroupIds[index]);
-      const attachedGroups = groupsChanged
-        ? await saveItemModifierGroups(recipeEditor.product_id, selectedModifierGroupIds)
-        : previousGroups;
-      if (groupsChanged) savedParts.push("Modifiers");
       setDishes((previous) =>
         previous.map((dish) =>
           dish.id === recipeEditor.id && dish.product
@@ -2408,7 +2408,7 @@ function CurrentMenuSection({
                   onChange={setSelectedModifierGroupIds}
                   onNewGroup={() => setGroupEditor({ group: null, attach: true })}
                   onEditGroup={(group) => setGroupEditor({ group, attach: false })}
-                  showMoney={false}
+                  showMoney={true}
                 />
               ) : null}
               <footer className="pos-menu-modal__footer tc-menu__footer tc-menu__recipe-footer">
