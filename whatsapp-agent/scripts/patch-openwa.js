@@ -139,7 +139,7 @@ patchFile("lib/wapi.js", (src) => {
   const newGetMe =
     "window.WAPI.getMe = function () {\n" +
     "    const contact = (window.Store && window.Store.Contact && window.Store.Me && window.Store.Me.wid) ? window.Store.Contact.get(window.Store.Me.wid) : null;\n" +
-    "    const wid = (window.Store && window.Store.Me && (window.Store.Me.wid || window.Store.Me.me)) || (contact && contact.id) || { user: 'dukai', _serialized: 'dukai@c.us' };\n" +
+    "    const wid = (window.Store && window.Store.Me && (window.Store.Me.wid || window.Store.Me.me)) || (contact && contact.id) || { user: 'TransChap', _serialized: 'TransChap@c.us' };\n" +
     "    return {\n" +
     "        ...WAPI.quickClean({\n" +
     "            ...(contact && contact.attributes ? contact.attributes : {}),\n" +
@@ -152,7 +152,7 @@ patchFile("lib/wapi.js", (src) => {
   if (src.includes(oldGetMe)) {
     src = src.replace(oldGetMe, newGetMe);
   } else if (src.includes("me: (window.Store && window.Store.Me) ? window.Store.Me.me : null")) {
-    src = src.replace("me: (window.Store && window.Store.Me) ? window.Store.Me.me : null", "me: (window.Store && window.Store.Me && (window.Store.Me.wid || window.Store.Me.me)) || { user: 'dukai', _serialized: 'dukai@c.us' }");
+    src = src.replace("me: (window.Store && window.Store.Me) ? window.Store.Me.me : null", "me: (window.Store && window.Store.Me && (window.Store.Me.wid || window.Store.Me.me)) || { user: 'TransChap', _serialized: 'TransChap@c.us' }");
   }
 
   return src;

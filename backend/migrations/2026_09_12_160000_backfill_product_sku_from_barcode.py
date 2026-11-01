@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import inspect, text  # noqa: E402
 
 from app.database import engine  # noqa: E402
 
@@ -45,11 +45,21 @@ def main() -> None:
     updated = 0
     skipped = 0
     with engine.begin() as conn:
+        inspector = inspect(conn)
+        tables = set(inspector.get_table_names())
+        if "products" in tables:
+            catalogue_table = "products"
+        elif "catalogue" in tables:
+            catalogue_table = "catalogue"
+        else:
+            print("No products/catalogue table found; skipping SKU backfill.")
+            return
+
         rows = conn.execute(
             text(
-                """
+                f"""
                 SELECT id, sku, attributes
-                FROM products
+                FROM {catalogue_table}
                 WHERE attributes IS NOT NULL
                   AND (sku IS NULL OR TRIM(sku) = '')
                 """
@@ -63,7 +73,7 @@ def main() -> None:
                 skipped += 1
                 continue
             conn.execute(
-                text("UPDATE products SET sku = :sku WHERE id = :id"),
+                text(f"UPDATE {catalogue_table} SET sku = :sku WHERE id = :id"),
                 {"sku": barcode, "id": data["id"]},
             )
             updated += 1

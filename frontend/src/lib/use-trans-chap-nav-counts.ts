@@ -263,12 +263,12 @@ export function useTransChapNavCounts({
     const interval = window.setInterval(() => void refresh(), POLL_MS);
     window.addEventListener("focus", refresh);
     window.addEventListener("trans-chap:refresh-counts", refresh);
-    window.addEventListener("dukai:notification", refresh);
+    window.addEventListener("TransChap:notification", refresh);
     return () => {
       window.clearInterval(interval);
       window.removeEventListener("focus", refresh);
       window.removeEventListener("trans-chap:refresh-counts", refresh);
-      window.removeEventListener("dukai:notification", refresh);
+      window.removeEventListener("TransChap:notification", refresh);
     };
   }, [refresh]);
 

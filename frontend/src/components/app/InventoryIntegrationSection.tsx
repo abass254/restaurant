@@ -106,7 +106,7 @@ export function InventoryIntegrationSection() {
       </header>
       <form className="settings-card__body" onSubmit={(event) => void handleSubmit(event)}>
         <p className="settings-muted">
-          Choose where duKAi reads product prices and stock. Platform inventory uses your duKAi
+          Choose where TransChap reads product prices and stock. Platform inventory uses your TransChap
           catalogue; external connects to your existing ERP or POS API (read-through).
         </p>
 
@@ -121,7 +121,7 @@ export function InventoryIntegrationSection() {
               }))
             }
           >
-            <option value="platform">Use duKAi inventory</option>
+            <option value="platform">Use TransChap inventory</option>
             <option value="external">Connect existing inventory (API)</option>
             <option value="hybrid">Hybrid (platform + external)</option>
           </select>

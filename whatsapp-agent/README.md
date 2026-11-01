@@ -1,7 +1,7 @@
-# DukAI WhatsApp agent (openWA)
+# TransChap WhatsApp agent (openWA)
 
 Platform-level WhatsApp Web session for **order notifications and alerts**.
-Merchants do not connect their own numbers — super admins link one DukAI
+Merchants do not connect their own numbers — super admins link one TransChap
 account from **Admin → WhatsApp**.
 
 ## Run

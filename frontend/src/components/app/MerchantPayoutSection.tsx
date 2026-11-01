@@ -86,7 +86,7 @@ export function MerchantPayoutSection() {
     const merchant = merchants.find((m) => m.id === accountId);
     const ok = await confirmAction(
       "Send money to merchant?",
-      `This sends KES ${parsedAmount.toLocaleString()} from the DukAI hub Paybill to ${
+      `This sends KES ${parsedAmount.toLocaleString()} from the TransChap hub Paybill to ${
         merchant?.business_name ?? "the selected store"
       } via M-PESA B2B. This uses real funds when MPESA_MODE is production.`,
       "Yes, send payout",
@@ -123,11 +123,11 @@ export function MerchantPayoutSection() {
           <i className="fa-solid fa-paper-plane settings-card__icon" aria-hidden="true" />
           <h2>Send to merchant</h2>
         </div>
-        <span className="settings-pill settings-pill--neutral">DukAI → Merchant</span>
+        <span className="settings-pill settings-pill--neutral">TransChap → Merchant</span>
       </header>
       <div className="settings-card__body">
         <p className="settings-muted settings-card__lead">
-          Last leg of Client → DukAI → Merchant. Pay a merchant from the DukAI hub Paybill (B2B)
+          Last leg of Client → TransChap → Merchant. Pay a merchant from the TransChap hub Paybill (B2B)
           when the hub already holds funds and you want to settle a store without a new client STK.
         </p>
 
@@ -137,7 +137,7 @@ export function MerchantPayoutSection() {
               <i className="fa-solid fa-building-columns" />
             </span>
             <div className="mpesa-money-flow__copy">
-              <strong>DukAI hub</strong>
+              <strong>TransChap hub</strong>
               <span>Funds leave the platform Paybill</span>
             </div>
           </li>

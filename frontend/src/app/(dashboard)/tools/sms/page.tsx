@@ -10,7 +10,7 @@ import { isInternalToolsUser } from "@/lib/internal-tools-access";
 import { Skeleton } from "@/components/app/Skeleton";
 import type { SmsTestSendResponse, SmsToolsStatus } from "@/lib/types";
 
-const DEFAULT_TEST_TEXT = "DukAI test SMS from Tools → SMS.";
+const DEFAULT_TEST_TEXT = "TransChap test SMS from Tools → SMS.";
 
 export default function ToolsSmsPage() {
   const user = useAuthUser();

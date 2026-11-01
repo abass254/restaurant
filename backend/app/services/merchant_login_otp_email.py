@@ -9,8 +9,8 @@ from app.services.email_templates import render_branded_email
 
 logger = logging.getLogger(__name__)
 
-OTP_EMAIL_FROM_ADDRESS = "no-reply@dukai.app"
-OTP_EMAIL_FROM_NAME = "DUKAI MERCHANT"
+OTP_EMAIL_FROM_ADDRESS = "no-reply@transchap.app"
+OTP_EMAIL_FROM_NAME = "TRANSCHAP MERCHANT"
 
 
 def send_merchant_login_otp_email(
@@ -35,8 +35,8 @@ def send_merchant_login_otp_email(
     minutes = max(1, expires_in_seconds // 60)
 
     html = render_branded_email(
-        title="Your DukAI login code",
-        heading="Sign in to DukAI Merchants",
+        title="Your TransChap login code",
+        heading="Sign in to TransChap Merchants",
         intro=f"Hi {first_name}, use this one-time code to sign in to your dashboard.",
         paragraphs=[
             f"Your login code is {code}.",
@@ -45,15 +45,15 @@ def send_merchant_login_otp_email(
         details=[
             ("Login code", code),
         ],
-        footer_note="Only enter this code on the DukAI Merchants sign-in page.",
+        footer_note="Only enter this code on the TransChap Merchants sign-in page.",
     )
     return service.send_email(
         to=recipient,
         to_name=user_name,
-        subject=f"Your DukAI login code: {code}",
+        subject=f"Your TransChap login code: {code}",
         text=(
             f"Hi {first_name},\n\n"
-            f"Your DukAI Merchants login code is: {code}\n\n"
+            f"Your TransChap Merchants login code is: {code}\n\n"
             f"It expires in about {minutes} minutes.\n"
             "If you did not request this, you can ignore the email."
         ),

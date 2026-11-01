@@ -163,7 +163,7 @@ def record_merchant_direct_mpesa_for_order(
     *,
     confirmed_by_user_id: str | None = None,
 ) -> MpesaTransaction:
-    """Bookkeep a payment made straight to the merchant (not via DukAI STK).
+    """Bookkeep a payment made straight to the merchant (not via TransChap STK).
 
     Creates a successful ``mpesa_transactions`` row with payout skipped — the
     money never sat in the hub Paybill, so nothing should be swept out.
@@ -201,7 +201,7 @@ def record_merchant_direct_mpesa_for_order(
             "confirmed_by": confirmed_by_user_id,
         },
         payout_status="skipped",
-        payout_result_desc="Customer paid the merchant directly (not via DukAI hub).",
+        payout_result_desc="Customer paid the merchant directly (not via TransChap hub).",
         payout_amount=amount,
         payout_completed_at=now,
         order_id=order.id,

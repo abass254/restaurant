@@ -1,7 +1,7 @@
 {
-  "name": "DukAI Rider",
+  "name": "TransChap Rider",
   "short_name": "Rider",
-  "description": "Delivery trips for DukAI merchant fleets",
+  "description": "Delivery trips for TransChap merchant fleets",
   "start_url": "/r/home",
   "scope": "/r/",
   "display": "standalone",

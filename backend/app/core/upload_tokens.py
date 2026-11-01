@@ -45,7 +45,7 @@ _REVOKED: dict[str, float] = {}
 def _serializer(settings: Settings) -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(
         settings.session_secret,
-        salt="dukai-product-upload-token",
+        salt="TransChap-product-upload-token",
     )
 
 

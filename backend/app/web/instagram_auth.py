@@ -63,9 +63,9 @@ def _known_oauth_return_origin(origin: str) -> str | None:
     """Allow known app hosts on OAuth callback even if this backend's env omits them."""
     normalized = origin.rstrip("/")
     for candidate in (
-        "https://dukai.app",
-        "https://uat.dukai.app",
-        "https://merchants.dukai.app",
+        "https://transchap.app",
+        "https://uat.transchap.app",
+        "https://merchants.transchap.app",
     ):
         if normalized == candidate:
             return candidate
@@ -170,7 +170,7 @@ def instagram_callback(
 ):
     if hub_mode:
         logger.warning(
-            "Meta webhook verify hit OAuth callback URL; handshake belongs on dukai.app"
+            "Meta webhook verify hit OAuth callback URL; handshake belongs on transchap.app"
         )
         return verify_instagram_webhook(hub_mode, hub_verify_token, hub_challenge)
 

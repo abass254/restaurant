@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AuthSubmitButton } from "@/components/auth/AuthSubmitButton";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import { adminLoginFormAction } from "./actions";
 
 type PageProps = {
@@ -10,7 +10,7 @@ type PageProps = {
 };
 
 export const metadata = {
-  title: "Admin sign in — DukAI",
+  title: "Admin sign in — TransChap",
 };
 
 export default async function AdminLoginPage({ searchParams }: PageProps) {
@@ -21,9 +21,9 @@ export default async function AdminLoginPage({ searchParams }: PageProps) {
     <div className="landing-ufanisi auth-page auth-page--admin">
       <nav className="ufanisi-nav auth-nav" aria-label="Admin sign in">
         <Link href="/" className="logo">
-          <DukAiLogoMark size={48} />
+          <TransChapLogoMark size={48} />
           <span className="logo-text">
-            Duk<span className="logo-accent">AI</span>
+            TransChap
           </span>
         </Link>
         <Link href="/sign-in" className="auth-nav__home">
@@ -42,7 +42,7 @@ export default async function AdminLoginPage({ searchParams }: PageProps) {
               Super admin <span>console</span>
             </h1>
             <p>
-              Oversight for every merchant on DukAI. Inspect accounts, users,
+              Oversight for every merchant on TransChap. Inspect accounts, users,
               connected channels and platform-wide activity.
             </p>
             <ul className="auth-brand__list">

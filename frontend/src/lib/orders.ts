@@ -157,13 +157,13 @@ export function orderPaymentLabel(
     .join(" + ");
 }
 
-/** Orders created by the Instagram/WhatsApp DukAI sales agent. */
-export function isDukAiAgentOrder(order: {
+/** Orders created by the Instagram/WhatsApp TransChap sales agent. */
+export function isTransChapAgentOrder(order: {
   notes?: string | null;
   placed_by_user_id?: string | null;
 }): boolean {
   const notes = (order.notes ?? "").toLowerCase();
-  if (notes.includes("dukai agent") || notes.includes("ai agent order")) {
+  if (notes.includes("TransChap agent") || notes.includes("ai agent order")) {
     return true;
   }
   // Agent-placed DM orders have no merchant user on the ticket.

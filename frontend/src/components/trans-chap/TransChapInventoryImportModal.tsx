@@ -105,8 +105,8 @@ export function TransChapInventoryImportModal({
       anchor.href = blobUrl;
       anchor.download =
         format === "csv"
-          ? "dukai_inventory_template.csv"
-          : "dukai_inventory_template.xlsx";
+          ? "TransChap_inventory_template.csv"
+          : "TransChap_inventory_template.xlsx";
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);

@@ -180,7 +180,7 @@ export function MerchantPayoutForm({
     >
       {layout === "tiles" ? (
         <fieldset className="payment-terms-fieldset" disabled={busy}>
-          <legend>Where should DukAI send payouts?</legend>
+          <legend>Where should TransChap send payouts?</legend>
           <div className="payment-terms-choices">
             {MERCHANT_PAYOUT_TYPES.map((type) => {
               const meta = PAYOUT_DESTINATION_META[type];
@@ -207,7 +207,7 @@ export function MerchantPayoutForm({
         </fieldset>
       ) : (
         <fieldset className="settings-field" disabled={busy}>
-          <span>Where should DukAI send your payout?</span>
+          <span>Where should TransChap send your payout?</span>
           {MERCHANT_PAYOUT_TYPES.map((type) => (
             <label key={type} className="settings-field settings-field--checkbox">
               <input

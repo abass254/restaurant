@@ -38,11 +38,11 @@ export function EmailTestSection() {
           <i className="fa-solid fa-envelope settings-card__icon" aria-hidden="true" />
           <h2>Email (Mailtrap)</h2>
         </div>
-        <span className="settings-pill settings-pill--neutral">no-reply@dukai.app</span>
+        <span className="settings-pill settings-pill--neutral">no-reply@transchap.app</span>
       </header>
       <div className="settings-card__body">
         <p className="settings-muted settings-card__lead">
-          Send a test email from <code>no-reply@dukai.app</code> to confirm Mailtrap delivery is
+          Send a test email from <code>no-reply@transchap.app</code> to confirm Mailtrap delivery is
           working. Leave the field blank to send to your own admin email.
         </p>
         <form

@@ -16,7 +16,7 @@ import type { BotTrainingChatResponse, BotTrainingMessage } from "@/lib/types";
 const STARTER_MESSAGE: BotTrainingMessage = {
   role: "assistant",
   content:
-    "Hi — I'm your training coach. Tell me how DukAI should talk to your customers: " +
+    "Hi — I'm your training coach. Tell me how TransChap should talk to your customers: " +
     "tone, language, greetings, products to push, or phrases to avoid. I'll save " +
     "instructions as we go. Switch to the Chat tab anytime to test as a customer.",
 };

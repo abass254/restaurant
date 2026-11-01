@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import { registerStationServiceWorker } from "@/lib/companion-push";
 
 export function StationShell({ children }: { children: React.ReactNode }) {
@@ -12,7 +12,7 @@ export function StationShell({ children }: { children: React.ReactNode }) {
   const shopName =
     user?.active_account?.business_name ||
     user?.account?.business_name ||
-    "DukAI Station";
+    "TransChap Station";
 
   useEffect(() => {
     void registerStationServiceWorker();
@@ -21,8 +21,8 @@ export function StationShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="station-root station-root--pos">
       <nav className="station-rail" aria-label="Station navigation">
-        <div className="station-rail__logo" title="DukAI">
-          <DukAiLogoMark size={28} color="#c19a7c" accentColor="#a86b55" />
+        <div className="station-rail__logo" title="TransChap">
+          <TransChapLogoMark size={28} color="#20154c" accentColor="#77f665" />
         </div>
         <Link href="/station" className="is-active" title="Point of sale">
           <i className="fa-solid fa-cash-register" aria-hidden />

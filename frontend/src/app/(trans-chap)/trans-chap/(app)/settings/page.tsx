@@ -35,7 +35,7 @@ import type {
   SettingsResponse,
 } from "@/lib/types";
 
-const SIGN_IN_PATH = "/trans-chap/sign-in";
+const SIGN_IN_PATH = "/sign-in";
 
 type SettingsPane =
   | "list"
@@ -110,7 +110,7 @@ export default function TransChapSettingsPage() {
   const shopName =
     user.active_account?.business_name ||
     user.account?.business_name ||
-    "Dukai Merchant";
+    "TransChap";
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -598,7 +598,7 @@ export default function TransChapSettingsPage() {
         <section className="ios-settings__group" aria-label="Set opening amount">
           <div className="ios-settings__card ios-settings__card--pad">
             <label htmlFor="opening-amount" className="auth-split__label">
-              Cash in your till/bank when starting DukAI Merch
+              Cash in your till/bank when starting TransChap
             </label>
             <input
               id="opening-amount"
@@ -1049,7 +1049,7 @@ export default function TransChapSettingsPage() {
                 ? "Connect Instagram to enable chats, feeds, and AI auto-reply."
                 : "Ask a shop admin to connect Instagram for chats and feeds."
               : autoRepliesEnabled
-                ? "DukAI replies to matching customer DMs automatically."
+                ? "TransChap replies to matching customer DMs automatically."
                 : "Automatic replies are off. Customers won’t get AI responses."}
           </p>
         </section>

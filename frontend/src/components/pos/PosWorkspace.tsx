@@ -583,7 +583,7 @@ export function PosWorkspace({
 
   const authUser = useOptionalAuthUser();
   const receiptShopName =
-    authUser?.active_account?.business_name || authUser?.account?.business_name || "DukAI";
+    authUser?.active_account?.business_name || authUser?.account?.business_name || "TransChap";
   const isRestaurant = Boolean(
     authUser && isRestaurantStore(authUser.active_account ?? authUser.account),
   );

@@ -135,7 +135,7 @@ export function TransChapMpesaSettings() {
   return (
     <section className="trans-chap-mpesa ios-settings-detail">
       <p className="ios-settings__footer ios-settings__footer--top">
-        Customer payments go through DukAI to your Till, Paybill, Pochi, or M-PESA
+        Customer payments go through TransChap to your Till, Paybill, Pochi, or M-PESA
         phone. M-PESA sales stay blocked until this is saved.
       </p>
 

@@ -14,7 +14,7 @@ VERIFY_TOKEN_MAX_AGE = 10 * 60
 def _serializer(settings: Settings) -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(
         settings.session_secret,
-        salt="dukai-mpesa-destination-verify",
+        salt="TransChap-mpesa-destination-verify",
     )
 
 

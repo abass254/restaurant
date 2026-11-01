@@ -187,7 +187,7 @@ export function StaffTeamSection() {
       if (lookup.found) {
         await showError(
           "Account already exists",
-          "This email already has a DukAI login. Ask them to sign in, or remove them from another shop first.",
+          "This email already has a TransChap login. Ask them to sign in, or remove them from another shop first.",
         );
         setCreating(false);
         return;

@@ -146,7 +146,7 @@ export default function MobileUploadPage() {
   return (
     <main className="mu-shell">
       <header className="mu-header">
-        <span className="mu-brand">DukAI</span>
+        <span className="mu-brand">TransChap</span>
         <span className="mu-header__tag">Mobile uploader</span>
       </header>
 

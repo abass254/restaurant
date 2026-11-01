@@ -12,7 +12,7 @@ WEAK_SESSION_SECRETS = frozenset(
         "change-me-same-value-on-uat-and-prod",
     }
 )
-WEAK_DB_PASSWORDS = frozenset({"", "dukai", "root", "password"})
+WEAK_DB_PASSWORDS = frozenset({"", "TransChap", "root", "password"})
 
 _MIN_SESSION_SECRET_LEN = 16
 
@@ -45,5 +45,5 @@ def assert_production_secrets(settings: Settings) -> None:
     if password.lower() in WEAK_DB_PASSWORDS:
         raise BootConfigError(
             "DB_PASSWORD is missing or too weak for production. "
-            "Do not use dukai, root, or password."
+            "Do not use TransChap, root, or password."
         )

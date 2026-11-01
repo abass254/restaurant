@@ -1,13 +1,13 @@
 {
   "info": {
-    "name": "DukAI Delivery Orders API",
+    "name": "TransChap Delivery Orders API",
     "description": "Create delivery orders with a merchant API key.\n\n1. Create a key (logged into dashboard): POST /api/v1/integrations/api-keys\n2. Use X-Api-Key or Authorization: Bearer with the duk_live_… secret.\n3. POST /api/v1/integrations/delivery-orders",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
       "key": "baseUrl",
-      "value": "https://uat.dukai.app"
+      "value": "https://uat.transchap.app"
     },
     {
       "key": "apiKey",

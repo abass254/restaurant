@@ -542,7 +542,7 @@ export default function ProfileScreen() {
             <Text style={styles.helper}>
               {notifStatus === 'unavailable'
                 ? 'In Expo Go on Android, OS notifications are unavailable — you’ll still get sounds, haptics, and in-app banners. Use a development build for system notifications.'
-                : 'While you’re online, DukAI will sound and notify you about new delivery offers.'}
+                : 'While you’re online, TransChap will sound and notify you about new delivery offers.'}
             </Text>
           </View>
         </FadeIn>

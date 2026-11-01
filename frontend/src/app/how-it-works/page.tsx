@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import { legalFooterLine } from "@/lib/legal-entity";
 
 export const metadata: Metadata = {
-  title: "AI Order Processing Workflow — DukAI",
+  title: "AI Order Processing Workflow — TransChap",
   description:
-    "A clear walkthrough of DukAI's AI order processing workflow from first message to payment, approval, and fulfillment.",
+    "A clear walkthrough of TransChap's AI order processing workflow from first message to payment, approval, and fulfillment.",
 };
 
 const FLOW_STEPS = [
@@ -91,11 +91,11 @@ export default function HowItWorksPage() {
 
   return (
     <div className="landing-ufanisi legal-ufanisi">
-      <nav className="ufanisi-nav legal-nav" aria-label="How DukAI works">
+      <nav className="ufanisi-nav legal-nav" aria-label="How TransChap works">
         <Link href="/" className="logo">
-          <DukAiLogoMark size={48} />
+          <TransChapLogoMark size={48} />
           <span className="logo-text">
-            Duk<span className="logo-accent">AI</span>
+            TransChap
           </span>
         </Link>
         <div className="legal-nav__links">
@@ -109,7 +109,7 @@ export default function HowItWorksPage() {
           <span className="section-tag">Presentation View</span>
           <h1>AI Order Processing Workflow</h1>
           <p>
-            A client-ready walkthrough of how DukAI converts chat conversations
+            A client-ready walkthrough of how TransChap converts chat conversations
             into validated, paid, and fulfilled orders.
           </p>
           <p className="legal-hero__date">Updated for demos: June 2026</p>
@@ -148,7 +148,7 @@ export default function HowItWorksPage() {
             </section>
 
             <section className="how-before-after" aria-label="Before and after">
-              <h2>Before vs after DukAI</h2>
+              <h2>Before vs after TransChap</h2>
               <div className="how-compare-grid">
                 {BEFORE_AFTER.map((row) => (
                   <div key={row.area} className="how-compare-card">

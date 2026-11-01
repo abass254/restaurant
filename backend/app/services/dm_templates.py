@@ -182,10 +182,10 @@ def format_live_agent_reply() -> str:
     return "You are now chatting with our live agent."
 
 
-def format_dukai_resume_reply(conversation: InstagramConversation | None = None) -> str:
+def format_TransChap_resume_reply(conversation: InstagramConversation | None = None) -> str:
     del conversation
     return (
-        "You're now chatting with DukAI, your helper.\n\n"
+        "You're now chatting with TransChap, your helper.\n\n"
         "Tap an option below to continue."
     )
 

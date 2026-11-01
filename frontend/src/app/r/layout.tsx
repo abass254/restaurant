@@ -4,12 +4,12 @@ import { RiderProvider } from "@/components/rider/RiderProvider";
 import { RiderShell } from "@/components/rider/RiderShell";
 
 export const metadata: Metadata = {
-  title: "DukAI Rider",
-  description: "Delivery rider app for DukAI merchant fleets",
+  title: "TransChap Rider",
+  description: "Delivery rider app for TransChap merchant fleets",
   manifest: "/rider-manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "DukAI Rider",
+    title: "TransChap Rider",
     statusBarStyle: "black-translucent",
   },
 };

@@ -184,7 +184,7 @@ export function loadTransChapReceipt(): TransChapReceipt | null {
     return {
       orderId: parsed.orderId ?? null,
       orderNumber: parsed.orderNumber || "Sale",
-      shopName: parsed.shopName || "DukAI",
+      shopName: parsed.shopName || "TransChap",
       productName,
       items,
       amount,

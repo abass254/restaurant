@@ -1,5 +1,5 @@
 /**
- * DukAI platform WhatsApp agent (openWA).
+ * TransChap platform WhatsApp agent (openWA).
  *
  * Holds one WhatsApp Web session for outbound notifications/alerts.
  * Merchants do not connect their own numbers — admins scan QR once here.
@@ -22,7 +22,7 @@ const PORT = Number(process.env.PORT || process.env.OPENWA_AGENT_PORT || 7010);
 // 127.0.0.1 for local-only; 0.0.0.0 when the k8s backend must reach this host agent.
 const BIND_HOST = (process.env.OPENWA_BIND_HOST || process.env.BIND_HOST || "127.0.0.1").trim() || "127.0.0.1";
 const AGENT_TOKEN = (process.env.AGENT_TOKEN || process.env.OPENWA_AGENT_TOKEN || "").trim();
-const SESSION_ID = (process.env.SESSION_ID || "dukai").trim() || "dukai";
+const SESSION_ID = (process.env.SESSION_ID || "TransChap").trim() || "TransChap";
 const SESSION_DATA_PATH = path.resolve(
   process.env.SESSION_DATA_PATH || path.join(__dirname, "..", ".wa-session"),
 );
@@ -268,7 +268,7 @@ const app = express();
 app.use(express.json({ limit: "32kb" }));
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "dukai-whatsapp-agent" });
+  res.json({ ok: true, service: "TransChap-whatsapp-agent" });
 });
 
 app.get("/status", requireAuth, async (_req, res) => {

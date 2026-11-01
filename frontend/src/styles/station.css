@@ -1,4 +1,4 @@
-/* DukAI Merchant Station + Phone Companion */
+/* TransChap Station + Phone Companion */
 
 .station-root,
 .mobile-root {
@@ -407,7 +407,7 @@ html[data-theme="dark"] .mobile-root {
 }
 
 .station-btn--primary:hover:not(:disabled) {
-  background: var(--app-primary-hover, #c2410c);
+  background: var(--app-primary-hover, #1f6f35);
 }
 
 .station-btn--danger {
@@ -1106,7 +1106,7 @@ html[data-theme="dark"] .mobile-root {
   font: inherit;
   font-weight: 700;
   color: #fff;
-  background: #e8412a;
+  background: #238636;
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
@@ -1152,7 +1152,7 @@ html[data-theme="dark"] .mobile-root {
   font: inherit;
   font-weight: 700;
   color: #fff;
-  background: #e8412a;
+  background: #238636;
   cursor: pointer;
 }
 

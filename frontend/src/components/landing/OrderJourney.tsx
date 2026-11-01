@@ -105,7 +105,7 @@ export function OrderJourney() {
             From Instagram DM to delivered order
           </h2>
           <p className="section-desc reveal reveal-delay-2">
-            Watch how DukAI moves every sale — you stay in control with a single tap
+            Watch how TransChap moves every sale — you stay in control with a single tap
             while conversation, payment, and delivery run themselves.
           </p>
         </div>
@@ -249,7 +249,7 @@ function JourneyTapPanel() {
   return (
     <div className="jp-tap">
       <div className="jp-notif">
-        <span className="jp-notif-badge">DukAI</span>
+        <span className="jp-notif-badge">TransChap</span>
         <p>New order · Jane Wanjiku</p>
         <span className="jp-notif-meta">Red Wrap Dress · KSh 2,700 · PAID</span>
       </div>

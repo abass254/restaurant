@@ -93,7 +93,7 @@ def test_super_admin_does_not_send(mock_mint, mock_send) -> None:
     return_value="signed-token",
 )
 def test_activated_user_sends_email(mock_mint, mock_send, mock_settings) -> None:
-    mock_settings.return_value.frontend_url = "https://dukai.app"
+    mock_settings.return_value.frontend_url = "https://transchap.app"
     mock_settings.return_value.app_debug = False
     result = request_password_reset(_db_with(_user()), "SHOP@example.com")
     assert result["message"] == GENERIC_MESSAGE

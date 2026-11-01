@@ -1,6 +1,6 @@
-/* DukAI Merchant Station service worker — cache shell + show push/local alerts. */
+/* TransChap Merchant Station service worker — cache shell + show push/local alerts. */
 
-const CACHE = "dukai-station-v8";
+const CACHE = "TransChap-station-v8";
 const PRECACHE = [
   "/",
   "/m",
@@ -77,7 +77,7 @@ self.addEventListener("fetch", (event) => {
 });
 
 self.addEventListener("push", (event) => {
-  let title = "DukAI Merchant";
+  let title = "TransChap Merchant";
   let body = "You have a new update.";
   try {
     const data = event.data ? event.data.json() : null;

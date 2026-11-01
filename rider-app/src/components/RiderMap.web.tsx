@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { ExpandMapButton } from '@/src/components/ExpandMapButton';
-import { DUKAI_MAP_COLORS } from '@/src/map/brandStyle';
+import { TRANSCHAP_MAP_COLORS } from '@/src/map/brandStyle';
 import { WebBrandedMap } from '@/src/map/WebBrandedMap';
 import type { MapVariant } from '@/src/map/tripLocations';
 
@@ -26,7 +26,7 @@ export function RiderMap({
       StyleSheet.create({
         root: {
           flex: 1,
-          backgroundColor: DUKAI_MAP_COLORS.surface,
+          backgroundColor: TRANSCHAP_MAP_COLORS.surface,
           overflow: 'hidden',
         },
       }),

@@ -1010,11 +1010,11 @@ export default function OrderDetailPage() {
               </h3>
               {order.mpesa_settlement ? (
                 <dl className="orders-detail__defs orders-detail__mpesa-settlement">
-                  <dt>DukAI hub account</dt>
+                  <dt>TransChap hub account</dt>
                   <dd>
                     <code>{order.mpesa_settlement.transaction_account ?? "—"}</code>
                   </dd>
-                  <dt>DukAI → your store</dt>
+                  <dt>TransChap → your store</dt>
                   <dd>
                     {order.mpesa_settlement.payout_shortcode ? (
                       <>
@@ -1061,7 +1061,7 @@ export default function OrderDetailPage() {
                       <dd>{formatMoney(txn.amount, order.currency)}</dd>
                       {txn.mpesa_receipt_number ? (
                         <>
-                          <dt>At DukAI</dt>
+                          <dt>At TransChap</dt>
                           <dd>
                             <code>{txn.mpesa_receipt_number}</code>
                           </dd>
@@ -1069,7 +1069,7 @@ export default function OrderDetailPage() {
                       ) : null}
                       {txn.status === "success" ? (
                         <>
-                          <dt>DukAI → your store</dt>
+                          <dt>TransChap → your store</dt>
                           <dd>
                             {txn.payout_status === "success"
                               ? `Paid out${txn.payout_receipt_number ? ` · ${txn.payout_receipt_number}` : ""}`
@@ -1132,7 +1132,7 @@ export default function OrderDetailPage() {
                   </dd>
                   {order.mpesa_transaction.mpesa_receipt_number ? (
                     <>
-                      <dt>At DukAI</dt>
+                      <dt>At TransChap</dt>
                       <dd>
                         <code>
                           {order.mpesa_transaction.mpesa_receipt_number}

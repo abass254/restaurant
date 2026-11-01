@@ -43,9 +43,9 @@ export function TransChapBarcodeCamera({ active, onScan, className }: Props) {
           : "Camera is off";
     const body =
       permission === "denied"
-        ? "Allow Camera for this site in your phone browser settings, then enable it again in DukAI Merch Settings."
+        ? "Allow Camera for this site in your phone browser settings, then enable it again in TransChap Settings."
         : permission === "insecure"
-          ? "Open DukAI Merch over https:// so the browser can ask for camera access."
+          ? "Open TransChap over https:// so the browser can ask for camera access."
           : "Turn on barcode camera once in Settings. Scan pages will use it without asking again.";
     return (
       <div className={`trans-chap-camera-needed${className ? ` ${className}` : ""}`}>

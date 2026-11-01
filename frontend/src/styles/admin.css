@@ -1,4 +1,4 @@
-/* ── DukAI admin console ───────────────────────────────────────── */
+/* ── TransChap admin console ───────────────────────────────────────── */
 
 /* Login screen — reuses .landing-ufanisi .auth-page from auth.css.
    Only admin-specific overrides live here so the brand pane reads
@@ -2039,7 +2039,7 @@ select.admin-input {
   text-decoration: underline;
 }
 
-/* Compact Client → DukAI → Merchant status (table column) */
+/* Compact Client → TransChap → Merchant status (table column) */
 .admin-app .mpesa-flow-status {
   list-style: none;
   margin: 0;
@@ -4105,7 +4105,7 @@ td.admin-table__actions {
   border-color: rgba(220, 38, 38, 0.3);
 }
 
-/* Client → DukAI → Merchant money flow */
+/* Client → TransChap → Merchant money flow */
 .admin-app .mpesa-money-flow {
   margin: 0 0 1rem;
   padding: var(--space-card);

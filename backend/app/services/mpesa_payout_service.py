@@ -264,7 +264,7 @@ def _resolve_b2b_credentials(config: Any) -> tuple[str, str] | None:
 
 
 def _auto_payout_enabled(config: Any) -> bool:
-    """Env flags control automatic Client → DukAI → Merchant payouts."""
+    """Env flags control automatic Client → TransChap → Merchant payouts."""
     settings = get_settings()
     if getattr(config, "is_sandbox", lambda: False)():
         return bool(settings.mpesa_sandbox_b2b_auto_payout)
@@ -466,7 +466,7 @@ def queue_payout_for_collection(
         # Manual release from /admin/mpesa — leave awaiting, do not mark skipped.
         collection_txn.payout_status = None
         collection_txn.payout_result_desc = (
-            "At DukAI — awaiting admin send to merchant."
+            "At TransChap — awaiting admin send to merchant."
         )[:500]
         collection_txn.payout_completed_at = None
         collection_txn.updated_at = _now_utc().replace(tzinfo=None)
@@ -620,7 +620,7 @@ def _submit_merchant_payout(
     config: Any | None = None,
     creds: tuple[str, str] | None = None,
 ) -> MpesaTransaction:
-    """Send DukAI hub → merchant B2B, Pochi, or B2C after Utility→Working (or skip)."""
+    """Send TransChap hub → merchant B2B, Pochi, or B2C after Utility→Working (or skip)."""
     if config is None:
         config = resolve_mpesa_config(db)
     if creds is None:
@@ -753,7 +753,7 @@ def release_collection_to_merchant(
     *,
     transaction_id: str,
 ) -> MpesaTransaction:
-    """Admin: send a received Client → DukAI collection to the merchant."""
+    """Admin: send a received Client → TransChap collection to the merchant."""
     from app.services.mpesa_service import MpesaApiError
 
     txn = db.query(MpesaTransaction).filter(MpesaTransaction.id == transaction_id).first()
@@ -765,7 +765,7 @@ def release_collection_to_merchant(
         raise MpesaApiError("This row is already a hub → merchant payout, not a client collection.")
 
     if txn.status != "success":
-        raise MpesaApiError("Only successful Client → DukAI collections can be sent to a merchant.")
+        raise MpesaApiError("Only successful Client → TransChap collections can be sent to a merchant.")
 
     has_receipt = (
         bool((txn.mpesa_receipt_number or "").strip())
@@ -774,7 +774,7 @@ def release_collection_to_merchant(
         or bool(payload.get("safaricom_confirmed"))
     )
     if not has_receipt:
-        raise MpesaApiError("Collection is not confirmed at DukAI yet (no M-PESA receipt).")
+        raise MpesaApiError("Collection is not confirmed at TransChap yet (no M-PESA receipt).")
 
     if txn.payout_status == PAYOUT_SUCCESS:
         raise MpesaApiError("This payment was already sent to the merchant.")
@@ -945,7 +945,7 @@ def _result_desc(result: dict[str, Any]) -> str:
 
 
 def _rewrite_payout_limit_desc(desc: str, dest_type: str) -> str:
-    """Turn Safaricom org-portal limit copy into an actionable DukAI message."""
+    """Turn Safaricom org-portal limit copy into an actionable TransChap message."""
     lower = (desc or "").lower()
     if not any(
         token in lower

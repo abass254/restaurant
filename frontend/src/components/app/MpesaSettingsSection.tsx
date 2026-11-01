@@ -67,7 +67,7 @@ function MerchantMpesaSettingsSection() {
           <h2>M-PESA settlement</h2>
         </div>
         <div className="settings-card__head-meta">
-          <span className="settings-pill settings-pill--neutral">Client → DukAI → Your store</span>
+          <span className="settings-pill settings-pill--neutral">Client → TransChap → Your store</span>
           {config ? (
             <span className="settings-pill settings-pill--ok">Configured</span>
           ) : (
@@ -77,7 +77,7 @@ function MerchantMpesaSettingsSection() {
       </header>
       <div className="settings-card__body">
         <p className="settings-muted settings-card__lead">
-          Money moves from the customer, through DukAI, to your store. Once the
+          Money moves from the customer, through TransChap, to your store. Once the
           customer pays, we send the same amount to the destination below.
         </p>
 
@@ -172,7 +172,7 @@ function AdminMpesaSettingsSection() {
           <h2>M-PESA Express (Daraja)</h2>
         </div>
         <div className="settings-card__head-meta">
-          <span className="settings-pill settings-pill--neutral">Client → DukAI → Merchant</span>
+          <span className="settings-pill settings-pill--neutral">Client → TransChap → Merchant</span>
           <span className={`settings-pill settings-pill--${envTone}`}>
             {configured ? envLabel : "Not configured"}
           </span>
@@ -180,8 +180,8 @@ function AdminMpesaSettingsSection() {
       </header>
       <div className="settings-card__body">
         <p className="settings-muted settings-card__lead">
-          Money moves Client → DukAI → Merchant. These hub Daraja credentials power the middle step
-          (DukAI). Credentials are read from <code>.env</code> (
+          Money moves Client → TransChap → Merchant. These hub Daraja credentials power the middle step
+          (TransChap). Credentials are read from <code>.env</code> (
           <code>MPESA_*</code> / <code>MPESA_MODE</code>). This screen only verifies the connection.
         </p>
 

@@ -1,12 +1,12 @@
-# DukAI Merchants uploads
+# TransChap Merchants uploads
 
-Platform media from **https://merchants.dukai.app** is stored here.
+Platform media from **https://merchants.transchap.app** is stored here.
 
 | | |
 |---|---|
 | **Host folder** | `/home/ubuntu/agents/uploads` |
-| **Public base URL** | https://merchants.dukai.app/uploads/ |
-| **Example** | https://merchants.dukai.app/uploads/products/\<id\>/\<sha\>.png |
+| **Public base URL** | https://merchants.transchap.app/uploads/ |
+| **Example** | https://merchants.transchap.app/uploads/products/\<id\>/\<sha\>.png |
 
 Layout written by the FastAPI backend:
 
@@ -15,7 +15,7 @@ Layout written by the FastAPI backend:
 - `logos/<account_id>/…` — store logos
 
 In production the backend pod mounts this directory at `/app/uploads`. Files are
-served at `https://merchants.dukai.app/uploads/...` via the Next.js → FastAPI
+served at `https://merchants.transchap.app/uploads/...` via the Next.js → FastAPI
 `/uploads` proxy (or Apache `ProxyPass /uploads` → backend `:7071`).
 
 ## Production data on a laptop
@@ -24,7 +24,7 @@ If the API/DB is production data but `APP_URL` / `FRONTEND_URL` stay on
 localhost, set:
 
 ```env
-UPLOADS_PUBLIC_BASE_URL=https://merchants.dukai.app
+UPLOADS_PUBLIC_BASE_URL=https://merchants.transchap.app
 ```
 
 The DB still stores relative `/uploads/...` paths; browsers and Instagram
@@ -49,10 +49,10 @@ sudo chown -R 1000:1000 /home/ubuntu/agents/uploads   # matches container `app` 
 In the server `.env`:
 
 ```env
-APP_URL=https://merchants.dukai.app
-FRONTEND_URL=https://merchants.dukai.app
-CORS_ALLOWED_ORIGINS=https://merchants.dukai.app
-UPLOADS_PUBLIC_BASE_URL=https://merchants.dukai.app
+APP_URL=https://merchants.transchap.app
+FRONTEND_URL=https://merchants.transchap.app
+CORS_ALLOWED_ORIGINS=https://merchants.transchap.app
+UPLOADS_PUBLIC_BASE_URL=https://merchants.transchap.app
 ```
 
 Then:
@@ -77,7 +77,7 @@ local stack:
 
 ```bash
 cp .env.example .env   # if needed
-# Keep APP_URL / FRONTEND_URL on localhost — do not point them at merchants.dukai.app
+# Keep APP_URL / FRONTEND_URL on localhost — do not point them at merchants.transchap.app
 docker compose up -d --build
 ```
 

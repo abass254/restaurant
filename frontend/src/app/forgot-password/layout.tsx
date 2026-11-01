@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Forgot password — DukAI Merchants",
-  description: "Request a password reset for your DukAI Merchants account.",
+  title: "Forgot password — TransChap",
+  description: "Request a password reset for your TransChap account.",
 };
 
 export default function ForgotPasswordLayout({

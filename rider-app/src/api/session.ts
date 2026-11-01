@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
-const SESSION_KEY = 'dukai.rider.session_token';
+const SESSION_KEY = 'TransChap.rider.session_token';
 
 async function canUseSecureStore(): Promise<boolean> {
   if (Platform.OS === 'web') return false;

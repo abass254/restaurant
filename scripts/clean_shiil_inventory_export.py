@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Clean a Shiil POS item export into a DukAI inventory import CSV.
+"""Clean a Shiil POS item export into a TransChap inventory import CSV.
 
 Input columns: ITEM_ID, DESCRIPTION, BAR_CODE, UOM, COST, PRICE, VAT_PERCENT,
 ITEM_BAL, ... (comma-space separated). Each item has one row in the unit its

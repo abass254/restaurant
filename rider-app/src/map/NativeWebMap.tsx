@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { DUKAI_MAP_COLORS } from '@/src/map/brandStyle';
+import { TRANSCHAP_MAP_COLORS } from '@/src/map/brandStyle';
 import { focusForVariant, type LatLng, type MapVariant } from '@/src/map/tripLocations';
 
 type Props = {
@@ -62,15 +62,15 @@ function buildUpdatePayload(
 
 /**
  * In-app map using Leaflet + clear OSM basemap.
- * DukAI branding lives on pins/routes — not CSS filters (those washed the map out).
+ * TransChap branding lives on pins/routes — not CSS filters (those washed the map out).
  */
 function buildShellHtml(interactive: boolean): string {
-  const cream = DUKAI_MAP_COLORS.cream100;
-  const cream50 = DUKAI_MAP_COLORS.cream50;
+  const cream = TRANSCHAP_MAP_COLORS.cream100;
+  const cream50 = TRANSCHAP_MAP_COLORS.cream50;
   const olive = '#3D4732';
   const oliveSoft = '#5A6750';
-  const brown = DUKAI_MAP_COLORS.primary;
-  const textMuted = DUKAI_MAP_COLORS.textMuted;
+  const brown = TRANSCHAP_MAP_COLORS.primary;
+  const textMuted = TRANSCHAP_MAP_COLORS.textMuted;
 
   return `<!DOCTYPE html>
 <html>
@@ -108,12 +108,12 @@ function buildShellHtml(interactive: boolean): string {
       border-radius: 12px !important;
       overflow: hidden;
     }
-    .dukai-pin {
+    .TransChap-pin {
       width: 16px; height: 16px; border-radius: 50%;
       border: 2px solid ${cream50};
       box-shadow: 0 1px 4px rgba(42, 47, 36, 0.28);
     }
-    .dukai-rider {
+    .TransChap-rider {
       width: 18px; height: 18px; border-radius: 50%;
       background: ${olive};
       border: 3px solid ${cream50};
@@ -181,7 +181,7 @@ function buildShellHtml(interactive: boolean): string {
 
     function circleIcon(color, rider) {
       var el = document.createElement('div');
-      el.className = rider ? 'dukai-rider' : 'dukai-pin';
+      el.className = rider ? 'TransChap-rider' : 'TransChap-pin';
       if (!rider) el.style.background = color;
       return L.divIcon({
         className: '',
@@ -276,7 +276,7 @@ function buildShellHtml(interactive: boolean): string {
       }
     }
 
-    window.__dukaiApplyMapUpdate = applyUpdate;
+    window.__TransChapApplyMapUpdate = applyUpdate;
 
     function init() {
       map = L.map('map', {
@@ -338,7 +338,7 @@ export function NativeWebMap({
   );
 
   function injectUpdate(payload: MapUpdatePayload) {
-    const script = `window.__dukaiApplyMapUpdate && window.__dukaiApplyMapUpdate(${JSON.stringify(
+    const script = `window.__TransChapApplyMapUpdate && window.__TransChapApplyMapUpdate(${JSON.stringify(
       payload,
     )}); true;`;
     webRef.current?.injectJavaScript(script);
@@ -386,6 +386,6 @@ export function NativeWebMap({
 const styles = StyleSheet.create({
   web: {
     flex: 1,
-    backgroundColor: DUKAI_MAP_COLORS.cream100,
+    backgroundColor: TRANSCHAP_MAP_COLORS.cream100,
   },
 });

@@ -14,7 +14,7 @@ CREDIT_PAY_TOKEN_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 def _serializer(settings: Settings) -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(
         settings.session_secret,
-        salt="dukai-credit-pay",
+        salt="TransChap-credit-pay",
     )
 
 

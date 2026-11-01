@@ -17,24 +17,24 @@ import type {
 } from "@/lib/types";
 
 const DEFAULT_TEST_TEXT =
-  "DukAI test message from Admin → WhatsApp (platform openWA session).";
+  "TransChap test message from Admin → WhatsApp (platform openWA session).";
 
 const MESSAGE_TEMPLATES = [
   {
     label: "🛒 Order Confirmation",
-    text: "Hello! Your DukAI order #1042 has been confirmed by the merchant. We will notify you when it ships!",
+    text: "Hello! Your TransChap order #1042 has been confirmed by the merchant. We will notify you when it ships!",
   },
   {
     label: "🚚 Delivery Notice",
-    text: "Good news! Your DukAI delivery #1042 is on its way with rider Alex. Contact: 0712 345 678.",
+    text: "Good news! Your TransChap delivery #1042 is on its way with rider Alex. Contact: 0712 345 678.",
   },
   {
     label: "⚡ System Heartbeat",
-    text: "DukAI platform WhatsApp notification agent heartbeat test.",
+    text: "TransChap platform WhatsApp notification agent heartbeat test.",
   },
   {
     label: "💬 Customer Support",
-    text: "Hi! This is a test message from DukAI Admin Support team.",
+    text: "Hi! This is a test message from TransChap Admin Support team.",
   },
 ];
 
@@ -199,7 +199,7 @@ export default function AdminWhatsappPage() {
                 </span>
               </div>
               <p className="admin-page__lead" style={{ margin: 0 }}>
-                Primary platform notification service for customer orders (openWA). Link one DukAI business phone number here.
+                Primary platform notification service for customer orders (openWA). Link one TransChap business phone number here.
               </p>
             </div>
           </div>
@@ -494,7 +494,7 @@ export default function AdminWhatsappPage() {
                 <i className="fa-solid fa-store" />
               </div>
               <div className="admin-wa-preview-card__name-box">
-                <span className="admin-wa-preview-card__name">DukAI Merchant Notifier</span>
+                <span className="admin-wa-preview-card__name">TransChap Merchant Notifier</span>
                 <span className="admin-wa-preview-card__status">Official WhatsApp Business</span>
               </div>
             </div>

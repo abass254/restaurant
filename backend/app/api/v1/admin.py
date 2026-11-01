@@ -111,8 +111,8 @@ from app.support.user_invite_lookup import UserInviteLookupOut, lookup_user_for_
 
 # Default "from" identity for platform test emails. The domain must be verified
 # in Mailtrap for delivery to succeed.
-TEST_EMAIL_FROM_ADDRESS = "no-reply@dukai.app"
-TEST_EMAIL_FROM_NAME = "DUKAI PLATFORM"
+TEST_EMAIL_FROM_ADDRESS = "no-reply@transchap.app"
+TEST_EMAIL_FROM_NAME = "TRANSCHAP PLATFORM"
 
 logger = logging.getLogger(__name__)
 
@@ -1594,7 +1594,7 @@ def send_test_email(
     db: Session = Depends(get_db),
     admin: User = Depends(require_super_admin),
 ):
-    """Send a test email from no-reply@dukai.app to verify Mailtrap is wired up.
+    """Send a test email from no-reply@transchap.app to verify Mailtrap is wired up.
 
     Defaults to the requesting super admin's own email when no recipient is
     given.
@@ -1619,23 +1619,23 @@ def send_test_email(
         )
 
     html = render_branded_email(
-        title="DukAI test email",
+        title="TransChap test email",
         heading="Your email setup is working",
         intro=(
-            "This is a test message from DukAI. If it landed in your inbox, "
+            "This is a test message from TransChap. If it landed in your inbox, "
             "Mailtrap sending is configured correctly."
         ),
         details=[
             ("Sent from", TEST_EMAIL_FROM_ADDRESS),
             ("Delivered to", recipient),
         ],
-        footer_note="This is a one-off test triggered from the DukAI admin settings.",
+        footer_note="This is a one-off test triggered from the TransChap admin settings.",
     )
     sent = service.send_email(
         to=recipient,
-        subject="DukAI test email",
+        subject="TransChap test email",
         text=(
-            "This is a test email from DukAI.\n\n"
+            "This is a test email from TransChap.\n\n"
             "If you received this, Mailtrap sending is configured correctly."
         ),
         html=html,
@@ -1742,7 +1742,7 @@ def simulate_payment(
                 db,
                 phone_number=phone,
                 amount=payload.amount,
-                account_reference=account.business_name[:12] or "DUKAI",
+                account_reference=account.business_name[:12] or "TRANSCHAP",
                 transaction_desc="Admin simulate",
                 initiated_by_user_id=admin.id,
                 account_id=account.id,
@@ -1778,7 +1778,7 @@ def merchant_payout(
     session: dict = Depends(get_request_session),
     admin: User = Depends(require_super_admin),
 ):
-    """Send money from the DukAI hub Paybill to a merchant (B2B only)."""
+    """Send money from the TransChap hub Paybill to a merchant (B2B only)."""
     from app.services import mpesa_payout_service
     from app.services.mpesa_service import MpesaApiError
 
@@ -1957,7 +1957,7 @@ def release_mpesa_collection_to_merchant(
     session: dict = Depends(get_request_session),
     admin: User = Depends(require_super_admin),
 ):
-    """Send a received Client → DukAI collection to the merchant (manual B2B)."""
+    """Send a received Client → TransChap collection to the merchant (manual B2B)."""
     from app.services import mpesa_payout_service
     from app.services.mpesa_service import MpesaApiError
 
@@ -2084,7 +2084,7 @@ def query_mpesa_collection_with_safaricom(
     if outcome == "paid":
         message = (
             f"Safaricom confirms the customer paid KES {int(txn.amount)}. "
-            "Marked as received at DukAI — use Send to merchant to release it."
+            "Marked as received at TransChap — use Send to merchant to release it."
         )
     elif outcome == "failed":
         message = (
@@ -2130,7 +2130,7 @@ def confirm_mpesa_collection(
     session: dict = Depends(get_request_session),
     admin: User = Depends(require_super_admin),
 ):
-    """Fix a failed or stuck Client → DukAI collection using the customer's SMS code."""
+    """Fix a failed or stuck Client → TransChap collection using the customer's SMS code."""
     from app.services.mpesa_service import MpesaApiError
 
     validate_csrf(request, session)
@@ -2180,7 +2180,7 @@ def get_mpesa_hub_balance(
     db: Session = Depends(get_db),
     admin: User = Depends(require_super_admin),
 ):
-    """Latest known DukAI hub Account Balance (from Daraja)."""
+    """Latest known TransChap hub Account Balance (from Daraja)."""
     from app.services import mpesa_balance_service, mpesa_payout_service
     from app.services.mpesa_service import resolve_mpesa_config
 
@@ -2232,7 +2232,7 @@ def refresh_mpesa_hub_balance(
     session: dict = Depends(get_request_session),
     admin: User = Depends(require_super_admin),
 ):
-    """Ask Safaricom for the current DukAI hub Paybill balance (async)."""
+    """Ask Safaricom for the current TransChap hub Paybill balance (async)."""
     from app.services import mpesa_balance_service
     from app.services.mpesa_service import MpesaApiError
 
@@ -2339,11 +2339,11 @@ def list_mpesa_hub_activity(
     admin: User = Depends(require_super_admin),
     limit: int = 25,
 ):
-    """Recent money in and out of the DukAI hub Paybill.
+    """Recent money in and out of the TransChap hub Paybill.
 
-    Built from DukAI's own M-PESA records: confirmed Client → DukAI collections
-    are money in, completed DukAI → Merchant payouts are money out. Safaricom
-    has no statement API, so movements DukAI did not initiate (manual
+    Built from TransChap's own M-PESA records: confirmed Client → TransChap collections
+    are money in, completed TransChap → Merchant payouts are money out. Safaricom
+    has no statement API, so movements TransChap did not initiate (manual
     withdrawals, transaction charges) are not listed here. Each entry carries
     the latest Transaction Status verification against Safaricom, if any.
     """

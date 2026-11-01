@@ -41,7 +41,7 @@
   },
   "scripts": {
     "start": "expo start",
-    "start:metro": "EXPO_PACKAGER_PROXY_URL=https://metro.dukai.app REACT_NATIVE_PACKAGER_HOSTNAME=metro.dukai.app expo start --port 8081 --lan",
+    "start:metro": "EXPO_PACKAGER_PROXY_URL=https://metro.transchap.app REACT_NATIVE_PACKAGER_HOSTNAME=metro.transchap.app expo start --port 8081 --lan",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web"

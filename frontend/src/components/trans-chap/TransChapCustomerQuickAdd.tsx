@@ -274,7 +274,7 @@ export function TransChapCustomerQuickAdd({
               padding: "0.65rem 1rem",
               border: "none",
               borderRadius: 12,
-              background: "linear-gradient(135deg, #e8412a 0%, #c2410c 100%)",
+              background: "linear-gradient(135deg, #238636 0%, #1f6f35 100%)",
               color: "#fff",
               fontSize: "0.9rem",
               fontWeight: 700,
@@ -284,7 +284,7 @@ export function TransChapCustomerQuickAdd({
               gap: "0.5rem",
               cursor: saving ? "not-allowed" : "pointer",
               opacity: saving ? 0.7 : 1,
-              boxShadow: "0 4px 14px rgba(232, 65, 42, 0.3)",
+              boxShadow: "0 4px 14px rgba(35, 134, 54, 0.3)",
             }}
           >
             <i className={`fa-solid ${saving ? "fa-spinner fa-spin" : "fa-user-plus"}`} aria-hidden />

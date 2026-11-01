@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Sign in — DukAI Merchants",
-  description: "Sign in to your DukAI Merchants shop dashboard.",
+  title: "Sign in — TransChap",
+  description: "Sign in to your TransChap account.",
 };
 
 export default function SignInLayout({ children }: { children: React.ReactNode }) {

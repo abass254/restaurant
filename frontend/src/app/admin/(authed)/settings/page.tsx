@@ -314,7 +314,7 @@ export default function AdminSettingsPage() {
                 <p className="admin-settings-block__eyebrow">Payments</p>
                 <h2 className="admin-settings-block__title">M-PESA (Daraja)</h2>
                 <p className="admin-settings-block__desc">
-                  Client → DukAI → Merchant. Hub credentials power the middle step. Test connection
+                  Client → TransChap → Merchant. Hub credentials power the middle step. Test connection
                   here; edit keys in <code>.env</code> and restart the backend.
                 </p>
               </div>
@@ -337,7 +337,7 @@ export default function AdminSettingsPage() {
                 <p className="admin-settings-block__eyebrow">Payments</p>
                 <h2 className="admin-settings-block__title">Payment simulation</h2>
                 <p className="admin-settings-block__desc">
-                  Run the full Client → DukAI → Merchant path with a real phone or an instant Dev
+                  Run the full Client → TransChap → Merchant path with a real phone or an instant Dev
                   simulation.
                 </p>
               </div>
@@ -351,8 +351,8 @@ export default function AdminSettingsPage() {
                 <p className="admin-settings-block__eyebrow">Payments</p>
                 <h2 className="admin-settings-block__title">Send to merchant</h2>
                 <p className="admin-settings-block__desc">
-                  DukAI → Merchant only — B2B payout when the hub already holds funds from a prior
-                  Client → DukAI collection.
+                  TransChap → Merchant only — B2B payout when the hub already holds funds from a prior
+                  Client → TransChap collection.
                 </p>
               </div>
             </header>

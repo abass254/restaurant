@@ -8,7 +8,7 @@ import { PageTransition } from "@/components/app/PageTransition";
 import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { springSoft } from "@/lib/motion";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import { AdminUserMenu } from "@/components/admin/AdminUserMenu";
 import { SessionTimeoutGuard } from "@/components/app/SessionTimeoutGuard";
 
@@ -97,7 +97,7 @@ function getInitialTheme(): Theme {
   if (typeof window === "undefined") {
     return "light";
   }
-  const stored = localStorage.getItem("dukai-theme");
+  const stored = localStorage.getItem("TransChap-theme");
   if (stored === "light" || stored === "dark") {
     return stored;
   }
@@ -132,7 +132,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     const next: Theme = theme === "light" ? "dark" : "light";
     setTheme(next);
     document.documentElement.setAttribute("data-theme", next);
-    localStorage.setItem("dukai-theme", next);
+    localStorage.setItem("TransChap-theme", next);
   }
 
   return (
@@ -143,11 +143,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       <header className="admin-app__navbar">
         <Link href="/admin" className="admin-app__navbar-brand">
           <div className="admin-app__brand-icon">
-            <DukAiLogoMark size={22} />
+            <TransChapLogoMark size={22} />
           </div>
           <div className="admin-app__brand-text">
             <span className="admin-app__brand-title">
-              Duk<span className="admin-app__brand-accent">AI</span>
+              TransChap
             </span>
             <span className="admin-app__brand-sub">ADMIN CONSOLE</span>
           </div>

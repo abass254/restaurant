@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Push local backend/uploads files to the production media host folder.
 #
-# Production serves https://merchants.dukai.app/uploads/... from
+# Production serves https://merchants.transchap.app/uploads/... from
 # /home/ubuntu/agents/uploads on the merchants server.
 #
 # Usage:
@@ -47,4 +47,4 @@ rsync "${RSYNC_OPTS[@]}" \
   "${REMOTE_HOST}:${REMOTE_PATH}/"
 
 echo ""
-echo "Done. Public URLs: https://merchants.dukai.app/uploads/..."
+echo "Done. Public URLs: https://merchants.transchap.app/uploads/..."

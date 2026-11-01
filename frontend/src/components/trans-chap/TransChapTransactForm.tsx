@@ -122,7 +122,7 @@ export function TransChapTransactForm() {
   const shopName =
     user.active_account?.business_name ||
     user.account?.business_name ||
-    "DukAI";
+    "TransChap";
   const saleTotal = useMemo(
     () => basket.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0),
     [basket],

@@ -688,10 +688,10 @@ button.rs-card {
 
 .rs-tab-btn.is-active,
 .tc-kitchen-tab-btn.is-active {
-    background: var(--app-primary, #e8412a);
+    background: var(--app-primary, #238636);
     color: #ffffff !important;
-    border-color: var(--app-primary, #e8412a);
-    box-shadow: 0 2px 8px rgba(232, 65, 42, 0.28);
+    border-color: var(--app-primary, #238636);
+    box-shadow: 0 2px 8px rgba(35, 134, 54, 0.28);
 }
 
 .tc-kitchen-tab-pill {
@@ -741,7 +741,7 @@ button.rs-card {
     min-height: 40px;
     padding: 0 0.85rem;
     border-radius: 12px;
-    background: var(--app-primary, #e8412a);
+    background: var(--app-primary, #238636);
     color: #ffffff;
     font-size: 0.78rem;
     font-weight: 800;
@@ -752,7 +752,7 @@ button.rs-card {
 }
 
 .trans-chap-bulk-bar__issue-btn:hover {
-    background: var(--app-primary-hover, #c2341f);
+    background: var(--app-primary-hover, #1f6f35);
 }
 
 .trans-chap-bulk-bar__issue-btn.is-disabled {
@@ -969,8 +969,8 @@ button.rs-card {
     width: 1.7rem;
     height: 1.7rem;
     border-radius: 8px;
-    background: var(--app-accent-peach-soft, rgba(232, 65, 42, 0.12));
-    color: var(--app-primary, #e8412a);
+    background: var(--app-accent-peach-soft, rgba(35, 134, 54, 0.12));
+    color: var(--app-primary, #238636);
     font-size: 0.8rem;
     flex-shrink: 0;
 }
@@ -996,16 +996,16 @@ button.rs-card {
 }
 
 .tc-kitchen-action--primary {
-    border-color: var(--app-primary, #e8412a);
-    background: var(--app-primary, #e8412a);
+    border-color: var(--app-primary, #238636);
+    background: var(--app-primary, #238636);
     color: #ffffff;
-    box-shadow: 0 2px 8px rgba(232, 65, 42, 0.28);
+    box-shadow: 0 2px 8px rgba(35, 134, 54, 0.28);
 }
 
 .tc-kitchen-action--primary:hover {
-    border-color: var(--app-primary-hover, #c2341f);
-    background: var(--app-primary-hover, #c2341f);
-    box-shadow: 0 4px 12px rgba(232, 65, 42, 0.35);
+    border-color: var(--app-primary-hover, #1f6f35);
+    background: var(--app-primary-hover, #1f6f35);
+    box-shadow: 0 4px 12px rgba(35, 134, 54, 0.35);
 }
 
 .tc-kitchen-action--primary .tc-kitchen-action__icon {
@@ -1034,16 +1034,16 @@ button.rs-card {
 }
 
 .tc-kitchen-btn--primary {
-    background: var(--app-primary, #e8412a) !important;
-    border-color: var(--app-primary, #e8412a) !important;
+    background: var(--app-primary, #238636) !important;
+    border-color: var(--app-primary, #238636) !important;
     color: #ffffff !important;
-    box-shadow: 0 2px 8px rgba(232, 65, 42, 0.28);
+    box-shadow: 0 2px 8px rgba(35, 134, 54, 0.28);
 }
 
 .tc-kitchen-btn--primary:hover {
-    background: var(--app-primary-hover, #c2341f) !important;
+    background: var(--app-primary-hover, #1f6f35) !important;
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(232, 65, 42, 0.35);
+    box-shadow: 0 4px 12px rgba(35, 134, 54, 0.35);
 }
 
 .tc-kitchen-btn--secondary {
@@ -1097,8 +1097,8 @@ button.rs-card {
 }
 
 .tc-kitchen-stat-icon--indigo {
-    background: var(--app-accent-peach-soft, rgba(232, 65, 42, 0.12));
-    color: var(--app-primary, #e8412a);
+    background: var(--app-accent-peach-soft, rgba(35, 134, 54, 0.12));
+    color: var(--app-primary, #238636);
 }
 
 .tc-kitchen-stat-info {
@@ -1393,7 +1393,7 @@ button.rs-card {
     width: 0.5rem;
     height: 0.5rem;
     border-radius: 50%;
-    background: var(--app-primary, #e8412a);
+    background: var(--app-primary, #238636);
     animation: tc-kitchen-pulse 1.1s ease-in-out infinite;
 }
 
@@ -1405,8 +1405,8 @@ button.rs-card {
 .tc-kitchen-orders__new {
     padding: 0.2rem 0.55rem;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--app-primary, #e8412a) 12%, transparent);
-    color: var(--app-primary, #e8412a);
+    background: color-mix(in srgb, var(--app-primary, #238636) 12%, transparent);
+    color: var(--app-primary, #238636);
     font-size: 0.72rem;
     font-weight: 850;
 }
@@ -1429,7 +1429,7 @@ button.rs-card {
 }
 
 .tc-kitchen-order.is-new {
-    border-color: color-mix(in srgb, var(--app-primary, #e8412a) 40%, var(--app-border));
+    border-color: color-mix(in srgb, var(--app-primary, #238636) 40%, var(--app-border));
 }
 
 .tc-kitchen-order__header,
@@ -1906,7 +1906,7 @@ button.rs-card {
 .tc-kitchen-search input:focus {
     outline: none;
     border-color: var(--app-primary);
-    box-shadow: 0 0 0 3px rgba(232, 65, 42, 0.15);
+    box-shadow: 0 0 0 3px rgba(35, 134, 54, 0.15);
 }
 
 .tc-kitchen-search__clear {
@@ -2782,22 +2782,22 @@ html[data-theme="dark"] .tc-kitchen-measure-card__badge {
 }
 
 .tc-kitchen-stage-card--total .tc-kitchen-stage-card__icon {
-    background: color-mix(in srgb, var(--app-primary, #e8412a) 12%, transparent);
-    color: var(--app-primary, #e8412a);
+    background: color-mix(in srgb, var(--app-primary, #238636) 12%, transparent);
+    color: var(--app-primary, #238636);
 }
 .tc-kitchen-stage-card--total:hover,
 .tc-kitchen-stage-card--total.is-active {
-    border-color: var(--app-primary, #e8412a);
+    border-color: var(--app-primary, #238636);
 }
 .tc-kitchen-stage-card--total.is-active {
-    background: color-mix(in srgb, var(--app-primary, #e8412a) 8%, var(--app-surface));
-    box-shadow: 0 0 0 1px var(--app-primary, #e8412a), 0 6px 20px rgba(232, 65, 42, 0.15);
+    background: color-mix(in srgb, var(--app-primary, #238636) 8%, var(--app-surface));
+    box-shadow: 0 0 0 1px var(--app-primary, #238636), 0 6px 20px rgba(35, 134, 54, 0.15);
 }
 
 .tc-kitchen-stage-card.is-open {
-    border-color: var(--app-primary, #e8412a);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-primary, #e8412a) 35%, transparent), 0 6px 18px rgba(0, 0, 0, 0.12);
-    background: color-mix(in srgb, var(--app-primary, #e8412a) 6%, var(--app-surface));
+    border-color: var(--app-primary, #238636);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-primary, #238636) 35%, transparent), 0 6px 18px rgba(0, 0, 0, 0.12);
+    background: color-mix(in srgb, var(--app-primary, #238636) 6%, var(--app-surface));
 }
 
 .tc-kitchen-stage-card__toggle-hint {
@@ -2811,14 +2811,14 @@ html[data-theme="dark"] .tc-kitchen-measure-card__badge {
 }
 
 .tc-kitchen-stage-card.is-open .tc-kitchen-stage-card__toggle-hint {
-    color: var(--app-primary, #e8412a);
+    color: var(--app-primary, #238636);
 }
 
 /* ── Order Preparation Stages Dropdown ── */
 .tc-kitchen-stage-dropdown {
     margin-top: 0.75rem;
     background: var(--app-surface);
-    border: 1px solid color-mix(in srgb, var(--app-primary, #e8412a) 25%, var(--app-border));
+    border: 1px solid color-mix(in srgb, var(--app-primary, #238636) 25%, var(--app-border));
     border-radius: 16px;
     box-shadow: 0 14px 38px rgba(0, 0, 0, 0.16);
     overflow: hidden;
@@ -2999,4 +2999,3 @@ html[data-theme="dark"] .tc-kitchen-measure-card__badge {
     font-size: 0.7rem;
     font-weight: 850;
 }
-

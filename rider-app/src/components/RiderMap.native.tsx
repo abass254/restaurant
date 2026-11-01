@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { ExpandMapButton } from '@/src/components/ExpandMapButton';
-import { DUKAI_MAP_COLORS } from '@/src/map/brandStyle';
+import { TRANSCHAP_MAP_COLORS } from '@/src/map/brandStyle';
 import { NativeWebMap } from '@/src/map/NativeWebMap';
 import { type MapVariant } from '@/src/map/tripLocations';
 import { useDirectionsPath } from '@/src/map/useDirectionsPath';
@@ -35,21 +35,21 @@ export function RiderMap({
         root: {
           flex: 1,
           minHeight: 180,
-          backgroundColor: DUKAI_MAP_COLORS.cream100,
+          backgroundColor: TRANSCHAP_MAP_COLORS.cream100,
           overflow: 'hidden',
         },
         loading: {
           ...StyleSheet.absoluteFill,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: DUKAI_MAP_COLORS.cream100,
+          backgroundColor: TRANSCHAP_MAP_COLORS.cream100,
           gap: 10,
           zIndex: 1,
         },
         loadingText: {
           fontFamily: fonts.sans,
           fontSize: 13,
-          color: DUKAI_MAP_COLORS.textMuted,
+          color: TRANSCHAP_MAP_COLORS.textMuted,
         },
       }),
     [],
@@ -67,7 +67,7 @@ export function RiderMap({
       />
       {!loaded ? (
         <View style={styles.loading} pointerEvents="none">
-          <ActivityIndicator color={DUKAI_MAP_COLORS.primary} />
+          <ActivityIndicator color={TRANSCHAP_MAP_COLORS.primary} />
           <Text style={styles.loadingText}>Loading map…</Text>
         </View>
       ) : null}

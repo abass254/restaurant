@@ -1,4 +1,4 @@
-/* ── DukAI design tokens: brown (primary) + cream (secondary) ── */
+/* ── TransChap design tokens: green (primary) + navy (brand) ── */
 
 :root {
   /* Primary — warm brown */
@@ -144,16 +144,16 @@ html[data-theme="light"] {
   --app-surface: #ffffff;
   --app-surface-elevated: #ffffff;
   --app-surface-hover: #f5f6f8;
-  --app-surface-active: #fde8e4;
+  --app-surface-active: #effaf1;
   --app-border: #e8eaef;
   --app-border-light: #eef0f4;
   --app-text: #1a1410;
   --app-text-secondary: #6b7280;
-  --app-primary: #e8412a;
-  --app-primary-hover: #c2341f;
+  --app-primary: #238636;
+  --app-primary-hover: #1f6f35;
   --app-primary-text: #ffffff;
-  --app-accent: #e8412a;
-  --app-gradient: linear-gradient(90deg, #1a100c 0%, #9a2c1c 55%, #e8412a 100%);
+  --app-accent: #238636;
+  --app-gradient: linear-gradient(90deg, #20154c 0%, #1f6f35 55%, #238636 100%);
   --app-danger: #e41e3f;
   --app-success: #2dd4a8;
   --app-shadow: var(--elevation);
@@ -177,9 +177,9 @@ html[data-theme="light"] {
   --app-sidebar-bg: #ffffff;
   --app-sidebar-text: #6b7280;
   --app-sidebar-text-active: #1a100c;
-  --app-sidebar-active: #e8412a;
-  --app-accent-peach: #fb923c;
-  --app-accent-peach-soft: #ffedd5;
+  --app-sidebar-active: #238636;
+  --app-accent-peach: #77f665;
+  --app-accent-peach-soft: #effaf1;
   --app-accent-teal: #7ec8b8;
   --app-accent-teal-soft: #e0f5f0;
   --app-accent-amber: #f5c77a;
@@ -285,16 +285,16 @@ html[data-theme="dark"] {
   --app-surface: #1a1b26;
   --app-surface-elevated: #242533;
   --app-surface-hover: #2a2b38;
-  --app-surface-active: rgba(232, 65, 42, 0.18);
+  --app-surface-active: rgba(35, 134, 54, 0.18);
   --app-border: #333548;
   --app-border-light: #2a2b38;
   --app-text: #f0f1f5;
   --app-text-secondary: #9ca3af;
-  --app-primary: #e8412a;
-  --app-primary-hover: #c2341f;
+  --app-primary: #238636;
+  --app-primary-hover: #1f6f35;
   --app-primary-text: #ffffff;
-  --app-accent: #e8412a;
-  --app-gradient: linear-gradient(90deg, #120c0a 0%, #8a2a1c 55%, #e8412a 100%);
+  --app-accent: #238636;
+  --app-gradient: linear-gradient(90deg, #20154c 0%, #1f6f35 55%, #238636 100%);
   --app-danger: #f02849;
   --app-success: #34d399;
   --app-shadow: var(--elevation);
@@ -303,9 +303,9 @@ html[data-theme="dark"] {
   --app-sidebar-bg: #111111;
   --app-sidebar-text: rgba(240, 241, 245, 0.55);
   --app-sidebar-text-active: #f0f1f5;
-  --app-sidebar-active: #e8412a;
-  --app-accent-peach: #fdba74;
-  --app-accent-peach-soft: rgba(232, 65, 42, 0.15);
+  --app-sidebar-active: #238636;
+  --app-accent-peach: #8ad895;
+  --app-accent-peach-soft: rgba(35, 134, 54, 0.15);
   --app-accent-teal: #5eead4;
   --app-accent-teal-soft: rgba(45, 212, 168, 0.12);
   --app-accent-amber: #fcd34d;
@@ -402,16 +402,16 @@ html[data-theme="dark"] {
     --app-surface: #1a1b26;
     --app-surface-elevated: #242533;
     --app-surface-hover: #2a2b38;
-    --app-surface-active: rgba(232, 65, 42, 0.18);
+    --app-surface-active: rgba(35, 134, 54, 0.18);
     --app-border: #333548;
     --app-border-light: #2a2b38;
     --app-text: #f0f1f5;
     --app-text-secondary: #9ca3af;
-    --app-primary: #e8412a;
-    --app-primary-hover: #c2341f;
+    --app-primary: #238636;
+    --app-primary-hover: #1f6f35;
     --app-primary-text: #ffffff;
-    --app-accent: #e8412a;
-    --app-gradient: linear-gradient(90deg, #120c0a 0%, #8a2a1c 55%, #e8412a 100%);
+    --app-accent: #238636;
+    --app-gradient: linear-gradient(90deg, #20154c 0%, #1f6f35 55%, #238636 100%);
     --app-danger: #f02849;
     --app-success: #34d399;
     --app-shadow: var(--elevation);
@@ -420,9 +420,9 @@ html[data-theme="dark"] {
     --app-sidebar-bg: #111111;
     --app-sidebar-text: rgba(240, 241, 245, 0.55);
     --app-sidebar-text-active: #f0f1f5;
-    --app-sidebar-active: #e8412a;
-    --app-accent-peach: #fdba74;
-    --app-accent-peach-soft: rgba(232, 65, 42, 0.15);
+    --app-sidebar-active: #238636;
+    --app-accent-peach: #8ad895;
+    --app-accent-peach-soft: rgba(35, 134, 54, 0.15);
     --app-accent-teal: #5eead4;
     --app-accent-teal-soft: rgba(45, 212, 168, 0.12);
     --app-accent-amber: #fcd34d;

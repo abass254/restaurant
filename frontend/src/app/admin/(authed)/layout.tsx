@@ -9,7 +9,7 @@ import { getServerUser } from "@/lib/server-auth";
 import { AdminShell } from "@/components/admin/AdminShell";
 
 export const metadata = {
-  title: "DukAI Admin",
+  title: "TransChap Admin",
 };
 
 export default async function AdminAuthedLayout({

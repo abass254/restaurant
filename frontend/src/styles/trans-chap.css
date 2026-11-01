@@ -208,7 +208,7 @@ html[data-theme="dark"] .trans-chap-app {
     padding: 0 0.28rem;
     border-radius: 999px;
     border: 2px solid var(--app-surface);
-    background: #e8412a;
+    background: #238636;
     color: #fff;
     font-size: 0.58rem;
     font-weight: 800;
@@ -333,25 +333,25 @@ button.trans-chap-header__icon {
     min-height: 0;
     overflow: auto;
     -webkit-overflow-scrolling: touch;
-    /* Same orange as Trans Chap nav active state (#e8412a). */
-    --app-primary: #e8412a;
-    --app-primary-hover: #c2341f;
+    /* Match the TransChap brand color in the navigation. */
+    --app-primary: #238636;
+    --app-primary-hover: #1f6f35;
     --app-primary-text: #ffffff;
-    --brown-50: #fef2f0;
-    --brown-100: #fde4e0;
-    --brown-200: #fbc5bc;
-    --brown-300: #f59a8c;
-    --brown-400: #ef6b58;
-    --brown-500: #e8412a;
-    --brown-600: #c2341f;
-    --brown-700: #a12b19;
-    --brown-800: #7a2114;
-    --brown-900: #52160d;
-    --brown-950: #2e0c07;
-    --cream-50: #fff8f6;
-    --cream-100: #fdeeea;
-    --cream-200: #f8d5ce;
-    --cream-300: #efb3a8;
+    --brown-50: #effaf1;
+    --brown-100: #dcf4df;
+    --brown-200: #bde8c4;
+    --brown-300: #8ad895;
+    --brown-400: #58bd68;
+    --brown-500: #238636;
+    --brown-600: #1f6f35;
+    --brown-700: #185b2b;
+    --brown-800: #12451f;
+    --brown-900: #0b3516;
+    --brown-950: #071e0c;
+    --cream-50: #f6fcf6;
+    --cream-100: #eaf6eb;
+    --cream-200: #d7eed9;
+    --cream-300: #c0e4c4;
     --trans-chap-pos-accent-soft: color-mix(in srgb, var(--app-primary) 14%, transparent);
     --trans-chap-pos-accent-wash: color-mix(in srgb, var(--app-primary) 8%, transparent);
 }
@@ -1180,7 +1180,7 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-card__stock.is-fresh {
 }
 
 .trans-chap-pos-host.fb-app .pos-restaurant-timing__btn.is-active.is-unpaid {
-    color: #e8412a;
+    color: #238636;
 }
 
 .trans-chap-pos-host.fb-app .pos-unpaid-banner {
@@ -1566,7 +1566,7 @@ html[data-theme="dark"] .trans-chap-pos-host.fb-app .pos-card__stock.is-fresh {
 }
 
 .trans-chap-pos-host.fb-app .pos-line__remove:hover {
-    background: rgba(232, 65, 42, 0.08);
+    background: rgba(35, 134, 54, 0.08);
     color: var(--app-primary);
 }
 
@@ -6214,7 +6214,7 @@ html[data-trans-chap-machine="phone"] .trans-chap-app .mobile-nav span.is-disabl
     padding: 0 0.28rem;
     border-radius: 999px;
     border: 2px solid var(--app-surface);
-    background: #e8412a;
+    background: #238636;
     color: #fff;
     font-size: 0.58rem;
     font-weight: 800;
@@ -6314,10 +6314,10 @@ html[data-trans-chap-machine="phone"] .trans-chap-app .mobile-nav--7 span.is-dis
     margin-top: -1.15rem;
     border: 0;
     border-radius: 999px;
-    background: #e8412a;
+    background: #238636;
     color: #fff;
     font-size: 1.2rem;
-    box-shadow: 0 8px 20px color-mix(in srgb, #e8412a 35%, transparent);
+    box-shadow: 0 8px 20px color-mix(in srgb, #238636 35%, transparent);
     cursor: pointer;
 }
 
@@ -6376,7 +6376,7 @@ html[data-trans-chap-machine="phone"] .trans-chap-app .mobile-nav--7 span.is-dis
     display: grid;
     place-items: center;
     width: 1.6rem;
-    color: #e8412a;
+    color: #238636;
     font-size: 0.95rem;
 }
 
@@ -7385,7 +7385,7 @@ html[data-theme="dark"] .theme-switch:not(.is-on) {
 }
 
 .trans-chap-app .stock-scan-sheet__allow {
-    background: var(--app-primary, #e8412a);
+    background: var(--app-primary, #238636);
 }
 
 .trans-chap-suggest {
@@ -7487,7 +7487,7 @@ html[data-theme="dark"] .theme-switch:not(.is-on) {
     --slip-ink: #1c1410;
     --slip-muted: #6e6156;
     --slip-rule: #d4c4b0;
-    --slip-accent: #e8412a;
+    --slip-accent: #238636;
     display: flex;
     flex-direction: column;
     gap: 1.15rem;
@@ -8805,7 +8805,7 @@ html[data-theme="dark"] .trans-chap-receipt {
 }
 
 .trans-chap-stock-table__icon-btn--receipt:hover:not(:disabled) {
-    color: var(--app-primary-hover, #c2341f);
+    color: var(--app-primary-hover, #1f6f35);
     background: color-mix(in srgb, var(--app-primary) 14%, transparent);
 }
 
@@ -10604,7 +10604,7 @@ html[data-theme="dark"] .trans-chap-sale__add {
     height: 44px;
     border-radius: 50%;
     background: var(--app-surface);
-    color: #e8412a;
+    color: #238636;
     font-size: 0.95rem;
     box-shadow: 0 8px 18px color-mix(in srgb, var(--app-text) 16%, transparent);
 }
@@ -10620,12 +10620,12 @@ html[data-theme="dark"] .trans-chap-sale__add {
     place-items: center;
     border: 0;
     border-radius: 50%;
-    background: #e8412a;
+    background: #238636;
     color: #fff;
     font-size: 1.25rem;
     text-decoration: none;
     cursor: pointer;
-    box-shadow: 0 8px 20px color-mix(in srgb, #e8412a 35%, transparent);
+    box-shadow: 0 8px 20px color-mix(in srgb, #238636 35%, transparent);
 }
 
 .trans-chap-fab.is-open {
@@ -10661,12 +10661,12 @@ html[data-theme="dark"] .trans-chap-sale__add {
     height: 52px;
     padding: 0 1.15rem;
     border-radius: 999px;
-    background: #e8412a;
+    background: #238636;
     color: #ffffff;
     font-size: 0.85rem;
     font-weight: 750;
     text-decoration: none;
-    box-shadow: 0 8px 20px color-mix(in srgb, #e8412a 35%, transparent);
+    box-shadow: 0 8px 20px color-mix(in srgb, #238636 35%, transparent);
     transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
 
@@ -10674,7 +10674,7 @@ html[data-theme="dark"] .trans-chap-sale__add {
 .trans-chap-fab-release:focus-visible {
     filter: brightness(1.08);
     transform: translateY(-2px);
-    box-shadow: 0 10px 24px color-mix(in srgb, #e8412a 45%, transparent);
+    box-shadow: 0 10px 24px color-mix(in srgb, #238636 45%, transparent);
 }
 
 .trans-chap-fab-release i {
@@ -11725,7 +11725,7 @@ html[data-theme="dark"] .trans-chap-sale__add {
     padding: 0 0.3rem;
     border-radius: 999px;
     border: 2px solid var(--app-surface);
-    background: #e8412a;
+    background: #238636;
     color: #fff;
     font-size: 0.62rem;
     font-style: normal;
@@ -14319,10 +14319,10 @@ html[data-trans-chap-machine="tablet"] .trans-chap-header__center h1 {
 }
 
 /* Never show two modals at the same time: hide underlying app modals while a SweetAlert dialog is open. */
-body:has(.swal2-container:not(.trans-chap-swal--toast):not(.trans-chap-swal--loading):not(.dukai-swal-toast-container)) .pos-menu-modal-backdrop,
-body:has(.swal2-container:not(.trans-chap-swal--toast):not(.trans-chap-swal--loading):not(.dukai-swal-toast-container)) .trans-chap-modal-backdrop,
-body:has(.swal2-container:not(.trans-chap-swal--toast):not(.trans-chap-swal--loading):not(.dukai-swal-toast-container)) .pos-modal-backdrop,
-body:has(.swal2-container:not(.trans-chap-swal--toast):not(.trans-chap-swal--loading):not(.dukai-swal-toast-container)) .inventory-modal-backdrop {
+body:has(.swal2-container:not(.trans-chap-swal--toast):not(.trans-chap-swal--loading):not(.TransChap-swal-toast-container)) .pos-menu-modal-backdrop,
+body:has(.swal2-container:not(.trans-chap-swal--toast):not(.trans-chap-swal--loading):not(.TransChap-swal-toast-container)) .trans-chap-modal-backdrop,
+body:has(.swal2-container:not(.trans-chap-swal--toast):not(.trans-chap-swal--loading):not(.TransChap-swal-toast-container)) .pos-modal-backdrop,
+body:has(.swal2-container:not(.trans-chap-swal--toast):not(.trans-chap-swal--loading):not(.TransChap-swal-toast-container)) .inventory-modal-backdrop {
     opacity: 0 !important;
     visibility: hidden !important;
     pointer-events: none !important;
@@ -14449,7 +14449,7 @@ body:has(.swal2-container:not(.trans-chap-swal--toast):not(.trans-chap-swal--loa
     margin: 1rem 0 0 !important;
 }
 
-.trans-chap-swal-actions .dukai-swal-btn {
+.trans-chap-swal-actions .TransChap-swal-btn {
     width: 100%;
     margin: 0 !important;
     min-height: 48px;
@@ -14458,7 +14458,7 @@ body:has(.swal2-container:not(.trans-chap-swal--toast):not(.trans-chap-swal--loa
     border-radius: 14px;
 }
 
-.trans-chap-swal-actions .dukai-swal-btn:hover {
+.trans-chap-swal-actions .TransChap-swal-btn:hover {
     transform: none;
 }
 
@@ -14545,7 +14545,7 @@ body:has(.swal2-container:not(.trans-chap-swal--toast):not(.trans-chap-swal--loa
     text-align: left !important;
 }
 
-.trans-chap-swal-toast:not(.dukai-swal-toast--loading) .swal2-html-container {
+.trans-chap-swal-toast:not(.TransChap-swal-toast--loading) .swal2-html-container {
     margin: 0.15rem 0 0 !important;
     font-size: 0.8125rem !important;
 }
@@ -14797,7 +14797,7 @@ html[data-trans-chap-machine="tablet"] .trans-chap-app--nav-collapsed .mobile-na
     width: 3.25rem;
     height: 3.25rem;
     border-radius: 18px;
-    background: linear-gradient(135deg, var(--app-primary) 0%, #e8412a 100%);
+    background: linear-gradient(135deg, var(--app-primary) 0%, #238636 100%);
     color: #ffffff;
     display: grid;
     place-items: center;
@@ -15365,9 +15365,9 @@ html[data-trans-chap-machine="phone"] .mobile-nav>a[href="/trans-chap/mpesa"] {
     min-height: 38px;
     margin: 0.4rem 0 0 0.25rem;
     padding: 0 0.8rem;
-    border: 1px solid var(--app-primary, #e8412a);
+    border: 1px solid var(--app-primary, #238636);
     border-radius: 10px;
-    background: var(--app-primary, #e8412a);
+    background: var(--app-primary, #238636);
     color: #fff;
     font-size: 0.84rem;
     font-weight: 750;
@@ -15387,8 +15387,8 @@ html[data-trans-chap-machine="phone"] .mobile-nav>a[href="/trans-chap/mpesa"] {
 
 .tc-menu__recipe-link.is-missing {
     background: transparent;
-    color: var(--app-primary, #e8412a);
-    border: 1px dashed var(--app-primary, #e8412a);
+    color: var(--app-primary, #238636);
+    border: 1px dashed var(--app-primary, #238636);
     box-shadow: none;
 }
 
@@ -15455,16 +15455,16 @@ html[data-trans-chap-machine="phone"] .mobile-nav>a[href="/trans-chap/mpesa"] {
 }
 
 .tc-menu__recipe-action:hover {
-    background: color-mix(in srgb, var(--app-primary, #e8412a) 85%, #000);
+    background: color-mix(in srgb, var(--app-primary, #238636) 85%, #000);
     box-shadow: 0 3px 8px rgba(15, 23, 42, 0.2);
 }
 
 .tc-menu__recipe-link.is-missing:hover {
-    background: color-mix(in srgb, var(--app-primary, #e8412a) 10%, transparent);
+    background: color-mix(in srgb, var(--app-primary, #238636) 10%, transparent);
 }
 
 .tc-menu__recipe-action:focus-visible {
-    outline: 3px solid color-mix(in srgb, var(--app-primary, #e8412a) 35%, transparent);
+    outline: 3px solid color-mix(in srgb, var(--app-primary, #238636) 35%, transparent);
     outline-offset: 2px;
 }
 
@@ -16817,7 +16817,7 @@ html[data-trans-chap-machine="phone"] .mobile-nav>a[href="/trans-chap/mpesa"] {
     width: 100%;
     min-height: 50px;
     border-radius: 14px;
-    background: linear-gradient(135deg, var(--app-primary), #ea580c);
+    background: linear-gradient(135deg, var(--app-primary), #1f6f35);
     color: #ffffff;
     border: none;
     font-size: 0.98rem;

@@ -55,14 +55,14 @@ def test_send_text_posts_e164_payload():
     with patch("app.services.openwa_service.httpx.Client", return_value=wrapper):
         result = OpenWaAgentService(settings).send_text(
             to="0712345678",
-            text="Hello from DukAI",
+            text="Hello from TransChap",
         )
     assert result.ok is True
     assert result.message_id == "99"
     posted = wrapper._inner.request.call_args
     assert posted.args[0] == "POST"
     assert posted.args[1] == "http://127.0.0.1:7010/send"
-    assert posted.kwargs["json"] == {"to": "+254712345678", "text": "Hello from DukAI"}
+    assert posted.kwargs["json"] == {"to": "+254712345678", "text": "Hello from TransChap"}
 
 
 def test_send_text_skips_when_unconfigured():

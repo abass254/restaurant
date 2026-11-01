@@ -1,9 +1,9 @@
-# DukAI Merchants
+# TransChap Merchants
 ## Software Requirements Specification (SRS)
 
 **Version:** 1.0  
 **Date:** 13 August 2026  
-**Product:** DukAI Merchants — Merchant-Side Retail Platform
+**Product:** TransChap Merchants — Merchant-Side Retail Platform
 
 ---
 
@@ -11,7 +11,7 @@
 
 ### 1.1 Purpose
 
-The purpose of this Software Requirements Specification (SRS) document is to provide a detailed description of the requirements for the **DukAI Merchants** system, a web-based retail commerce platform for shops.
+The purpose of this Software Requirements Specification (SRS) document is to provide a detailed description of the requirements for the **TransChap Merchants** system, a web-based retail commerce platform for shops.
 
 This document outlines the functional and non-functional requirements of the system, serving as a reference for developers, testers, and stakeholders involved in the development process.
 
@@ -35,7 +35,7 @@ This document is intended for:
 
 ### 1.3 Project Scope
 
-DukAI Merchants is a web-based retail commerce system designed to help shops manage products, orders, staff, social messaging, delivery, and payments in one place.
+TransChap Merchants is a web-based retail commerce system designed to help shops manage products, orders, staff, social messaging, delivery, and payments in one place.
 
 The system aims to:
 
@@ -446,7 +446,7 @@ The system shall provide public token-based pages for shop checkout, payment, an
   - Dashboard, Inventory, POS, Orders, Station
   - Tickets, Feeds, Delivery, Tools, Team, Basics, Settings
 - Mobile companion routes under `/m/...`
-- Clean UI using the existing DukAI dashboard design system
+- Clean UI using the existing TransChap dashboard design system
 
 ### 4.2 Hardware Interfaces
 
@@ -518,7 +518,7 @@ The system shall provide public token-based pages for shop checkout, payment, an
 
 ## 7. References
 
-- DukAI Merchants `README.md`
+- TransChap Merchants `README.md`
 - `docs/ARCHITECTURE.md`
 - `docs/DOCKER.md`
 - `docs/META_APP_REVIEW.md`
@@ -554,4 +554,4 @@ The system shall provide public token-based pages for shop checkout, payment, an
 
 | Version | Date | Notes |
 |---------|------|-------|
-| 1.0 | 13 Aug 2026 | SRS recreated in academic format for DukAI Merchants |
+| 1.0 | 13 Aug 2026 | SRS recreated in academic format for TransChap Merchants |

@@ -6,8 +6,8 @@
  */
 
 import {
-  DUKAI_MAP_MARKER_ICON,
-  DUKAI_MAP_STYLES,
+  TRANSCHAP_MAP_MARKER_ICON,
+  TRANSCHAP_MAP_STYLES,
   createStoreMarkerElement,
   getStoreMarkerIcon,
   isStoreMarkerIcon,
@@ -99,7 +99,7 @@ export type PlacePrediction = {
   source: PlacePredictionSource;
 };
 
-/** Optional Cloud Console map style; when unset, DukAI JSON styles are applied. */
+/** Optional Cloud Console map style; when unset, TransChap JSON styles are applied. */
 const BUILD_TIME_MAP_ID = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID?.trim() || null;
 let runtimeMapId: string | null = BUILD_TIME_MAP_ID;
 
@@ -246,7 +246,7 @@ async function buildRuntime(apiKey: string): Promise<GoogleMapsRuntime> {
         map,
         position,
         draggable: draggable ?? false,
-        icon: isStoreMarkerIcon(icon) ? getStoreMarkerIcon() : (icon ?? DUKAI_MAP_MARKER_ICON),
+        icon: isStoreMarkerIcon(icon) ? getStoreMarkerIcon() : (icon ?? TRANSCHAP_MAP_MARKER_ICON),
       });
     }
     if (canUseAdvancedMarkers) {
@@ -318,7 +318,7 @@ export function defaultMapOptions(
     return mapOptions;
   }
 
-  mapOptions.styles = DUKAI_MAP_STYLES;
+  mapOptions.styles = TRANSCHAP_MAP_STYLES;
   return mapOptions;
 }
 

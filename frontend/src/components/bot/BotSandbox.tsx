@@ -279,7 +279,7 @@ export function BotSandbox({
           <i className="fa-solid fa-triangle-exclamation" aria-hidden="true" />
           <p>
             {error ??
-              "DukAI could not reach the AI service. Your message was saved — try again in a moment."}
+              "TransChap could not reach the AI service. Your message was saved — try again in a moment."}
           </p>
         </div>
         <div className="bot-sandbox__status-banner-actions">
@@ -475,7 +475,7 @@ export function BotSandbox({
                             <span className="chat-bubble__auto">Auto</span>
                           ) : null}
                           {isOut ? (
-                            <span className="chat-bubble__sender">DukAI</span>
+                            <span className="chat-bubble__sender">TransChap</span>
                           ) : (
                             <span className="chat-bubble__sender">You (client)</span>
                           )}
@@ -493,7 +493,7 @@ export function BotSandbox({
               </div>
             ))
           )}
-          {sending ? <TypingIndicator aligned="out" label="DukAI is typing" /> : null}
+          {sending ? <TypingIndicator aligned="out" label="TransChap is typing" /> : null}
           <div ref={messagesEndRef} />
         </div>
 

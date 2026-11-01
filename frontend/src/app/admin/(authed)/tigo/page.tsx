@@ -195,7 +195,7 @@ export default function AdminTigoPage() {
     if (op.destructive) {
       const ok = await confirmAction(
         "Send real money?",
-        "This disburses from the DukAI Tigo wallet to the number below. It cannot be reversed.",
+        "This disburses from the TransChap Tigo wallet to the number below. It cannot be reversed.",
         "Disburse",
       );
       if (!ok) return;

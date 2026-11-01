@@ -3,7 +3,7 @@
 import { forwardRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import { formatNairobiStamp24 } from "@/lib/nairobi-time";
 import {
   formatKesDigits,
@@ -80,7 +80,7 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
         className={`trans-chap-slip${closed ? " is-closed" : ""}${waiting ? " is-waiting" : ""}`}
       >
         <header className="trans-chap-slip__brand">
-          <DukAiLogoMark size={36} color="currentColor" accentColor="#e8412a" />
+          <TransChapLogoMark size={36} />
           <strong>{receipt.shopName}</strong>
           {receipt.headerLines?.map((line, index) => (
             <p key={`${index}-${line}`} className="trans-chap-slip__desc">

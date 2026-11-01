@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 
 type Props = {
   href?: string;
@@ -9,11 +9,8 @@ export function AuthBrandHeader({ href = "/sign-in" }: Props) {
   return (
     <div className="auth-split__brand">
       <Link href={href} className="auth-split__logo">
-        <span className="auth-split__wordmark">duk</span>
-        <DukAiLogoMark size={64} color="#1a100c" accentColor="#e85d04" />
-        <span className="auth-split__wordmark">
-          ai<span className="auth-split__tm">™</span>
-        </span>
+        <TransChapLogoMark size={56} color="#20154c" accentColor="#77f665" />
+        <span className="auth-split__wordmark">TransChap</span>
       </Link>
       <p className="auth-split__tagline">
         your retail <span>companion</span>

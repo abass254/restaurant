@@ -14,7 +14,7 @@ ORDER_PAYMENT_TOKEN_MAX_AGE = 60 * 60 * 24 * 14  # 14 days
 def _serializer(settings: Settings) -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(
         settings.session_secret,
-        salt="dukai-order-payment",
+        salt="TransChap-order-payment",
     )
 
 

@@ -459,8 +459,8 @@ def send_staff_password_reset_link(
     reset_link = f"{frontend_url}/reset-password?token={token}"
 
     html = render_branded_email(
-        title="Reset your DukAI password",
-        heading="Set a new password for your DukAI account",
+        title="Reset your TransChap password",
+        heading="Set a new password for your TransChap account",
         intro=(
             "Your shop owner created a temporary password for your account. "
             "Use the button below to choose your own password."
@@ -479,10 +479,10 @@ def send_staff_password_reset_link(
     sent = service.send_email(
         to=user.email,
         to_name=user.name,
-        subject="Reset your DukAI staff account password",
+        subject="Reset your TransChap staff account password",
         text=(
             f"Hi {user.name},\n\n"
-            "Your shop owner reset your DukAI password.\n\n"
+            "Your shop owner reset your TransChap password.\n\n"
             f"Email: {user.email}\n"
             f"Temporary password: {temp_password}\n\n"
             f"Set your own password here: {reset_link}\n\n"

@@ -821,7 +821,7 @@ def _generate_excel_template() -> tuple[bytes, str, str]:
     wb.close()
     return (
         data,
-        "dukai_customers_template.xlsx",
+        "TransChap_customers_template.xlsx",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
@@ -841,7 +841,7 @@ def _generate_csv_template() -> tuple[bytes, str, str]:
     writer.writerows(sample_rows)
 
     data = output.getvalue().encode("utf-8-sig")
-    return (data, "dukai_customers_template.csv", "text/csv; charset=utf-8")
+    return (data, "TransChap_customers_template.csv", "text/csv; charset=utf-8")
 
 
 def generate_customer_template(format: str = "xlsx") -> tuple[bytes, str, str]:

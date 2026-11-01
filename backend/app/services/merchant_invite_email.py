@@ -16,8 +16,8 @@ from app.models import Account, User
 from app.services.email_service import EmailService
 from app.services.email_templates import render_branded_email
 
-INVITE_EMAIL_FROM_ADDRESS = "no-reply@dukai.app"
-INVITE_EMAIL_FROM_NAME = "DUKAI PLATFORM"
+INVITE_EMAIL_FROM_ADDRESS = "no-reply@transchap.app"
+INVITE_EMAIL_FROM_NAME = "TRANSCHAP PLATFORM"
 
 _TEMP_PASSWORD_ALPHABET = (
     "".join(c for c in string.ascii_uppercase if c not in "OI")
@@ -63,10 +63,10 @@ def send_merchant_access_granted_email(
     business_name = account.business_name or "a shop"
 
     html = render_branded_email(
-        title="New shop access on DukAI",
+        title="New shop access on TransChap",
         heading=f"You now have access to {business_name}",
         intro=(
-            "You were added to another shop dashboard on DukAI. "
+            "You were added to another shop dashboard on TransChap. "
             "Sign in with your existing email and password, then switch stores "
             "from the Store menu in the top bar."
         ),
@@ -74,17 +74,17 @@ def send_merchant_access_granted_email(
             ("Shop", business_name),
             ("Account email", user.email),
         ],
-        cta_label="Sign in to DukAI",
+        cta_label="Sign in to TransChap",
         cta_url=login_url,
         footer_note="If you weren't expecting this, contact your shop administrator.",
     )
     sent = service.send_email(
         to=user.email,
         to_name=user.name,
-        subject=f"You now have access to {business_name} on DukAI",
+        subject=f"You now have access to {business_name} on TransChap",
         text=(
             f"Hi {user.name},\n\n"
-            f"You now have access to {business_name} on DukAI.\n\n"
+            f"You now have access to {business_name} on TransChap.\n\n"
             f"Sign in with your existing password: {login_url}\n\n"
             "After signing in, use the Store menu in the top bar to switch shops."
         ),
@@ -119,10 +119,10 @@ def send_merchant_user_invite_email(db: Session, user: User) -> None:
     reset_link = f"{frontend_url}/reset-password?token={token}"
 
     html = render_branded_email(
-        title="Reset your DukAI password",
-        heading="Set a new password for your DukAI account",
+        title="Reset your TransChap password",
+        heading="Set a new password for your TransChap account",
         intro=(
-            "You were invited to a shop dashboard on DukAI. "
+            "You were invited to a shop dashboard on TransChap. "
             "Use the button below to choose your own password."
         ),
         paragraphs=[
@@ -140,10 +140,10 @@ def send_merchant_user_invite_email(db: Session, user: User) -> None:
     sent = service.send_email(
         to=user.email,
         to_name=user.name,
-        subject="You're invited to DukAI",
+        subject="You're invited to TransChap",
         text=(
             f"Hi {user.name},\n\n"
-            "You were invited to a shop dashboard on DukAI.\n\n"
+            "You were invited to a shop dashboard on TransChap.\n\n"
             f"Temporary password: {temp_password}\n\n"
             f"Set your own password here: {reset_link}\n\n"
             "This link expires in 3 days."

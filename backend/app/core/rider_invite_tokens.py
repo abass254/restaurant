@@ -15,7 +15,7 @@ RIDER_INVITE_TOKEN_MAX_AGE = 7 * 24 * 60 * 60
 def _serializer(settings: Settings) -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(
         settings.session_secret,
-        salt="dukai-rider-invite-token",
+        salt="TransChap-rider-invite-token",
     )
 
 

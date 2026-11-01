@@ -27,7 +27,7 @@ export function MobileShell({ children }: { children: React.ReactNode }) {
     store?.business_name ||
     user?.active_account?.business_name ||
     user?.account?.business_name ||
-    "DukAI";
+    "TransChap";
 
   return (
     <StationOrdersProvider>

@@ -45,8 +45,8 @@ const DEFAULT_PROFILE: RiderProfile = {
   photoUri: null,
 };
 
-const PROFILE_KEY = 'dukai.rider.profile';
-const STORES_PAUSE_KEY = 'dukai.rider.stores_paused';
+const PROFILE_KEY = 'TransChap.rider.profile';
+const STORES_PAUSE_KEY = 'TransChap.rider.stores_paused';
 
 type AppState = {
   loggedIn: boolean;

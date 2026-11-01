@@ -1,5 +1,5 @@
-/* DukAI — SweetAlert2 theme */
-.dukai-swal-popup {
+/* TransChap — SweetAlert2 theme */
+.TransChap-swal-popup {
   font-family: var(--font-body) !important;
   background: var(--color-surface) !important;
   color: var(--color-text) !important;
@@ -9,12 +9,12 @@
   padding: 1.5rem 1.25rem 1.25rem !important;
 }
 
-.dukai-swal-toast.dukai-swal-popup {
+.TransChap-swal-toast.TransChap-swal-popup {
   padding: 0.75rem 1rem !important;
   border-radius: 14px !important;
 }
 
-.dukai-swal-toast .dukai-swal-title {
+.TransChap-swal-toast .TransChap-swal-title {
   font-size: 0.9375rem !important;
   font-weight: 650 !important;
   line-height: 1.35 !important;
@@ -23,8 +23,8 @@
   text-align: left !important;
 }
 
-.dukai-swal-toast .dukai-swal-toast-icon,
-.dukai-swal-toast .swal2-icon {
+.TransChap-swal-toast .TransChap-swal-toast-icon,
+.TransChap-swal-toast .swal2-icon {
   width: 2rem !important;
   min-width: 2rem !important;
   height: 2rem !important;
@@ -38,22 +38,22 @@
   justify-content: center !important;
 }
 
-.dukai-swal-toast .swal2-icon.swal2-success {
+.TransChap-swal-toast .swal2-icon.swal2-success {
   background: color-mix(in srgb, var(--color-success-text) 16%, transparent) !important;
   color: var(--color-success-text) !important;
 }
 
-.dukai-swal-toast .swal2-icon.swal2-error {
+.TransChap-swal-toast .swal2-icon.swal2-error {
   background: color-mix(in srgb, var(--app-danger, #e41e3f) 16%, transparent) !important;
   color: var(--app-danger, #e41e3f) !important;
 }
 
-.dukai-swal-toast .swal2-icon.swal2-info {
+.TransChap-swal-toast .swal2-icon.swal2-info {
   background: color-mix(in srgb, var(--color-primary) 16%, transparent) !important;
   color: var(--color-primary) !important;
 }
 
-.dukai-swal-toast .swal2-icon .swal2-icon-content {
+.TransChap-swal-toast .swal2-icon .swal2-icon-content {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -62,29 +62,29 @@
   color: inherit !important;
 }
 
-.dukai-swal-toast .swal2-success-ring,
-.dukai-swal-toast [class^="swal2-success-line"],
-.dukai-swal-toast .swal2-success-circular-line-left,
-.dukai-swal-toast .swal2-success-circular-line-right,
-.dukai-swal-toast .swal2-success-fix,
-.dukai-swal-toast .swal2-x-mark,
-.dukai-swal-toast .swal2-icon-content .swal2-icon-content {
+.TransChap-swal-toast .swal2-success-ring,
+.TransChap-swal-toast [class^="swal2-success-line"],
+.TransChap-swal-toast .swal2-success-circular-line-left,
+.TransChap-swal-toast .swal2-success-circular-line-right,
+.TransChap-swal-toast .swal2-success-fix,
+.TransChap-swal-toast .swal2-x-mark,
+.TransChap-swal-toast .swal2-icon-content .swal2-icon-content {
   display: none !important;
 }
 
-.dukai-swal-toast--loading.dukai-swal-popup {
+.TransChap-swal-toast--loading.TransChap-swal-popup {
   width: auto !important;
   padding: 0.65rem 1.05rem !important;
   border-radius: 999px !important;
 }
 
-.swal2-container.swal2-bottom.dukai-swal-toast-container--loading {
+.swal2-container.swal2-bottom.TransChap-swal-toast-container--loading {
   align-items: flex-end;
   justify-content: center;
   padding-bottom: max(4.5rem, calc(10vh + env(safe-area-inset-bottom, 0px))) !important;
 }
 
-.dukai-swal-toast-loading {
+.TransChap-swal-toast-loading {
   display: inline-flex !important;
   align-items: center;
   gap: 0.55rem;
@@ -96,25 +96,25 @@
   color: var(--color-text) !important;
 }
 
-.dukai-swal-toast-loading i {
+.TransChap-swal-toast-loading i {
   color: var(--color-primary);
   font-size: 0.9rem;
 }
 
-.dukai-swal-title {
+.TransChap-swal-title {
   font-family: var(--font-display) !important;
   font-size: 1.35rem !important;
   font-weight: 600 !important;
   color: var(--color-text) !important;
 }
 
-.dukai-swal-text {
+.TransChap-swal-text {
   font-size: 0.9375rem !important;
   color: var(--color-text-muted) !important;
   line-height: 1.55 !important;
 }
 
-.dukai-swal-btn {
+.TransChap-swal-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -129,31 +129,31 @@
   transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
 }
 
-.dukai-swal-btn:hover {
+.TransChap-swal-btn:hover {
   transform: translateY(-1px);
 }
 
-.dukai-swal-btn--confirm {
+.TransChap-swal-btn--confirm {
   background: var(--color-primary);
   color: var(--color-text-inverse);
   box-shadow: var(--shadow-sm);
 }
 
-html[data-theme="dark"] .dukai-swal-btn--confirm {
+html[data-theme="dark"] .TransChap-swal-btn--confirm {
   color: var(--color-bg);
 }
 
-.dukai-swal-btn--confirm:hover {
+.TransChap-swal-btn--confirm:hover {
   background: var(--color-primary-hover);
 }
 
-.dukai-swal-btn--cancel {
+.TransChap-swal-btn--cancel {
   background: var(--color-surface-muted);
   color: var(--color-text-muted);
   border: 1px solid var(--color-border);
 }
 
-.dukai-swal-btn--cancel:hover {
+.TransChap-swal-btn--cancel:hover {
   background: var(--color-surface-hover);
   color: var(--color-text);
 }
@@ -185,31 +185,31 @@ html[data-theme="dark"] .dukai-swal-btn--confirm {
   background: var(--color-primary) !important;
 }
 
-.dukai-mpesa-edit {
+.TransChap-mpesa-edit {
   display: grid;
   gap: 10px;
   text-align: left;
 }
 
-.dukai-mpesa-edit label {
+.TransChap-mpesa-edit label {
   display: grid;
   gap: 6px;
 }
 
-.dukai-mpesa-edit label > span {
+.TransChap-mpesa-edit label > span {
   font-size: 0.8125rem;
   color: var(--color-text-muted);
 }
 
-.dukai-mpesa-edit .swal2-input,
-.dukai-mpesa-edit .swal2-select,
-.dukai-mpesa-edit .swal2-textarea {
+.TransChap-mpesa-edit .swal2-input,
+.TransChap-mpesa-edit .swal2-select,
+.TransChap-mpesa-edit .swal2-textarea {
   margin: 0 !important;
   width: 100% !important;
 }
 
 /* Waitlist success popup */
-.dukai-waitlist-popup {
+.TransChap-waitlist-popup {
   position: relative;
   max-width: 440px !important;
   padding: 2rem 1.75rem 1.5rem !important;
@@ -219,7 +219,7 @@ html[data-theme="dark"] .dukai-swal-btn--confirm {
   overflow: hidden !important;
 }
 
-.dukai-waitlist-popup::before {
+.TransChap-waitlist-popup::before {
   content: "";
   position: absolute;
   top: 0;
@@ -235,11 +235,11 @@ html[data-theme="dark"] .dukai-swal-btn--confirm {
   z-index: 1;
 }
 
-html[data-theme="dark"] .dukai-waitlist-popup {
+html[data-theme="dark"] .TransChap-waitlist-popup {
   border-color: var(--color-border-strong) !important;
 }
 
-.dukai-waitlist-icon {
+.TransChap-waitlist-icon {
   width: 64px !important;
   height: 64px !important;
   margin: 0.5rem auto 1rem !important;
@@ -257,26 +257,26 @@ html[data-theme="dark"] .dukai-waitlist-popup {
   animation: waitlistIconPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-html[data-theme="dark"] .dukai-waitlist-icon {
+html[data-theme="dark"] .TransChap-waitlist-icon {
   color: var(--color-bg) !important;
 }
 
-.dukai-waitlist-icon .swal2-success-ring,
-.dukai-waitlist-icon [class^="swal2-success-line"],
-.dukai-waitlist-icon .swal2-success-circular-line-left,
-.dukai-waitlist-icon .swal2-success-circular-line-right,
-.dukai-waitlist-icon .swal2-success-fix {
+.TransChap-waitlist-icon .swal2-success-ring,
+.TransChap-waitlist-icon [class^="swal2-success-line"],
+.TransChap-waitlist-icon .swal2-success-circular-line-left,
+.TransChap-waitlist-icon .swal2-success-circular-line-right,
+.TransChap-waitlist-icon .swal2-success-fix {
   display: none !important;
 }
 
-.dukai-waitlist-icon .swal2-icon-content {
+.TransChap-waitlist-icon .swal2-icon-content {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   color: inherit !important;
 }
 
-.dukai-waitlist-icon i {
+.TransChap-waitlist-icon i {
   animation: waitlistIconRing 1s ease-in-out 0.4s 2;
   transform-origin: top center;
 }
@@ -295,7 +295,7 @@ html[data-theme="dark"] .dukai-waitlist-icon {
   80% { transform: rotate(-4deg); }
 }
 
-.dukai-waitlist-popup .swal2-title {
+.TransChap-waitlist-popup .swal2-title {
   font-family: var(--font-display) !important;
   font-size: 1.4rem !important;
   font-weight: 700 !important;
@@ -304,20 +304,20 @@ html[data-theme="dark"] .dukai-waitlist-icon {
   margin-bottom: 0.5rem !important;
 }
 
-.dukai-waitlist-swal {
+.TransChap-waitlist-swal {
   text-align: center;
   display: grid;
   gap: 0.75rem;
 }
 
-.dukai-waitlist-swal p {
+.TransChap-waitlist-swal p {
   font-size: 0.9rem;
   color: var(--color-text-muted);
   line-height: 1.55;
   margin: 0;
 }
 
-.dukai-waitlist-swal__sub {
+.TransChap-waitlist-swal__sub {
   font-size: 0.825rem !important;
   color: var(--color-text-muted) !important;
   padding: 0.65rem 0.9rem;
@@ -326,13 +326,13 @@ html[data-theme="dark"] .dukai-waitlist-icon {
   border: 1px solid var(--color-primary-muted);
 }
 
-.dukai-waitlist-popup .dukai-swal-btn--confirm {
+.TransChap-waitlist-popup .TransChap-swal-btn--confirm {
   padding: 12px 28px !important;
   font-weight: 600 !important;
   background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover)) !important;
   box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.4) !important;
 }
 
-html[data-theme="dark"] .dukai-waitlist-popup .dukai-swal-btn--confirm {
+html[data-theme="dark"] .TransChap-waitlist-popup .TransChap-swal-btn--confirm {
   color: var(--color-bg) !important;
 }

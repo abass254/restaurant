@@ -1,6 +1,6 @@
 /** Merchant onboarding wizard — shared types & step config. */
 
-/** @deprecated Service vertical lives in dukai_services; kept empty for type compat. */
+/** @deprecated Service vertical lives in TransChap_services; kept empty for type compat. */
 export const SERVICE_BUSINESS_CATEGORIES = [] as const;
 
 export const RETAIL_BUSINESS_CATEGORIES = [
@@ -85,7 +85,7 @@ export const ALL_BUSINESS_CATEGORIES = [
 
 export type BusinessVertical = "service" | "retail";
 
-export const BUSINESS_VERTICAL_STORAGE_KEY = "dukai_business_vertical";
+export const BUSINESS_VERTICAL_STORAGE_KEY = "TransChap_business_vertical";
 
 export function categoriesForVertical(_vertical?: BusinessVertical): readonly string[] {
   return RETAIL_BUSINESS_CATEGORIES;
@@ -95,7 +95,7 @@ export function defaultCategoryForVertical(_vertical?: BusinessVertical): string
   return RETAIL_BUSINESS_CATEGORIES[0];
 }
 
-/** DukAI Merchants is retail-only. */
+/** TransChap Merchants is retail-only. */
 export function isServiceBusinessCategory(
   _category?: string | null | undefined,
 ): boolean {
@@ -127,7 +127,7 @@ export function loadBusinessVertical(): BusinessVertical {
   return "retail";
 }
 
-export const SIGNUP_CITY_STORAGE_KEY = "dukai_signup_city";
+export const SIGNUP_CITY_STORAGE_KEY = "TransChap_signup_city";
 
 export function saveSignupCity(city: string): void {
   try {
@@ -180,7 +180,7 @@ export const WEEKDAY_LABELS = [
   "Sunday",
 ] as const;
 
-export const STORAGE_KEY = "dukai_onboarding_v1";
+export const STORAGE_KEY = "TransChap_onboarding_v1";
 
 export type OnboardingDraft = {
   stepId: OnboardingStepId;

@@ -143,7 +143,7 @@ class OnboardingRequirementService:
             "key": "webhooks_subscribed",
             "label": "Message notifications enabled",
             "description": (
-                "Instagram will push new DMs to DukAI in real time."
+                "Instagram will push new DMs to TransChap in real time."
                 if passed
                 else "We could not confirm webhook subscription. Click re-check after connecting."
             ),

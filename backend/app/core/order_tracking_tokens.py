@@ -27,7 +27,7 @@ ORDER_TRACKING_TOKEN_MAX_AGE = 60 * 60 * 24 * 90  # 90 days
 def _serializer(settings: Settings) -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(
         settings.session_secret,
-        salt="dukai-order-tracking",
+        salt="TransChap-order-tracking",
     )
 
 

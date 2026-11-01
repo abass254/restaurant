@@ -2,9 +2,9 @@
   xmlns="http://www.w3.org/2000/svg"
   viewBox="0 0 64 64"
   role="img"
-  aria-label="DukAI"
+  aria-label="TransChap"
 >
-  <title>DukAI</title>
+  <title>TransChap</title>
 
   <path
     d="M24 28 L24 24 A3 3 0 0 1 30 24 L30 28"

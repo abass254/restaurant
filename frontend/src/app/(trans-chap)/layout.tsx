@@ -10,17 +10,18 @@ import "@/styles/restaurant-supplies.css";
 import "@/styles/trans-chap-quotation.css";
 
 export const metadata: Metadata = {
-  title: "Dukai Merchant",
-  description: "Sales and receipts for DukAI merchants",
+  title: "TransChap",
+  description: "Sales, stock, and receipts for restaurants and retailers.",
   manifest: "/trans-chap-manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "Dukai Merchant",
+    title: "TransChap",
     // Draw under the iOS status bar so the header color fills to the top edge
     // (no black gap). Header already pads with env(safe-area-inset-top).
     statusBarStyle: "black-translucent",
   },
   icons: {
+    icon: [{ url: "/icons/trans-chap-icon.svg", type: "image/svg+xml" }],
     apple: [
       { url: "/icons/trans-chap-180.png", sizes: "180x180", type: "image/png" },
     ],
@@ -28,7 +29,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#e8412a",
+  themeColor: "#238636",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",

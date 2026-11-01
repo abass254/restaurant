@@ -11,11 +11,11 @@ from app.services.dm_agent_tools import merchant_script, normalize_opening_line
 
 def test_normalize_opening_line_upgrades_legacy_template():
     legacy = (
-        'On greetings, say: "Hello! I\'m DukAI, your sales assistant agent. '
+        'On greetings, say: "Hello! I\'m TransChap, your sales assistant agent. '
         'Welcome to our shop!" then ask how you can help.'
     )
     normalized = normalize_opening_line(legacy)
-    assert "Hello! I'm DukAI, your sales assistant agent" not in normalized
+    assert "Hello! I'm TransChap, your sales assistant agent" not in normalized
     assert "natural way" in normalized
 
 
@@ -32,7 +32,7 @@ def test_build_system_prompt_encourages_contextual_greetings():
     assert "wagwan" in prompt
     assert "uko aje" in prompt
     assert "Do NOT repeat the same canned English intro" in prompt
-    assert 'reply in this style:\n  "Hello! I\'m DukAI' not in prompt
+    assert 'reply in this style:\n  "Hello! I\'m TransChap' not in prompt
 
 
 def test_build_system_prompt_includes_closer_playbook():
@@ -138,14 +138,14 @@ def test_merchant_script_normalizes_stored_legacy_opening():
         onboarding_checks={
             "sales_autopilot_script": {
                 "opening_line": (
-                    "On greetings, say: \"Hello! I'm DukAI, your sales assistant agent. "
+                    "On greetings, say: \"Hello! I'm TransChap, your sales assistant agent. "
                     "Welcome to our shop!\" then ask how you can help."
                 ),
             },
         },
     )
     script = merchant_script(account)
-    assert "Hello! I'm DukAI, your sales assistant agent" not in script["opening_line"]
+    assert "Hello! I'm TransChap, your sales assistant agent" not in script["opening_line"]
 
 
 def test_dm_agent_max_tool_rounds_default_is_six():

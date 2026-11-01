@@ -8,12 +8,12 @@ import {
   FULFILLMENT_LABELS,
   SOURCE_LABELS,
   formatMoney,
-  isDukAiAgentOrder,
+  isTransChapAgentOrder,
   orderUnitsCount,
 } from "@/lib/orders";
 import { isStationNeedsAction, stationPrimaryAction } from "@/lib/station";
 import type { Order, OrderMutationResponse, OrderStatus } from "@/lib/types";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import { useStationOrdersContext } from "@/components/station/StationOrdersContext";
 
 /** DoorDash-style repeating chime while an incoming order fills the screen. */
@@ -197,7 +197,7 @@ export function StationNewOrderAlert() {
 
   const action = stationPrimaryAction(alertOrder);
   const unitCount = orderUnitsCount(alertOrder);
-  const fromAgent = isDukAiAgentOrder(alertOrder);
+  const fromAgent = isTransChapAgentOrder(alertOrder);
 
   return (
     <div
@@ -222,8 +222,8 @@ export function StationNewOrderAlert() {
         <div className="station-alert__meta">
           {fromAgent ? (
             <span className="station-alert__agent">
-              <DukAiLogoMark size={14} color="currentColor" accentColor="currentColor" />
-              DukAI Agent
+              <TransChapLogoMark size={14} color="currentColor" accentColor="currentColor" />
+              TransChap Agent
             </span>
           ) : null}
           <span>{SOURCE_LABELS[alertOrder.source]}</span>

@@ -8,7 +8,7 @@ loadRootEnvFile();
 const backendUrl = process.env.BACKEND_URL ?? "http://127.0.0.1:7001";
 
 function lanDevOrigins(): string[] {
-  const origins = new Set(["uat.dukai.app", "dukai.app", "127.0.0.1", "localhost"]);
+  const origins = new Set(["uat.transchap.app", "transchap.app", "127.0.0.1", "localhost"]);
   for (const addrs of Object.values(os.networkInterfaces())) {
     for (const addr of addrs ?? []) {
       if (addr.family === "IPv4" && !addr.internal) {

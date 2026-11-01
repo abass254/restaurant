@@ -22,7 +22,7 @@ class InstagramAuthService:
         self.linker = linker
 
     def get_login_url(self, *, state: str, origin: str | None = None) -> str:
-        """Send the user to the dukai.app hub. The hub talks to Meta; we never do."""
+        """Send the user to the transchap.app hub. The hub talks to Meta; we never do."""
         return hub_connect_url(self.settings, state, origin=origin)
 
     def user_from_signed_state(self, db: Session, state: str, session_user: User | None) -> User:

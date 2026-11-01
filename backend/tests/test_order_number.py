@@ -22,7 +22,7 @@ def test_merchant_order_initials_from_business_name() -> None:
     assert merchant_order_initials("Mama Mboga") == "MAM"
     assert merchant_order_initials("Java House Nairobi") == "JHN"
     assert merchant_order_initials("Kiosk") == "KIO"
-    assert merchant_order_initials("duKAi") == "DUK"
+    assert merchant_order_initials("TransChap") == "TRA"
     assert merchant_order_initials("7 Eleven") == "7EL"
     assert merchant_order_initials("The Burger Joint") == "BUJ"
     assert merchant_order_initials("AB") == "ABX"

@@ -362,7 +362,7 @@ export default function LoginScreen() {
             <>
               <Text style={styles.title}>Log in with email</Text>
               <Text style={styles.sub}>
-                Use the email linked to your DukAI Rider account. We&apos;ll send a one-time code.
+                Use the email linked to your TransChap Rider account. We&apos;ll send a one-time code.
               </Text>
 
               <Text style={styles.label}>Email</Text>

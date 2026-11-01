@@ -103,14 +103,14 @@ export function ProcessShowcase() {
       ref={sectionRef}
       className="process-showcase"
       id="how-it-works"
-      aria-label="How DukAI processes orders"
+      aria-label="How TransChap processes orders"
     >
       <div className="process-showcase__inner">
         <div className="section-header reveal">
           <span className="section-tag">How it works</span>
           <h2>From DM to delivered order</h2>
           <p>
-            Watch how DukAI moves every sale — conversation, payment, and delivery
+            Watch how TransChap moves every sale — conversation, payment, and delivery
             on autopilot while you stay in control with one tap.
           </p>
         </div>
@@ -263,7 +263,7 @@ function SceneApprove() {
   return (
     <div className="scene-approve">
       <div className="scene-notif">
-        <span className="scene-notif__badge">DukAI</span>
+        <span className="scene-notif__badge">TransChap</span>
         <p>New order · Jane Wanjiku</p>
         <span className="scene-notif__meta">Red Wrap Dress · KSh 2,700 · PAID</span>
       </div>

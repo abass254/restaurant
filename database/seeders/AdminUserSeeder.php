@@ -21,10 +21,10 @@ class AdminUserSeeder extends Seeder
         );
 
         User::updateOrCreate(
-            ['email' => 'netizen@dukai.com'],
+            ['email' => 'netizen@TransChap.com'],
             [
                 'account_id' => $account->id,
-                'name' => 'DukAI Admin',
+                'name' => 'TransChap Admin',
                 'phone' => '+254700000000',
                 'password' => Hash::make('password'),
                 'user_role' => UserRole::SystemAdmin->value,

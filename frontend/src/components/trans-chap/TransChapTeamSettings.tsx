@@ -246,7 +246,7 @@ export function TransChapTeamSettings({ onClose }: { onClose: () => void }) {
       ...createForm.allowed_sections,
     ]);
     if (allowedSections.length === 0) {
-      await showError("Select access", "Choose at least one DukAI Merch area.");
+      await showError("Select access", "Choose at least one TransChap area.");
       return;
     }
 
@@ -280,7 +280,7 @@ export function TransChapTeamSettings({ onClose }: { onClose: () => void }) {
         if (lookup.found) {
           await showError(
             "Account already exists",
-            "This email already has a DukAI login. Switch to Invite user to add them without a new password.",
+            "This email already has a TransChap login. Switch to Invite user to add them without a new password.",
           );
           setCreating(false);
           return;
@@ -343,7 +343,7 @@ export function TransChapTeamSettings({ onClose }: { onClose: () => void }) {
       ...editForm.allowed_sections,
     ]);
     if (allowedSections.length === 0) {
-      await showError("Select access", "Choose at least one DukAI Merch area.");
+      await showError("Select access", "Choose at least one TransChap area.");
       return;
     }
     setSavingEdit(true);
@@ -582,7 +582,7 @@ export function TransChapTeamSettings({ onClose }: { onClose: () => void }) {
               >
                 <span className="ios-settings__label-stack">
                   <strong>Send an invitation</strong>
-                  <span>For someone who already has a DukAI account</span>
+                  <span>For someone who already has a TransChap account</span>
                 </span>
                 {createMode === "invite" ? (
                   <i className="fa-solid fa-check ios-settings__check" aria-hidden />
@@ -611,7 +611,7 @@ export function TransChapTeamSettings({ onClose }: { onClose: () => void }) {
             <p className="ios-settings__footer">
               {createMode === "create"
                 ? "We’ll generate a temporary password that you can copy and give to them."
-                : "Look up their email first. Existing DukAI users keep their current password."}
+                : "Look up their email first. Existing TransChap users keep their current password."}
             </p>
           </div>
 
@@ -1091,7 +1091,7 @@ function SectionPicker({
         })}
       </div>
       <p className="ios-settings__footer">
-        Only DukAI Merch areas. Home is always included so they can open the app.
+        Only TransChap areas. Home is always included so they can open the app.
         Customers covers the directory and collecting on tab. POS & sales covers
         the register and walk-in receipts. Inventory covers stock and purchases.
         Settings controls the Settings menu (sign-out, camera, etc.).

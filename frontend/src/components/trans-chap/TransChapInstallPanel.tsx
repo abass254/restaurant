@@ -17,7 +17,7 @@ export function TransChapInstallPanel({
     const ok = await promptInstall();
     setStatus(
       ok
-        ? "Installed. Open Dukai Merchant from your home screen."
+        ? "Installed. Open TransChap from your home screen."
         : "Install dismissed. You can try again anytime.",
     );
   }
@@ -25,8 +25,8 @@ export function TransChapInstallPanel({
   async function copyLink() {
     const url =
       typeof window !== "undefined"
-        ? `${window.location.origin}/trans-chap/install`
-        : "/trans-chap/install";
+        ? `${window.location.origin}/install`
+        : "/install";
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
@@ -39,7 +39,7 @@ export function TransChapInstallPanel({
   return (
     <div className="trans-chap-install ios-settings-detail">
       <p className="ios-settings__footer ios-settings__footer--top">
-        Add Dukai Merchant to your home screen. It opens this sales app only — not the
+        Add TransChap to your home screen. It opens this sales app only — not the
         full merchant dashboard. No App Store required.
       </p>
 
@@ -96,7 +96,7 @@ export function TransChapInstallPanel({
                   </p>
                   <ol>
                     <li>Use the install icon in the address bar</li>
-                    <li>Or open the browser menu → Install DukAI Merch</li>
+                    <li>Or open the browser menu → Install TransChap</li>
                   </ol>
                 </>
               )}
@@ -113,9 +113,9 @@ export function TransChapInstallPanel({
             </span>
           </button>
           {showOpenLink ? (
-            <Link href="/trans-chap" className="ios-settings__row">
+            <Link href="/" className="ios-settings__row">
               <span className="ios-settings__label ios-settings__label--action">
-                Open DukAI Merch
+                Open TransChap
               </span>
               <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
             </Link>

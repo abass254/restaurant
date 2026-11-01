@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-# DukAI FastAPI backend.
+# TransChap FastAPI backend.
 # Listens on port 7071 inside the container (configurable via APP_PORT).
 
 FROM python:3.12-slim AS runtime

@@ -1,4 +1,4 @@
-# Running DukAI in Docker
+# Running TransChap in Docker
 
 The full stack — MySQL, FastAPI backend, Next.js frontend — runs from a single
 `docker compose up`. The tracked [`compose.yaml`](../compose.yaml) starts the
@@ -28,17 +28,17 @@ cp .env.example .env
 
 Minimum values to set for a fresh install:
 
-- `DB_PASSWORD`, `DB_ROOT_PASSWORD` — required; Compose will not start without them. Do not use `dukai`, `root`, or `password`.
+- `DB_PASSWORD`, `DB_ROOT_PASSWORD` — required; Compose will not start without them. Do not use `TransChap`, `root`, or `password`.
 - `SESSION_SECRET` — long random string (Compose/`APP_ENV=production` refuses placeholders).
 - `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN` — from your Meta app.
 - `INSTAGRAM_REDIRECT_URI` — must match the Meta app's registered OAuth redirect URI.
 
-For a production deployment on **merchants.dukai.app**, set:
+For a production deployment on **merchants.transchap.app**, set:
 
 ```env
-APP_URL=https://merchants.dukai.app
-FRONTEND_URL=https://merchants.dukai.app
-CORS_ALLOWED_ORIGINS=https://merchants.dukai.app
+APP_URL=https://merchants.transchap.app
+FRONTEND_URL=https://merchants.transchap.app
+CORS_ALLOWED_ORIGINS=https://merchants.transchap.app
 UPLOADS_HOST_PATH=/home/ubuntu/agents/uploads
 APP_DEBUG=false
 APP_ENV=production
@@ -48,7 +48,7 @@ NEXT_PUBLIC_DEBUG=false
 The tracked Compose stack uses the persistent `backend_uploads` named volume.
 For a host-managed media folder, use a reviewed deployment override which bind
 mounts it at `/app/uploads`. Media is public at
-`https://merchants.dukai.app/uploads/...`. See [UPLOADS.md](./UPLOADS.md).
+`https://merchants.transchap.app/uploads/...`. See [UPLOADS.md](./UPLOADS.md).
 
 For a generic production host behind nginx/TLS, set the same pattern with your
 domain:
@@ -125,7 +125,7 @@ is not published to the host; backend is loopback-only for the TLS proxy.
 - `mysql_data` — persistent MySQL data dir.
 - Uploads at `/app/uploads` inside the backend container, served at `/uploads/*`:
   - **Local:** named volume `backend_uploads` (default when `UPLOADS_HOST_PATH` is unset).
-  - **Prod (merchants.dukai.app):** bind mount `UPLOADS_HOST_PATH=/home/ubuntu/agents/uploads`.
+  - **Prod (merchants.transchap.app):** bind mount `UPLOADS_HOST_PATH=/home/ubuntu/agents/uploads`.
 
 Named volumes survive `docker compose down`. Use `-v` to wipe them. Bind-mounted
 host folders are not removed by Compose.
@@ -137,7 +137,7 @@ host folders are not removed by Compose.
 `.env`.
 
 **Compose exits: `DB_PASSWORD must be set`.** Docker no longer defaults MySQL
-to `dukai` / `root`. Put strong `DB_PASSWORD` and `DB_ROOT_PASSWORD` values
+to `TransChap` / `root`. Put strong `DB_PASSWORD` and `DB_ROOT_PASSWORD` values
 in `.env`.
 
 **Backend exits: `SESSION_SECRET is missing or too weak`.** Replace the
@@ -150,9 +150,9 @@ port, and path.
 
 **`/uploads/...` returns 404 in the browser.** Check the volume is mounted:
 `docker compose exec backend ls /app/uploads`. New uploads land there and are
-proxied through Next at `/uploads/*`. On merchants.dukai.app, confirm
+proxied through Next at `/uploads/*`. On merchants.transchap.app, confirm
 `UPLOADS_HOST_PATH=/home/ubuntu/agents/uploads` and that
-`APP_URL` / `FRONTEND_URL` are `https://merchants.dukai.app`.
+`APP_URL` / `FRONTEND_URL` are `https://merchants.transchap.app`.
 
 **Port 7070 already in use.** Stop the host-side Next dev server (`npm run
 dev` on :7000 won't clash, but a previous container will). `docker compose

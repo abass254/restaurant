@@ -8,7 +8,13 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.core.password_reset_tokens import mint_password_reset_token
 from app.core.security import generate_temp_password, hash_password
-from app.models import RETAIL_BUSINESS_CATEGORIES, Account, User, UserMembership
+from app.models import (
+    STORE_TYPES,
+    Account,
+    User,
+    UserMembership,
+    is_valid_business_category,
+)
 from app.support.merchant_permissions import (
     get_memberships,
     serialize_allowed_sections,
@@ -23,19 +29,56 @@ class RegistrationEmailError(Exception):
     """The account could not be finalized because the welcome email failed."""
 
 
-def _require_retail_category(category: str | None) -> str:
+def _require_business_profile(category: str | None, store_type: str | None) -> tuple[str, str]:
     cleaned = (category or "").strip()
-    if cleaned not in RETAIL_BUSINESS_CATEGORIES:
-        raise ValueError(
-            "Choose a retail business category supported by DukAI Merchants."
-        )
-    return cleaned
+    normalized_type = (store_type or "retail").strip().lower()
+    if normalized_type not in STORE_TYPES:
+        raise ValueError("Choose a valid store type (retail or restaurant).")
+    if not is_valid_business_category(cleaned, normalized_type):
+        raise ValueError("Choose a valid category for this business type.")
+    return cleaned, normalized_type
 
 
 class BusinessRegistrationService:
     def __init__(self, db: Session, settings: Settings | None = None):
         self.db = db
         self.settings = settings or get_settings()
+
+    def _attach_shop(self, user: User, data: dict, now: datetime) -> Account:
+        category, store_type = _require_business_profile(
+            data.get("business_category"),
+            data.get("store_type"),
+        )
+        account = Account(
+            business_name=data["business_name"].strip(),
+            business_location=data["business_location"].strip(),
+            business_category=category,
+            store_type=store_type,
+            latitude=data.get("latitude"),
+            longitude=data.get("longitude"),
+            created_at=now,
+            updated_at=now,
+        )
+        self.db.add(account)
+        self.db.flush()
+
+        self.db.add(
+            UserMembership(
+                user_id=user.id,
+                account_id=account.id,
+                role="system_admin",
+                allowed_sections=serialize_allowed_sections([]),
+                is_active=True,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        user.account_id = account.id
+        user.user_role = "system_admin"
+        if data.get("admin_phone"):
+            user.phone = str(data["admin_phone"]).strip() or user.phone
+        user.updated_at = now
+        return account
 
     def signup_user(
         self,
@@ -44,8 +87,14 @@ class BusinessRegistrationService:
         email: str,
         password: str,
         phone: str | None = None,
+        shop: dict | None = None,
     ) -> User:
-        """Create a merchant user with no shop yet."""
+        """Create a merchant user, optionally with its initial shop."""
+        if shop is not None:
+            _require_business_profile(
+                shop.get("business_category"),
+                shop.get("store_type"),
+            )
         now = datetime.now(timezone.utc)
         user = User(
             account_id=None,
@@ -61,6 +110,9 @@ class BusinessRegistrationService:
             updated_at=now,
         )
         self.db.add(user)
+        self.db.flush()
+        if shop is not None:
+            self._attach_shop(user, shop, now)
         self.db.commit()
         self.db.refresh(user)
         return user
@@ -114,37 +166,7 @@ class BusinessRegistrationService:
             raise ValueError("You already have a shop on this account.")
 
         now = datetime.now(timezone.utc)
-        category = _require_retail_category(data.get("business_category"))
-        account = Account(
-            business_name=data["business_name"],
-            business_location=data["business_location"],
-            business_category=category,
-            store_type="retail",
-            latitude=data.get("latitude"),
-            longitude=data.get("longitude"),
-            created_at=now,
-            updated_at=now,
-        )
-        self.db.add(account)
-        self.db.flush()
-
-        membership = UserMembership(
-            user_id=user.id,
-            account_id=account.id,
-            role="system_admin",
-            allowed_sections=serialize_allowed_sections([]),
-            is_active=True,
-            created_at=now,
-            updated_at=now,
-        )
-        self.db.add(membership)
-
-        user.account_id = account.id
-        user.user_role = "system_admin"
-        if data.get("admin_phone"):
-            user.phone = str(data["admin_phone"]).strip() or user.phone
-        user.updated_at = now
-
+        account = self._attach_shop(user, data, now)
         self.db.commit()
         self.db.refresh(account)
         self.db.refresh(user)
@@ -153,13 +175,16 @@ class BusinessRegistrationService:
     def register(self, data: dict) -> dict:
         now = datetime.now(timezone.utc)
         temp_password = generate_temp_password()
-        category = _require_retail_category(data.get("business_category"))
+        category, store_type = _require_business_profile(
+            data.get("business_category"),
+            data.get("store_type"),
+        )
 
         account = Account(
             business_name=data["business_name"],
             business_location=data["business_location"],
             business_category=category,
-            store_type="retail",
+            store_type=store_type,
             latitude=data.get("latitude"),
             longitude=data.get("longitude"),
             created_at=now,
@@ -232,8 +257,8 @@ class BusinessRegistrationService:
         business_name = user.name or "there"
 
         html = render_branded_email(
-            title="Welcome to DukAI",
-            heading=f"Welcome to DukAI, {business_name}!",
+            title="Welcome to TransChap",
+            heading=f"Welcome to TransChap, {business_name}!",
             intro=(
                 "Your shop account is ready. Continue setup to connect channels, "
                 "payments, and go live."
@@ -252,10 +277,10 @@ class BusinessRegistrationService:
         return EmailService(self.settings).send_email(
             to=user.email,
             to_name=user.name,
-            subject="Welcome to DukAI — your account is ready",
+            subject="Welcome to TransChap — your account is ready",
             text=(
                 f"Hi {business_name},\n\n"
-                "Welcome to DukAI! Your shop account is ready.\n\n"
+                "Welcome to TransChap! Your shop account is ready.\n\n"
                 f"Email: {user.email}\n"
                 f"Temporary password: {temp_password}\n\n"
                 f"Sign in here: {login_url}\n"
@@ -264,6 +289,6 @@ class BusinessRegistrationService:
             ),
             html=html,
             category="welcome",
-            from_address="no-reply@dukai.app",
-            from_name=self.settings.mail_from_name or "DUKAI PLATFORM",
+            from_address="no-reply@transchap.app",
+            from_name=self.settings.mail_from_name or "TRANSCHAP PLATFORM",
         )

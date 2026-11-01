@@ -1,5 +1,5 @@
 """
-Daraja Account Balance queries for the DukAI hub Paybill.
+Daraja Account Balance queries for the TransChap hub Paybill.
 
 Reference: https://developer.safaricom.co.ke/APIs/AccountBalance
 """
@@ -189,7 +189,7 @@ def request_hub_balance(
         "CommandID": "AccountBalance",
         "PartyA": shortcode,
         "IdentifierType": "4",
-        "Remarks": "DukAI hub balance",
+        "Remarks": "TransChap hub balance",
         "QueueTimeOutURL": timeout_url,
         "ResultURL": result_url,
     }

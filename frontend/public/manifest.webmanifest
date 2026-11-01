@@ -1,7 +1,7 @@
 {
-  "name": "DukAI Merchant",
-  "short_name": "DukAI",
-  "description": "Order station and companion for DukAI merchants",
+  "name": "TransChap Merchant",
+  "short_name": "TransChap",
+  "description": "Order station and companion for TransChap merchants",
   "start_url": "/m",
   "scope": "/",
   "display": "standalone",

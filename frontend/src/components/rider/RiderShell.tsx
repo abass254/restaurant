@@ -27,7 +27,7 @@ export function RiderShell({ children }: { children: ReactNode }) {
     <div className="rider-app">
       <header className="rider-topbar">
         <div className="rider-topbar__brand">
-          <span className="rider-topbar__mark">DukAI</span>
+          <span className="rider-topbar__mark">TransChap</span>
           <span className="rider-topbar__sub">Rider</span>
         </div>
         {!loading && me ? (

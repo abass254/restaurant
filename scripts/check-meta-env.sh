@@ -15,5 +15,5 @@ grep -E '^(APP_ENV|APP_URL|FRONTEND_URL|META_APP_ID|INSTAGRAM_APP_ID|INSTAGRAM_R
 
 echo ""
 echo "Meta console checklist:"
-echo "  UAT  webhook → https://uat.dukai.app/webhooks/instagram"
-echo "  Prod webhook → https://dukai.app/webhooks/instagram"
+echo "  UAT  webhook → https://uat.transchap.app/webhooks/instagram"
+echo "  Prod webhook → https://transchap.app/webhooks/instagram"

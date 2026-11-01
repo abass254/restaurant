@@ -1,6 +1,6 @@
-# FastAPI backend (DukAI)
+# FastAPI backend (TransChap)
 
-Python API for DukAI. Uses the same route contract expected by the Next.js frontend.
+Python API for TransChap. Uses the same route contract expected by the Next.js frontend.
 
 ## Setup
 
@@ -30,7 +30,7 @@ Set `BACKEND_URL` in the repo-root `.env` (loaded automatically by Next.js).
 Session cookies + CSRF mirror Laravel Sanctum SPA mode:
 
 - `GET /sanctum/csrf-cookie` — sets session + `XSRF-TOKEN`
-- Login stores `user_id` in a signed cookie (`dukai_session`)
+- Login stores `user_id` in a signed cookie (`TransChap_session`)
 - Mutating requests require `X-XSRF-TOKEN` header (handled by `frontend/src/lib/api.ts`)
 
 Users must log in again when session settings change.
@@ -39,7 +39,7 @@ Users must log in again when session settings change.
 
 All routes under `/api/v1/*` plus:
 
-- `GET /auth/instagram` — starts Instagram Login via the dukai.app hub
+- `GET /auth/instagram` — starts Instagram Login via the transchap.app hub
 - `GET /instagram/callback` (and `/auth/instagram/callback`) — receives the hub-forwarded auth code
 - `POST /webhooks/instagram` — receives Instagram events forwarded by the hub
 

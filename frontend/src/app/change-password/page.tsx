@@ -2,11 +2,12 @@ import { redirect } from "next/navigation";
 import { BackendUnavailablePanel } from "@/components/app/BackendUnavailablePanel";
 import { BackendUnavailableError, backendUrl } from "@/lib/backend";
 import { getServerUser } from "@/lib/server-auth";
-import { firstAllowedPath } from "@/lib/merchant-permissions";
 import ChangePasswordClient from "./ChangePasswordClient";
 
 function safeNextPath(raw: string | undefined): string | null {
-  if (raw?.startsWith("/trans-chap") && !raw.startsWith("//")) {
+  if (raw?.startsWith("/") && !raw.startsWith("//")) {
+    if (raw === "/trans-chap") return "/";
+    if (raw.startsWith("/trans-chap/")) return raw.slice("/trans-chap".length);
     return raw;
   }
   return null;
@@ -32,10 +33,10 @@ export default async function ChangePasswordPage({ searchParams }: PageProps) {
   }
 
   const params = await searchParams;
-  const nextPath = safeNextPath(params.next);
+  const nextPath = safeNextPath(params.next) ?? "/";
 
   if (!user.require_change_password) {
-    redirect(nextPath || firstAllowedPath(user));
+    redirect(nextPath);
   }
 
   return <ChangePasswordClient user={user} nextPath={nextPath} />;

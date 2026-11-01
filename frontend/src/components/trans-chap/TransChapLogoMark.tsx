@@ -5,12 +5,12 @@ type TransChapLogoMarkProps = {
   accentColor?: string;
 };
 
-/** Distinct Trans Chap mark: receipt + chapchap lightning (not the DukAI bag). */
+/** TransChap mark: receipt and lightning bolt. */
 export function TransChapLogoMark({
   size = 52,
   className,
   color = "currentColor",
-  accentColor = "#e8412a",
+  accentColor = "#77f665",
 }: TransChapLogoMarkProps) {
   return (
     <svg

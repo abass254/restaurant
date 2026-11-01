@@ -18,7 +18,7 @@ from app.support.otp_delivery import phone_otp_allowed, sms_configured
 
 def _settings(**overrides) -> MagicMock:
     settings = MagicMock()
-    settings.africastalking_username = "dukai"
+    settings.africastalking_username = "TransChap"
     settings.africastalking_api_key = "test-key"
     settings.africastalking_sender_id = ""
     settings.africastalking_sandbox = True
@@ -70,25 +70,25 @@ def test_send_text_posts_form_urlencoded_e164():
     with patch("app.services.africastalking_service.httpx.Client", return_value=wrapper):
         result = AfricasTalkingSmsService(settings).send_text(
             to="0712345678",
-            text="DukAI login code: 123456",
+            text="TransChap login code: 123456",
         )
     assert result.ok is True
     assert result.message_id == "ATXid_99"
     posted = wrapper._inner.post.call_args
     assert posted.args[0] == SANDBOX_API_URL
     assert posted.kwargs["data"]["to"] == "+254712345678"
-    assert posted.kwargs["data"]["username"] == "dukai"
-    assert posted.kwargs["data"]["message"] == "DukAI login code: 123456"
+    assert posted.kwargs["data"]["username"] == "TransChap"
+    assert posted.kwargs["data"]["message"] == "TransChap login code: 123456"
     assert "from" not in posted.kwargs["data"]
     assert posted.kwargs["headers"]["apiKey"] == "test-key"
 
 
 def test_send_text_includes_sender_id():
-    settings = _settings(africastalking_sender_id="DUKAI")
+    settings = _settings(africastalking_sender_id="TRANSCHAP")
     wrapper = _httpx_client(_response(json_data=_accepted_payload()))
     with patch("app.services.africastalking_service.httpx.Client", return_value=wrapper):
         AfricasTalkingSmsService(settings).send_text(to="+254700000001", text="Hi")
-    assert wrapper._inner.post.call_args.kwargs["data"]["from"] == "DUKAI"
+    assert wrapper._inner.post.call_args.kwargs["data"]["from"] == "TRANSCHAP"
 
 
 def test_live_url_when_not_sandbox():

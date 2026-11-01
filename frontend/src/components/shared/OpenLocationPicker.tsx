@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { DUKAI_MAP_COLORS } from "@/lib/google-maps-style";
+import { TRANSCHAP_MAP_COLORS } from "@/lib/google-maps-style";
 import {
   FALLBACK_CENTER,
   fetchPlaceSuggestions,
@@ -148,7 +148,7 @@ export function OpenLocationPicker({
           attributionControl: true,
         });
         const marker = new maplibregl.Marker({
-          color: DUKAI_MAP_COLORS.primary,
+          color: TRANSCHAP_MAP_COLORS.primary,
           draggable: !disabled,
         })
           .setLngLat([center.lng, center.lat])

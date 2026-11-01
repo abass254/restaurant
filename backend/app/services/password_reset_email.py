@@ -10,8 +10,8 @@ from app.services.email_templates import render_branded_email
 
 logger = logging.getLogger(__name__)
 
-RESET_EMAIL_FROM_ADDRESS = "no-reply@dukai.app"
-RESET_EMAIL_FROM_NAME = "DUKAI MERCHANT"
+RESET_EMAIL_FROM_ADDRESS = "no-reply@transchap.app"
+RESET_EMAIL_FROM_NAME = "TRANSCHAP MERCHANT"
 
 
 def _expiry_label() -> str:
@@ -44,8 +44,8 @@ def send_password_reset_email(
     expiry = _expiry_label()
 
     html = render_branded_email(
-        title="Reset your DukAI password",
-        heading="Reset your DukAI password",
+        title="Reset your TransChap password",
+        heading="Reset your TransChap password",
         intro=f"Hi {first_name}, we received a request to reset the password for this account.",
         paragraphs=[
             "Use the button below to choose a new password. "
@@ -58,15 +58,15 @@ def send_password_reset_email(
         ],
         cta_label="Reset your password",
         cta_url=reset_link,
-        footer_note="Only use this link on the DukAI Merchants site.",
+        footer_note="Only use this link on the TransChap Merchants site.",
     )
     return service.send_email(
         to=recipient,
         to_name=user_name,
-        subject="Reset your DukAI password",
+        subject="Reset your TransChap password",
         text=(
             f"Hi {first_name},\n\n"
-            "We received a request to reset the password for your DukAI account.\n\n"
+            "We received a request to reset the password for your TransChap account.\n\n"
             f"Reset your password here: {reset_link}\n\n"
             f"This link expires in {expiry}.\n"
             "If you did not request this, you can ignore the email."

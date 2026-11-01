@@ -864,7 +864,7 @@ class MpesaTransaction(Base):
 
 
 class MpesaHubBalanceQuery(Base):
-    """Latest Daraja Account Balance queries for the DukAI hub Paybill."""
+    """Latest Daraja Account Balance queries for the TransChap hub Paybill."""
 
     __tablename__ = "mpesa_hub_balance_queries"
     __table_args__ = (
@@ -899,10 +899,10 @@ class MpesaHubBalanceQuery(Base):
 
 
 class MpesaStatusCheck(Base):
-    """Daraja Transaction Status queries used to reconcile DukAI records.
+    """Daraja Transaction Status queries used to reconcile TransChap records.
 
     One row per (transaction, direction) verification attempt: what Safaricom
-    reports for that receipt, and how it compares to what DukAI recorded.
+    reports for that receipt, and how it compares to what TransChap recorded.
     """
 
     __tablename__ = "mpesa_status_checks"
@@ -920,7 +920,7 @@ class MpesaStatusCheck(Base):
         String(PK_LEN),
         ForeignKey("mpesa_transactions.id"),
     )
-    # "in" for a Client → DukAI collection, "out" for a DukAI → Merchant payout.
+    # "in" for a Client → TransChap collection, "out" for a TransChap → Merchant payout.
     direction: Mapped[str] = mapped_column(String(3))
     queried_receipt: Mapped[str | None] = mapped_column(String(50), nullable=True)
     recorded_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -2424,7 +2424,7 @@ class PushSubscription(Base):
 
 # --- Booking / salon appointments ------------------------------------------
 
-# Kept for booking_service / DB compat; DukAI Merchants does not register these.
+# Kept for booking_service / DB compat; TransChap Merchants does not register these.
 SERVICE_BUSINESS_CATEGORIES = frozenset(
     {
         "Salon & Beauty",

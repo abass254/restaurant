@@ -29,13 +29,13 @@ def test_absolute_media_url_prefers_uploads_public_base() -> None:
     settings = Settings(
         frontend_url="http://127.0.0.1:7100",
         app_url="http://127.0.0.1:7001",
-        uploads_public_base_url="https://merchants.dukai.app",
+        uploads_public_base_url="https://merchants.transchap.app",
     )
     url = absolute_media_url("/uploads/products/1/abc.jpg", settings)
-    assert url == "https://merchants.dukai.app/uploads/products/1/abc.jpg"
+    assert url == "https://merchants.transchap.app/uploads/products/1/abc.jpg"
     ig = absolute_media_url(
         "/uploads/products/1/abc.jpg",
         settings,
         for_instagram=True,
     )
-    assert ig == "https://merchants.dukai.app/uploads/products/1/abc.jpg"
+    assert ig == "https://merchants.transchap.app/uploads/products/1/abc.jpg"

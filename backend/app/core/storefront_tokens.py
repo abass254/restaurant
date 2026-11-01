@@ -42,7 +42,7 @@ STOREFRONT_TOKEN_MAX_AGE = 45 * 60
 def _serializer(settings: Settings) -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(
         settings.session_secret,
-        salt="dukai-storefront-token",
+        salt="TransChap-storefront-token",
     )
 
 

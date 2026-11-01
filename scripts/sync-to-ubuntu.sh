@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sync DukAI (FastAPI + Next.js) to an Ubuntu server.
+# Sync TransChap (FastAPI + Next.js) to an Ubuntu server.
 #
 # Usage:
 #   ./scripts/sync-to-ubuntu.sh ubuntu@YOUR_SERVER_IP /var/www/new_ig

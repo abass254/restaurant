@@ -1352,15 +1352,15 @@ html[data-theme="dark"] .fb-app .pos-picker.is-active {
   border: 1px solid var(--app-border-light, #d1d5db);
   border-radius: 8px;
   background: var(--app-surface-subtle, #f8fafc);
-  color: var(--app-primary, #e8412a);
+  color: var(--app-primary, #238636);
   font-size: 0.8125rem;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .fb-app .pos-customer-pick__add:hover {
-  background: var(--app-primary, #e8412a);
-  border-color: var(--app-primary, #e8412a);
+  background: var(--app-primary, #238636);
+  border-color: var(--app-primary, #238636);
   color: #fff;
 }
 

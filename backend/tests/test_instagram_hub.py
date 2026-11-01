@@ -16,22 +16,22 @@ from app.services.instagram_connection import InstagramConnectionService, graph_
 
 def test_hub_connect_url_contract() -> None:
     settings = SimpleNamespace(
-        instagram_hub_url="https://dukai.app",
-        dukai_platform="merchant",
+        instagram_hub_url="https://transchap.app",
+        TransChap_platform="merchant",
     )
     url = hub_connect_url(
         settings,  # type: ignore[arg-type]
         "abc123",
-        origin="https://merchants.dukai.app",
+        origin="https://merchants.transchap.app",
     )
-    assert url.startswith("https://dukai.app/instagram?")
+    assert url.startswith("https://transchap.app/instagram?")
     assert "platform=merchant" in url
     assert "state=abc123" in url
-    assert "return_to=https%3A%2F%2Fmerchants.dukai.app%2Finstagram%2Fcallback" in url
+    assert "return_to=https%3A%2F%2Fmerchants.transchap.app%2Finstagram%2Fcallback" in url
 
 
 def test_hub_connect_url_service_platform() -> None:
-    settings = SimpleNamespace(instagram_hub_url="https://dukai.app", dukai_platform="service")
+    settings = SimpleNamespace(instagram_hub_url="https://transchap.app", TransChap_platform="service")
     url = hub_connect_url(settings, "xyz")  # type: ignore[arg-type]
     assert "platform=service" in url
     assert "return_to=" not in url
@@ -39,15 +39,15 @@ def test_hub_connect_url_service_platform() -> None:
 
 def test_login_url_goes_to_hub_not_instagram() -> None:
     settings = Settings(
-        instagram_hub_url="https://dukai.app",
-        dukai_platform="merchant",
-        instagram_redirect_uri="https://dukai.app/instagram/callback",
+        instagram_hub_url="https://transchap.app",
+        TransChap_platform="merchant",
+        instagram_redirect_uri="https://transchap.app/instagram/callback",
     )
     service = InstagramAuthService(settings, MagicMock(), MagicMock())
-    url = service.get_login_url(state="s1", origin="https://merchants.dukai.app")
-    assert "dukai.app/instagram?" in url
+    url = service.get_login_url(state="s1", origin="https://merchants.transchap.app")
+    assert "transchap.app/instagram?" in url
     assert "instagram.com/oauth" not in url
-    assert settings.effective_instagram_redirect_uri == "https://dukai.app/instagram/callback"
+    assert settings.effective_instagram_redirect_uri == "https://transchap.app/instagram/callback"
 
 
 def test_states_match() -> None:
@@ -60,8 +60,8 @@ def test_states_match() -> None:
 
 def test_public_https_origin_prefers_https() -> None:
     assert (
-        public_https_origin("http://127.0.0.1:7100", "https://merchants.dukai.app")
-        == "https://merchants.dukai.app"
+        public_https_origin("http://127.0.0.1:7100", "https://merchants.transchap.app")
+        == "https://merchants.transchap.app"
     )
     assert public_https_origin("http://127.0.0.1:7100") is None
 

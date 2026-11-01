@@ -32,7 +32,7 @@ export function TransChapReceiptView() {
   const shopName =
     user.active_account?.business_name ||
     user.account?.business_name ||
-    "DukAI";
+    "TransChap";
   const [receipt, setReceipt] = useState<TransChapReceipt | null>(null);
   const [order, setOrder] = useState<Order | null>(null);
   const [returnOpen, setReturnOpen] = useState(false);
@@ -168,7 +168,7 @@ export function TransChapReceiptView() {
     }
     const entered = await promptWhatsAppPhone(
       "Send receipt on WhatsApp",
-      "We'll send this till receipt from DukAI WhatsApp.",
+      "We'll send this till receipt from TransChap WhatsApp.",
       receipt.customerPhone ?? "",
       { confirmButtonText: "Send" },
     );
@@ -465,9 +465,9 @@ export function TransChapReceiptView() {
               gap: "0.5rem",
               padding: "0.625rem 1rem",
               borderRadius: "0.5rem",
-              border: "1px solid #fed7aa",
-              backgroundColor: "#fff7ed",
-              color: "#c2410c",
+              border: "1px solid #bde8c4",
+              backgroundColor: "#effaf1",
+              color: "#1f6f35",
               fontWeight: 600,
               fontSize: "0.875rem",
               cursor: "pointer",

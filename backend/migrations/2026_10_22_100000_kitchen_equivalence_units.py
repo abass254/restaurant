@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,18 +24,39 @@ def main() -> None:
         else:
             print("kitchen_equivalence_units already up to date")
         if inspect(conn).has_table("recipe_serving_units"):
-            result = conn.execute(
+            units = conn.execute(
                 text(
-                    "INSERT IGNORE INTO kitchen_equivalence_units "
-                    "(id, account_id, name, sort_order) "
-                    "SELECT UUID(), account_id, serving_unit, 0 "
+                    "SELECT DISTINCT account_id, serving_unit "
                     "FROM recipe_serving_units "
-                    "WHERE serving_unit IS NOT NULL AND TRIM(serving_unit) <> '' "
-                    "GROUP BY account_id, serving_unit"
+                    "WHERE serving_unit IS NOT NULL AND TRIM(serving_unit) <> ''"
                 )
-            )
-            if result.rowcount:
-                print(f"imported {result.rowcount} existing recipe measures")
+            ).fetchall()
+            imported = 0
+            for account_id, name in units:
+                exists = conn.execute(
+                    text(
+                        "SELECT 1 FROM kitchen_equivalence_units "
+                        "WHERE account_id = :account_id AND name = :name"
+                    ),
+                    {"account_id": account_id, "name": name},
+                ).first()
+                if exists:
+                    continue
+                conn.execute(
+                    text(
+                        "INSERT INTO kitchen_equivalence_units "
+                        "(id, account_id, name, sort_order) "
+                        "VALUES (:id, :account_id, :name, 0)"
+                    ),
+                    {
+                        "id": str(uuid.uuid4()),
+                        "account_id": account_id,
+                        "name": name,
+                    },
+                )
+                imported += 1
+            if imported:
+                print(f"imported {imported} existing recipe measures")
 
 
 if __name__ == "__main__":

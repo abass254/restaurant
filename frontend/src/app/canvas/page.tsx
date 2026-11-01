@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { RiderArchitecturePresentation } from "@/components/canvas/RiderArchitecturePresentation";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 
 export const metadata: Metadata = {
-  title: "DukAI Rider Architecture Canvas",
+  title: "TransChap Rider Architecture Canvas",
   description:
-    "Graphical architecture presentation for the DukAI Rider mobile MVP — sequence diagrams, system flows, and 9-screen map.",
+    "Graphical architecture presentation for the TransChap Rider mobile MVP — sequence diagrams, system flows, and 9-screen map.",
 };
 
 export default function RiderArchitectureCanvasPage() {
@@ -16,9 +16,9 @@ export default function RiderArchitectureCanvasPage() {
     <div className="landing-ufanisi legal-ufanisi rider-canvas-page">
       <nav className="ufanisi-nav legal-nav" aria-label="Rider architecture navigation">
         <Link href="/" className="logo">
-          <DukAiLogoMark size={48} />
+          <TransChapLogoMark size={48} />
           <span className="logo-text">
-            Duk<span className="logo-accent">AI</span>
+            TransChap
           </span>
         </Link>
         <div className="legal-nav__links">
@@ -31,7 +31,7 @@ export default function RiderArchitectureCanvasPage() {
       <header className="legal-hero rider-canvas-hero">
         <div className="legal-hero__inner">
           <span className="section-tag">Architecture Canvas</span>
-          <h1>DukAI Rider Mobile App Architecture</h1>
+          <h1>TransChap Rider Mobile App Architecture</h1>
           <p>
             Interactive graphical models for stakeholder review — sequence flows, system
             architecture, navigation map, and the ideal 9 MVP screens.
@@ -53,7 +53,7 @@ export default function RiderArchitectureCanvasPage() {
       </div>
 
       <footer className="legal-site-footer">
-        <p>© {year} DukAI · Rider architecture canvas</p>
+        <p>© {year} TransChap · Rider architecture canvas</p>
         <div className="legal-site-footer__links">
           <Link href="/how-it-works">How it works</Link>
           <Link href="/privacy_policy">Privacy Policy</Link>

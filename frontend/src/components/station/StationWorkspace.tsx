@@ -9,7 +9,7 @@ import {
   SOURCE_LABELS,
   STATUS_LABELS,
   formatMoney,
-  isDukAiAgentOrder,
+  isTransChapAgentOrder,
 } from "@/lib/orders";
 import {
   isStationActive,
@@ -433,8 +433,8 @@ function TicketCard({
         </span>
       </div>
       <div className="station-ticket__meta">
-        {isDukAiAgentOrder(order) && (
-          <span className="station-pill station-pill--ok">DukAI Agent</span>
+        {isTransChapAgentOrder(order) && (
+          <span className="station-pill station-pill--ok">TransChap Agent</span>
         )}
         <span className="station-pill">{SOURCE_LABELS[order.source]}</span>
         <span className="station-pill">
@@ -524,8 +524,8 @@ function OrderDetail({
           <h3>{order.order_number}</h3>
           <div className="station-ticket__meta" style={{ marginTop: "0.5rem" }}>
             <span className="station-pill">{STATUS_LABELS[order.status]}</span>
-            {isDukAiAgentOrder(order) && (
-              <span className="station-pill station-pill--ok">DukAI Agent</span>
+            {isTransChapAgentOrder(order) && (
+              <span className="station-pill station-pill--ok">TransChap Agent</span>
             )}
             <span className="station-pill">{SOURCE_LABELS[order.source]}</span>
             <span className="station-pill">
@@ -547,7 +547,7 @@ function OrderDetail({
             {order.delivery_address}
           </p>
         )}
-        {(order.delivery_notes || (order.notes && !isDukAiAgentOrder(order))) && (
+        {(order.delivery_notes || (order.notes && !isTransChapAgentOrder(order))) && (
           <p style={{ margin: "0.35rem 0 0", color: "var(--station-warn)" }}>
             {order.delivery_notes || order.notes}
           </p>

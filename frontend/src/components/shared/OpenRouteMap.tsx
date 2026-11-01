@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { DUKAI_MAP_COLORS } from "@/lib/google-maps-style";
+import { TRANSCHAP_MAP_COLORS } from "@/lib/google-maps-style";
 import {
   FALLBACK_CENTER,
   fetchOsrmRoute,
@@ -59,11 +59,11 @@ export function OpenRouteMap({
         });
 
         mapRef.current = map;
-        fromMarkerRef.current = new maplibregl.Marker({ color: DUKAI_MAP_COLORS.primary }).setLngLat([
+        fromMarkerRef.current = new maplibregl.Marker({ color: TRANSCHAP_MAP_COLORS.primary }).setLngLat([
           center.lng,
           center.lat,
         ]);
-        toMarkerRef.current = new maplibregl.Marker({ color: DUKAI_MAP_COLORS.brown700 }).setLngLat([
+        toMarkerRef.current = new maplibregl.Marker({ color: TRANSCHAP_MAP_COLORS.brown700 }).setLngLat([
           center.lng,
           center.lat,
         ]);
@@ -163,7 +163,7 @@ export function OpenRouteMap({
           source: "route",
           layout: { "line-join": "round", "line-cap": "round" },
           paint: {
-            "line-color": DUKAI_MAP_COLORS.primary,
+            "line-color": TRANSCHAP_MAP_COLORS.primary,
             "line-width": 5,
             "line-opacity": 0.92,
           },

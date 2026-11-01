@@ -6,22 +6,22 @@ styles only, web-safe fonts, and a text wordmark instead of an image logo.
 
 The single entry point is :func:`render_branded_email`, which wraps arbitrary
 content (intro, paragraphs, a label/value details block, and an optional CTA
-button) in the DukAI shell.
+button) in the TransChap shell.
 """
 
 from __future__ import annotations
 
 from html import escape
 
-# DukAI brand palette (mirrors the frontend's landing-ufanisi tokens).
-BRAND = "#6b2e14"
-BRAND_HOVER = "#8c3e1a"
-ACCENT = "#d06848"
-GRADIENT = "linear-gradient(135deg, #6b2e14, #8c3e1a)"
-INK = "#2c1810"
-MUTED = "#6b6157"
-HAIRLINE = "#ece6df"
-CANVAS = "#f5f1ec"
+# TransChap brand palette (mirrors the frontend's landing-ufanisi tokens).
+BRAND = "#20154c"
+BRAND_HOVER = "#1f6f35"
+ACCENT = "#77f665"
+GRADIENT = "linear-gradient(135deg, #20154c, #238636)"
+INK = "#20154c"
+MUTED = "#68647b"
+HAIRLINE = "#e7e5ef"
+CANVAS = "#f7f6fa"
 CARD = "#ffffff"
 
 
@@ -122,7 +122,7 @@ def render_branded_email(
         body_blocks.append(_cta_button(cta_label, cta_url))
     inner = "".join(body_blocks)
 
-    footer = footer_note or "You're receiving this because of activity on your DukAI account."
+    footer = footer_note or "You're receiving this because of activity on your TransChap account."
 
     # Preheader: hidden inbox-preview text shown after the subject in most clients.
     preheader = escape(intro or title)
@@ -148,7 +148,7 @@ def render_branded_email(
         <!-- Header -->
         <tr><td style="background:{BRAND};background-image:{GRADIENT};padding:28px 32px;">
           <span style="font-size:22px;font-weight:700;letter-spacing:-0.01em;color:#ffffff;">
-            Duk<span style="color:{ACCENT};">AI</span>
+            TransChap
             <span style="color:{ACCENT};font-size:18px;">&#10022;</span>
           </span>
         </td></tr>
@@ -162,12 +162,12 @@ def render_branded_email(
         <tr><td style="padding:20px 32px 30px;border-top:1px solid {HAIRLINE};">
           <p style="margin:0 0 4px;color:{MUTED};font-size:12px;line-height:1.5;">{escape(footer)}</p>
           <p style="margin:0;color:{MUTED};font-size:12px;line-height:1.5;">
-            &copy; DukAI &middot; Smart commerce for Instagram &amp; WhatsApp
+            &copy; TransChap &middot; Smart commerce for Instagram &amp; WhatsApp
           </p>
         </td></tr>
       </table>
       <p style="margin:16px 0 0;color:{MUTED};font-size:11px;">
-        Sent by DukAI. Please do not reply to this automated message.
+        Sent by TransChap. Please do not reply to this automated message.
       </p>
     </td></tr>
   </table>

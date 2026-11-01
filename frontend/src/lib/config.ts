@@ -33,7 +33,7 @@ export const instagramAuthPath = "/auth/instagram";
 
 /**
  * Resolve an API OAuth path (or stale absolute dev URL) to the app domain
- * the user is actually on — e.g. https://dukai.app/auth/instagram.
+ * the user is actually on — e.g. https://transchap.app/auth/instagram.
  */
 export function resolveSameOriginUrl(path: string | null | undefined): string {
   if (!path) return "";
@@ -548,7 +548,7 @@ export const apiRoutes = {
 
 /**
  * Public origin for production media when this stack uses prod data locally.
- * Example: https://merchants.dukai.app — DB keeps relative /uploads/... paths.
+ * Example: https://merchants.transchap.app — DB keeps relative /uploads/... paths.
  */
 export const uploadsPublicBaseUrl = (
   process.env.NEXT_PUBLIC_UPLOADS_PUBLIC_BASE_URL ?? ""

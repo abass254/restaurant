@@ -109,7 +109,7 @@ export default function BasicsPage() {
         <div>
           <h1 className="settings-shell__title">Basics</h1>
           <p className="settings-shell__lead">
-            Update your store name, type, category, logo, location, and how DukAI
+            Update your store name, type, category, logo, location, and how TransChap
             pays you. Store location is optional until you connect the rider app.
           </p>
         </div>

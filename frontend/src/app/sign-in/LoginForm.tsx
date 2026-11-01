@@ -35,7 +35,7 @@ type Props = {
   statusOk?: boolean;
   nextPath?: string | null;
   embedded?: boolean;
-  brand?: "dukai" | "trans-chap";
+  brand?: "trans-chap";
   signInPath?: string;
 };
 
@@ -44,12 +44,9 @@ const OTP_LENGTH = 6;
 function TransChapSignInBrand() {
   return (
     <div className="trans-chap-signin__brand">
-      <TransChapLogoMark size={52} color="currentColor" accentColor="#e8412a" />
+      <TransChapLogoMark size={52} />
       <div className="trans-chap-signin__brand-copy">
-        <p className="trans-chap-signin__name">DukAI Merch</p>
-        <p className="trans-chap-signin__by">
-          by <span>DukAI</span>
-        </p>
+        <p className="trans-chap-signin__name">TransChap</p>
       </div>
     </div>
   );
@@ -126,7 +123,7 @@ function LoginFrame({
     return (
       <AuthShell
         className="auth-split--trans-chap"
-        heroLabel="Dukai Merchant"
+        heroLabel="KITCHEN"
         heroContent={<TransChapHeroContent />}
         brandHeader={<TransChapBrandHeader />}
         panelAction={<ThemeToggle />}
@@ -197,7 +194,7 @@ export default function LoginForm({
   }, [statusMessage, statusOk]);
 
   const code = useMemo(() => digits.join(""), [digits]);
-  const googleNext = nextPath || "/dashboard";
+  const googleNext = nextPath || (isTransChap ? "/" : "/dashboard");
 
   function switchToPassword() {
     setMode("password");
@@ -437,11 +434,11 @@ export default function LoginForm({
         {!embedded || isTransChap ? (
           <>
             <h1 className="auth-split__title">
-              {isTransChap ? "Sign in to Dukai Merchant" : "Sign in to your dashboard"}
+              {isTransChap ? "Sign in to TransChap" : "Sign in to your dashboard"}
             </h1>
             <p className="auth-split__subtitle">
               {isTransChap
-                ? "Enter your email address and password to open your register"
+                ? "Enter your email address and password to open your restaurant workspace"
                 : "Enter your email address and password to continue"}
             </p>
           </>
@@ -502,11 +499,7 @@ export default function LoginForm({
         </form>
 
         <Link
-          href={
-            isTransChap
-              ? "/forgot-password?next=/trans-chap/sign-in"
-              : "/forgot-password"
-          }
+          href="/forgot-password"
           className="auth-split__link auth-split__link--end"
         >
           Forgot password?
@@ -531,8 +524,8 @@ export default function LoginForm({
         <p className="auth-split__footer">
           {isTransChap ? (
             <>
-              Looking for merchant dashboard?{" "}
-              <Link href="/sign-in">Sign in here.</Link>
+              New to TransChap?{" "}
+              <Link href="/register/restaurant">Create a restaurant account.</Link>
             </>
           ) : (
             <>
@@ -554,7 +547,7 @@ export default function LoginForm({
           </h1>
           <p className="auth-split__subtitle">
             {isTransChap
-              ? "Enter your Email address or Mobile Number to receive a login code"
+              ? "Enter your Email address or Mobile Number for a restaurant sign-in code"
               : "Enter your Email address or Mobile Number to continue"}
           </p>
         </>
@@ -615,8 +608,8 @@ export default function LoginForm({
       <p className="auth-split__footer">
         {isTransChap ? (
           <>
-            Looking for merchant dashboard?{" "}
-            <Link href="/sign-in">Sign in here.</Link>
+            New to TransChap?{" "}
+            <Link href="/register/restaurant">Create a restaurant account.</Link>
           </>
         ) : (
           <>

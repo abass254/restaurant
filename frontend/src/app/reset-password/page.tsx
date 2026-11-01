@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import ResetPasswordClient from "./ResetPasswordClient";
 
 export const metadata = {
-  title: "Set your password — DukAI",
+  title: "Set your password — TransChap",
 };
 
 export default function ResetPasswordPage() {

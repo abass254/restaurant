@@ -114,11 +114,11 @@ export function PaymentSimulationSection() {
           <i className="fa-solid fa-arrows-rotate settings-card__icon" aria-hidden="true" />
           <h2>Payment simulation</h2>
         </div>
-        <span className="settings-pill settings-pill--neutral">Client → DukAI → Merchant</span>
+        <span className="settings-pill settings-pill--neutral">Client → TransChap → Merchant</span>
       </header>
       <div className="settings-card__body">
         <p className="settings-muted settings-card__lead">
-          Test Client → DukAI → Merchant end to end: collect from a client phone into the hub
+          Test Client → TransChap → Merchant end to end: collect from a client phone into the hub
           Paybill, then pay out to the merchant store. Live STK waits for the client to pay;
           Instant (Dev only) skips the phone prompt.
         </p>

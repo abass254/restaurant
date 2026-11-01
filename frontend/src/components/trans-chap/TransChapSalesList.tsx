@@ -286,7 +286,7 @@ export function TransChapSalesList() {
   const shopName =
     user.active_account?.business_name ||
     user.account?.business_name ||
-    "DukAI";
+    "TransChap";
 
   const reload = useCallback(async (opts?: { silent?: boolean; forceAll?: boolean }) => {
     const hasData = initialLoadedRef.current || Boolean(readSalesCache(accountId)?.orders?.length);

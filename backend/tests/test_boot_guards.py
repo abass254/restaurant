@@ -47,7 +47,7 @@ def test_boot_guard_skips_local() -> None:
     settings.app_env = "local"
     settings.session_secret = "change-me-in-production"
     settings.db_connection = "mysql"
-    settings.db_password = "dukai"
+    settings.db_password = "password"
     assert_production_secrets(settings)
 
 
@@ -66,7 +66,7 @@ def test_boot_guard_rejects_weak_mysql_password() -> None:
     settings.app_env = "production"
     settings.session_secret = "a-sufficiently-long-secret"
     settings.db_connection = "mysql"
-    settings.db_password = "dukai"
+    settings.db_password = "password"
     with pytest.raises(BootConfigError, match="DB_PASSWORD"):
         assert_production_secrets(settings)
 

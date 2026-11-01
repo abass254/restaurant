@@ -1,5 +1,5 @@
 """
-Generates an animated GIF (and optional MP4-ready frame folder) of the DukAI
+Generates an animated GIF (and optional MP4-ready frame folder) of the TransChap
 logo on a dark background with a warm glow trail running around its border,
 followed by a "COMING SOON" reveal.
 
@@ -7,8 +7,8 @@ Usage:
     python3 scripts/make_logo_glow_gif.py
 
 Outputs:
-    public/animations/dukai-coming-soon.gif
-    frontend/public/animations/dukai-coming-soon.gif
+    public/animations/transchap-coming-soon.gif
+    frontend/public/animations/transchap-coming-soon.gif
 """
 
 from __future__ import annotations
@@ -426,15 +426,15 @@ def main() -> None:
     print(f"Built {len(frames)} frames.")
 
     for out_dir in (OUT_DIR_PUBLIC, OUT_DIR_FRONTEND):
-        gif_path = out_dir / "dukai-coming-soon.gif"
-        webp_path = out_dir / "dukai-coming-soon.webp"
+        gif_path = out_dir / "transchap-coming-soon.gif"
+        webp_path = out_dir / "transchap-coming-soon.webp"
         save_gif(frames, gif_path)
         save_webp(frames, webp_path)
         print(f"Wrote {gif_path} ({gif_path.stat().st_size // 1024} KB)")
         print(f"Wrote {webp_path} ({webp_path.stat().st_size // 1024} KB)")
 
     # Also keep a static poster of the final frame for og:image use
-    poster_path = OUT_DIR_PUBLIC / "dukai-coming-soon-poster.png"
+    poster_path = OUT_DIR_PUBLIC / "transchap-coming-soon-poster.png"
     frames[-1].save(poster_path, "PNG")
     print(f"Wrote {poster_path}")
 

@@ -86,7 +86,7 @@ export function AdminBotTestView() {
             <li>Type a message as the customer to start the thread.</li>
             <li>Ask about products, prices, or placing an order.</li>
             <li>
-              Use <strong>Train</strong> to chat with the coach and shape how DukAI replies.
+              Use <strong>Train</strong> to chat with the coach and shape how TransChap replies.
             </li>
             <li>Hit <strong>Reset chat</strong> to clear the preview and start over.</li>
           </ol>

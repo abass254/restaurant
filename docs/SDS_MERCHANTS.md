@@ -1,6 +1,6 @@
 # Software Design Specification (SDS)
 
-## DukAI Merchants — Merchant-Side Retail Platform
+## TransChap Merchants — Merchant-Side Retail Platform
 
 **Version:** 1.0  
 **Date:** 13 August 2026
@@ -11,11 +11,11 @@
 
 ### 1.1 Purpose
 
-The purpose of this Software Design Specification (SDS) is to provide a detailed overview of the software architecture and design for **DukAI Merchants**. It includes system architecture, modules, data structures, and interface design to guide the development team.
+The purpose of this Software Design Specification (SDS) is to provide a detailed overview of the software architecture and design for **TransChap Merchants**. It includes system architecture, modules, data structures, and interface design to guide the development team.
 
 ### 1.2 Scope
 
-DukAI Merchants is a multi-tenant web application that allows shop owners and staff to manage inventory, POS sales, orders, Instagram messaging, delivery riders, and M-Pesa payments.
+TransChap Merchants is a multi-tenant web application that allows shop owners and staff to manage inventory, POS sales, orders, Instagram messaging, delivery riders, and M-Pesa payments.
 
 This SDS outlines how the frontend, backend, and database layers interact to deliver these merchant-side features.
 
@@ -25,7 +25,7 @@ This SDS outlines how the frontend, backend, and database layers interact to del
 
 ## 2. System Overview
 
-DukAI Merchants is designed as a multi-tier architecture:
+TransChap Merchants is designed as a multi-tier architecture:
 
 - **Frontend:** Next.js (React) web application
 - **Backend:** RESTful API using FastAPI
@@ -74,7 +74,7 @@ The browser talks only to Next.js. Next.js rewrites/proxies `/api`, `/auth`, `/s
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | Next.js, React, TypeScript, existing DukAI CSS design system |
+| Frontend | Next.js, React, TypeScript, existing TransChap CSS design system |
 | Backend | FastAPI, SQLAlchemy, Uvicorn |
 | Database | MySQL |
 | Auth | Session cookies + CSRF (`/sanctum/csrf-cookie`) |
@@ -411,4 +411,4 @@ Merchant Browser
 
 | Version | Date | Notes |
 |---------|------|-------|
-| 1.0 | 13 Aug 2026 | SDS recreated in academic format for DukAI Merchants |
+| 1.0 | 13 Aug 2026 | SDS recreated in academic format for TransChap Merchants |

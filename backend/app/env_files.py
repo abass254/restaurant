@@ -1,4 +1,4 @@
-"""Resolve the shared DukAI environment files (repo-root `.env` + optional `.env.local`)."""
+"""Resolve the shared TransChap environment files (repo-root `.env` + optional `.env.local`)."""
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def dukai_env_name() -> str:
+def TransChap_env_name() -> str:
     """Logical environment name for runtime behaviour (not for picking env files).
 
-    Prefer ``APP_ENV`` / ``DUKAI_ENV`` when set; otherwise treat as ``dev``.
+    Prefer ``APP_ENV`` / ``TRANSCHAP_ENV`` when set; otherwise treat as ``dev``.
     """
-    raw = os.environ.get("DUKAI_ENV", "").strip().lower()
+    raw = os.environ.get("TRANSCHAP_ENV", "").strip().lower()
     if raw in {"prod", "production"}:
         return "prod"
     if raw in {"dev", "development", "local", "uat"}:
@@ -24,17 +24,17 @@ def dukai_env_name() -> str:
     return "dev"
 
 
-def dukai_env_file() -> Path:
+def TransChap_env_file() -> Path:
     return PROJECT_ROOT / ".env"
 
 
-def dukai_local_env_file() -> Path:
+def TransChap_local_env_file() -> Path:
     return PROJECT_ROOT / ".env.local"
 
 
-def dukai_env_files() -> tuple[str, ...]:
+def TransChap_env_files() -> tuple[str, ...]:
     # pydantic-settings lets later files override earlier ones.
-    files = [dukai_env_file()]
-    if dukai_local_env_file().exists():
-        files.append(dukai_local_env_file())
+    files = [TransChap_env_file()]
+    if TransChap_local_env_file().exists():
+        files.append(TransChap_local_env_file())
     return tuple(str(f) for f in files)

@@ -9,24 +9,23 @@ import { ThemeScript } from "@/components/landing/ThemeScript";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "DukAI Merchants",
+  title: "TransChap",
   description:
-    "Retail commerce dashboard for shops — inventory, POS, orders, delivery, and M-Pesa.",
-  manifest: "/manifest.webmanifest",
+    "Sales, stock, and receipts for restaurants and retailers.",
+  manifest: "/trans-chap-manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "DukAI Merchant",
+    title: "TransChap",
   },
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "48x48" },
-      { url: "/icons/icon.svg", type: "image/svg+xml" },
-      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icons/trans-chap-icon.svg", type: "image/svg+xml" },
+      { url: "/icons/trans-chap-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/trans-chap-512.png", sizes: "512x512", type: "image/png" },
     ],
     apple: [
-      { url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+      { url: "/icons/trans-chap-180.png", sizes: "180x180", type: "image/png" },
     ],
   },
   verification: {
@@ -37,7 +36,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1a1410",
+  themeColor: "#238636",
 };
 
 export default function RootLayout({

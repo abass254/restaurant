@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import { LEGAL_OPERATOR_LINE, legalFooterLine } from "@/lib/legal-entity";
 
 export const metadata: Metadata = {
-  title: "Data Deletion — DukAI",
+  title: "Data Deletion — TransChap",
   description:
-    "How to request deletion of your data from DukAI when you remove Instagram access.",
+    "How to request deletion of your data from TransChap when you remove Instagram access.",
 };
 
 const lastUpdated = "June 29, 2026";
@@ -24,9 +24,9 @@ export default async function DataDeletionPage({ searchParams }: Props) {
     <div className="landing-ufanisi legal-ufanisi">
       <nav className="ufanisi-nav legal-nav" aria-label="Legal">
         <Link href="/" className="logo">
-          <DukAiLogoMark size={48} />
+          <TransChapLogoMark size={48} />
           <span className="logo-text">
-            Duk<span className="logo-accent">AI</span>
+            TransChap
           </span>
         </Link>
         <div className="legal-nav__links">
@@ -40,7 +40,7 @@ export default async function DataDeletionPage({ searchParams }: Props) {
           <span className="section-tag">Legal</span>
           <h1>Data deletion</h1>
           <p>
-            How to remove your Instagram and messaging data from DukAI.
+            How to remove your Instagram and messaging data from TransChap.
           </p>
           <p className="legal-hero__date">Last updated: {lastUpdated}</p>
         </div>
@@ -73,22 +73,22 @@ export default async function DataDeletionPage({ searchParams }: Props) {
                 </p>
                 <p>
                   If you did not initiate this request, contact{" "}
-                  <a href="mailto:privacy@dukai.co.ke">privacy@dukai.co.ke</a> with
+                  <a href="mailto:privacy@transchap.co.ke">privacy@transchap.co.ke</a> with
                   your confirmation code.
                 </p>
               </>
             ) : (
               <>
                 <p className="legal-lead">
-                  {LEGAL_OPERATOR_LINE} DukAI stores Instagram connection details,
+                  {LEGAL_OPERATOR_LINE} TransChap stores Instagram connection details,
                   direct messages, and merchant configuration so we can provide
                   inbox management and automation. You can delete this data in
                   several ways.
                 </p>
 
-                <h2>Option 1 — Remove DukAI in Instagram</h2>
+                <h2>Option 1 — Remove TransChap in Instagram</h2>
                 <p>
-                  When you remove DukAI from Instagram&apos;s Website permissions,
+                  When you remove TransChap from Instagram&apos;s Website permissions,
                   Meta notifies us automatically. We delete your Instagram-linked
                   data and provide a confirmation code and status URL through
                   Meta&apos;s removal flow.
@@ -96,12 +96,12 @@ export default async function DataDeletionPage({ searchParams }: Props) {
                 <ol>
                   <li>Open Instagram on your phone</li>
                   <li>Go to Settings and privacy → Website permissions</li>
-                  <li>Select DukAI and remove access</li>
+                  <li>Select TransChap and remove access</li>
                 </ol>
 
-                <h2>Option 2 — Disconnect in DukAI</h2>
+                <h2>Option 2 — Disconnect in TransChap</h2>
                 <p>
-                  Log in to DukAI, open <strong>Settings → Channels</strong>, and
+                  Log in to TransChap, open <strong>Settings → Channels</strong>, and
                   disconnect your Instagram account. This removes stored tokens,
                   conversations, and related configuration from our systems.
                 </p>
@@ -109,8 +109,8 @@ export default async function DataDeletionPage({ searchParams }: Props) {
                 <h2>Option 3 — Email us</h2>
                 <p>
                   Email{" "}
-                  <a href="mailto:privacy@dukai.co.ke">privacy@dukai.co.ke</a> from
-                  the address associated with your DukAI account. Include your
+                  <a href="mailto:privacy@transchap.co.ke">privacy@transchap.co.ke</a> from
+                  the address associated with your TransChap account. Include your
                   Instagram username and request deletion of all personal data. We
                   respond within 30 days.
                 </p>

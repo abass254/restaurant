@@ -28,7 +28,7 @@ export function WelcomeHero() {
           source={require('../../assets/images/welcome-hero.png')}
           style={styles.image}
           resizeMode="cover"
-          accessibilityLabel="Rider delivering with DukAI"
+          accessibilityLabel="Rider delivering with TransChap"
         />
       </Animated.View>
     </View>

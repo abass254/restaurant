@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 
 from app.config import Settings
-from app.env_files import dukai_env_name
+from app.env_files import TransChap_env_name
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ def _has_cloud_chat_provider(settings: Settings) -> bool:
 
 def _ollama_allowed() -> bool:
     """Local Ollama is dev-only; production must use a cloud LLM provider."""
-    return dukai_env_name() != "prod"
+    return TransChap_env_name() != "prod"
 
 
 def _auto_chat_provider_chain(settings: Settings) -> list[str]:

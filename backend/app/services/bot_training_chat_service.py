@@ -64,7 +64,7 @@ def _coach_system_prompt(
 ) -> str:
     instructions_block = current_instructions.strip() or "(none yet — start fresh)"
     return (
-        f"You are DukAI's training coach. A shop admin is teaching you how DukAI "
+        f"You are TransChap's training coach. A shop admin is teaching you how TransChap "
         f"should talk to Instagram customers at {shop_name}.\n\n"
         "Current saved instructions for the customer-facing sales bot:\n"
         f"---\n{instructions_block}\n---\n\n"

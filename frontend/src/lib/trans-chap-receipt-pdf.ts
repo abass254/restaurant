@@ -235,7 +235,7 @@ export function buildTransChapReceiptPdf(receipt: TransChapReceipt): File {
   doc.text("Thank you for shopping with us.", mid, y, { align: "center" });
   y += 4.5;
   doc.setFontSize(7);
-  doc.text("dukai.app", mid, y, { align: "center" });
+  doc.text("transchap.app", mid, y, { align: "center" });
 
   const blob = doc.output("blob");
   return new File([blob], receiptPdfFileName(receipt), { type: "application/pdf" });

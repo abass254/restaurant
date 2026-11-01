@@ -1,6 +1,6 @@
 export type AnalyticsConsent = "accepted" | "rejected";
 
-const STORAGE_KEY = "dukai-analytics-consent";
+const STORAGE_KEY = "TransChap-analytics-consent";
 
 export function readAnalyticsConsent(): AnalyticsConsent | null {
   if (typeof window === "undefined") {

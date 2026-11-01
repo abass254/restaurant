@@ -5,15 +5,15 @@
 #
 #   ./scripts/export-for-transfer.sh
 #   ./scripts/export-for-transfer.sh --include-env
-#   ./scripts/export-for-transfer.sh --output ~/dukai-transfer.tar.gz
+#   ./scripts/export-for-transfer.sh --output ~/TransChap-transfer.tar.gz
 #
 # Then on your desktop:
-#   scp ubuntu@YOUR_SERVER:~/dukai-transfer.tar.gz .
-#   tar -xzf dukai-transfer.tar.gz -C ~/projects/new_ig
+#   scp ubuntu@YOUR_SERVER:~/TransChap-transfer.tar.gz .
+#   tar -xzf TransChap-transfer.tar.gz -C ~/projects/new_ig
 #   cd ~/projects/new_ig && bash scripts/local-setup.sh
 #
 # Or use the import helper:
-#   ./scripts/import-from-transfer.sh dukai-transfer.tar.gz ~/projects/new_ig
+#   ./scripts/import-from-transfer.sh TransChap-transfer.tar.gz ~/projects/new_ig
 
 set -euo pipefail
 
@@ -32,11 +32,11 @@ Creates a .tar.gz of the project (no git, no node_modules, no .venv).
 Options:
   --include-env     Bundle .env (contains secrets)
   --no-data         Skip SQLite database and backend/uploads
-  --output PATH     Output file (default: ~/dukai-transfer-YYYYMMDD-HHMMSS.tar.gz)
+  --output PATH     Output file (default: ~/TransChap-transfer-YYYYMMDD-HHMMSS.tar.gz)
   -h, --help        Show this help
 
 Download to desktop:
-  scp ubuntu@SERVER:~/dukai-transfer-*.tar.gz .
+  scp ubuntu@SERVER:~/TransChap-transfer-*.tar.gz .
 EOF
 }
 
@@ -53,7 +53,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "${OUTPUT}" ]]; then
-  OUTPUT="${HOME}/dukai-transfer-$(date +%Y%m%d-%H%M%S).tar.gz"
+  OUTPUT="${HOME}/TransChap-transfer-$(date +%Y%m%d-%H%M%S).tar.gz"
 fi
 
 EXCLUDES_FILE="${ROOT}/scripts/rsync-excludes.txt"

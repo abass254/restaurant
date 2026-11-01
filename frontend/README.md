@@ -1,6 +1,6 @@
-# DukAI Merchants Frontend
+# TransChap Merchants Frontend
 
-Next.js merchant portal for DukAI Merchants. The primary route is **`/sign-in`**. All UI lives here; FastAPI is the API backend.
+Next.js merchant portal for TransChap Merchants. The available app is **TransChap** at the site root (`/`). Other merchant UI routes are unavailable. FastAPI remains the API backend.
 
 ## Development
 
@@ -12,7 +12,7 @@ npm run dev
 
 Reads the shared repo-root `../.env` for `BACKEND_URL` etc.
 
-Runs at **http://127.0.0.1:7100** — open `/sign-in`.
+Runs at **http://127.0.0.1:7100**.
 
 Production (container / server mode):
 
@@ -32,4 +32,4 @@ Production (container / server mode):
 - JSON: `{API_URL}/api/v1/*`
 - See [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
 
-Run API + frontend together from repo root. The merchant UI starts at `/sign-in`.
+Run API + frontend together from repo root. The TransChap app starts at `/`.

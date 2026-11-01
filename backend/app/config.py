@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.env_files import PROJECT_ROOT, dukai_env_files
+from app.env_files import PROJECT_ROOT, TransChap_env_files
 
 _PRODUCTION_ENVS = frozenset({"production", "prod"})
 
@@ -23,24 +23,24 @@ def effective_app_debug(app_env: str, app_debug: bool) -> bool:
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=dukai_env_files(),
+        env_file=TransChap_env_files(),
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
-    app_name: str = "DukAI"
+    app_name: str = "TransChap"
     app_env: str = "local"
     app_debug: bool = True
     app_url: str = "http://127.0.0.1:7001"
     frontend_url: str = "http://127.0.0.1:7000"
     # Public origin for /uploads/* when this stack talks to production media
-    # (e.g. https://merchants.dukai.app). DB still stores relative /uploads/...
+    # (e.g. https://merchants.transchap.app). DB still stores relative /uploads/...
     # paths; browsers and Instagram resolve against this base when set.
     uploads_public_base_url: str = ""
     app_key: str = ""
 
     session_secret: str = "change-me-in-production"
-    session_cookie_name: str = "dukai_session"
+    session_cookie_name: str = "TransChap_session"
     session_max_age: int = 7200
 
   # Match Laravel: root .env uses DB_CONNECTION=sqlite by default
@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     db_host: str = "127.0.0.1"
     db_port: int = 3306
     db_database: str = ""
-    db_username: str = "dukai"
+    db_username: str = "TransChap"
     db_password: str = ""
     db_pool_size: int = 4
     db_max_overflow: int = 1
@@ -62,7 +62,7 @@ class Settings(BaseSettings):
 
     cors_allowed_origins: str = "http://127.0.0.1:7000,http://localhost:7000"
     # Comma-separated frontend origins allowed in OAuth return redirects (e.g.
-    # https://dukai.app,https://uat.dukai.app). When empty, FRONTEND_URL and
+    # https://transchap.app,https://uat.transchap.app). When empty, FRONTEND_URL and
     # CORS_ALLOWED_ORIGINS are used. Prod callback must list every env users
     # can start OAuth from.
     oauth_allowed_return_origins: str = ""
@@ -72,9 +72,9 @@ class Settings(BaseSettings):
     instagram_app_secret: str = ""
     meta_app_secret: str = ""
     # Must match Meta + the hub exactly. Do not use this app's /instagram/callback.
-    instagram_redirect_uri: str = "https://dukai.app/instagram/callback"
-    instagram_hub_url: str = "https://dukai.app"
-    dukai_platform: str = "merchant"
+    instagram_redirect_uri: str = "https://transchap.app/instagram/callback"
+    instagram_hub_url: str = "https://transchap.app"
+    TransChap_platform: str = "merchant"
     instagram_graph_version: str = "v21.0"
     meta_webhook_verify_token: str = ""
     meta_access_token: str = ""
@@ -260,7 +260,7 @@ class Settings(BaseSettings):
     # use their demo domain (e.g. hello@demomailtrap.co), which can only deliver
     # to the email address that owns the Mailtrap account.
     mail_from_address: str = "hello@demomailtrap.co"
-    mail_from_name: str = "DUKAI PLATFORM"
+    mail_from_name: str = "TRANSCHAP PLATFORM"
     mail_timeout_seconds: float = 20.0
 
     # --- WhatsApp (openWA platform agent — primary order notifier for now) --
@@ -359,7 +359,7 @@ class Settings(BaseSettings):
                 db_path = str(PROJECT_ROOT / db_path)
             return f"sqlite:///{db_path}"
 
-        database = self.db_database or "dukai"
+        database = self.db_database or "TransChap"
         return (
             f"mysql+pymysql://{self.db_username}:{self.db_password}"
             f"@{self.db_host}:{self.db_port}/{database}?charset=utf8mb4"
@@ -386,9 +386,9 @@ class Settings(BaseSettings):
         origins.update(origin.rstrip("/") for origin in self.cors_origins)
         origins.update(
             {
-                "https://dukai.app",
-                "https://uat.dukai.app",
-                "https://merchants.dukai.app",
+                "https://transchap.app",
+                "https://uat.transchap.app",
+                "https://merchants.transchap.app",
                 "http://127.0.0.1:7000",
                 "http://localhost:7000",
             },
@@ -442,14 +442,14 @@ class Settings(BaseSettings):
             parsed = urlparse(uri)
             return f"{parsed.scheme}://{parsed.netloc}"
         # Local/docker http placeholders always promote to prod callback host.
-        return "https://dukai.app"
+        return "https://transchap.app"
 
     @property
     def effective_instagram_redirect_uri(self) -> str:
         """
         OAuth redirect must match Meta app settings exactly.
 
-        - Explicit https URL (e.g. https://dukai.app/instagram/callback): use as-is.
+        - Explicit https URL (e.g. https://transchap.app/instagram/callback): use as-is.
         - Localhost placeholders (127.0.0.1:7000, :7070, etc.) map to the canonical
           HTTPS callback so Meta only needs one registered redirect URI.
         """

@@ -105,7 +105,7 @@ class EmailService:
                         "Authorization": f"Bearer {self.settings.mailtrap_api_token}",
                         "Content-Type": "application/json",
                         "Accept": "application/json",
-                        "User-Agent": "DukAI-Mail/1.0",
+                        "User-Agent": "TransChap-Mail/1.0",
                     },
                     json=payload,
                 )

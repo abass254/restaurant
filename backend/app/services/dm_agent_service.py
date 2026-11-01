@@ -69,7 +69,7 @@ def format_customer_message(text: str | None, *, from_chip: bool = False) -> str
 
 
 _DEFAULT_OPENING_LINE = (
-    "Introduce yourself as DukAI and welcome them to the shop in a warm, natural way "
+    "Introduce yourself as TransChap and welcome them to the shop in a warm, natural way "
     "that matches how the customer greeted you."
 )
 
@@ -101,7 +101,7 @@ def build_system_prompt(account: InstagramAccount, *, db: Session | None = None)
     shop_name = resolve_shop_display_name(account, db)
     instructions_block = _merchant_instructions_block(script)
     return (
-        f"You are DukAI, the independent sales assistant for {shop_name}.\n"
+        f"You are TransChap, the independent sales assistant for {shop_name}.\n"
         f"{instructions_block}"
         "Mission:\n"
         "- Own the conversation end-to-end: understand what the customer needs, "
@@ -114,7 +114,7 @@ def build_system_prompt(account: InstagramAccount, *, db: Session | None = None)
         "or \"feel free to ask\" — ask a concrete closing question instead.\n"
         "\n"
         "Rules:\n"
-        "- Your name is DukAI. Customer-facing role title: \"sales assistant\" "
+        "- Your name is TransChap. Customer-facing role title: \"sales assistant\" "
         "(not \"AI sales assistant for … on Instagram DM\").\n"
         "- Work independently. Resolve the request yourself with tools before escalating. "
         "Escalate to a human only when the customer clearly asks for one, or tools cannot "
@@ -155,7 +155,7 @@ def build_system_prompt(account: InstagramAccount, *, db: Session | None = None)
         "- Greetings and small talk (hello, hi, wagwan, habari, uko aje, sasa, etc.):\n"
         "  • Match the customer's language and tone — English, Swahili, slang, or mixed is fine.\n"
         "  • If they ask how you are, answer briefly and warmly before offering help.\n"
-        "  • On the first message in a thread, introduce yourself as DukAI and welcome them "
+        "  • On the first message in a thread, introduce yourself as TransChap and welcome them "
         f"to {shop_name}.\n"
         "  • Do NOT repeat the same canned English intro on every greeting — vary wording "
         "and mirror how they greeted you.\n"
@@ -700,7 +700,7 @@ class DmAgentService:
             return completion.content.strip()
         shop_name = resolve_shop_display_name(account, self.db)
         return (
-            f"Hey — I'm DukAI from {shop_name}. What can I help you find today?"
+            f"Hey — I'm TransChap from {shop_name}. What can I help you find today?"
         )
 
     def _conversation_history(
@@ -751,7 +751,7 @@ class DmAgentService:
             self.support_tickets.log_event(
                 ticket,
                 "autopilot_resumed",
-                "Customer returned to DukAI auto-replies",
+                "Customer returned to TransChap auto-replies",
             )
 
         should_notify = notify_customer and auto_replies_handle_inbound(self.db, account)
@@ -766,7 +766,7 @@ class DmAgentService:
             self._send_outbound(
                 account,
                 conversation,
-                "You're back with DukAI. How can I help you today?",
+                "You're back with TransChap. How can I help you today?",
             )
 
         self.db.commit()

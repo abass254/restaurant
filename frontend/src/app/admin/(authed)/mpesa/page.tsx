@@ -122,10 +122,10 @@ function formatActivityCounterparty(entry: AdminMpesaActivityEntry): string {
 /** Safaricom / pipeline error shown on the when-column alert icon. */
 function txnFlowError(txn: AdminMpesaTransaction): string | null {
   if (txn.payout_status === "failed" || txn.payout_status === "skipped") {
-    return txn.payout_result_desc || "DukAI → Merchant payout failed.";
+    return txn.payout_result_desc || "TransChap → Merchant payout failed.";
   }
   if (txn.status === "failed" || txn.status === "cancelled") {
-    return txn.result_desc || `Client → DukAI ${txn.status}.`;
+    return txn.result_desc || `Client → TransChap ${txn.status}.`;
   }
   return null;
 }
@@ -279,7 +279,7 @@ export default function AdminMpesaTransactionsPage() {
       : "their settlement destination";
     const ok = await confirmAction(
       "Send to merchant?",
-      `Release ${formatAmount(txn.amount)} from DukAI to ${
+      `Release ${formatAmount(txn.amount)} from TransChap to ${
         txn.merchant_name ?? "this merchant"
       } (${dest}). This uses real B2B funds when MPESA_MODE is production.`,
       "Yes, send payout",
@@ -305,13 +305,13 @@ export default function AdminMpesaTransactionsPage() {
     }
   }
 
-  /** Release every listed collection that is already at DukAI, one at a time. */
+  /** Release every listed collection that is already at TransChap, one at a time. */
   async function sendAllToMerchants() {
     if (releasable.length === 0) return;
 
     const ok = await confirmAction(
       `Send ${releasable.length} payment${releasable.length === 1 ? "" : "s"} to merchants?`,
-      `This releases ${formatAmount(releasableTotal)} from DukAI across ` +
+      `This releases ${formatAmount(releasableTotal)} from TransChap across ` +
         `${releasable.length} collection${releasable.length === 1 ? "" : "s"} currently listed. ` +
         "This uses real B2B funds when MPESA_MODE is production and cannot be undone.",
       "Yes, send them all",
@@ -364,7 +364,7 @@ export default function AdminMpesaTransactionsPage() {
   async function unlockPayout(txn: AdminMpesaTransaction) {
     const ok = await confirmAction(
       "Unlock stuck payout?",
-      "Mark this in-progress DukAI → Merchant payout as failed so you can Retry send. " +
+      "Mark this in-progress TransChap → Merchant payout as failed so you can Retry send. " +
         "Only do this if Safaricom is not going to finish this attempt (or already failed silently).",
       "Yes, unlock",
     );
@@ -558,14 +558,14 @@ export default function AdminMpesaTransactionsPage() {
         <div>
           <h1 className="admin-page__title">M-PESA transactions</h1>
           <p className="admin-page__lead">
-            Client → DukAI → Merchant. Merchant STK collections land here when paid; send each
+            Client → TransChap → Merchant. Merchant STK collections land here when paid; send each
             received payment to the store with <strong>Send to merchant</strong>. If a client
             payment failed but they have an SMS code, use <strong>Fix payment</strong>.
           </p>
         </div>
         <div className="admin-page__header-meta">
           <span className="admin-chip">{filtered.length} shown</span>
-          <span className="admin-chip">{receivedCount} at DukAI</span>
+          <span className="admin-chip">{receivedCount} at TransChap</span>
           <span className="admin-chip">{awaitingCount} ready to send</span>
           <span className="admin-chip">{payoutCount} to merchant</span>
           <button type="button" className="admin-btn admin-btn--ghost" onClick={() => reload()}>
@@ -580,7 +580,7 @@ export default function AdminMpesaTransactionsPage() {
 
       <aside className="admin-mpesa-balance" aria-live="polite">
         <div className="admin-mpesa-balance__main">
-          <p className="admin-mpesa-balance__eyebrow">DukAI hub balance</p>
+          <p className="admin-mpesa-balance__eyebrow">TransChap hub balance</p>
           {balanceLoading ? (
             <Skeleton variant="text" height={28} width={160} />
           ) : (
@@ -648,7 +648,7 @@ export default function AdminMpesaTransactionsPage() {
             onClick={() => void toggleActivity()}
             aria-expanded={activityOpen}
             aria-controls="admin-mpesa-activity"
-            title="Money in and out of the DukAI hub paybill"
+            title="Money in and out of the TransChap hub paybill"
           >
             <i className="fa-solid fa-right-left" aria-hidden="true" />
             {activityLoading
@@ -666,8 +666,8 @@ export default function AdminMpesaTransactionsPage() {
             <div>
               <p className="admin-mpesa-balance__eyebrow">Recent hub transactions</p>
               <p className="admin-mpesa-activity__lead">
-                Last 25 money movements in and out of the DukAI hub paybill
-                {activity?.shortcode ? <> <code>{activity.shortcode}</code></> : null}, from DukAI
+                Last 25 money movements in and out of the TransChap hub paybill
+                {activity?.shortcode ? <> <code>{activity.shortcode}</code></> : null}, from TransChap
                 records. Safaricom charges and manual withdrawals are not included.
               </p>
             </div>

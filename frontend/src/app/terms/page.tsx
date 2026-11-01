@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import {
   LEGAL_ENTITY_NAME,
   legalFooterLine,
 } from "@/lib/legal-entity";
 
 export const metadata: Metadata = {
-  title: "Terms of Service — DukAI",
+  title: "Terms of Service — TransChap",
   description:
-    "Terms governing use of DukAI, the Instagram commerce platform for Kenyan merchants.",
+    "Terms governing use of TransChap, the Instagram commerce platform for Kenyan merchants.",
 };
 
 const lastUpdated = "June 29, 2026";
@@ -37,9 +37,9 @@ export default function TermsOfServicePage() {
     <div className="landing-ufanisi legal-ufanisi">
       <nav className="ufanisi-nav legal-nav" aria-label="Legal">
         <Link href="/" className="logo">
-          <DukAiLogoMark size={48} />
+          <TransChapLogoMark size={48} />
           <span className="logo-text">
-            Duk<span className="logo-accent">AI</span>
+            TransChap
           </span>
         </Link>
         <div className="legal-nav__links">
@@ -53,7 +53,7 @@ export default function TermsOfServicePage() {
           <span className="section-tag">Legal</span>
           <h1>Terms of Service</h1>
           <p>
-            Rules for using DukAI to manage Instagram commerce, messaging, and
+            Rules for using TransChap to manage Instagram commerce, messaging, and
             related merchant tools.
           </p>
           <p className="legal-hero__date">Last updated: {lastUpdated}</p>
@@ -83,8 +83,8 @@ export default function TermsOfServicePage() {
           <article className="legal-content">
             <p className="legal-lead">
               These Terms of Service (&quot;Terms&quot;) are a contract between
-              you and {LEGAL_ENTITY_NAME}, which operates the DukAI platform
-              (&quot;DukAI&quot;, &quot;we&quot;, &quot;us&quot;, or
+              you and {LEGAL_ENTITY_NAME}, which operates the TransChap platform
+              (&quot;TransChap&quot;, &quot;we&quot;, &quot;us&quot;, or
               &quot;our&quot;). They govern your access to and use of our website,
               merchant dashboard, and related services (collectively, the
               &quot;Service&quot;). By creating an account or using the Service,
@@ -101,7 +101,7 @@ export default function TermsOfServicePage() {
 
             <h2 id="service">2. The Service</h2>
             <p>
-              DukAI provides tools that help merchants connect an Instagram
+              TransChap provides tools that help merchants connect an Instagram
               professional account, manage direct messages, configure automated
               replies, publish content, view insights, and coordinate commerce
               workflows including payments. Features may change over time. We may add,
@@ -114,24 +114,24 @@ export default function TermsOfServicePage() {
               You must provide accurate registration information and keep your
               login credentials secure. You are responsible for activity under your
               account. Notify us promptly at{" "}
-              <a href="mailto:hello@dukai.co.ke">hello@dukai.co.ke</a> if you
+              <a href="mailto:hello@transchap.co.ke">hello@transchap.co.ke</a> if you
               suspect unauthorized access.
             </p>
 
             <h2 id="instagram">4. Instagram connection</h2>
             <p>
               Connecting Instagram requires a Business or Creator account and
-              authorization through Meta&apos;s OAuth flow. You grant DukAI
+              authorization through Meta&apos;s OAuth flow. You grant TransChap
               permission to access Instagram data only as needed to provide the
               Service and only for accounts you connect. You may revoke access at
-              any time through Instagram settings or by disconnecting in DukAI
+              any time through Instagram settings or by disconnecting in TransChap
               Settings. See our{" "}
               <Link href="/data-deletion">data deletion instructions</Link> for
               removal of stored data.
             </p>
 
             <h2 id="merchant">5. Merchant responsibilities</h2>
-            <p>When you use DukAI to message customers on Instagram, you agree to:</p>
+            <p>When you use TransChap to message customers on Instagram, you agree to:</p>
             <ul>
               <li>
                 Comply with Meta&apos;s Platform Terms, Instagram Terms of Use, and
@@ -153,7 +153,7 @@ export default function TermsOfServicePage() {
             <p>
               You are the data controller for customer messages processed on your
               behalf. {LEGAL_ENTITY_NAME} acts as a processor providing the
-              technical DukAI platform.
+              technical TransChap platform.
             </p>
 
             <h2 id="acceptable">6. Acceptable use</h2>
@@ -180,8 +180,8 @@ export default function TermsOfServicePage() {
 
             <h2 id="ip">8. Intellectual property</h2>
             <p>
-              DukAI retains all rights in the Service, software, and branding. You
-              retain rights in content you provide. You grant DukAI a limited license
+              TransChap retains all rights in the Service, software, and branding. You
+              retain rights in content you provide. You grant TransChap a limited license
               to host, process, and display your content solely to operate the
               Service.
             </p>
@@ -197,7 +197,7 @@ export default function TermsOfServicePage() {
 
             <h2 id="liability">10. Limitation of liability</h2>
             <p>
-              TO THE MAXIMUM EXTENT PERMITTED BY LAW, DUKAI AND ITS AFFILIATES WILL
+              TO THE MAXIMUM EXTENT PERMITTED BY LAW, TRANSCHAP AND ITS AFFILIATES WILL
               NOT BE LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR
               PUNITIVE DAMAGES, OR FOR LOST PROFITS, REVENUE, DATA, OR GOODWILL.
               OUR TOTAL LIABILITY FOR ANY CLAIM ARISING FROM THE SERVICE IS LIMITED
@@ -225,9 +225,9 @@ export default function TermsOfServicePage() {
             <h2 id="contact">13. Contact</h2>
             <p>
               Questions about these Terms:{" "}
-              <a href="mailto:hello@dukai.co.ke">hello@dukai.co.ke</a>. Privacy
+              <a href="mailto:hello@transchap.co.ke">hello@transchap.co.ke</a>. Privacy
               inquiries:{" "}
-              <a href="mailto:privacy@dukai.co.ke">privacy@dukai.co.ke</a>.
+              <a href="mailto:privacy@transchap.co.ke">privacy@transchap.co.ke</a>.
             </p>
             <p>{LEGAL_ENTITY_NAME} · Nairobi, Kenya</p>
           </article>

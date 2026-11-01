@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "DukAI Rider",
+    "name": "TransChap Rider",
     "slug": "rider-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "dukai-rider",
+    "scheme": "TransChap-rider",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true
@@ -37,15 +37,15 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow DukAI Rider to access your photos for your profile picture.",
-          "cameraPermission": "Allow DukAI Rider to use the camera for your profile picture."
+          "photosPermission": "Allow TransChap Rider to access your photos for your profile picture.",
+          "cameraPermission": "Allow TransChap Rider to use the camera for your profile picture."
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow DukAI Rider to scan product barcodes during pickup and delivery.",
-          "microphonePermission": "Allow DukAI Rider to access the microphone if needed for the camera.",
+          "cameraPermission": "Allow TransChap Rider to scan product barcodes during pickup and delivery.",
+          "microphonePermission": "Allow TransChap Rider to access the microphone if needed for the camera.",
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": true
         }

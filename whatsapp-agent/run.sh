@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT_DIR"
 
-# Prefer workspace-root .env (/home/ubuntu/agents/.env), then sibling dukai_merchants/.env
+# Prefer workspace-root .env (/home/ubuntu/agents/.env), then sibling TransChap_merchants/.env
 ENV_FILE=""
 if [[ -f "${ROOT_DIR}/../../../.env" ]]; then
   ENV_FILE="$(cd "${ROOT_DIR}/../../.." && pwd)/.env"
@@ -12,7 +12,7 @@ elif [[ -f "${ROOT_DIR}/../.env" ]]; then
   ENV_FILE="${ROOT_DIR}/../.env"
 fi
 # Pull OPENWA_* without sourcing the whole file
-# (values like MAIL_FROM_NAME=DUKAI PLATFORM are not valid shell).
+# (values like MAIL_FROM_NAME=TRANSCHAP PLATFORM are not valid shell).
 load_env_key() {
   local key="$1"
   local line value
@@ -58,7 +58,7 @@ OPENWA_CHROME_PATH="$(strip_inline_comment "${OPENWA_CHROME_PATH:-}")"
 
 export PORT="${OPENWA_AGENT_PORT:-7010}"
 export AGENT_TOKEN="${OPENWA_AGENT_TOKEN:-}"
-export SESSION_ID="${OPENWA_SESSION_ID:-dukai}"
+export SESSION_ID="${OPENWA_SESSION_ID:-TransChap}"
 export OPENWA_LICENSE_KEY="${OPENWA_LICENSE_KEY:-}"
 # Default false so the Chrome window shows the QR for first linking.
 export HEADLESS="${OPENWA_HEADLESS:-false}"

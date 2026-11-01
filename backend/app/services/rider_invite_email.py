@@ -7,8 +7,8 @@ from fastapi import HTTPException, status
 from app.services.email_service import EmailService
 from app.services.email_templates import render_branded_email
 
-INVITE_EMAIL_FROM_ADDRESS = "no-reply@dukai.app"
-INVITE_EMAIL_FROM_NAME = "DUKAI PLATFORM"
+INVITE_EMAIL_FROM_ADDRESS = "no-reply@transchap.app"
+INVITE_EMAIL_FROM_NAME = "TRANSCHAP PLATFORM"
 
 
 def _require_mail_service() -> EmailService:
@@ -46,11 +46,11 @@ def send_rider_invite_email(
     first_name = (rider_name or "").strip().split()[0] if (rider_name or "").strip() else "there"
 
     html = render_branded_email(
-        title="You're invited to deliver with DukAI",
+        title="You're invited to deliver with TransChap",
         heading=f"{shop} invited you to join their delivery fleet",
         intro=(
             f"Hi {first_name}, you were invited to deliver orders for {shop} "
-            "on DukAI. Open the link below on your phone to join and start "
+            "on TransChap. Open the link below on your phone to join and start "
             "receiving assigned deliveries."
         ),
         paragraphs=[
@@ -68,10 +68,10 @@ def send_rider_invite_email(
     sent = service.send_email(
         to=recipient,
         to_name=rider_name,
-        subject=f"{shop} invited you to deliver on DukAI",
+        subject=f"{shop} invited you to deliver on TransChap",
         text=(
             f"Hi {first_name},\n\n"
-            f"You were invited to deliver orders for {shop} on DukAI.\n\n"
+            f"You were invited to deliver orders for {shop} on TransChap.\n\n"
             f"Join here: {invite_url}\n\n"
             "This invite link expires in 7 days."
         ),

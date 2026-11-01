@@ -105,7 +105,7 @@ function showNotificationToast(
   });
 
   if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("dukai:notification", { detail: notification }));
+    window.dispatchEvent(new CustomEvent("TransChap:notification", { detail: notification }));
     window.dispatchEvent(new CustomEvent("trans-chap:refresh-counts"));
   }
 }

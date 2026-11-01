@@ -1,21 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="DukAI Merch">
-  <title>DukAI Merch</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="TransChap">
+  <title>TransChap</title>
   <rect width="512" height="512" fill="#ffffff"/>
   <g transform="translate(256 256) scale(6.2) translate(-32 -32)">
     <path
       d="M15 11h24a4 4 0 0 1 4 4v34a4 4 0 0 1-4 4H15a4 4 0 0 1-4-4V15a4 4 0 0 1 4-4z"
       fill="none"
-      stroke="#1a100c"
+      stroke="#20154c"
       stroke-width="3"
       stroke-linejoin="round"
     />
     <path
       d="M20 22h14M20 30h14M20 38h8"
       fill="none"
-      stroke="#1a100c"
+      stroke="#20154c"
       stroke-width="3"
       stroke-linecap="round"
     />
-    <path fill="#e8412a" d="M46 6 34 30h9L36 58l18-30h-9L54 6z"/>
+    <path fill="#77f665" d="M46 6 34 30h9L36 58l18-30h-9L54 6z"/>
   </g>
 </svg>

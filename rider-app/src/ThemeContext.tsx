@@ -18,7 +18,7 @@ type ThemeContextValue = Theme & {
   toggleScheme: () => void;
 };
 
-const STORAGE_KEY = '@dukai-rider/theme-preference';
+const STORAGE_KEY = '@TransChap-rider/theme-preference';
 
 const Ctx = createContext<ThemeContextValue | null>(null);
 

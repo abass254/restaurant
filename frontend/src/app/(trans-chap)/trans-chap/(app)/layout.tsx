@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
 import { AuthProvider } from "@/components/app/AuthProvider";
 import { BackendUnavailablePanel } from "@/components/app/BackendUnavailablePanel";
@@ -8,7 +8,7 @@ import { BackendUnavailableError, backendUrl } from "@/lib/backend";
 import { userCanAccessSection } from "@/lib/merchant-permissions";
 import { getServerUser } from "@/lib/server-auth";
 
-const SIGN_IN_PATH = `/trans-chap/sign-in?error=${encodeURIComponent("Your session expired. Please sign in again.")}&next=/trans-chap`;
+const SIGN_IN_PATH = `/sign-in?error=${encodeURIComponent("Your session expired. Please sign in again.")}&next=/`;
 
 export default async function TransChapAppLayout({
   children,
@@ -30,11 +30,11 @@ export default async function TransChapAppLayout({
   }
 
   if (user.require_change_password) {
-    redirect(`/change-password?next=${encodeURIComponent("/trans-chap")}`);
+    redirect(`/change-password?next=${encodeURIComponent("/")}`);
   }
 
   if (!userCanAccessSection(user, "dashboard")) {
-    redirect("/dashboard");
+    notFound();
   }
 
   return (

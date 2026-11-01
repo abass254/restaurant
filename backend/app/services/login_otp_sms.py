@@ -18,7 +18,7 @@ def format_login_otp_sms(*, code: str, expires_in_seconds: int, kind: str) -> st
     else:
         label = "login code"
     return (
-        f"DukAI {label}: {code}. Expires in {minutes} min. Do not share this code."
+        f"TransChap {label}: {code}. Expires in {minutes} min. Do not share this code."
     )
 
 

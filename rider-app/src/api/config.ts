@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 
 /**
  * Backend base URL for the rider API.
- * Set EXPO_PUBLIC_API_URL (e.g. http://192.168.1.10:7001 or https://uat.dukai.app).
+ * Set EXPO_PUBLIC_API_URL (e.g. http://192.168.1.10:7001 or https://uat.transchap.app).
  * On device/simulator, localhost will not reach the host machine — use LAN IP or tunnel.
  */
 export function getApiBaseUrl(): string {

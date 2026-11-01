@@ -25,7 +25,7 @@ SESSION_ACTIVE_ACCOUNT_KEY = "active_account_id"
 def _serializer(settings: Settings) -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(
         settings.session_secret,
-        salt="dukai-session",
+        salt="TransChap-session",
     )
 
 

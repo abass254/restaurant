@@ -6,7 +6,7 @@ export type AlertPreferences = {
   notificationsEnabled: boolean;
 };
 
-const KEY = 'dukai.rider.alertPreferences';
+const KEY = 'TransChap.rider.alertPreferences';
 
 export const DEFAULT_ALERT_PREFERENCES: AlertPreferences = {
   soundsEnabled: true,

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pull DukAI from this Ubuntu server to your desktop (no git).
+# Pull TransChap from this Ubuntu server to your desktop (no git).
 #
 # Run this ON YOUR DESKTOP (macOS/Linux/WSL), not on the server:
 #

@@ -125,7 +125,7 @@ function formatDest(type: string | null | undefined, code: string | null | undef
   return `${label} ${code}`;
 }
 
-/** Build Client → DukAI → Merchant step states for a collection/payout row.
+/** Build Client → TransChap → Merchant step states for a collection/payout row.
  *  - success: money has reached that stage (brand color)
  *  - current: money is sitting at that stage (brand color + pulse)
  *  - idle: money has not reached that stage yet (gray)
@@ -165,24 +165,24 @@ export function buildMpesaFlowSteps(txn: CollectionLike): MpesaFlowStep[] {
   }
 
   let hubTone: FlowTone = "idle";
-  let hubTip = "Waiting for funds on the DukAI hub Paybill.";
+  let hubTip = "Waiting for funds on the TransChap hub Paybill.";
   let hubLink: FlowLink = "idle";
   if (isAdminPayout) {
     if (payoutDone) {
       hubTone = "success";
-      hubTip = "Funds left the DukAI hub Paybill.";
+      hubTip = "Funds left the TransChap hub Paybill.";
       hubLink = "done";
     } else if (payoutInFlight) {
       hubTone = "success";
-      hubTip = "Payout in progress from the DukAI hub.";
+      hubTip = "Payout in progress from the TransChap hub.";
       hubLink = "progress";
     } else if (payoutFailed) {
       hubTone = "current";
-      hubTip = "Funds remain on the DukAI hub after a payout issue.";
+      hubTip = "Funds remain on the TransChap hub after a payout issue.";
       hubLink = "failed";
     } else {
       hubTone = "current";
-      hubTip = "Funds leave the DukAI hub Paybill.";
+      hubTip = "Funds leave the TransChap hub Paybill.";
       hubLink = "idle";
     }
   } else if (txn.status === "pending") {
@@ -191,32 +191,32 @@ export function buildMpesaFlowSteps(txn: CollectionLike): MpesaFlowStep[] {
     hubLink = "idle";
   } else if (txn.status === "failed" || txn.status === "cancelled") {
     hubTone = "idle";
-    hubTip = "Funds did not land on DukAI.";
+    hubTip = "Funds did not land on TransChap.";
     hubLink = "idle";
   } else if (received) {
     if (payoutDone) {
       hubTone = "success";
       hubTip = txn.mpesa_receipt_number
-        ? `Received at DukAI · receipt ${txn.mpesa_receipt_number}`
-        : "Payment received on the DukAI hub.";
+        ? `Received at TransChap · receipt ${txn.mpesa_receipt_number}`
+        : "Payment received on the TransChap hub.";
       hubLink = "done";
     } else if (payoutInFlight) {
       hubTone = "success";
       hubTip = txn.mpesa_receipt_number
-        ? `Sending from DukAI · receipt ${txn.mpesa_receipt_number}`
-        : "Sending from DukAI to merchant…";
+        ? `Sending from TransChap · receipt ${txn.mpesa_receipt_number}`
+        : "Sending from TransChap to merchant…";
       hubLink = "progress";
     } else if (payoutFailed) {
       hubTone = "current";
       hubTip = txn.mpesa_receipt_number
-        ? `At DukAI · receipt ${txn.mpesa_receipt_number}`
-        : "Payment at DukAI after a payout issue.";
+        ? `At TransChap · receipt ${txn.mpesa_receipt_number}`
+        : "Payment at TransChap after a payout issue.";
       hubLink = "failed";
     } else {
       hubTone = "current";
       hubTip = txn.mpesa_receipt_number
-        ? `At DukAI · receipt ${txn.mpesa_receipt_number}`
-        : "Payment at DukAI — awaiting merchant payout.";
+        ? `At TransChap · receipt ${txn.mpesa_receipt_number}`
+        : "Payment at TransChap — awaiting merchant payout.";
       hubLink = "idle";
     }
   } else if (txn.status === "success") {
@@ -226,10 +226,10 @@ export function buildMpesaFlowSteps(txn: CollectionLike): MpesaFlowStep[] {
   }
 
   let merchantTone: FlowTone = "idle";
-  let merchantTip = "Waiting for DukAI → merchant payout.";
+  let merchantTip = "Waiting for TransChap → merchant payout.";
   if (!received && !isAdminPayout) {
     merchantTone = "idle";
-    merchantTip = "Payout unlocks after money is at DukAI.";
+    merchantTip = "Payout unlocks after money is at TransChap.";
   } else if (payoutDone) {
     merchantTone = "success";
     merchantTip = txn.payout_receipt_number
@@ -264,7 +264,7 @@ export function buildMpesaFlowSteps(txn: CollectionLike): MpesaFlowStep[] {
     {
       key: "hub",
       icon: "fa-building-columns",
-      label: "DukAI",
+      label: "TransChap",
       tone: hubTone,
       tooltip: hubTip,
       link: hubLink,

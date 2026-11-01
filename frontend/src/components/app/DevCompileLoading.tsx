@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import { isDebugMode, isDevEnvironment } from "@/lib/config";
 
 const STATUS_LABELS = new Set([
@@ -37,9 +37,9 @@ function readBuildStatus(shadow: ShadowRoot): string | null {
 
 /** Hide Next's status pill inside the shadow root; keep error overlay usable. */
 function hideNextStatusPill(shadow: ShadowRoot) {
-  if (shadow.getElementById("dukai-hide-next-status")) return;
+  if (shadow.getElementById("TransChap-hide-next-status")) return;
   const style = document.createElement("style");
-  style.id = "dukai-hide-next-status";
+  style.id = "TransChap-hide-next-status";
   style.textContent = `
     [data-status-dot],
     [data-status-dot] ~ *,
@@ -60,7 +60,7 @@ function hideNextStatusPill(shadow: ShadowRoot) {
 
 /**
  * When `NEXT_PUBLIC_DEBUG` is on (dev default), replace the Next.js
- * bottom-left "Rendering… / Compiling…" badge with DukAI's loading effect.
+ * bottom-left "Rendering… / Compiling…" badge with TransChap's loading effect.
  */
 export function DevCompileLoading() {
   const enabled = isDebugMode && isDevEnvironment;
@@ -130,7 +130,7 @@ export function DevCompileLoading() {
         <div className="dev-compile-loading__track" />
       </div>
       <div className="dev-compile-loading__toast">
-        <DukAiLogoMark size={18} color="#ffffff" accentColor="#ffffff" />
+        <TransChapLogoMark size={18} color="#ffffff" accentColor="#ffffff" />
         <span>{label}</span>
       </div>
     </div>

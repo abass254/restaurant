@@ -2212,7 +2212,7 @@ html[data-theme="dark"] .fb-app .settings-pill--warn {
   color: var(--app-text-secondary);
 }
 
-/* Compact Client → DukAI → Merchant status (payments table) */
+/* Compact Client → TransChap → Merchant status (payments table) */
 .fb-app .mpesa-flow-status {
   list-style: none;
   margin: 0;
@@ -2494,7 +2494,7 @@ html[data-theme="dark"] .fb-app .settings-pill--warn {
   visibility: visible;
 }
 
-/* Client → DukAI → Merchant money flow */
+/* Client → TransChap → Merchant money flow */
 .fb-app .mpesa-money-flow {
   margin: 0 0 1rem;
   padding: var(--space-card);
@@ -11237,7 +11237,7 @@ html[data-theme="dark"] .fb-app .cs-row.is-active .cs-row__chip {
   flex-wrap: wrap;
 }
 
-/* ---- DukAI Services vertical ------------------------------------------- */
+/* ---- TransChap Services vertical ------------------------------------------- */
 
 .fb-app .svc-dash-grid {
   display: grid;
@@ -11863,7 +11863,7 @@ html[data-theme="dark"] .fb-app .cs-row.is-active .cs-row__chip {
   font: inherit;
   font-weight: 700;
   color: #fff;
-  background: var(--app-primary, #e8412a);
+  background: var(--app-primary, #238636);
   cursor: pointer;
 }
 
@@ -11907,7 +11907,7 @@ html[data-theme="dark"] .fb-app .cs-row.is-active .cs-row__chip {
   font: inherit;
   font-weight: 700;
   color: #fff;
-  background: var(--app-primary, #e8412a);
+  background: var(--app-primary, #238636);
   cursor: pointer;
 }
 

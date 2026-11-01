@@ -276,7 +276,7 @@ export default function SettingsPage() {
         id: "inventory",
         group: "automation",
         label: "Inventory Source",
-        description: "Catalog source: DukAI Platform vs External API",
+        description: "Catalog source: TransChap Platform vs External API",
         icon: "fa-boxes-stacked",
         status: "Platform",
         tone: "ok",
@@ -760,7 +760,7 @@ export default function SettingsPage() {
                           <strong>{autoRepliesEnabled ? "Auto-replies Active" : "Auto-replies Paused"}</strong>
                           <span>
                             {autoRepliesEnabled
-                              ? "DukAI answers matching messages"
+                              ? "TransChap answers matching messages"
                               : "No automated messages sent"}
                           </span>
                         </div>

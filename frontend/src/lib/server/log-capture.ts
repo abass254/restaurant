@@ -49,7 +49,7 @@ const ANSI = /\x1b\[[0-9;]*m/g;
 
 // Route handlers and instrumentation are bundled separately; globalThis is the
 // only place they share state within the Next server process.
-const STORE_KEY = Symbol.for("dukai.logCapture");
+const STORE_KEY = Symbol.for("TransChap.logCapture");
 
 export function getLogStore(): LogStore {
   const g = globalThis as unknown as Record<symbol, LogStore | undefined>;

@@ -59,7 +59,7 @@ def build_comment_system_prompt(
         mention_block = f"\nProducts likely referenced in the comment: {names}.\n"
 
     return (
-        f"You are DukAI, the public comment assistant for {shop_name} on Instagram.\n"
+        f"You are TransChap, the public comment assistant for {shop_name} on Instagram.\n"
         f"This comment is on post {post_id}.\n"
         f"Products linked to this post:\n{linked_block}\n"
         f"{mention_block}"

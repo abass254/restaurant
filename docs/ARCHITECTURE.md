@@ -1,4 +1,4 @@
-# DukAI architecture
+# TransChap architecture
 
 FastAPI is the **API-only backend** (`backend/`). Next.js is the **only user-facing UI**. MySQL is the **primary database**.
 
@@ -41,13 +41,13 @@ See [DOCKER.md](DOCKER.md) for the full guide.
 - **Public domain** → Next.js (port 7070 behind nginx).
 - **API** → FastAPI on port 7071 (internal or `api.insta.ufanisi.net`).
 - Set `FRONTEND_URL=https://insta.ufanisi.net`, `APP_URL=https://api.insta.ufanisi.net` (or your API host).
-- Instagram OAuth starts on this API (`/auth/instagram`), which sends the user to the dukai.app hub. The hub returns the auth code to `{APP_URL}/instagram/callback`.
+- Instagram OAuth starts on this API (`/auth/instagram`), which sends the user to the transchap.app hub. The hub returns the auth code to `{APP_URL}/instagram/callback`.
 
 ## Authentication
 
 - Merchant UI primary route: **`/sign-in`**. `/` redirects signed-in users to their first allowed page, otherwise to `/sign-in`. `/login` is a compatibility redirect to `/sign-in`.
 - **Session + CSRF** (Sanctum-compatible contract): cookies shared between frontend and API via `CORS_ALLOWED_ORIGINS`.
-- Login flow: Next.js → `{API}/auth/instagram` → dukai.app hub → Instagram → hub → `{APP_URL}/instagram/callback` → Next.js `/settings`.
+- Login flow: Next.js → `{API}/auth/instagram` → transchap.app hub → Instagram → hub → `{APP_URL}/instagram/callback` → Next.js `/settings`.
 - API calls from Next.js use `credentials: "include"` and `GET /sanctum/csrf-cookie` before mutating requests.
 
 ## API surface
@@ -88,8 +88,8 @@ Managed by FastAPI migration scripts:
 ```env
 DB_HOST=127.0.0.1
 DB_PORT=3306
-DB_DATABASE=dukai
-DB_USERNAME=dukai
+DB_DATABASE=TransChap
+DB_USERNAME=TransChap
 DB_PASSWORD=your_password
 ```
 

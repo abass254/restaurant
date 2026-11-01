@@ -46,7 +46,7 @@ const TEXT_FIELDS: TextField[] = [
     key: "business_name",
     label: "Business name",
     icon: "fa-store",
-    placeholder: "DukAI's Store",
+    placeholder: "TransChap's Store",
     autoFocus: true,
   },
   {
@@ -128,12 +128,12 @@ export function RegisterBusinessModal({ onClose }: RegisterBusinessModalProps) {
       const result = await Swal.fire({
         icon: "success",
         iconHtml: '<i class="fas fa-envelope" aria-hidden="true"></i>',
-        title: "Welcome to DukAI!",
+        title: "Welcome to TransChap!",
         html:
-          '<div class="dukai-waitlist-swal">' +
+          '<div class="TransChap-waitlist-swal">' +
           '<p>Your account has been created. Check your inbox for your ' +
           "login email with a temporary password.</p>" +
-          '<p class="dukai-waitlist-swal__sub">' +
+          '<p class="TransChap-waitlist-swal__sub">' +
           "Sign in with the temporary password in your email, or use the " +
           "password setup link to choose your own." +
           "</p>" +
@@ -141,11 +141,11 @@ export function RegisterBusinessModal({ onClose }: RegisterBusinessModalProps) {
         confirmButtonText: "Go to login",
         showCloseButton: true,
         customClass: {
-          popup: "dukai-swal-popup dukai-waitlist-popup",
-          title: "dukai-swal-title",
-          htmlContainer: "dukai-swal-text",
-          confirmButton: "dukai-swal-btn dukai-swal-btn--confirm",
-          icon: "dukai-waitlist-icon",
+          popup: "TransChap-swal-popup TransChap-waitlist-popup",
+          title: "TransChap-swal-title",
+          htmlContainer: "TransChap-swal-text",
+          confirmButton: "TransChap-swal-btn TransChap-swal-btn--confirm",
+          icon: "TransChap-waitlist-icon",
         },
         buttonsStyling: false,
       });

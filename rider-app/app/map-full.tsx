@@ -36,7 +36,7 @@ function ManeuverIcon({
   return <Ionicons name={name} size={size} color={color} />;
 }
 
-/** DukAI-branded navigation: cream/olive light + deep olive dark. */
+/** TransChap-branded navigation: cream/olive light + deep olive dark. */
 export default function NavigateScreen() {
   const insets = useSafeAreaInsets();
   const { variant: raw } = useLocalSearchParams<{ variant?: string }>();

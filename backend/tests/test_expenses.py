@@ -29,7 +29,7 @@ def db():
 
     account = Account(
         id=ACCOUNT_ID,
-        business_name="Expenses Dukai",
+        business_name="Expenses TransChap",
         business_location="Nairobi",
         business_category="retail",
     )

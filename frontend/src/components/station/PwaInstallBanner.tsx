@@ -12,7 +12,7 @@ export function PwaInstallBanner() {
   return (
     <div className="pwa-install">
       <div>
-        <strong style={{ display: "block" }}>Install DukAI Merchant</strong>
+        <strong style={{ display: "block" }}>Install TransChap Merchant</strong>
         <span style={{ color: "var(--station-muted)", fontSize: "0.82rem" }}>
           Add to your home screen for faster order alerts.{" "}
           <a href="/install" style={{ color: "inherit", textDecoration: "underline" }}>

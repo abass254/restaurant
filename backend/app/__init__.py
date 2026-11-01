@@ -1,1 +1,1 @@
-"""DukAI FastAPI backend."""
+"""TransChap FastAPI backend."""

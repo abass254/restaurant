@@ -1,6 +1,6 @@
 import { createElement, useEffect, useId, useMemo, useRef } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
-import { DUKAI_MAP_COLORS, DUKAI_MAP_STYLES } from '@/src/map/brandStyle';
+import { TRANSCHAP_MAP_COLORS, TRANSCHAP_MAP_STYLES } from '@/src/map/brandStyle';
 import { getGoogleMapsApiKey, getGoogleMapsMapId } from '@/src/map/config';
 import { fetchRoutePath, routeLegForVariant } from '@/src/map/directions';
 import { pathLengthMeters, pointAlongPath } from '@/src/map/pathMath';
@@ -17,12 +17,12 @@ function loadGoogleMaps(apiKey: string): Promise<void> {
   if ((globalThis as { google?: { maps?: unknown } }).google?.maps) {
     return Promise.resolve();
   }
-  const g = globalThis as { __dukaiMapsReady?: Promise<void> };
-  if (g.__dukaiMapsReady) return g.__dukaiMapsReady;
+  const g = globalThis as { __TransChapMapsReady?: Promise<void> };
+  if (g.__TransChapMapsReady) return g.__TransChapMapsReady;
 
-  g.__dukaiMapsReady = new Promise((resolve, reject) => {
+  g.__TransChapMapsReady = new Promise((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>(
-      'script[data-dukai-maps="true"]',
+      'script[data-TransChap-maps="true"]',
     );
     if (existing) {
       existing.addEventListener('load', () => resolve());
@@ -32,22 +32,22 @@ function loadGoogleMaps(apiKey: string): Promise<void> {
     const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}`;
     script.async = true;
-    script.dataset.dukaiMaps = 'true';
+    script.dataset.TransChapMaps = 'true';
     script.onload = () => resolve();
     script.onerror = () => reject(new Error('Maps failed'));
     document.head.appendChild(script);
   });
 
-  return g.__dukaiMapsReady;
+  return g.__TransChapMapsReady;
 }
 
-/** Web map using DukAI JSON styles + real driving directions + ride simulation. */
+/** Web map using TransChap JSON styles + real driving directions + ride simulation. */
 export function WebBrandedMap({
   variant,
   interactive = false,
   simulateRide = false,
 }: Props) {
-  const hostId = `dukai-map-${useId().replace(/:/g, '')}`;
+  const hostId = `TransChap-map-${useId().replace(/:/g, '')}`;
   const hostRef = useRef<HTMLDivElement | null>(null);
   const focus = useMemo(() => focusForVariant(variant), [variant]);
   const apiKey = getGoogleMapsApiKey();
@@ -98,7 +98,7 @@ export function WebBrandedMap({
           zoom: variant === 'idle' ? 13 : 14,
           disableDefaultUI: true,
           gestureHandling: interactive ? 'greedy' : 'none',
-          ...(mapId ? { mapId } : { styles: DUKAI_MAP_STYLES }),
+          ...(mapId ? { mapId } : { styles: TRANSCHAP_MAP_STYLES }),
         });
 
         const pins = shouldSimulate
@@ -153,7 +153,7 @@ export function WebBrandedMap({
             map,
             path: path.map((p) => ({ lat: p.latitude, lng: p.longitude })),
             geodesic: true,
-            strokeColor: DUKAI_MAP_COLORS.primary,
+            strokeColor: TRANSCHAP_MAP_COLORS.primary,
             strokeOpacity: 0.92,
             strokeWeight: 5,
           });

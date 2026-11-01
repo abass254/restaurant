@@ -15,7 +15,7 @@ const STEPS = {
     {
       key: "hub",
       icon: "fa-building-columns",
-      title: "DukAI",
+      title: "TransChap",
       detail: "We collect the payment for you",
     },
     {
@@ -35,7 +35,7 @@ const STEPS = {
     {
       key: "hub",
       icon: "fa-building-columns",
-      title: "DukAI",
+      title: "TransChap",
       detail: "Collection confirmed on the platform shortcode",
     },
     {
@@ -48,8 +48,8 @@ const STEPS = {
 } as const;
 
 const FORMULA = {
-  merchant: ["Customer", "DukAI", "Your store"] as const,
-  admin: ["Client", "DukAI", "Merchant"] as const,
+  merchant: ["Customer", "TransChap", "Your store"] as const,
+  admin: ["Client", "TransChap", "Merchant"] as const,
 };
 
 export function MpesaMoneyFlow({ audience = "merchant", className }: MpesaMoneyFlowProps) {
@@ -59,7 +59,7 @@ export function MpesaMoneyFlow({ audience = "merchant", className }: MpesaMoneyF
 
   const ariaLabel =
     audience === "admin"
-      ? "Money flow: Client to DukAI to Merchant"
+      ? "Money flow: Client to TransChap to Merchant"
       : "How money moves from the customer to your store";
 
   return (

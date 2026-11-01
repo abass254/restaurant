@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-# DukAI Next.js frontend.
+# TransChap Next.js frontend.
 # Listens on port 7070 inside the container.
 # Server-side rewrites in next.config.ts proxy /api, /auth, /sanctum,
 # /webhooks, /mpesa and /uploads to ${BACKEND_URL} (default

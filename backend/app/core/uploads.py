@@ -4,7 +4,7 @@ Files are written under `UPLOADS_DIR` (default `backend/uploads/`, or
 `/app/uploads` in Docker) as `products/<product_id>/<sha1>.<ext>` and served
 by the `/uploads/*` static mount in `app.main`. The URLs we store in the DB
 are *relative* (e.g. `/uploads/products/3/abc.jpg`) so the public host comes
-from `APP_URL` / `FRONTEND_URL` (prod: `https://merchants.dukai.app/uploads/...`).
+from `APP_URL` / `FRONTEND_URL` (prod: `https://merchants.transchap.app/uploads/...`).
 
 Override the on-disk root with `UPLOADS_DIR` (bare metal) or bind-mount the
 host folder onto `/app/uploads` via Compose `UPLOADS_HOST_PATH`.
@@ -320,7 +320,7 @@ def _relative_uploads_path(image_url: str) -> str | None:
         return None
     if raw.startswith("/uploads/"):
         return raw[len("/uploads/") :]
-    # Absolute public URL (e.g. https://merchants.dukai.app/uploads/…).
+    # Absolute public URL (e.g. https://merchants.transchap.app/uploads/…).
     marker = "/uploads/"
     idx = raw.find(marker)
     if idx >= 0 and raw.startswith(("http://", "https://")):

@@ -108,7 +108,7 @@ export function UserInviteEmailLookup({
         ? lookupState.message
         : lookupState.status === "done"
           ? lookupMessage(lookupState.result)
-          : "Look up the email first. Existing DukAI users can be added without a new password.";
+          : "Look up the email first. Existing TransChap users can be added without a new password.";
     return (
       <div className="user-invite-lookup user-invite-lookup--transchap">
         <div className="ios-settings__group">
@@ -231,7 +231,7 @@ export function UserInviteEmailLookup({
 
       {lookupState.status === "idle" ? (
         <p className={`user-invite-lookup__hint ${isAdmin ? "admin-muted" : "settings-muted"}`}>
-          Look up the email first. Existing DukAI users can be added without a
+          Look up the email first. Existing TransChap users can be added without a
           new password.
         </p>
       ) : null}
@@ -257,5 +257,5 @@ function lookupMessage(result: UserInviteLookupResult): string {
   if (result.found) {
     return `Found existing account: ${result.name ?? "User"} (${result.email}). They can sign in with their current password.`;
   }
-  return "No DukAI account found for this email. You'll create a new user with a temporary password.";
+  return "No TransChap account found for this email. You'll create a new user with a temporary password.";
 }

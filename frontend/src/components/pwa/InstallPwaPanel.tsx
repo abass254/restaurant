@@ -28,7 +28,7 @@ export function InstallPwaPanel() {
     const ok = await promptInstall();
     setStatus(
       ok
-        ? "Installed. Open DukAI from your home screen."
+        ? "Installed. Open TransChap from your home screen."
         : "Install dismissed. You can try again anytime.",
     );
   }
@@ -40,7 +40,7 @@ export function InstallPwaPanel() {
         <img src="/icons/icon-192.png" alt="" width={96} height={96} />
       </div>
 
-      <h1>Download DukAI Merchant</h1>
+      <h1>Download TransChap Merchant</h1>
       <p className="install-pwa__lead">
         Install the app on your phone or tablet for faster order alerts and a
         home-screen shortcut. No App Store needed — it installs from this page.
@@ -104,7 +104,7 @@ export function InstallPwaPanel() {
                 <li>Open this page in Chrome or Edge</li>
                 <li>
                   Click the install icon in the address bar, or use the browser
-                  menu → <strong>Install DukAI Merchant</strong>
+                  menu → <strong>Install TransChap Merchant</strong>
                 </li>
               </ol>
             </>

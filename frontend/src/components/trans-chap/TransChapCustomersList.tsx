@@ -569,7 +569,7 @@ export function TransChapCustomersList() {
       const blobUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = blobUrl;
-      anchor.download = `dukai_customers_template.${format}`;
+      anchor.download = `TransChap_customers_template.${format}`;
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);

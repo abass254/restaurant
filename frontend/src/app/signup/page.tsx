@@ -125,7 +125,7 @@ function SignupForm() {
     <AuthShell backHref="/sign-in" backLabel="Back to login">
       <h1 className="auth-split__title">Let&apos;s get started</h1>
       <p className="auth-split__subtitle">
-        Please fill all the required details to register with DukAI Merchants
+        Please fill all the required details to register with TransChap Merchants
       </p>
 
       {error ? (

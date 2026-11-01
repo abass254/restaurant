@@ -59,6 +59,10 @@ class SignupRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     phone: str | None = Field(default=None, max_length=20)
+    business_name: str | None = Field(default=None, min_length=1, max_length=255)
+    business_location: str | None = Field(default=None, min_length=1, max_length=255)
+    business_category: str | None = Field(default=None, min_length=1, max_length=100)
+    store_type: str | None = Field(default=None, min_length=1, max_length=32)
 
 
 class AdminLoginRequest(BaseModel):
@@ -212,14 +216,42 @@ def signup(
             },
         )
 
+    shop_fields = (
+        payload.business_name,
+        payload.business_location,
+        payload.business_category,
+        payload.store_type,
+    )
+    shop = None
+    if any(value is not None for value in shop_fields):
+        if any(value is None for value in shop_fields):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Complete all business details to create a shop account.",
+            )
+        shop = {
+            "business_name": payload.business_name,
+            "business_location": payload.business_location,
+            "business_category": payload.business_category,
+            "store_type": payload.store_type,
+            "admin_phone": payload.phone,
+        }
+
     from app.services.registration import BusinessRegistrationService
 
-    user = BusinessRegistrationService(db).signup_user(
-        name=payload.name,
-        email=email,
-        password=payload.password,
-        phone=payload.phone,
-    )
+    try:
+        user = BusinessRegistrationService(db).signup_user(
+            name=payload.name,
+            email=email,
+            password=payload.password,
+            phone=payload.phone,
+            shop=shop,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
     user = (
         db.query(User)
         .options(
@@ -230,7 +262,11 @@ def signup(
         .filter(User.id == user.id)
         .first()
     )
-    login_user(session, user.id, active_account_id=None)
+    login_user(
+        session,
+        user.id,
+        active_account_id=_default_active_account_id(user),
+    )
     response.set_cookie(**save_session(request, session))
     return build_user_out(db, user)
 

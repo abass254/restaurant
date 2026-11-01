@@ -7,7 +7,7 @@ from itsdangerous import BadSignature, BadTimeSignature, URLSafeTimedSerializer
 
 from app.config import Settings
 
-OAUTH_STATE_SALT = "dukai-instagram-oauth-state"
+OAUTH_STATE_SALT = "TransChap-instagram-oauth-state"
 OAUTH_STATE_MAX_AGE = 600
 
 

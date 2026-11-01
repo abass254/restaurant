@@ -5,7 +5,7 @@ import { JoinPlatformButton } from "@/components/landing/JoinPlatformButton";
 import { ThemeToggle } from "@/components/landing/ThemeToggle";
 import { ProcessShowcase } from "@/components/landing/ProcessShowcase";
 import { CookiePreferencesFooterItem } from "@/components/consent/CookiePreferencesLink";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import { legalFooterLine } from "@/lib/legal-entity";
 import { RegisterHashRedirect } from "@/components/landing/RegisterHashRedirect";
 
@@ -157,10 +157,8 @@ function LandingPageContent() {
       <RegisterHashRedirect />
       <nav className="ufanisi-nav" aria-label="Main">
         <a href="#top" className="logo">
-          <DukAiLogoMark size={56} />
-          <span className="logo-text">
-            Duk<span className="logo-accent">AI</span>
-          </span>
+          <TransChapLogoMark size={56} />
+          <span className="logo-text">TransChap</span>
         </a>
         <ul className="nav-links">
           <li>
@@ -230,7 +228,7 @@ function LandingPageContent() {
               Get Started
             </JoinPlatformButton>
             <a href="#product" className="cta-btn secondary">
-              Explore DukAI
+              Explore TransChap
             </a>
           </div>
         </div>
@@ -285,7 +283,7 @@ function LandingPageContent() {
           <h2>Empowering Instagram Merchants</h2>
           <p>
             We understand the chaos of selling on social — endless DMs, manual
-            M-Pesa matching, and delivery coordination. DukAI simplifies operations
+            M-Pesa matching, and delivery coordination. TransChap simplifies operations
             so you can focus on what matters most: growing your brand.
           </p>
         </div>
@@ -307,7 +305,7 @@ function LandingPageContent() {
           <div className="product-content reveal">
             <span className="section-tag">Our Product</span>
             <h2>
-              Meet <span>DukAI</span>
+              Meet <span>TransChap</span>
             </h2>
             <p>
               The all-in-one operating system for Kenyan Instagram commerce — from
@@ -388,9 +386,9 @@ function LandingPageContent() {
 
       <section className="cta" id="contact">
         <div className="cta-content reveal">
-          <h2>Be First on the DukAI Waitlist</h2>
+          <h2>Be First on the TransChap Waitlist</h2>
           <p>
-            We&apos;re putting the finishing touches on DukAI. Join the waitlist
+            We&apos;re putting the finishing touches on TransChap. Join the waitlist
             and we&apos;ll personally onboard your shop the moment we go live.
           </p>
           <div className="cta-buttons">
@@ -399,7 +397,7 @@ function LandingPageContent() {
               Get Started
             </JoinPlatformButton>
             <a
-              href="mailto:hello@dukai.co.ke?subject=DukAI%20Demo"
+              href="mailto:hello@transchap.co.ke?subject=TransChap%20Demo"
               className="cta-btn outline"
             >
               Schedule Demo
@@ -415,9 +413,9 @@ function LandingPageContent() {
         <div className="footer-grid">
           <div className="footer-brand">
             <a href="#top" className="logo">
-              <DukAiLogoMark size={48} />
+              <TransChapLogoMark size={48} />
               <span className="logo-text">
-                Duk<span className="logo-accent">AI</span>
+                TransChap
               </span>
             </a>
             <p>
@@ -428,7 +426,7 @@ function LandingPageContent() {
               <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
                 <i className="fab fa-instagram" aria-hidden="true" />
               </a>
-              <a href="mailto:hello@dukai.co.ke" aria-label="Email">
+              <a href="mailto:hello@transchap.co.ke" aria-label="Email">
                 <i className="fas fa-envelope" aria-hidden="true" />
               </a>
             </div>
@@ -437,7 +435,7 @@ function LandingPageContent() {
             <h4>Product</h4>
             <ul>
               <li>
-                <a href="#product">DukAI</a>
+                <a href="#product">TransChap</a>
               </li>
               <li>
                 <a href="#features">Features</a>
@@ -446,7 +444,7 @@ function LandingPageContent() {
                 <a href="/brand">Brand Assets</a>
               </li>
               <li>
-                <a href="/how-it-works">How DukAI works</a>
+                <a href="/how-it-works">How TransChap works</a>
               </li>
               <li>
                 <a href="/install">Download app</a>
@@ -479,7 +477,7 @@ function LandingPageContent() {
             <h4>Support</h4>
             <ul>
               <li>
-                <a href="mailto:hello@dukai.co.ke">hello@dukai.co.ke</a>
+                <a href="mailto:hello@transchap.co.ke">hello@transchap.co.ke</a>
               </li>
               <li>
                 <a href="/privacy_policy">Privacy Policy</a>

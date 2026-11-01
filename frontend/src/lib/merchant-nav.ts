@@ -15,7 +15,7 @@ export type MerchantNavLink = {
   topTab?: boolean;
 };
 
-/** DukAI Merchants — retail commerce navigation. */
+/** TransChap Merchants — retail commerce navigation. */
 export const merchantNavLinks: MerchantNavLink[] = [
   {
     href: "/dashboard",
@@ -90,7 +90,7 @@ export const merchantNavLinks: MerchantNavLink[] = [
   {
     href: "/trans-chap",
     icon: "fa-bolt",
-    label: "Dukai Merchant",
+    label: "TransChap Merchant",
     section: "dashboard",
     group: "more",
   },

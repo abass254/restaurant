@@ -3,10 +3,10 @@
 #
 # Run ON YOUR DESKTOP:
 #
-#   ./scripts/import-from-transfer.sh dukai-transfer.tar.gz ~/projects/new_ig
+#   ./scripts/import-from-transfer.sh TransChap-transfer.tar.gz ~/projects/new_ig
 #
 # If you do not have this script yet, extract manually instead:
-#   mkdir -p ~/projects && tar -xzf dukai-transfer.tar.gz -C ~/projects
+#   mkdir -p ~/projects && tar -xzf TransChap-transfer.tar.gz -C ~/projects
 #   cd ~/projects/new_ig && bash scripts/local-setup.sh
 
 set -euo pipefail
@@ -15,8 +15,8 @@ ARCHIVE="${1:-}"
 DEST="${2:-}"
 
 if [[ -z "${ARCHIVE}" || -z "${DEST}" ]]; then
-  echo "Usage: $0 /path/to/dukai-transfer.tar.gz /local/project/path" >&2
-  echo "Example: $0 ~/Downloads/dukai-transfer.tar.gz ~/projects/new_ig" >&2
+  echo "Usage: $0 /path/to/TransChap-transfer.tar.gz /local/project/path" >&2
+  echo "Example: $0 ~/Downloads/TransChap-transfer.tar.gz ~/projects/new_ig" >&2
   exit 1
 fi
 

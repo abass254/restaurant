@@ -13,7 +13,7 @@ import { filterNavLinksForUser } from "@/lib/merchant-permissions";
 import { logoutToSignIn } from "@/lib/logout";
 import type { AuthUser } from "@/lib/types";
 import { useNavCounts } from "@/lib/use-nav-counts";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import { FullscreenToggle } from "./FullscreenToggle";
 import { MerchantSwitcher } from "./MerchantSwitcher";
 import { ThemeToggle } from "./ThemeToggle";
@@ -119,12 +119,9 @@ export function AppTopBar({
           </button>
         ) : null}
 
-        <Link href="/dashboard" className="fb-topbar__logo" aria-label="DukAI home">
-          <span className="fb-topbar__logo-text">duk</span>
-          <DukAiLogoMark size={32} color="#1a100c" accentColor="#e85d04" />
-          <span className="fb-topbar__logo-text">
-            ai<span className="fb-topbar__tm">™</span>
-          </span>
+        <Link href="/dashboard" className="fb-topbar__logo" aria-label="TransChap home">
+          <TransChapLogoMark size={32} color="#20154c" accentColor="#77f665" />
+          <span className="fb-topbar__logo-text">TransChap</span>
         </Link>
 
         <form className="fb-topbar__search" role="search" onSubmit={onSearchSubmit}>

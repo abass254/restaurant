@@ -147,7 +147,7 @@ const PATH_SECTION_MAP: Array<{ prefix: string; section: MerchantSection }> = [
   { prefix: "/team", section: "dashboard" },
 ];
 
-/** DukAI Merchants is retail-only. */
+/** TransChap Merchants is retail-only. */
 export function businessModeForUser(_user: AuthUser): "retail" {
   return "retail";
 }

@@ -1,27 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { apiFetch, ApiError } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import type { ForgotPasswordResponse } from "@/lib/types";
 
-function safeSignInHref(raw: string | null): string {
-  return raw === "/trans-chap/sign-in" ? raw : "/sign-in";
-}
-
 export default function ForgotPasswordPage() {
-  const [signInHref, setSignInHref] = useState("/sign-in");
+  const signInHref = "/sign-in";
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [devResetLink, setDevResetLink] = useState<string | null>(null);
-
-  useEffect(() => {
-    setSignInHref(safeSignInHref(new URLSearchParams(window.location.search).get("next")));
-  }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();

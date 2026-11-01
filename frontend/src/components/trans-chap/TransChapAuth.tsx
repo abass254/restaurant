@@ -6,17 +6,16 @@ import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 export function TransChapBrandHeader() {
   return (
     <div className="auth-split__brand trans-chap-auth__brand">
-      <Link href="/trans-chap/sign-in" className="trans-chap-auth__logo-link">
+      <Link href="/sign-in" className="trans-chap-auth__logo-link">
         <div className="trans-chap-auth__brand-icon">
-          <TransChapLogoMark size={52} color="#ffffff" accentColor="#ffdbcc" />
+          <TransChapLogoMark size={52} color="#ffffff" accentColor="#77f665" />
         </div>
         <div className="trans-chap-auth__brand-text">
-          <span className="trans-chap-auth__wordmark">DukAI Merch</span>
-          <span className="trans-chap-auth__badge">by DukAI</span>
+          <span className="trans-chap-auth__wordmark">TransChap</span>
         </div>
       </Link>
       <p className="auth-split__tagline trans-chap-auth__tagline">
-        Point of Sale, Sales & Receipts
+        Restaurant POS, Kitchen & Stock
       </p>
     </div>
   );
@@ -28,25 +27,34 @@ export function TransChapHeroContent() {
       <div className="trans-chap-hero__pill-wrap">
         <span className="trans-chap-hero__pill">
           <span className="trans-chap-hero__pill-dot" />
-          Point of Sale & Register
+          Restaurant POS & Kitchen
         </span>
       </div>
 
       <div className="trans-chap-hero__card">
         <div className="trans-chap-hero__card-header">
-          <div className="trans-chap-hero__card-title">Dukai Merchant Register</div>
+          <div className="trans-chap-hero__card-title">Made for restaurant teams</div>
           <div className="trans-chap-hero__card-sub">
-            Built for retail shops, counters & quick dining
+            Orders, kitchen, stock, and payments in one place
           </div>
         </div>
         <div className="trans-chap-hero__feature-list">
           <div className="trans-chap-hero__feature-item">
             <span className="trans-chap-hero__feature-icon">
-              <i className="fa-solid fa-bolt" />
+              <i className="fa-solid fa-utensils" />
             </span>
             <div className="trans-chap-hero__feature-text">
-              <strong>Instant Ring-up & Barcode</strong>
-              <span>Fast scanning with camera or external barcode scanner</span>
+              <strong>Orders from table to till</strong>
+              <span>Keep dine-in and takeaway orders moving</span>
+            </div>
+          </div>
+          <div className="trans-chap-hero__feature-item">
+            <span className="trans-chap-hero__feature-icon">
+              <i className="fa-solid fa-fire-burner" />
+            </span>
+            <div className="trans-chap-hero__feature-text">
+              <strong>Kitchen and recipe control</strong>
+              <span>Track ingredients as meals are prepared and sold</span>
             </div>
           </div>
           <div className="trans-chap-hero__feature-item">
@@ -54,17 +62,8 @@ export function TransChapHeroContent() {
               <i className="fa-solid fa-mobile-screen-button" />
             </span>
             <div className="trans-chap-hero__feature-text">
-              <strong>Direct M-Pesa Integration</strong>
-              <span>Automated STK push and real-time payment matching</span>
-            </div>
-          </div>
-          <div className="trans-chap-hero__feature-item">
-            <span className="trans-chap-hero__feature-icon">
-              <i className="fa-solid fa-boxes-stacked" />
-            </span>
-            <div className="trans-chap-hero__feature-text">
-              <strong>Live Stock & Receipts</strong>
-              <span>Automatic inventory deductions & instant receipt sharing</span>
+              <strong>M-Pesa and guest receipts</strong>
+              <span>Take payment and share a receipt in seconds</span>
             </div>
           </div>
         </div>

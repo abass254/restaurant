@@ -13,7 +13,7 @@ export default function RiderInstallPage() {
     const ok = await promptInstall();
     setStatus(
       ok
-        ? "Installed. Open DukAI Rider from your home screen."
+        ? "Installed. Open TransChap Rider from your home screen."
         : "Install dismissed. You can try again anytime.",
     );
   }
@@ -35,7 +35,7 @@ export default function RiderInstallPage() {
   return (
     <section className="rider-card">
       <p className="rider-eyebrow">Install</p>
-      <h1>Download DukAI Rider</h1>
+      <h1>Download TransChap Rider</h1>
       <p className="rider-muted">
         Add the app to your home screen for quicker access while delivering. No App Store
         required.
@@ -85,7 +85,7 @@ export default function RiderInstallPage() {
                 </p>
                 <ol>
                   <li>Use the install icon in the address bar</li>
-                  <li>Or open the browser menu → Install DukAI Rider</li>
+                  <li>Or open the browser menu → Install TransChap Rider</li>
                 </ol>
               </>
             )}

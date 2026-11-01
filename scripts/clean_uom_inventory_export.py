@@ -2,7 +2,7 @@
 """Clean a POS inventory export that lists one row per unit (PC / CTN / OUT / BAL…).
 
 Input columns: Name, BarCode (item code), UOM, BuyingPrice, SellingPrice, ItemsBalance.
-Rows sharing an item code are the same product. The output is a DukAI import CSV
+Rows sharing an item code are the same product. The output is a TransChap import CSV
 with one row per item id:
 
 - the single unit (PC, or OUT when there is no PC - both shown as "Pcs") carries

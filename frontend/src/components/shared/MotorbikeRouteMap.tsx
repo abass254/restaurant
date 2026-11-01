@@ -15,7 +15,7 @@ import {
   type GoogleMapsMarker,
   type LatLng,
 } from "@/lib/google-maps";
-import { DUKAI_MAP_COLORS, DUKAI_MAP_MARKER_ICON } from "@/lib/google-maps-style";
+import { TRANSCHAP_MAP_COLORS, TRANSCHAP_MAP_MARKER_ICON } from "@/lib/google-maps-style";
 import type { GoogleMapsPublicConfig } from "@/lib/types";
 
 export type RouteQuoteState = {
@@ -51,7 +51,7 @@ async function drawPathPolyline(map: GoogleMapsMap, path: LatLng[]): Promise<Map
   const polyline = new mapsLib.Polyline({
     path,
     geodesic: true,
-    strokeColor: DUKAI_MAP_COLORS.primary,
+    strokeColor: TRANSCHAP_MAP_COLORS.primary,
     strokeOpacity: 0.92,
     strokeWeight: 5,
     map,
@@ -106,8 +106,8 @@ export function MotorbikeRouteMap({
           position: center,
           draggable: false,
           icon: {
-            ...DUKAI_MAP_MARKER_ICON,
-            fillColor: DUKAI_MAP_COLORS.brown700,
+            ...TRANSCHAP_MAP_MARKER_ICON,
+            fillColor: TRANSCHAP_MAP_COLORS.brown700,
           },
         });
         toMarkerRef.current.setMap(null);
@@ -217,7 +217,7 @@ export function MotorbikeRouteMap({
           polylinesRef.current = payload.route
             .createPolylines({
               polylineOptions: {
-                strokeColor: DUKAI_MAP_COLORS.primary,
+                strokeColor: TRANSCHAP_MAP_COLORS.primary,
                 strokeOpacity: 0.92,
                 strokeWeight: 5,
               },

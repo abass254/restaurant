@@ -380,12 +380,12 @@ function KitchenBoard({
       void refreshKitchenSupplies();
     };
     window.addEventListener("trans-chap:refresh-counts", onEvent);
-    window.addEventListener("dukai:notification", onEvent);
+    window.addEventListener("TransChap:notification", onEvent);
     return () => {
       window.clearTimeout(initialLoad);
       window.clearInterval(timer);
       window.removeEventListener("trans-chap:refresh-counts", onEvent);
-      window.removeEventListener("dukai:notification", onEvent);
+      window.removeEventListener("TransChap:notification", onEvent);
     };
   }, [loadOrders, refreshKitchenSupplies]);
 

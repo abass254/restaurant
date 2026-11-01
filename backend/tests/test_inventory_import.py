@@ -42,7 +42,7 @@ def _csv(rows: list[list[object]]) -> bytes:
 
 def test_generate_excel_template() -> None:
     data, filename, media_type = generate_inventory_template("xlsx")
-    assert filename == "dukai_inventory_template.xlsx"
+    assert filename == "TransChap_inventory_template.xlsx"
     assert "spreadsheetml" in media_type
 
     wb = load_workbook(filename=BytesIO(data), read_only=True)
@@ -62,7 +62,7 @@ def test_generate_excel_template() -> None:
 
 def test_generate_csv_template() -> None:
     data, filename, media_type = generate_inventory_template("csv")
-    assert filename == "dukai_inventory_template.csv"
+    assert filename == "TransChap_inventory_template.csv"
     assert "text/csv" in media_type
 
     text = data.decode("utf-8-sig")

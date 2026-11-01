@@ -109,7 +109,7 @@ export async function enableCompanionPush(): Promise<EnableCompanionPushResult> 
     // Fall through to local notifications.
   }
 
-  await showCompanionNotification("DukAI Merchant", {
+  await showCompanionNotification("TransChap Merchant", {
     body: "Order alerts are on while this app is open.",
   });
   return {

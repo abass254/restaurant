@@ -71,7 +71,7 @@ export default function AdminProfilePage() {
           <h1 className="admin-profile__name">{displayName}</h1>
           <p className="admin-profile__handle">@{handle}</p>
           <p className="admin-profile__bio">
-            Platform super admin for the DukAI console.
+            Platform super admin for the TransChap console.
           </p>
           <Link href="/admin/settings" className="admin-profile__edit-btn">
             Platform settings

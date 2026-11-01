@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import {
   LEGAL_ENTITY_NAME,
   LEGAL_OPERATOR_LINE,
@@ -8,9 +8,9 @@ import {
 } from "@/lib/legal-entity";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — DukAI",
+  title: "Privacy Policy — TransChap",
   description:
-    "How DukAI collects, uses, and protects information when you use our Instagram commerce platform.",
+    "How TransChap collects, uses, and protects information when you use our Instagram commerce platform.",
 };
 
 const lastUpdated = "June 29, 2026";
@@ -37,9 +37,9 @@ export default function PrivacyPolicyPage() {
     <div className="landing-ufanisi legal-ufanisi">
       <nav className="ufanisi-nav legal-nav" aria-label="Legal">
         <Link href="/" className="logo">
-          <DukAiLogoMark size={48} />
+          <TransChapLogoMark size={48} />
           <span className="logo-text">
-            Duk<span className="logo-accent">AI</span>
+            TransChap
           </span>
         </Link>
         <div className="legal-nav__links">
@@ -55,7 +55,7 @@ export default function PrivacyPolicyPage() {
           <span className="section-tag">Legal</span>
           <h1>Privacy Policy</h1>
           <p>
-            How we collect, use, and protect your information when you use DukAI
+            How we collect, use, and protect your information when you use TransChap
             for Instagram commerce.
           </p>
           <p className="legal-hero__date">Last updated: {lastUpdated}</p>
@@ -85,7 +85,7 @@ export default function PrivacyPolicyPage() {
           <article className="legal-content">
             <p className="legal-lead">
               {LEGAL_OPERATOR_LINE} Throughout this Privacy Policy,
-              &quot;DukAI&quot;, &quot;we&quot;, &quot;us&quot;, and
+              &quot;TransChap&quot;, &quot;we&quot;, &quot;us&quot;, and
               &quot;our&quot; refer to {LEGAL_ENTITY_NAME}. This policy explains
               what information we collect, how we use it, and the choices you have
               when you use our website, merchant dashboard, and related services
@@ -95,7 +95,7 @@ export default function PrivacyPolicyPage() {
             <h2 id="who">1. Who this policy applies to</h2>
             <p>
               This policy applies to merchants who create an account and connect
-              an Instagram professional account to DukAI. It also describes how we
+              an Instagram professional account to TransChap. It also describes how we
               handle information about people who message a connected merchant on
               Instagram, because those messages are processed through our Service
               on the merchant&apos;s behalf.
@@ -211,12 +211,12 @@ export default function PrivacyPolicyPage() {
               <li>Request a copy of your data in a portable format</li>
             </ul>
             <p>
-              You can revoke DukAI&apos;s access at any time through Instagram
+              You can revoke TransChap&apos;s access at any time through Instagram
               settings under Website permissions, by disconnecting in Settings, or
               via our{" "}
               <Link href="/data-deletion">data deletion instructions</Link>.
               To exercise privacy rights, email{" "}
-              <a href="mailto:privacy@dukai.co.ke">privacy@dukai.co.ke</a>.
+              <a href="mailto:privacy@transchap.co.ke">privacy@transchap.co.ke</a>.
             </p>
 
             <h2 id="transfers">9. International transfers</h2>
@@ -245,8 +245,8 @@ export default function PrivacyPolicyPage() {
             <p>
               If you have questions about this Privacy Policy or our data practices,
               contact us at{" "}
-              <a href="mailto:privacy@dukai.co.ke">privacy@dukai.co.ke</a> or{" "}
-              <a href="mailto:hello@dukai.co.ke">hello@dukai.co.ke</a>.
+              <a href="mailto:privacy@transchap.co.ke">privacy@transchap.co.ke</a> or{" "}
+              <a href="mailto:hello@transchap.co.ke">hello@transchap.co.ke</a>.
             </p>
             <p>{LEGAL_ENTITY_NAME} · Nairobi, Kenya</p>
           </article>

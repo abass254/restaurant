@@ -347,7 +347,7 @@ class SalesAutopilotScriptRequest(BaseModel):
     tone: str = Field(default="professional", max_length=80)
     opening_line: str = Field(
         default=(
-            "Introduce yourself as DukAI and welcome them to the shop in a warm, natural way "
+            "Introduce yourself as TransChap and welcome them to the shop in a warm, natural way "
             "that matches how the customer greeted you."
         ),
         max_length=500,
@@ -380,7 +380,7 @@ def _sales_script_payload(account) -> dict:
         "opening_line": script.get(
             "opening_line",
             (
-                "Introduce yourself as DukAI and welcome them to the shop in a warm, natural way "
+                "Introduce yourself as TransChap and welcome them to the shop in a warm, natural way "
                 "that matches how the customer greeted you."
             ),
         ),

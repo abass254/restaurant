@@ -5,8 +5,8 @@ import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { getServerUser } from "@/lib/server-auth";
 
 export const metadata: Metadata = {
-  title: "Setup — DukAI Merchants",
-  description: "Set up location and products for your DukAI shop.",
+  title: "Setup — TransChap Merchants",
+  description: "Set up location and products for your TransChap shop.",
 };
 
 export default async function OnboardingPage() {

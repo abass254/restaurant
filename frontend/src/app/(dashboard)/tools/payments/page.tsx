@@ -213,7 +213,7 @@ export default function PaymentsPage() {
       <section className="app-panel">
         <h1 className="app-title">Payments</h1>
         <p className="app-lead">
-          Your settlement destination is not set yet. Customers pay DukAI first (Client → DukAI →
+          Your settlement destination is not set yet. Customers pay TransChap first (Client → TransChap →
           your store), so we need somewhere to send the payout.
         </p>
         <p>
@@ -284,8 +284,8 @@ export default function PaymentsPage() {
         <div>
           <h1 className="app-title">Payments</h1>
           <p className="app-lead">
-            Client → DukAI → your store. Request payment sends an STK prompt; when the client pays,
-            money lands on DukAI and shows on the admin M-PESA page. An admin then sends it to your
+            Client → TransChap → your store. Request payment sends an STK prompt; when the client pays,
+            money lands on TransChap and shows on the admin M-PESA page. An admin then sends it to your
             settlement destination.
             {effectiveConfig ? (
               <>

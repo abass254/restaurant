@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Clean POS customer / supplier exports into DukAI contact import CSVs.
+"""Clean POS customer / supplier exports into TransChap contact import CSVs.
 
 Phones are optional on import: a row without a usable, unique phone is written
-with a blank Phone (DukAI keeps M-PESA prompts, WhatsApp reminders and credit
+with a blank Phone (TransChap keeps M-PESA prompts, WhatsApp reminders and credit
 sales off for it until a number is added) and the original value is kept in
 Notes so nothing is lost.
 
@@ -48,7 +48,7 @@ SUPPLIER_HEADERS = [
 CUSTOMER_RAW = ["name", "phone", "credit_limit", "balance", "address", "postal_code", "city", "email", "fax", "notes"]
 SUPPLIER_RAW = ["name", "phone", "balance", "address", "postal_code", "city", "email", "fax", "pin_number", "notes"]
 
-# Values copied from the DukAI download template's sample rows into real rows.
+# Values copied from the TransChap download template's sample rows into real rows.
 SAMPLE_VALUES = {
     "regular customer, pays weekly",
     "opening debt carried over from ledger",

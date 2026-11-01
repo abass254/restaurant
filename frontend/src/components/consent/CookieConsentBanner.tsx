@@ -25,7 +25,7 @@ export function CookieConsentBanner({
           </p>
           <p id="cookie-consent-desc" className="cookie-consent__text">
             We use optional analytics cookies to understand how visitors use our
-            site and improve DukAI. Accepting enables Google Analytics. Rejecting
+            site and improve TransChap. Accepting enables Google Analytics. Rejecting
             keeps the site working without analytics tracking.{" "}
             <Link href="/privacy_policy">Privacy Policy</Link>
             {" · "}

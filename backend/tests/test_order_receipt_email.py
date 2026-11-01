@@ -52,7 +52,7 @@ def _order(**overrides) -> MagicMock:
 
 @patch(
     "app.services.order_notification_service.OrderTrackingService.tracking_url",
-    return_value="https://dukai.app/track/abc",
+    return_value="https://transchap.app/track/abc",
 )
 def test_receipt_email_includes_items_and_shop(_track) -> None:
     subject, text, html = build_customer_receipt_email(
@@ -64,7 +64,7 @@ def test_receipt_email_includes_items_and_shop(_track) -> None:
     assert "2 × Coffee: KES 400.00" in text
     assert "Total: KES 400.00" in text
     assert "Asante" in text
-    assert "https://dukai.app/track/abc" in text
+    assert "https://transchap.app/track/abc" in text
     assert "2 × Coffee" in html
     assert "KES 400.00" in html
     assert "Track order" in html

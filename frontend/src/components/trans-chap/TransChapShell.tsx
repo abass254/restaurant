@@ -307,11 +307,14 @@ function headerMeta(
   if (tab) {
     return { title: tab.title, backHref: tab.exact ? null : "/trans-chap" };
   }
-  return { title: "Dukai Merchant", backHref: "/trans-chap" };
+  return { title: "TransChap", backHref: "/" };
 }
 
 export function TransChapShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+  const browserPathname = usePathname();
+  const pathname = browserPathname.startsWith("/trans-chap")
+    ? browserPathname
+    : `/trans-chap${browserPathname === "/" ? "" : browserPathname}`;
   const searchParams = useSearchParams();
   const router = useRouter();
   const user = useOptionalAuthUser();
@@ -494,8 +497,8 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
             <header className="trans-chap-header">
               <div className="trans-chap-header__side">
                 {isHome ? (
-                  <span className="trans-chap-header__brand-logo" aria-label="Dukai Merchant">
-                    <TransChapLogoMark size={28} color="var(--app-primary)" accentColor="#e8412a" />
+                  <span className="trans-chap-header__brand-logo" aria-label="TransChap">
+                    <TransChapLogoMark size={28} />
                   </span>
                 ) : backHref ? (
                   <Link href={backHref} className="trans-chap-header__icon" aria-label="Back">
@@ -542,14 +545,14 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                     "--mobile-nav-columns": phoneNavColumns,
                   } as React.CSSProperties
                 }
-                aria-label="Dukai Merchant navigation"
+                aria-label="TransChap navigation"
               >
                 <div className="mobile-nav__brand">
                   <span className="mobile-nav__brand-icon" aria-hidden>
-                    <TransChapLogoMark size={30} color="var(--app-primary)" accentColor="#e8412a" />
+                    <TransChapLogoMark size={30} />
                   </span>
                   <div className="mobile-nav__brand-meta">
-                    <strong className="mobile-nav__brand-title">DukAI Merch</strong>
+                    <strong className="mobile-nav__brand-title">TransChap</strong>
                     {user?.active_account?.business_name || user?.account?.business_name ? (
                       <span className="mobile-nav__brand-shop">
                         {user.active_account?.business_name || user.account?.business_name}
@@ -605,10 +608,10 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                     <header className="trans-chap-more-sheet__head">
                       <div className="trans-chap-more-sheet__brand">
                         <span className="mobile-nav__brand-icon" aria-hidden>
-                          <TransChapLogoMark size={32} color="var(--app-primary)" accentColor="#e8412a" />
+                          <TransChapLogoMark size={32} />
                         </span>
                         <div>
-                          <h3>DukAI Merch</h3>
+                          <h3>TransChap</h3>
                           {user?.active_account?.business_name || user?.account?.business_name ? (
                             <span>
                               {user.active_account?.business_name || user.account?.business_name}

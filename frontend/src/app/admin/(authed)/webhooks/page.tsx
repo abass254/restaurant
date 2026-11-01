@@ -107,7 +107,7 @@ export default function AdminWebhooksPage() {
             Live audit trail of Instagram and Meta webhooks hitting the backend. Use this to
             debug delivery, signatures, and DM processing. Application stdout logs (uvicorn,
             stack traces) still live in{" "}
-            <code>docker logs dukai-backend-1</code>.
+            <code>docker logs TransChap-backend-1</code>.
           </p>
         </div>
         <div className="admin-page__header-meta">

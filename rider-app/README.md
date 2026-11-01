@@ -1,4 +1,4 @@
-# DukAI Rider (Expo)
+# TransChap Rider (Expo)
 
 DoorDash Dasher–style rider app with **rich green** branding (`#0B7A3E`).
 
@@ -10,7 +10,7 @@ In `rider-app/.env`:
 
 ```bash
 # Phone / Expo Go (recommended): public HTTPS host
-EXPO_PUBLIC_API_URL=https://uat.dukai.app
+EXPO_PUBLIC_API_URL=https://uat.transchap.app
 
 # Local web only (same machine as the API):
 # EXPO_PUBLIC_API_URL=http://127.0.0.1:7001
@@ -18,7 +18,7 @@ EXPO_PUBLIC_API_URL=https://uat.dukai.app
 EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=your_key
 ```
 
-On a physical phone, `127.0.0.1` is the phone itself — it will never reach your laptop/server. Use `https://uat.dukai.app` (or another public URL). Restart Expo after changing env.
+On a physical phone, `127.0.0.1` is the phone itself — it will never reach your laptop/server. Use `https://uat.transchap.app` (or another public URL). Restart Expo after changing env.
 
 CORS for Expo web includes `http://localhost:8081` / `http://127.0.0.1:8081` in `.env`.
 

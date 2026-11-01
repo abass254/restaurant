@@ -11,10 +11,9 @@ type PageProps = {
 };
 
 function safeNextPath(raw: string | undefined): string {
-  if (raw?.startsWith("/") && !raw.startsWith("//") && raw.startsWith("/trans-chap")) {
-    return raw;
-  }
-  return "/trans-chap";
+  if (raw === "/" || raw === "/trans-chap") return "/";
+  if (raw?.startsWith("/trans-chap/")) return raw.slice("/trans-chap".length);
+  return "/";
 }
 
 export default async function TransChapSignInPage({ searchParams }: PageProps) {
@@ -41,7 +40,7 @@ export default async function TransChapSignInPage({ searchParams }: PageProps) {
       statusOk={false}
       nextPath={nextPath}
       brand="trans-chap"
-      signInPath="/trans-chap/sign-in"
+      signInPath="/sign-in"
     />
   );
 }

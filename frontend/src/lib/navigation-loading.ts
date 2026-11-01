@@ -56,7 +56,7 @@ export function isPageStillBusy(): boolean {
   if (!content) return false;
 
   const busyEl = content.querySelector(
-    '[aria-busy="true"]:not(.dukai-swal-toast):not(.trans-chap-swal):not(.trans-chap-swal--loading), .page-loading-shell, .trans-chap-panel--skeleton, .skeleton:not(.dukai-swal-toast *):not(.trans-chap-swal *)',
+    '[aria-busy="true"]:not(.TransChap-swal-toast):not(.trans-chap-swal):not(.trans-chap-swal--loading), .page-loading-shell, .trans-chap-panel--skeleton, .skeleton:not(.TransChap-swal-toast *):not(.trans-chap-swal *)',
   );
   return Boolean(busyEl);
 }

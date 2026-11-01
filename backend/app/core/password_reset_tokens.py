@@ -31,7 +31,7 @@ PASSWORD_RESET_TOKEN_MAX_AGE = 60 * 60 * 24 * 3  # 3 days
 def _serializer(settings: Settings) -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(
         settings.session_secret,
-        salt="dukai-password-reset",
+        salt="TransChap-password-reset",
     )
 
 

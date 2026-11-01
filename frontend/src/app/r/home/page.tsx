@@ -108,7 +108,7 @@ function HomeInner() {
         ) : null}
         {!installed ? (
           <Link href="/r/install" className="rider-download-link">
-            How to install DukAI Rider →
+            How to install TransChap Rider →
           </Link>
         ) : null}
       </div>

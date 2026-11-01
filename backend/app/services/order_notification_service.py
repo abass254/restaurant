@@ -206,7 +206,7 @@ def _format_nairobi(value: datetime | None) -> str | None:
 def _shop_name_for_order(order: Order, db: Session) -> str:
     account = order.account or db.query(Account).filter(Account.id == order.account_id).first()
     name = (account.business_name if account else None) or ""
-    return name.strip() or "DukAI"
+    return name.strip() or "TransChap"
 
 
 def _mpesa_receipt_for_order(order: Order) -> str | None:
@@ -527,7 +527,7 @@ def build_customer_receipt_email(
         total_value=total,
         cta_label="Track order" if tracking_url else None,
         cta_url=tracking_url,
-        footer_note=f"Sent by {shop_name} via DukAI.",
+        footer_note=f"Sent by {shop_name} via TransChap.",
     )
     return subject, "\n".join(text_lines), html
 
@@ -836,7 +836,7 @@ class OrderNotificationService:
             heading=f"Order {ref} is now {label.lower()}",
             intro="Here's the latest update on this order.",
             details=details,
-            footer_note="You're receiving this because you're an admin on this DukAI shop.",
+            footer_note="You're receiving this because you're an admin on this TransChap shop.",
         )
         return self.email.send_email(
             to=to,
@@ -876,7 +876,7 @@ class OrderNotificationService:
                 ("Customer", customer),
                 ("Status", STATUS_LABELS.get(order.status, order.status)),
             ],
-            footer_note="Review the order in your DukAI dashboard and follow up in Instagram DMs.",
+            footer_note="Review the order in your TransChap dashboard and follow up in Instagram DMs.",
         )
         return self.email.send_email(
             to=to,

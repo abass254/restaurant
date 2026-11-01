@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Messages — DukAI",
+  title: "Messages — TransChap",
   description: "Customer Instagram direct messages",
 };
 

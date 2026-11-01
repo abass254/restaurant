@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512" fill="none" role="img" aria-label="DukAI">
-  <title>DukAI</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512" fill="none" role="img" aria-label="TransChap">
+  <title>TransChap</title>
   <path d="M24 28 L24 24 A3 3 0 0 1 30 24 L30 28" stroke="#C19A7C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M34 28 L34 24 A3 3 0 0 1 40 24 L40 28" stroke="#C19A7C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M16 34 A6 6 0 0 1 22 28 L42 28 A6 6 0 0 1 48 34 L48 48 A6 6 0 0 1 42 54 L24 54 L12 62 L16 50 Z" stroke="#C19A7C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>

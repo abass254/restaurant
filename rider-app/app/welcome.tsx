@@ -96,7 +96,7 @@ export default function WelcomeScreen() {
 
       <View style={styles.content}>
         <FadeIn delay={80}>
-          <Text style={styles.eyebrow}>Welcome to the DukAI Rider app</Text>
+          <Text style={styles.eyebrow}>Welcome to the TransChap Rider app</Text>
         </FadeIn>
         <FadeIn delay={160}>
           <Text style={styles.headline}>

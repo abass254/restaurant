@@ -1,8 +1,8 @@
 {
-  "name": "dukai-whatsapp-agent",
+  "name": "TransChap-whatsapp-agent",
   "version": "1.0.0",
   "private": true,
-  "description": "Platform openWA sidecar for DukAI order notifications and alerts",
+  "description": "Platform openWA sidecar for TransChap order notifications and alerts",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

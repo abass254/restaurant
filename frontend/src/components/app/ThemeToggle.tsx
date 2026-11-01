@@ -8,7 +8,7 @@ function getInitialTheme(): Theme {
   if (typeof window === "undefined") {
     return "light";
   }
-  const stored = localStorage.getItem("dukai-theme");
+  const stored = localStorage.getItem("TransChap-theme");
   if (stored === "light" || stored === "dark") {
     return stored;
   }
@@ -34,7 +34,7 @@ export function ThemeToggle({ variant = "icon" }: ThemeToggleProps) {
   function applyTheme(next: Theme) {
     setTheme(next);
     document.documentElement.setAttribute("data-theme", next);
-    localStorage.setItem("dukai-theme", next);
+    localStorage.setItem("TransChap-theme", next);
   }
 
   function toggle() {

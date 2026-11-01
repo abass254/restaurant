@@ -1737,12 +1737,117 @@
 
 /* ── Trans Chap Split Auth ── */
 .auth-split--trans-chap {
-  --auth-accent: #e8412a;
-  --auth-gradient: linear-gradient(90deg, #1a100c 0%, #b83216 55%, #e8412a 100%);
+  --auth-accent: #238636;
+  --auth-gradient: linear-gradient(90deg, #20154c 0%, #1f6f35 55%, #238636 100%);
+  --auth-hero-gradient: linear-gradient(135deg, #0b1710 0%, #102d1b 55%, #176b35 100%);
+  --auth-primary: #176b35;
+  --auth-primary-dark: #0f5128;
+  --auth-primary-mid: #1f8a43;
+  --auth-fill: #f0f6ee;
 }
 
 .auth-split--trans-chap .auth-split__content {
   max-width: 480px;
+}
+
+.auth-split--trans-chap .auth-split__hero-glow {
+  background:
+    radial-gradient(circle at 18% 18%, color-mix(in srgb, #238636 30%, transparent), transparent 40%),
+    radial-gradient(circle at 82% 72%, rgba(255, 255, 255, 0.1), transparent 42%);
+}
+
+.auth-split--trans-chap .auth-split__input:focus,
+.auth-split--trans-chap .auth-split__field input:focus {
+  box-shadow: inset 0 0 0 2px rgba(35, 134, 54, 0.4);
+}
+
+.auth-split--trans-chap .auth-split__toggle:hover {
+  background: rgba(35, 134, 54, 0.12);
+}
+
+.auth-split--restaurant-register {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.auth-split--restaurant-register .auth-split__panel {
+  align-items: flex-start;
+  height: 100dvh;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2rem clamp(1.25rem, 3vw, 3rem);
+  overscroll-behavior: contain;
+}
+
+.auth-split--restaurant-register .auth-split__content {
+  width: 100%;
+  max-width: 480px;
+  margin: auto;
+  padding-block: 0.5rem;
+}
+
+.auth-split--restaurant-register .trans-chap-auth__brand {
+  margin-bottom: 1.1rem;
+}
+
+.auth-split--restaurant-register .trans-chap-auth__brand-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+}
+
+.auth-split--restaurant-register .trans-chap-auth__brand-icon svg {
+  width: 42px;
+  height: 42px;
+}
+
+.auth-split--restaurant-register .auth-split__subtitle {
+  margin-bottom: 1.1rem;
+}
+
+.auth-split--restaurant-register .auth-split__form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem 1rem;
+}
+
+.auth-split--restaurant-register .auth-split__row {
+  display: contents;
+}
+
+.auth-split--restaurant-register .auth-split__form > .auth-split__btn {
+  grid-column: 1 / -1;
+}
+
+.auth-split--restaurant-register .auth-split__field {
+  gap: 0.3rem;
+}
+
+.auth-split--restaurant-register .auth-split__field input,
+.auth-split--restaurant-register .auth-split__input {
+  box-sizing: border-box;
+  min-height: 54px;
+  padding: 0.75rem 0.95rem;
+  border-radius: 12px;
+  font-size: 1rem;
+}
+
+.auth-split--restaurant-register .auth-split__btn {
+  min-height: 58px;
+  margin-top: 0.2rem;
+  border-radius: 12px;
+  font-size: 1rem;
+}
+
+.auth-split--restaurant-register .auth-split__footer {
+  margin-top: 1rem;
+}
+
+@media (max-width: 700px) {
+  .auth-split--restaurant-register .auth-split__form {
+    grid-template-columns: 1fr;
+  }
 }
 
 .trans-chap-auth__brand {
@@ -1767,9 +1872,9 @@
   border-radius: 20px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #e8412a 0%, #c42b17 100%);
+  background: linear-gradient(135deg, #238636 0%, #1f6f35 100%);
   box-shadow:
-    0 8px 24px rgba(232, 65, 42, 0.32),
+    0 8px 24px rgba(35, 134, 54, 0.32),
     0 2px 6px rgba(0, 0, 0, 0.12);
   transition: transform 0.22s ease, box-shadow 0.22s ease;
 }
@@ -1777,7 +1882,7 @@
 .trans-chap-auth__logo-link:hover .trans-chap-auth__brand-icon {
   transform: translateY(-2px) scale(1.03);
   box-shadow:
-    0 12px 28px rgba(232, 65, 42, 0.42),
+    0 12px 28px rgba(35, 134, 54, 0.42),
     0 4px 10px rgba(0, 0, 0, 0.16);
 }
 
@@ -1802,11 +1907,11 @@
   align-items: center;
   font-size: 0.78rem;
   font-weight: 750;
-  color: #e8412a;
+  color: #238636;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  background: color-mix(in srgb, #e8412a 12%, transparent);
-  border: 1px solid color-mix(in srgb, #e8412a 20%, transparent);
+  background: color-mix(in srgb, #238636 12%, transparent);
+  border: 1px solid color-mix(in srgb, #238636 20%, transparent);
   padding: 0.2rem 0.6rem;
   border-radius: 999px;
 }
@@ -1825,7 +1930,8 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: clamp(2.25rem, 4vw, 3.75rem);
+  gap: clamp(1rem, 3vh, 2rem);
+  padding: clamp(1.25rem, 3.2vw, 3rem);
   pointer-events: none;
 }
 
@@ -1836,7 +1942,9 @@
 .trans-chap-hero__pill {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.6rem;
+  max-width: 100%;
   padding: 0.5rem 1.05rem;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
@@ -1844,9 +1952,10 @@
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.16);
   color: #faf8f4;
-  font-size: 0.8rem;
+  font-size: clamp(0.65rem, 1.1vw, 0.8rem);
   font-weight: 750;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.045em;
+  line-height: 1.35;
   text-transform: uppercase;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
@@ -1855,13 +1964,18 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #e8412a;
-  box-shadow: 0 0 10px #e8412a;
+  background: #238636;
+  box-shadow: 0 0 10px #238636;
 }
 
 .trans-chap-hero__card {
+  box-sizing: border-box;
+  width: min(100%, 400px);
   max-width: 400px;
-  background: rgba(18, 12, 10, 0.76);
+  max-height: calc(100dvh - clamp(8rem, 14vh, 12rem));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: rgba(10, 26, 16, 0.86);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -1907,9 +2021,9 @@
   width: 36px;
   height: 36px;
   border-radius: 11px;
-  background: color-mix(in srgb, #e8412a 24%, transparent);
-  border: 1px solid color-mix(in srgb, #e8412a 45%, transparent);
-  color: #ff917a;
+  background: color-mix(in srgb, #238636 24%, transparent);
+  border: 1px solid color-mix(in srgb, #238636 45%, transparent);
+  color: #9be7a5;
   display: grid;
   place-items: center;
   font-size: 0.9rem;
@@ -1933,35 +2047,54 @@
   color: rgba(250, 248, 244, 0.65);
 }
 
+@media (max-height: 720px) and (min-width: 901px) {
+  .trans-chap-hero__content {
+    padding-block: 1.25rem;
+  }
+
+  .trans-chap-hero__card {
+    padding: 1rem 1.1rem;
+  }
+
+  .trans-chap-hero__card-header {
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.65rem;
+  }
+
+  .trans-chap-hero__feature-list {
+    gap: 0.65rem;
+  }
+}
+
 /* Dark mode support for Trans Chap Auth */
 html[data-theme="dark"] .auth-split--trans-chap {
   color-scheme: dark;
   --auth-ink: #f7f6f2;
   --auth-muted: #aba497;
   --auth-soft: #787268;
-  --auth-fill: #221a16;
-  --color-bg: #120d0a;
-  --color-surface: #1a130f;
-  --color-border: #382920;
+  --auth-fill: #17251b;
+  --color-bg: #0b1710;
+  --color-surface: #102017;
+  --color-border: #294432;
   --color-text: #f7f6f2;
   --color-text-muted: #aba497;
-  background: #120d0a;
+  background: #0b1710;
 }
 
 html[data-theme="dark"] .auth-split--trans-chap .auth-split__panel {
-  background: #120d0a;
+  background: #0b1710;
 }
 
 html[data-theme="dark"] .auth-split--trans-chap .auth-split__input {
-  background-color: #221a16 !important;
+  background-color: #17251b !important;
   color: #f7f6f2 !important;
-  border: 1px solid #382920 !important;
+  border: 1px solid #294432 !important;
 }
 
 html[data-theme="dark"] .auth-split--trans-chap .auth-split__input:focus {
-  background-color: #2a201b !important;
-  border-color: #e8412a !important;
-  box-shadow: inset 0 0 0 2px rgba(232, 65, 42, 0.35);
+  background-color: #203326 !important;
+  border-color: #238636 !important;
+  box-shadow: inset 0 0 0 2px rgba(35, 134, 54, 0.35);
 }
 
 html[data-theme="dark"] .auth-split--trans-chap .auth-split__title {
@@ -1990,4 +2123,3 @@ html[data-theme="dark"] .auth-split--trans-chap .auth-split__google {
   border-color: #382920;
   color: #f7f6f2;
 }
-

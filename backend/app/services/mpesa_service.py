@@ -378,7 +378,7 @@ def refresh_pending_stk(
 
     STK Push Query answers with a result code but never an M-PESA receipt, so a
     row settled this way is stamped ``safaricom_confirmed`` instead. That marker
-    stands in for the receipt when deciding whether money reached DukAI.
+    stands in for the receipt when deciding whether money reached TransChap.
 
     Pass ``auto_payout=False`` to settle the collection without releasing funds
     to the merchant, leaving that to a deliberate admin action.

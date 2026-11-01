@@ -1,4 +1,4 @@
-/** DukAI-branded Google Maps JSON styles (warm brown + cream) — shared with the web app. */
+/** TransChap-branded Google Maps JSON styles (warm brown + cream) — shared with the web app. */
 
 export type GoogleMapTypeStyle = {
   featureType?: string;
@@ -6,7 +6,7 @@ export type GoogleMapTypeStyle = {
   stylers: Array<Record<string, string | number>>;
 };
 
-export const DUKAI_MAP_COLORS = {
+export const TRANSCHAP_MAP_COLORS = {
   brown950: '#1a100c',
   brown800: '#3d2418',
   brown700: '#523220',
@@ -30,88 +30,88 @@ export const DUKAI_MAP_COLORS = {
 } as const;
 
 /** Applied via `customMapStyle` on Google Maps (native) / MapTypeStyle (web). */
-export const DUKAI_MAP_STYLES: GoogleMapTypeStyle[] = [
-  { elementType: 'geometry', stylers: [{ color: DUKAI_MAP_COLORS.surface }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: DUKAI_MAP_COLORS.text }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: DUKAI_MAP_COLORS.cream50 }] },
+export const TRANSCHAP_MAP_STYLES: GoogleMapTypeStyle[] = [
+  { elementType: 'geometry', stylers: [{ color: TRANSCHAP_MAP_COLORS.surface }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: TRANSCHAP_MAP_COLORS.text }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: TRANSCHAP_MAP_COLORS.cream50 }] },
   {
     featureType: 'administrative',
     elementType: 'geometry.stroke',
-    stylers: [{ color: DUKAI_MAP_COLORS.cream200 }],
+    stylers: [{ color: TRANSCHAP_MAP_COLORS.cream200 }],
   },
   {
     featureType: 'administrative.land_parcel',
     elementType: 'labels.text.fill',
-    stylers: [{ color: DUKAI_MAP_COLORS.textMuted }],
+    stylers: [{ color: TRANSCHAP_MAP_COLORS.textMuted }],
   },
   {
     featureType: 'landscape.man_made',
     elementType: 'geometry',
-    stylers: [{ color: DUKAI_MAP_COLORS.cream100 }],
+    stylers: [{ color: TRANSCHAP_MAP_COLORS.cream100 }],
   },
   {
     featureType: 'landscape.natural',
     elementType: 'geometry',
-    stylers: [{ color: DUKAI_MAP_COLORS.brown50 }],
+    stylers: [{ color: TRANSCHAP_MAP_COLORS.brown50 }],
   },
   {
     featureType: 'poi',
     elementType: 'geometry',
-    stylers: [{ color: DUKAI_MAP_COLORS.brown100 }],
+    stylers: [{ color: TRANSCHAP_MAP_COLORS.brown100 }],
   },
   {
     featureType: 'poi',
     elementType: 'labels.text.fill',
-    stylers: [{ color: DUKAI_MAP_COLORS.brown600 }],
+    stylers: [{ color: TRANSCHAP_MAP_COLORS.brown600 }],
   },
   {
     featureType: 'poi.park',
     elementType: 'geometry',
-    stylers: [{ color: DUKAI_MAP_COLORS.park }],
+    stylers: [{ color: TRANSCHAP_MAP_COLORS.park }],
   },
   {
     featureType: 'poi.park',
     elementType: 'labels.text.fill',
-    stylers: [{ color: DUKAI_MAP_COLORS.brown700 }],
+    stylers: [{ color: TRANSCHAP_MAP_COLORS.brown700 }],
   },
   {
     featureType: 'road',
     elementType: 'geometry',
-    stylers: [{ color: DUKAI_MAP_COLORS.road }],
+    stylers: [{ color: TRANSCHAP_MAP_COLORS.road }],
   },
   {
     featureType: 'road.arterial',
     elementType: 'geometry',
-    stylers: [{ color: DUKAI_MAP_COLORS.roadAlt }],
+    stylers: [{ color: TRANSCHAP_MAP_COLORS.roadAlt }],
   },
   {
     featureType: 'road.highway',
     elementType: 'geometry',
-    stylers: [{ color: DUKAI_MAP_COLORS.brown200 }],
+    stylers: [{ color: TRANSCHAP_MAP_COLORS.brown200 }],
   },
   {
     featureType: 'road.highway',
     elementType: 'geometry.stroke',
-    stylers: [{ color: DUKAI_MAP_COLORS.brown300 }],
+    stylers: [{ color: TRANSCHAP_MAP_COLORS.brown300 }],
   },
   {
     featureType: 'road.local',
     elementType: 'labels.text.fill',
-    stylers: [{ color: DUKAI_MAP_COLORS.textMuted }],
+    stylers: [{ color: TRANSCHAP_MAP_COLORS.textMuted }],
   },
   {
     featureType: 'transit',
     elementType: 'geometry',
-    stylers: [{ color: DUKAI_MAP_COLORS.cream200 }],
+    stylers: [{ color: TRANSCHAP_MAP_COLORS.cream200 }],
   },
   {
     featureType: 'water',
     elementType: 'geometry',
-    stylers: [{ color: DUKAI_MAP_COLORS.water }],
+    stylers: [{ color: TRANSCHAP_MAP_COLORS.water }],
   },
   {
     featureType: 'water',
     elementType: 'labels.text.fill',
-    stylers: [{ color: DUKAI_MAP_COLORS.brown600 }],
+    stylers: [{ color: TRANSCHAP_MAP_COLORS.brown600 }],
   },
 ];

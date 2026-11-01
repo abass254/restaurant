@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { DukAiLogoMark } from "@/components/landing/DukAiLogoMark";
+import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
 import { InstallPwaPanel } from "@/components/pwa/InstallPwaPanel";
 import { legalFooterLine } from "@/lib/legal-entity";
 
 export const metadata: Metadata = {
-  title: "Download DukAI Merchant — Install the app",
+  title: "Download TransChap Merchant — Install the app",
   description:
-    "Install DukAI Merchant on your phone or tablet. Add to home screen for faster order alerts — no App Store required.",
+    "Install TransChap Merchant on your phone or tablet. Add to home screen for faster order alerts — no App Store required.",
 };
 
 export default function InstallPage() {
@@ -15,11 +15,11 @@ export default function InstallPage() {
 
   return (
     <div className="landing-ufanisi legal-ufanisi">
-      <nav className="ufanisi-nav legal-nav" aria-label="Download DukAI">
+      <nav className="ufanisi-nav legal-nav" aria-label="Download TransChap">
         <Link href="/" className="logo">
-          <DukAiLogoMark size={48} />
+          <TransChapLogoMark size={48} />
           <span className="logo-text">
-            Duk<span className="logo-accent">AI</span>
+            TransChap
           </span>
         </Link>
         <div className="legal-nav__links">

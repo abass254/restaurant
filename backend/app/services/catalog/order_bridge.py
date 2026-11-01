@@ -55,7 +55,7 @@ def push_order_to_external(
             customer_name=customer_name,
             customer_phone=customer_phone,
             lines=[(catalog_item, quantity)],
-            note=f"duKAi order {order.order_number}",
+            note=f"TransChap order {order.order_number}",
         )
         external_order_id = result.get("external_order_id")
         return (str(external_order_id) if external_order_id else None), EXTERNAL_SYNC_SYNCED

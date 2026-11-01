@@ -374,13 +374,13 @@ def normalize_opening_line(opening_line: str | None) -> str:
     if not line:
         return ""
     legacy_markers = (
-        "Hello! I'm DukAI, your sales assistant agent",
-        'On greetings, say: "Hello! I\'m DukAI',
-        "On greetings, say: \"Hello! I'm DukAI",
+        "Hello! I'm TransChap, your sales assistant agent",
+        'On greetings, say: "Hello! I\'m TransChap',
+        "On greetings, say: \"Hello! I'm TransChap",
     )
     if any(marker in line for marker in legacy_markers):
         return (
-            "Introduce yourself as DukAI and welcome them to the shop in a warm, natural way "
+            "Introduce yourself as TransChap and welcome them to the shop in a warm, natural way "
             "that matches how the customer greeted you."
         )
     return line
@@ -390,7 +390,7 @@ def merchant_script(account: InstagramAccount) -> dict[str, str]:
     defaults = {
         "tone": "professional",
         "opening_line": (
-            "Introduce yourself as DukAI and welcome them to the shop in a warm, natural way "
+            "Introduce yourself as TransChap and welcome them to the shop in a warm, natural way "
             "that matches how the customer greeted you."
         ),
         "payment_rule_line": (
@@ -1209,7 +1209,7 @@ class DmAgentTools:
                     conversation_id=conversation.id,
                     line_items=[(item, quantity)],
                     phone=None,
-                    note=f"DukAI Agent order (qty {quantity})",
+                    note=f"TransChap Agent order (qty {quantity})",
                     customer_name=conversation.participant_username,
                     source=account.platform or "instagram",
                     enforce_store_open=False,
@@ -1537,7 +1537,7 @@ class DmAgentTools:
             order.updated_at = datetime.utcnow()
 
             note = (
-                f"Customer amended quantity via DukAI: "
+                f"Customer amended quantity via TransChap: "
                 f"{old_quantity} → {new_quantity} × {line.product_name}."
             )
             self.db.add(

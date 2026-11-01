@@ -38,7 +38,7 @@ async function resolveClusterMarkerCtor(): Promise<{
   throw new Error("No supported Google Maps marker implementation is available for clusters.");
 }
 
-/** Attach DukAI-styled clustering to merchant store markers. */
+/** Attach TransChap-styled clustering to merchant store markers. */
 export async function attachStoreMarkerClusterer(
   map: GoogleMapsMap,
   markers: GoogleMapsMarker[],

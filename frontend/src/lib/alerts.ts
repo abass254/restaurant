@@ -7,14 +7,14 @@ import {
 } from "@/lib/navigation-loading";
 import { toWhatsAppMsisdn } from "@/lib/whatsapp-phone";
 
-const dukaiSwal = Swal.mixin({
+const TransChapSwal = Swal.mixin({
   customClass: {
-    popup: "dukai-swal-popup",
-    title: "dukai-swal-title",
-    htmlContainer: "dukai-swal-text",
-    confirmButton: "dukai-swal-btn dukai-swal-btn--confirm",
-    cancelButton: "dukai-swal-btn dukai-swal-btn--cancel",
-    denyButton: "dukai-swal-btn dukai-swal-btn--cancel",
+    popup: "TransChap-swal-popup",
+    title: "TransChap-swal-title",
+    htmlContainer: "TransChap-swal-text",
+    confirmButton: "TransChap-swal-btn TransChap-swal-btn--confirm",
+    cancelButton: "TransChap-swal-btn TransChap-swal-btn--cancel",
+    denyButton: "TransChap-swal-btn TransChap-swal-btn--cancel",
   },
   buttonsStyling: false,
   confirmButtonText: "OK",
@@ -61,12 +61,12 @@ function withDialogOptions(options: SweetAlertOptions): SweetAlertOptions {
       : {}),
     customClass: {
       container: "trans-chap-swal",
-      popup: "dukai-swal-popup trans-chap-swal-popup",
-      title: "dukai-swal-title trans-chap-swal-title",
-      htmlContainer: "dukai-swal-text trans-chap-swal-text",
-      confirmButton: "dukai-swal-btn dukai-swal-btn--confirm trans-chap-swal-btn--confirm",
-      cancelButton: "dukai-swal-btn dukai-swal-btn--cancel trans-chap-swal-btn--cancel",
-      denyButton: "dukai-swal-btn dukai-swal-btn--cancel trans-chap-swal-btn--cancel",
+      popup: "TransChap-swal-popup trans-chap-swal-popup",
+      title: "TransChap-swal-title trans-chap-swal-title",
+      htmlContainer: "TransChap-swal-text trans-chap-swal-text",
+      confirmButton: "TransChap-swal-btn TransChap-swal-btn--confirm trans-chap-swal-btn--confirm",
+      cancelButton: "TransChap-swal-btn TransChap-swal-btn--cancel trans-chap-swal-btn--cancel",
+      denyButton: "TransChap-swal-btn TransChap-swal-btn--cancel trans-chap-swal-btn--cancel",
       actions: "trans-chap-swal-actions",
       input: "trans-chap-swal-input",
       validationMessage: "trans-chap-swal-validation",
@@ -89,7 +89,7 @@ function withDialogOptions(options: SweetAlertOptions): SweetAlertOptions {
 }
 
 function fireDialog(options: SweetAlertOptions) {
-  return dukaiSwal.fire(withDialogOptions(options));
+  return TransChapSwal.fire(withDialogOptions(options));
 }
 
 const TOAST_ICON_HTML = {
@@ -111,11 +111,11 @@ function toastMixin(extra: SweetAlertOptions = {}) {
     customClass: {
       ...(mobile ? { container: "trans-chap-swal trans-chap-swal--toast" } : {}),
       popup: mobile
-        ? "dukai-swal-toast dukai-swal-popup trans-chap-swal-toast"
-        : "dukai-swal-toast dukai-swal-popup",
-      title: mobile ? "dukai-swal-title trans-chap-swal-toast-title" : "dukai-swal-title",
-      htmlContainer: "dukai-swal-text",
-      icon: "dukai-swal-toast-icon",
+        ? "TransChap-swal-toast TransChap-swal-popup trans-chap-swal-toast"
+        : "TransChap-swal-toast TransChap-swal-popup",
+      title: mobile ? "TransChap-swal-title trans-chap-swal-toast-title" : "TransChap-swal-title",
+      htmlContainer: "TransChap-swal-text",
+      icon: "TransChap-swal-toast-icon",
       ...customClass,
     },
     ...(mobile
@@ -257,7 +257,7 @@ export async function confirmTypedAction(
     preConfirm: (value) => {
       const typed = String(value ?? "");
       if (typed !== expectedWord) {
-        dukaiSwal.showValidationMessage(
+        TransChapSwal.showValidationMessage(
           `Please type "${expectedWord}" exactly (case-sensitive) to proceed.`,
         );
         return false;
@@ -288,7 +288,7 @@ export async function promptPendingStk(): Promise<
     cancelButtonText: "Close",
     preConfirm: (value) => {
       if (!value) {
-        dukaiSwal.showValidationMessage("Choose how to complete M-PESA.");
+        TransChapSwal.showValidationMessage("Choose how to complete M-PESA.");
         return false;
       }
       return value;
@@ -318,7 +318,7 @@ export async function promptMpesaCheckoutAction(): Promise<"resend" | "enter_cod
     cancelButtonText: "Cancel",
     preConfirm: (value) => {
       if (!value) {
-        dukaiSwal.showValidationMessage("Choose how to take M-PESA.");
+        TransChapSwal.showValidationMessage("Choose how to take M-PESA.");
         return false;
       }
       return value;
@@ -351,11 +351,11 @@ export async function promptVoidReason(
     preConfirm: (value) => {
       const reason = String(value ?? "").trim();
       if (!reason) {
-        dukaiSwal.showValidationMessage("Enter a reason.");
+        TransChapSwal.showValidationMessage("Enter a reason.");
         return false;
       }
       if (reason.length < 3) {
-        dukaiSwal.showValidationMessage("Reason must be at least 3 characters.");
+        TransChapSwal.showValidationMessage("Reason must be at least 3 characters.");
         return false;
       }
       return reason;
@@ -384,7 +384,7 @@ export async function promptStockFate(count = 1): Promise<"return" | "waste" | n
     confirmButtonText: "Continue",
     preConfirm: (value) => {
       if (!value) {
-        dukaiSwal.showValidationMessage("Choose what happened to the food.");
+        TransChapSwal.showValidationMessage("Choose what happened to the food.");
         return false;
       }
       return value;
@@ -415,11 +415,11 @@ export async function promptRejectReason(
     preConfirm: (value) => {
       const reason = String(value ?? "").trim();
       if (!reason) {
-        dukaiSwal.showValidationMessage("Enter a reason for rejecting this order.");
+        TransChapSwal.showValidationMessage("Enter a reason for rejecting this order.");
         return false;
       }
       if (reason.length < 3) {
-        dukaiSwal.showValidationMessage("Reason must be at least 3 characters.");
+        TransChapSwal.showValidationMessage("Reason must be at least 3 characters.");
         return false;
       }
       return reason;
@@ -454,7 +454,7 @@ export async function promptMpesaReceipt(
     preConfirm: (value) => {
       const code = String(value ?? "").trim();
       if (!optional && !code) {
-        dukaiSwal.showValidationMessage("Enter the M-PESA transaction code.");
+        TransChapSwal.showValidationMessage("Enter the M-PESA transaction code.");
         return false;
       }
       return code || null;
@@ -498,12 +498,12 @@ export async function promptWhatsAppPhone(
     preConfirm: (value) => {
       const phone = String(value ?? "").trim();
       if (!phone) {
-        dukaiSwal.showValidationMessage("Enter a WhatsApp number.");
+        TransChapSwal.showValidationMessage("Enter a WhatsApp number.");
         return false;
       }
       const msisdn = toWhatsAppMsisdn(phone);
       if (!msisdn) {
-        dukaiSwal.showValidationMessage("Enter a valid phone number, e.g. 0712 345 678.");
+        TransChapSwal.showValidationMessage("Enter a valid phone number, e.g. 0712 345 678.");
         return false;
       }
       const normalized = `+${msisdn}`;
@@ -544,11 +544,11 @@ export async function promptEmail(
     preConfirm: (value) => {
       const email = String(value ?? "").trim();
       if (!email) {
-        dukaiSwal.showValidationMessage("Enter an email address.");
+        TransChapSwal.showValidationMessage("Enter an email address.");
         return false;
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        dukaiSwal.showValidationMessage("Enter a valid email address.");
+        TransChapSwal.showValidationMessage("Enter a valid email address.");
         return false;
       }
       return email;
@@ -576,10 +576,10 @@ export async function promptMpesaTransactionEdit(
   const result = await fireDialog({
     title: "Edit M-PESA attempt",
     html: `
-      <div class="dukai-mpesa-edit">
+      <div class="TransChap-mpesa-edit">
         <label>
           <span>Status</span>
-          <select id="dukai-mpesa-status" class="swal2-select">
+          <select id="TransChap-mpesa-status" class="swal2-select">
             <option value="pending">Awaiting customer</option>
             <option value="success">Paid</option>
             <option value="cancelled">Customer cancelled</option>
@@ -588,19 +588,19 @@ export async function promptMpesaTransactionEdit(
         </label>
         <label>
           <span>Phone</span>
-          <input id="dukai-mpesa-phone" class="swal2-input" maxlength="20" />
+          <input id="TransChap-mpesa-phone" class="swal2-input" maxlength="20" />
         </label>
         <label>
           <span>Amount</span>
-          <input id="dukai-mpesa-amount" type="number" min="1" step="1" class="swal2-input" />
+          <input id="TransChap-mpesa-amount" type="number" min="1" step="1" class="swal2-input" />
         </label>
         <label>
           <span>Receipt code</span>
-          <input id="dukai-mpesa-receipt" class="swal2-input" maxlength="50" />
+          <input id="TransChap-mpesa-receipt" class="swal2-input" maxlength="50" />
         </label>
         <label>
           <span>Notes</span>
-          <textarea id="dukai-mpesa-notes" class="swal2-textarea" maxlength="500"></textarea>
+          <textarea id="TransChap-mpesa-notes" class="swal2-textarea" maxlength="500"></textarea>
         </label>
       </div>
     `,
@@ -608,13 +608,13 @@ export async function promptMpesaTransactionEdit(
     confirmButtonText: "Save changes",
     focusConfirm: false,
     didOpen: () => {
-      const popup = dukaiSwal.getPopup();
+      const popup = TransChapSwal.getPopup();
       if (!popup) return;
-      const statusEl = popup.querySelector<HTMLSelectElement>("#dukai-mpesa-status");
-      const phoneEl = popup.querySelector<HTMLInputElement>("#dukai-mpesa-phone");
-      const amountEl = popup.querySelector<HTMLInputElement>("#dukai-mpesa-amount");
-      const receiptEl = popup.querySelector<HTMLInputElement>("#dukai-mpesa-receipt");
-      const notesEl = popup.querySelector<HTMLTextAreaElement>("#dukai-mpesa-notes");
+      const statusEl = popup.querySelector<HTMLSelectElement>("#TransChap-mpesa-status");
+      const phoneEl = popup.querySelector<HTMLInputElement>("#TransChap-mpesa-phone");
+      const amountEl = popup.querySelector<HTMLInputElement>("#TransChap-mpesa-amount");
+      const receiptEl = popup.querySelector<HTMLInputElement>("#TransChap-mpesa-receipt");
+      const notesEl = popup.querySelector<HTMLTextAreaElement>("#TransChap-mpesa-notes");
       if (statusEl) statusEl.value = initial.status || "pending";
       if (phoneEl) phoneEl.value = initial.phone_number || "";
       if (amountEl) amountEl.value = String(Math.max(1, Math.round(safeAmount)));
@@ -622,13 +622,13 @@ export async function promptMpesaTransactionEdit(
       if (notesEl) notesEl.value = initial.result_desc || "";
     },
     preConfirm: () => {
-      const popup = dukaiSwal.getPopup();
+      const popup = TransChapSwal.getPopup();
       if (!popup) return null;
-      const statusEl = popup.querySelector<HTMLSelectElement>("#dukai-mpesa-status");
-      const phoneEl = popup.querySelector<HTMLInputElement>("#dukai-mpesa-phone");
-      const amountEl = popup.querySelector<HTMLInputElement>("#dukai-mpesa-amount");
-      const receiptEl = popup.querySelector<HTMLInputElement>("#dukai-mpesa-receipt");
-      const notesEl = popup.querySelector<HTMLTextAreaElement>("#dukai-mpesa-notes");
+      const statusEl = popup.querySelector<HTMLSelectElement>("#TransChap-mpesa-status");
+      const phoneEl = popup.querySelector<HTMLInputElement>("#TransChap-mpesa-phone");
+      const amountEl = popup.querySelector<HTMLInputElement>("#TransChap-mpesa-amount");
+      const receiptEl = popup.querySelector<HTMLInputElement>("#TransChap-mpesa-receipt");
+      const notesEl = popup.querySelector<HTMLTextAreaElement>("#TransChap-mpesa-notes");
       const status = (statusEl?.value ?? "pending").trim();
       const phone = (phoneEl?.value ?? "").trim();
       const amount = Number(amountEl?.value ?? "0");
@@ -636,11 +636,11 @@ export async function promptMpesaTransactionEdit(
       const notes = (notesEl?.value ?? "").trim();
 
       if (!phone) {
-        dukaiSwal.showValidationMessage("Phone is required.");
+        TransChapSwal.showValidationMessage("Phone is required.");
         return false;
       }
       if (!Number.isFinite(amount) || amount <= 0) {
-        dukaiSwal.showValidationMessage("Enter a valid amount.");
+        TransChapSwal.showValidationMessage("Enter a valid amount.");
         return false;
       }
       return {
@@ -751,7 +751,7 @@ export async function toastLoading(title = "Loading…") {
       scrollbarPadding: false,
       customClass: {
         container: "trans-chap-swal trans-chap-swal--loading",
-        popup: "dukai-swal-popup trans-chap-swal-popup trans-chap-swal-popup--loading",
+        popup: "TransChap-swal-popup trans-chap-swal-popup trans-chap-swal-popup--loading",
         htmlContainer: "trans-chap-swal-loading",
       },
       showClass: {
@@ -771,9 +771,9 @@ export async function toastLoading(title = "Loading…") {
     timerProgressBar: false,
     position: "bottom",
     customClass: {
-      container: "dukai-swal-toast-container dukai-swal-toast-container--loading",
-      popup: "dukai-swal-toast dukai-swal-popup dukai-swal-toast--loading",
-      htmlContainer: "dukai-swal-toast-loading",
+      container: "TransChap-swal-toast-container TransChap-swal-toast-container--loading",
+      popup: "TransChap-swal-toast TransChap-swal-popup TransChap-swal-toast--loading",
+      htmlContainer: "TransChap-swal-toast-loading",
     },
   });
 

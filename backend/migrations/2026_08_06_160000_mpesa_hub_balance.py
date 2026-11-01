@@ -1,4 +1,4 @@
-"""Create mpesa_hub_balance_queries for DukAI hub Account Balance checks.
+"""Create mpesa_hub_balance_queries for TransChap hub Account Balance checks.
 
 Idempotent — safe to re-run.
 """

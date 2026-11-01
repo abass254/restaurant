@@ -16,7 +16,7 @@ import type { Order, OrdersListResponse } from "@/lib/types";
 import { isStationNeedsAction } from "@/lib/station";
 
 const ORDERS_POLL_MS = 4_000;
-const SOUND_KEY = "dukai.station.sound";
+const SOUND_KEY = "TransChap.station.sound";
 
 type StationOrdersContextValue = {
   orders: Order[];

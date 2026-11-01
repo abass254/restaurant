@@ -1549,9 +1549,9 @@ def _generate_excel_template() -> tuple[bytes, str, str]:
         ("Barcode (Recommended)", "EAN-13, UPC, or numeric barcode. Scannable at checkout/POS."),
         ("Prices & Numbers", "Enter numbers without currency symbols (e.g. 65.00, not 'KSh 65')."),
         ("Unit: CTN / Dozen / PCS", "Rows can be in pieces (Pcs) or packs (CTN, Box, Crate, Tray, Pkt, Dozen). Pack rows are converted to pieces: Quantity and Low Stock Threshold are multiplied by the pieces per pack, prices are treated as the price per pack, and the pack is added as a sell unit so you can still sell by the carton or by the piece."),
-        ("Pcs per Pack", "Pieces in one pack (e.g. 24 for a carton of 24). Enter 1 for the base unit row (no conversion). Optional: if blank, DukAI reads it from the name ('Coke 500ml 24s', '24x500ml', 'Eggs Tray of 30', 'Biscuits (12)'). Dozen is always 12. Rows where it can't be found are imported unconverted and flagged in the import log."),
+        ("Pcs per Pack", "Pieces in one pack (e.g. 24 for a carton of 24). Enter 1 for the base unit row (no conversion). Optional: if blank, TransChap reads it from the name ('Coke 500ml 24s', '24x500ml', 'Eggs Tray of 30', 'Biscuits (12)'). Dozen is always 12. Rows where it can't be found are imported unconverted and flagged in the import log."),
         ("Same product in several units", "List the product once per unit with the same SKU: the base unit row (Pcs per Pack = 1) carries the Quantity; pack rows (CTN, Outer, Bale…) carry their Pcs per Pack and prices with Quantity left blank."),
-        ("Existing Core Inventory", "If an item already exists in core inventory (matched by SKU, Barcode, or Name), DukAI updates the existing item without creating duplicates."),
+        ("Existing Core Inventory", "If an item already exists in core inventory (matched by SKU, Barcode, or Name), TransChap updates the existing item without creating duplicates."),
         ("Stock Modes", "During import, you can choose to Replace stock, Add to existing stock, or Keep current stock."),
         ("File Support", "Supports both Excel (.xlsx) and CSV (.csv) formats."),
     ]
@@ -1570,7 +1570,7 @@ def _generate_excel_template() -> tuple[bytes, str, str]:
     wb.save(buf)
     return (
         buf.getvalue(),
-        "dukai_inventory_template.xlsx",
+        "TransChap_inventory_template.xlsx",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
@@ -1594,7 +1594,7 @@ def _generate_csv_template() -> tuple[bytes, str, str]:
     writer.writerows(sample_rows)
 
     data = output.getvalue().encode("utf-8-sig")
-    return (data, "dukai_inventory_template.csv", "text/csv; charset=utf-8")
+    return (data, "TransChap_inventory_template.csv", "text/csv; charset=utf-8")
 
 
 def generate_inventory_template(format: str = "xlsx") -> tuple[bytes, str, str]:

@@ -1,7 +1,7 @@
 """
 Daraja Transaction Status queries — Safaricom's own view of a transaction.
 
-Callbacks are a hint; this API is the authority. For every DukAI record we
+Callbacks are a hint; this API is the authority. For every TransChap record we
 ask Safaricom what actually happened to that receipt, then compare the two
 so the admin M-PESA page can show verified / mismatched / not-found.
 
@@ -195,7 +195,7 @@ def request_status_check(
         "IdentifierType": "4",
         "ResultURL": result_url,
         "QueueTimeOutURL": timeout_url,
-        "Remarks": "DukAI reconciliation",
+        "Remarks": "TransChap reconciliation",
         "Occasion": "Reconciliation",
     }
 
@@ -308,7 +308,7 @@ def _find_check(db: Session, payload: dict[str, Any]) -> MpesaStatusCheck | None
 
 
 def _evaluate_match(row: MpesaStatusCheck) -> str:
-    """Compare Safaricom's answer with what DukAI recorded."""
+    """Compare Safaricom's answer with what TransChap recorded."""
     safaricom_status = (row.safaricom_status or "").strip().lower()
     if safaricom_status and safaricom_status != "completed":
         return MATCH_STATUS_MISMATCH

@@ -1,6 +1,6 @@
 """Instagram OAuth hub client (merchants / service).
 
-The hub at dukai.app starts Meta login and forwards the authorization code
+The hub at transchap.app starts Meta login and forwards the authorization code
 back here. This app exchanges the code and stores tokens. Meta never hits
 this origin for OAuth or webhook verification — the hub does.
 """
@@ -38,9 +38,9 @@ def hub_connect_url(
     *,
     origin: str | None = None,
 ) -> str:
-    """https://dukai.app/instagram?platform=merchant&state=...&return_to=..."""
-    hub = (settings.instagram_hub_url or "https://dukai.app").rstrip("/")
-    platform = (settings.dukai_platform or "merchant").strip() or "merchant"
+    """https://transchap.app/instagram?platform=merchant&state=...&return_to=..."""
+    hub = (settings.instagram_hub_url or "https://transchap.app").rstrip("/")
+    platform = (settings.TransChap_platform or "merchant").strip() or "merchant"
     params = {"platform": platform, "state": state}
     if origin:
         params["return_to"] = f"{origin.rstrip('/')}/instagram/callback"

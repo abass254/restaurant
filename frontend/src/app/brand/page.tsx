@@ -20,8 +20,8 @@ const IMAGE_EXTENSIONS = new Set([
 ]);
 
 export const metadata: Metadata = {
-  title: "Brand Assets - DukAI",
-  description: "Download DukAI image and logo assets.",
+  title: "Brand Assets - TransChap",
+  description: "Download TransChap image and logo assets.",
 };
 
 export const dynamic = "force-dynamic";
@@ -70,7 +70,7 @@ export default async function BrandAssetsPage() {
     <main className={styles.page}>
       <div className={styles.header}>
         <h1>Brand Assets</h1>
-        <p>Download official DukAI posters, logos, and social creatives.</p>
+        <p>Download official TransChap posters, logos, and social creatives.</p>
         <Link href="/" className={styles.backLink}>
           Back to landing page
         </Link>

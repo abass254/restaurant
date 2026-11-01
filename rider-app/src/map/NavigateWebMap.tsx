@@ -39,7 +39,7 @@ const BRAND = {
   },
 } as const;
 
-/** Pitched nav map with DukAI olive/cream branding for light & dark. */
+/** Pitched nav map with TransChap olive/cream branding for light & dark. */
 export function NavigateWebMap({ path, progress, bearing, scheme, onReady }: Props) {
   const webRef = useRef<WebView>(null);
   const readyRef = useRef(false);
@@ -157,7 +157,7 @@ export function NavigateWebMap({ path, progress, bearing, scheme, onReady }: Pro
       return coords[coords.length - 1];
     }
 
-    window.__dukaiNavUpdate = function(progress, bearing, pathCoords) {
+    window.__TransChapNavUpdate = function(progress, bearing, pathCoords) {
       if (!ready || !map) return;
       if (pathCoords && pathCoords.length >= 2) {
         ROUTE = pathCoords;
@@ -201,7 +201,7 @@ export function NavigateWebMap({ path, progress, bearing, scheme, onReady }: Pro
       ready = true;
       ensureRoute();
       if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage('nav-ready');
-      window.__dukaiNavUpdate(0, 0, ROUTE);
+      window.__TransChapNavUpdate(0, 0, ROUTE);
     });
   </script>
 </body>
@@ -215,7 +215,7 @@ export function NavigateWebMap({ path, progress, bearing, scheme, onReady }: Pro
   useEffect(() => {
     if (!readyRef.current) return;
     const coords = path.map((p) => [p.longitude, p.latitude]);
-    const script = `window.__dukaiNavUpdate && window.__dukaiNavUpdate(${progress},${bearing},${JSON.stringify(
+    const script = `window.__TransChapNavUpdate && window.__TransChapNavUpdate(${progress},${bearing},${JSON.stringify(
       coords,
     )}); true;`;
     webRef.current?.injectJavaScript(script);
@@ -241,7 +241,7 @@ export function NavigateWebMap({ path, progress, bearing, scheme, onReady }: Pro
             onReady?.();
             const coords = path.map((p) => [p.longitude, p.latitude]);
             webRef.current?.injectJavaScript(
-              `window.__dukaiNavUpdate && window.__dukaiNavUpdate(${progress},${bearing},${JSON.stringify(
+              `window.__TransChapNavUpdate && window.__TransChapNavUpdate(${progress},${bearing},${JSON.stringify(
                 coords,
               )}); true;`,
             );

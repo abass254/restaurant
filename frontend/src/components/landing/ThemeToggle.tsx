@@ -6,7 +6,7 @@ type Theme = "light" | "dark";
 
 function getInitialTheme(): Theme {
   if (typeof window === "undefined") return "light";
-  const stored = localStorage.getItem("dukai-theme");
+  const stored = localStorage.getItem("TransChap-theme");
   if (stored === "light" || stored === "dark") return stored;
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
@@ -26,7 +26,7 @@ export function ThemeToggle() {
     const next: Theme = theme === "light" ? "dark" : "light";
     setTheme(next);
     document.documentElement.setAttribute("data-theme", next);
-    localStorage.setItem("dukai-theme", next);
+    localStorage.setItem("TransChap-theme", next);
   }
 
   if (!mounted) {
