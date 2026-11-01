@@ -15,7 +15,7 @@ import {
 import { TransChapSupplierField } from "@/components/trans-chap/TransChapSupplierField";
 import { addLiteInventoryProduct } from "@/lib/trans-chap-product";
 import { formatKsh } from "@/lib/trans-chap-receipt";
-import { fetchShopSuppliers } from "@/lib/trans-chap-suppliers";
+import { createShopSupplier, fetchShopSuppliers } from "@/lib/trans-chap-suppliers";
 import type { ShopSupplier } from "@/lib/types";
 
 type DraftLine = {
@@ -334,8 +334,18 @@ export function RestaurantPurchaseOrderForm() {
     if (!linesValid || saving) return;
     setSaving(true);
     try {
+      let effectiveSupplierId = supplierId || null;
+      if (supplierName.trim() && !effectiveSupplierId) {
+        try {
+          const created = await createShopSupplier({ name: supplierName.trim() });
+          effectiveSupplierId = created.id;
+          setSuppliers((prev) => [...prev.filter((s) => s.id !== created.id), created]);
+        } catch {
+          // If creation fails, proceed
+        }
+      }
       const po = await createPurchaseOrder({
-        supplier_id: supplierId || null,
+        supplier_id: effectiveSupplierId,
         status,
         order_date: orderDate || null,
         expected_date: expectedDate || null,

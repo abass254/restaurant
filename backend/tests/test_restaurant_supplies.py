@@ -461,13 +461,16 @@ def test_sale_deducts_selected_menu_recipe_portion_per_sold_serving(rdb):
     assert sale_quantities["inv-oil"] == pytest.approx(0.2)
 
 
-def test_direct_item_shortage_blocks_but_recipe_may_go_negative(rdb):
-    with pytest.raises(HTTPException) as exc:
-        _order(rdb, {"inventory_item_id": "inv-soda", "quantity": 25})
-    assert exc.value.status_code == 422
+def test_direct_item_adjusts_stock_and_recipe_checks_stock(rdb):
+    # Direct item does not block on shortage; adjusts stock into negative
+    _order(rdb, {"inventory_item_id": "inv-soda", "quantity": 25})
+    assert _stock(rdb, "inv-soda") == pytest.approx(-1.0)
 
-    _order(rdb, {"inventory_item_id": "inv-chapati", "quantity": 120})
-    assert _stock(rdb, "inv-flour") == pytest.approx(-2.0)
+    # Recipe-linked item checks that recipe quantity is available in stock
+    with pytest.raises(HTTPException) as exc:
+        _order(rdb, {"inventory_item_id": "inv-chapati", "quantity": 120})
+    assert exc.value.status_code == 422
+    assert "Flour" in str(exc.value.detail)
 
 
 def test_block_on_low_ingredients_setting(rdb):
@@ -889,3 +892,37 @@ def test_external_catalogue_line_never_keeps_another_shops_item(rdb):
     rdb.commit()
     assert [line.inventory_item_id for line in order.items] == [None]
     assert _stock(rdb, "inv-foreign") == 5
+
+
+def test_kitchen_items_deducted_first_before_main_inventory(rdb):
+    flour = rdb.get(InventoryItem, "inv-flour")
+    flour.stock_quantity = Decimal("10.0")
+    flour.kitchen_quantity = Decimal("3.0")
+    rdb.commit()
+
+    # Chapati recipe uses 0.1kg flour per chapati.
+    # Ordering 50 chapatis needs 5.0kg flour.
+    # 3.0kg must come from kitchen first, and remaining 2.0kg from store.
+    out = _order(rdb, {"inventory_item_id": "inv-chapati", "quantity": 50})
+    rdb.expire_all()
+
+    flour = rdb.get(InventoryItem, "inv-flour")
+    assert float(flour.kitchen_quantity) == pytest.approx(0.0)
+    assert float(flour.stock_quantity) == pytest.approx(8.0)
+
+    # Check movement ledger rows
+    movements = (
+        rdb.query(StockMovement)
+        .filter(StockMovement.order_id == out.id, StockMovement.inventory_item_id == "inv-flour")
+        .all()
+    )
+    by_loc = {m.location: float(m.quantity) for m in movements}
+    assert by_loc == {"kitchen": 3.0, "store": 2.0}
+
+    # Cancel order returns stock to where it came from
+    _cancel(rdb, out.id, waste=False)
+    rdb.expire_all()
+    flour = rdb.get(InventoryItem, "inv-flour")
+    assert float(flour.kitchen_quantity) == pytest.approx(3.0)
+    assert float(flour.stock_quantity) == pytest.approx(10.0)
+

@@ -4,6 +4,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { confirmAction, extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import {
   deleteModifierGroup,
+  modifierOptionInput,
   modifierRuleLabel,
   saveModifierGroup,
 } from "@/lib/trans-chap-product";
@@ -11,14 +12,26 @@ import type { ModifierGroup, ModifierOption, ModifierSourceKind } from "@/lib/ty
 
 type RuleKind = "pick_one" | "optional_one" | "several";
 
-type SourceChoice = { id: string; name: string };
+export type SourceChoice = {
+  id: string;
+  name: string;
+  /** Defined UoMs on this item (from Unit conversions + base unit, or meal serving units). */
+  units?: string[];
+  /** True when the item has stock currently released in the kitchen. */
+  inKitchen?: boolean;
+  /** Inventory role: "raw_material" | "for_sale" | "not_for_sale" */
+  role?: string;
+};
 
-/** What a modifier option can use for stock: store items (e.g. drinks), menu items and Kitchen extras. */
+/** What a modifier option can use for stock: kitchen items, raw materials, store items, menu items and extras. */
 export type ModifierSources = {
   storeItems: SourceChoice[];
+  rawMaterials?: SourceChoice[];
   menuItems: SourceChoice[];
   extras: SourceChoice[];
 };
+
+type ItemCategory = "" | "raw_material" | "buy_sell" | "menu" | "extra";
 
 type OptionDraft = {
   key: string;
@@ -29,6 +42,10 @@ type OptionDraft = {
   /** Portion multiplier/amount (e.g. 1 portion, 0.5 portion, 2 portions). */
   portion: string;
   portionUnit: string;
+  /** Meal serving unit (e.g. Servings, Plate, Cup). */
+  mealPortionUnit: string;
+  /** Category filter in Column 2 ("Raw / Buy sell"). */
+  itemCategory: ItemCategory;
   /** Extra recipe, set from Kitchen and carried through unchanged when the extra is renamed or repriced. */
   recipe: Pick<ModifierOption, "product_id" | "stock_qty" | "batch_yield" | "portion_unit"> | null;
   sourceKind: ModifierSourceKind | "";
@@ -57,6 +74,8 @@ function blankOption(defaultPortionUnit: string = ""): OptionDraft {
     price: "",
     portion: "1",
     portionUnit: defaultPortionUnit,
+    mealPortionUnit: defaultPortionUnit || "servings",
+    itemCategory: "",
     recipe: null,
     sourceKind: "",
     sourceId: "",
@@ -64,9 +83,53 @@ function blankOption(defaultPortionUnit: string = ""): OptionDraft {
   };
 }
 
-function sourceChoices(sources: ModifierSources | undefined, kind: ModifierSourceKind | ""): SourceChoice[] {
-  if (!sources || !kind) return [];
-  return kind === "store_item" ? sources.storeItems : kind === "menu" ? sources.menuItems : sources.extras;
+function inferItemCategory(
+  sources: ModifierSources | undefined,
+  sourceKind: ModifierSourceKind | "" | null | undefined,
+  sourceId: string,
+): ItemCategory {
+  if (!sourceKind) return "";
+  if (sourceKind === "menu") return "menu";
+  if (sourceKind === "extra") return "extra";
+  if (sourceKind === "store_item") {
+    if (sources?.rawMaterials?.some((item) => item.id === sourceId)) {
+      return "raw_material";
+    }
+    const found = allSupplyChoices(sources).find((item) => item.id === sourceId);
+    if (found?.role === "raw_material") {
+      return "raw_material";
+    }
+    return "buy_sell";
+  }
+  return "";
+}
+
+function allSupplyChoices(sources: ModifierSources | undefined): SourceChoice[] {
+  if (!sources) return [];
+  const seen = new Set<string>();
+  const out: SourceChoice[] = [];
+  for (const item of [...(sources.rawMaterials ?? []), ...(sources.storeItems ?? [])]) {
+    if (!seen.has(item.id)) {
+      seen.add(item.id);
+      out.push(item);
+    }
+  }
+  return out;
+}
+
+function findSourceChoice(
+  sources: ModifierSources | undefined,
+  kind: ModifierSourceKind | "",
+  id: string,
+): SourceChoice | undefined {
+  if (!sources || !kind || !id) return undefined;
+  if (kind === "store_item") {
+    return allSupplyChoices(sources).find((c) => c.id === id);
+  }
+  if (kind === "menu") {
+    return sources.menuItems.find((c) => c.id === id);
+  }
+  return sources.extras.find((c) => c.id === id);
 }
 
 function parseAmount(value: string): number | null {
@@ -116,14 +179,22 @@ export function TransChapMenuGroupEditor({
   onSaved: (group: ModifierGroup) => void | Promise<void>;
   onDeleted?: (groupId: string) => void | Promise<void>;
 }) {
-  const mealUnit = (defaultPortionUnit || "portion").trim();
+  const mealUnit = (defaultPortionUnit || "servings").trim();
   const unitOptions = useMemo(() => {
-    const set = new Set<string>();
-    if (mealUnit) set.add(mealUnit);
-    for (const u of availableUnits ?? []) {
-      if (u?.trim()) set.add(u.trim());
-    }
-    return Array.from(set);
+    const seenLower = new Set<string>();
+    const out: string[] = [];
+    const addUnit = (u?: string | null) => {
+      const trimmed = (u ?? "").trim();
+      if (!trimmed) return;
+      const lower = trimmed.toLowerCase();
+      if (seenLower.has(lower)) return;
+      seenLower.add(lower);
+      out.push(trimmed);
+    };
+    addUnit(mealUnit);
+    for (const u of availableUnits ?? []) addUnit(u);
+    for (const preset of ["Servings", "Plate", "Cup", "Bowl", "Piece"]) addUnit(preset);
+    return out;
   }, [mealUnit, availableUnits]);
 
   const [name, setName] = useState(group?.name ?? "");
@@ -134,28 +205,36 @@ export function TransChapMenuGroupEditor({
   const showMin = !!group && group.max_select > 1 && group.min_select > 0;
   const [options, setOptions] = useState<OptionDraft[]>(() =>
     group?.options.length
-      ? group.options.map((option) => ({
+      ? group.options.map((option) => {
+        const srcKind = (!isExtra && option.source_kind) || "";
+        const srcId =
+          option.source_kind === "extra"
+            ? option.source_option_id ?? ""
+            : option.source_product_id ?? "";
+        const cat = inferItemCategory(sources, srcKind, srcId);
+        const picked = findSourceChoice(sources, srcKind, srcId);
+        return {
           key: nextKey(),
           id: option.id,
           name: option.name,
           price: !group.included && option.price_delta ? String(option.price_delta) : "",
           portion: option.stock_qty != null ? String(option.stock_qty) : "1",
-          portionUnit: option.portion_unit || defaultPortionUnit || "",
+          portionUnit: srcId ? (option.portion_unit || picked?.units?.[0] || "") : "",
+          mealPortionUnit: !srcId ? (option.portion_unit || defaultPortionUnit || "Servings") : (defaultPortionUnit || "Servings"),
+          itemCategory: cat,
           recipe: isExtra && option.product_id
             ? {
-                product_id: option.product_id,
-                stock_qty: option.stock_qty,
-                batch_yield: option.batch_yield,
-                portion_unit: option.portion_unit,
-              }
+              product_id: option.product_id,
+              stock_qty: option.stock_qty,
+              batch_yield: option.batch_yield,
+              portion_unit: option.portion_unit,
+            }
             : null,
-          sourceKind: (!isExtra && option.source_kind) || "",
-          sourceId:
-            option.source_kind === "extra"
-              ? option.source_option_id ?? ""
-              : option.source_product_id ?? "",
+          sourceKind: srcKind,
+          sourceId: srcId,
           isDefault: option.is_default,
-        }))
+        };
+      })
       : [blankOption(defaultPortionUnit), blankOption(defaultPortionUnit)],
   );
   const showSources = !isExtra && !!sources;
@@ -185,12 +264,14 @@ export function TransChapMenuGroupEditor({
 
   function addQuickPicks() {
     if (!quickPicks?.size || !sources) return;
-    const picks = sources.storeItems.filter((item) => quickPicks.has(item.id) && !takenStoreIds.has(item.id));
+    const picks = allSupplyChoices(sources).filter((item) => quickPicks.has(item.id) && !takenStoreIds.has(item.id));
     setOptions((prev) => [
       ...prev.filter((row) => row.name.trim() || row.sourceId),
       ...picks.map((item) => ({
         ...blankOption(defaultPortionUnit),
         name: item.name,
+        portionUnit: item.units?.[0] || "",
+        itemCategory: inferItemCategory(sources, "store_item", item.id),
         sourceKind: "store_item" as const,
         sourceId: item.id,
       })),
@@ -207,7 +288,7 @@ export function TransChapMenuGroupEditor({
         ? [0, 1]
         : [showMin ? parseCount(minText, 0) : 0, Math.max(2, parseCount(maxText, 3))];
   const priceError = filled.some((option) => option.price.trim() && parseAmount(option.price) == null && Number(option.price) !== 0);
-  const portionError = isKitchen && filled.some((option) => option.portion.trim() && (Number(option.portion) <= 0 || !Number.isFinite(Number(option.portion))));
+  const portionError = !isExtra && filled.some((option) => option.portion.trim() && (Number(option.portion) <= 0 || !Number.isFinite(Number(option.portion))));
   const ruleError =
     minSelect > maxSelect
       ? "Minimum can't be more than the maximum."
@@ -253,24 +334,29 @@ export function TransChapMenuGroupEditor({
         options: filled.map((option) => {
           const portionNum = Number(option.portion);
           const stockQty = Number.isFinite(portionNum) && portionNum > 0 ? portionNum : (option.recipe?.stock_qty ?? 1);
-          const portionUnit = (option.portionUnit || defaultPortionUnit || option.recipe?.portion_unit || "").trim() || null;
+          const picked = findSourceChoice(sources, option.sourceKind, option.sourceId);
+          const effectiveUnit =
+            option.sourceKind && option.sourceId
+              ? option.portionUnit || picked?.units?.[0] || option.mealPortionUnit || defaultPortionUnit
+              : option.mealPortionUnit || option.portionUnit || defaultPortionUnit || option.recipe?.portion_unit || "";
+          const portionUnit = effectiveUnit.trim() || null;
           return {
             ...(option.id ? { id: option.id } : {}),
             name: option.name.trim(),
             price_delta: parseAmount(option.price) ?? 0,
             ...(option.recipe
               ? {
-                  product_id: option.recipe.product_id,
-                  stock_qty: stockQty,
-                  batch_yield: option.recipe.batch_yield,
-                  portion_unit: portionUnit ?? option.recipe.portion_unit,
-                }
+                product_id: option.recipe.product_id,
+                stock_qty: stockQty,
+                batch_yield: option.recipe.batch_yield,
+                portion_unit: portionUnit ?? option.recipe.portion_unit,
+              }
               : {
-                  product_id: null,
-                  stock_qty: stockQty,
-                  batch_yield: 1,
-                  portion_unit: portionUnit,
-                }),
+                product_id: null,
+                stock_qty: stockQty,
+                batch_yield: 1,
+                portion_unit: portionUnit,
+              }),
             ...(!isExtra && option.sourceKind && option.sourceId
               ? option.sourceKind === "extra"
                 ? { source_kind: "extra" as const, source_option_id: option.sourceId, source_product_id: null }
@@ -315,7 +401,7 @@ export function TransChapMenuGroupEditor({
   return (
     <div className="pos-menu-modal-backdrop tc-group-backdrop" onClick={() => !saving && onClose()} role="presentation">
       <div
-        className="pos-menu-modal"
+        className="pos-menu-modal tc-group-modal"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -398,59 +484,223 @@ export function TransChapMenuGroupEditor({
             <div className="pos-menu-modal__label-row">
               <label>{isExtra ? "Extras" : "Options"}</label>
               <span className="pos-menu-modal__label-hint">
-                {isKitchen
-                  ? `Kitchen modifiers track portion sizes (${mealUnit}) and optional extra pricing (+KES)`
-                  : isExtra
-                    ? "Set each extra’s recipe from Kitchen after saving"
-                    : "Leave price empty if free · Uses deducts stock when picked"}
+                {isExtra
+                  ? "Set each extra’s recipe from Kitchen after saving"
+                  : "Modifier · Raw / Buy sell · Item · Item UOM · Portion (serving, plate, cup etc) · Amount"}
               </span>
             </div>
+            {!isExtra ? (
+              <div className={`tc-mod__columns${showSources ? " tc-mod__columns--with-item" : ""}`}>
+                <span>Modifier</span>
+                {showSources ? <span>Raw / Buy sell</span> : null}
+                {showSources ? <span>Item</span> : null}
+                {showSources ? <span>Item UOM</span> : null}
+                <span>Portion</span>
+                <span>Amount</span>
+                <span aria-hidden="true" />
+              </div>
+            ) : null}
             <ul className="tc-mod__options">
               {options.map((option, index) => {
                 const badPrice = !!option.price.trim() && parseAmount(option.price) == null && Number(option.price) !== 0;
-                const badPortion = isKitchen && !!option.portion.trim() && (Number(option.portion) <= 0 || !Number.isFinite(Number(option.portion)));
-                const currentUnit = option.portionUnit || mealUnit;
+                const badPortion = !isExtra && !!option.portion.trim() && (Number(option.portion) <= 0 || !Number.isFinite(Number(option.portion)));
+                const pickedChoice = findSourceChoice(sources, option.sourceKind, option.sourceId);
+
+                const itemUomSet = new Set<string>();
+                if (pickedChoice?.units?.length) {
+                  for (const u of pickedChoice.units) {
+                    if (u?.trim()) itemUomSet.add(u.trim());
+                  }
+                }
+                if (pickedChoice && option.portionUnit?.trim()) {
+                  itemUomSet.add(option.portionUnit.trim());
+                }
+                const itemUomOptions = Array.from(itemUomSet);
+                const currentItemUom =
+                  pickedChoice
+                    ? option.portionUnit?.trim() || pickedChoice.units?.[0] || ""
+                    : "";
+
+                const portionUnitSet = new Set<string>(unitOptions);
+                if (option.mealPortionUnit?.trim()) {
+                  portionUnitSet.add(option.mealPortionUnit.trim());
+                }
+                const mealPortionUnits = Array.from(portionUnitSet);
+                const currentMealPortion = option.mealPortionUnit?.trim() || mealUnit;
+
+                const allSupplies = allSupplyChoices(sources);
+                const rawList =
+                  (sources?.rawMaterials?.length ?? 0) > 0
+                    ? sources!.rawMaterials!
+                    : allSupplies.filter((item) => item.role === "raw_material" || item.role === "supply" || item.role === "both");
+                const rawChoices = rawList.length > 0 ? rawList : allSupplies;
+                const buySellChoices = (sources?.storeItems?.length ?? 0) > 0 ? sources!.storeItems : allSupplies;
+
+                const categoryItems: SourceChoice[] =
+                  option.itemCategory === "raw_material"
+                    ? rawChoices
+                    : option.itemCategory === "buy_sell"
+                      ? buySellChoices
+                      : option.itemCategory === "menu"
+                        ? sources?.menuItems ?? []
+                        : option.itemCategory === "extra"
+                          ? sources?.extras ?? []
+                          : [];
+
                 return (
                   <li key={option.key} className="tc-mod__option">
-                    <div className="tc-mod__row">
+                    <div className={`tc-mod__row${!isExtra ? " tc-mod__row--ordered" : ""}${showSources ? " tc-mod__row--with-item" : ""}`}>
+                      {/* 1. Modifier */}
                       <input
                         type="text"
                         className="tc-mod__name"
-                        placeholder={index === 0 ? (isKitchen ? `e.g. Regular / Half (${mealUnit})` : "e.g. Large") : "Option name"}
-                        aria-label="Option name"
+                        placeholder={index === 0 ? (isKitchen ? `e.g. XL, Regular` : "e.g. Large") : "Option name"}
+                        aria-label="Modifier option name"
                         value={option.name}
                         onChange={(e) => patchOption(option.key, { name: e.target.value })}
                       />
-                      {isKitchen ? (
-                        <label className={`tc-mod__portion-field${badPortion ? " is-error" : ""}`} title={`Portion in ${currentUnit}`}>
-                          {unitOptions.length > 1 ? (
-                            <select
-                              className="tc-mod__unit-select"
-                              aria-label="Unit"
-                              value={currentUnit}
-                              onChange={(e) => patchOption(option.key, { portionUnit: e.target.value })}
-                            >
-                              {unitOptions.map((u) => (
-                                <option key={u} value={u}>
-                                  {u}
-                                </option>
-                              ))}
-                            </select>
+
+                      {/* 2. Raw / Buy sell (Category Dropdown) */}
+                      {showSources ? (
+                        <select
+                          className="tc-mod__type-select"
+                          aria-label={`Item type for ${option.name || "this option"}`}
+                          value={option.itemCategory}
+                          onChange={(e) => {
+                            const nextCat = e.target.value as ItemCategory;
+                            if (!nextCat) {
+                              patchOption(option.key, {
+                                itemCategory: "",
+                                sourceKind: "",
+                                sourceId: "",
+                                portionUnit: "",
+                              });
+                              return;
+                            }
+                            const nextKind: ModifierSourceKind =
+                              nextCat === "menu"
+                                ? "menu"
+                                : nextCat === "extra"
+                                  ? "extra"
+                                  : "store_item";
+                            patchOption(option.key, {
+                              itemCategory: nextCat,
+                              sourceKind: nextKind,
+                              sourceId: "",
+                              portionUnit: "",
+                            });
+                          }}
+                        >
+                          <option value="">None</option>
+                          <option value="raw_material">Raw Material</option>
+                          <option value="buy_sell">Buy &amp; Sell</option>
+                          {(sources?.menuItems.length ?? 0) > 0 ? (
+                            <option value="menu">Kitchen Meal</option>
+                          ) : null}
+                          {(sources?.extras.length ?? 0) > 0 ? (
+                            <option value="extra">Extra</option>
+                          ) : null}
+                        </select>
+                      ) : null}
+
+                      {/* 3. Item (Inventory Dropdown) */}
+                      {showSources ? (
+                        <select
+                          className="tc-mod__item-select"
+                          aria-label={`Inventory item for ${option.name || "this option"}`}
+                          disabled={!option.itemCategory}
+                          value={option.sourceId}
+                          onChange={(e) => {
+                            const nextId = e.target.value;
+                            if (!nextId) {
+                              patchOption(option.key, {
+                                sourceId: "",
+                                portionUnit: "",
+                              });
+                              return;
+                            }
+                            const nextKind: ModifierSourceKind =
+                              option.itemCategory === "menu"
+                                ? "menu"
+                                : option.itemCategory === "extra"
+                                  ? "extra"
+                                  : "store_item";
+                            const picked = findSourceChoice(sources, nextKind, nextId);
+                            const nextUnit = picked?.units?.[0] || "";
+                            patchOption(option.key, {
+                              sourceKind: nextKind,
+                              sourceId: nextId,
+                              portionUnit: nextUnit,
+                              ...(picked && !option.name.trim() ? { name: picked.name } : {}),
+                            });
+                          }}
+                        >
+                          <option value="">
+                            {option.itemCategory ? "Select item…" : "—"}
+                          </option>
+                          {categoryItems.map((choice) => (
+                            <option key={choice.id} value={choice.id}>
+                              {choice.name}
+                              {choice.inKitchen && option.itemCategory !== "menu" && option.itemCategory !== "extra"
+                                ? " (Kitchen)"
+                                : ""}
+                            </option>
+                          ))}
+                        </select>
+                      ) : null}
+
+                      {/* 4. Item UOM (Dropdown) */}
+                      {showSources ? (
+                        <select
+                          className="tc-mod__uom-select"
+                          aria-label={`Item UOM for ${option.name || "option"}`}
+                          disabled={!pickedChoice}
+                          value={currentItemUom}
+                          onChange={(e) => patchOption(option.key, { portionUnit: e.target.value })}
+                        >
+                          {pickedChoice ? (
+                            itemUomOptions.map((u) => (
+                              <option key={u} value={u}>
+                                {u}
+                              </option>
+                            ))
                           ) : (
-                            <span className="tc-mod__unit-label" style={{ textTransform: "capitalize" }}>{currentUnit}</span>
+                            <option value="">—</option>
                           )}
+                        </select>
+                      ) : null}
+
+                      {/* 5. Portion (serving, plate, cup etc + qty) */}
+                      {!isExtra ? (
+                        <div className="tc-mod__portion-cell">
+                          <select
+                            className="tc-mod__unit-select"
+                            aria-label={`Portion unit for ${option.name || "option"}`}
+                            value={currentMealPortion}
+                            onChange={(e) => patchOption(option.key, { mealPortionUnit: e.target.value })}
+                          >
+                            {mealPortionUnits.map((u) => (
+                              <option key={u} value={u}>
+                                {u}
+                              </option>
+                            ))}
+                          </select>
                           <input
                             type="number"
-                            step="0.1"
-                            min="0.1"
-                            max="100"
+                            inputMode="decimal"
+                            step="any"
+                            min="0.01"
+                            max="100000"
                             placeholder="1"
-                            aria-label={`Option ${currentUnit}`}
+                            className={`tc-mod__qty-input${badPortion ? " is-error" : ""}`}
+                            aria-label={`Quantity`}
                             value={option.portion}
                             onChange={(e) => patchOption(option.key, { portion: e.target.value })}
                           />
-                        </label>
+                        </div>
                       ) : null}
+
+                      {/* 6. Amount (+KES) & Remove */}
                       <label className={`tc-mod__price${badPrice ? " is-error" : ""}`}>
                         <span>+KES</span>
                         <input
@@ -504,51 +754,6 @@ export function TransChapMenuGroupEditor({
                         </button>
                       </span>
                     </div>
-
-                    {showSources ? (
-                      <div className="tc-mod__source">
-                        <span>Uses</span>
-                        <select
-                          aria-label={`What ${option.name || "this option"} uses`}
-                          value={option.sourceKind}
-                          onChange={(e) =>
-                            patchOption(option.key, {
-                              sourceKind: e.target.value as ModifierSourceKind | "",
-                              sourceId: "",
-                            })
-                          }
-                        >
-                          {SOURCE_LABELS.map((choice) => (
-                            <option key={choice.kind || "none"} value={choice.kind}>
-                              {choice.label}
-                            </option>
-                          ))}
-                        </select>
-                        {option.sourceKind ? (
-                          <select
-                            aria-label="Choose what it uses"
-                            className={option.sourceId ? "" : "is-empty"}
-                            value={option.sourceId}
-                            onChange={(e) => {
-                              const picked = sourceChoices(sources, option.sourceKind).find(
-                                (choice) => choice.id === e.target.value,
-                              );
-                              patchOption(option.key, {
-                                sourceId: e.target.value,
-                                ...(picked && !option.name.trim() ? { name: picked.name } : {}),
-                              });
-                            }}
-                          >
-                            <option value="">Choose…</option>
-                            {sourceChoices(sources, option.sourceKind).map((choice) => (
-                              <option key={choice.id} value={choice.id}>
-                                {choice.name}
-                              </option>
-                            ))}
-                          </select>
-                        ) : null}
-                      </div>
-                    ) : null}
                   </li>
                 );
               })}
@@ -636,14 +841,19 @@ export function TransChapMenuGroupEditor({
 }
 
 /** Summary line under a group, e.g. "Small · Medium · Large +50", or portion-wise "Half (0.5 portion) · Full (1 portion)". */
-export function modifierOptionsSummary(group: ModifierGroup, showMoney: boolean = true): string {
+export function modifierOptionsSummary(
+  group: ModifierGroup,
+  showMoney: boolean = true,
+  defaultPortionUnit?: string,
+): string {
   return group.options
     .filter((option) => option.is_active)
     .map((option) => {
       const parts: string[] = [];
-      if (option.portion_unit) {
+      const unit = (option.portion_unit || defaultPortionUnit || "").trim();
+      if (unit) {
         const qty = option.stock_qty ?? 1;
-        parts.push(`${qty} ${option.portion_unit}`);
+        parts.push(`${qty} ${unit}`);
       } else if (option.stock_qty != null && option.stock_qty !== 1) {
         parts.push(`${option.stock_qty}x`);
       }
@@ -661,6 +871,18 @@ export function modifierOptionsSummary(group: ModifierGroup, showMoney: boolean 
     .join(" · ");
 }
 
+function groupPortionQty(group: ModifierGroup): number {
+  const active = group.options.find((opt) => opt.is_active !== false) ?? group.options[0];
+  const qty = Number(active?.stock_qty);
+  return Number.isFinite(qty) && qty > 0 ? qty : 1;
+}
+
+function groupPortionUnit(group: ModifierGroup, fallbackUnit?: string): string {
+  const active = group.options.find((opt) => opt.is_active !== false && opt.portion_unit?.trim()) ??
+    group.options.find((opt) => opt.portion_unit?.trim());
+  return (active?.portion_unit || fallbackUnit || "servings").trim();
+}
+
 /** The ordered option groups attached to a dish or meal, with attach / reorder / edit. */
 export function MenuOptionsField({
   label,
@@ -671,6 +893,8 @@ export function MenuOptionsField({
   onNewGroup,
   onEditGroup,
   showMoney = true,
+  servingUnit,
+  onUpdateGroup,
 }: {
   label: string;
   hint?: string;
@@ -680,7 +904,10 @@ export function MenuOptionsField({
   onNewGroup: () => void;
   onEditGroup: (group: ModifierGroup) => void;
   showMoney?: boolean;
+  servingUnit?: string;
+  onUpdateGroup?: (group: ModifierGroup, persist?: boolean) => void | Promise<void>;
 }) {
+  const [portionDrafts, setPortionDrafts] = useState<Record<string, string>>({});
   const byId = new Map(groups.map((group) => [group.id, group]));
   const attached = attachedIds.map((id) => byId.get(id)).filter((g): g is ModifierGroup => !!g);
   const available = groups.filter((group) => !attachedIds.includes(group.id));
@@ -694,6 +921,63 @@ export function MenuOptionsField({
     onChange(next);
   }
 
+  function applyPortionToGroup(group: ModifierGroup, qty: number): ModifierGroup {
+    const unit = groupPortionUnit(group, servingUnit);
+    return {
+      ...group,
+      options: group.options.map((opt) => ({
+        ...opt,
+        stock_qty: qty,
+        portion_unit: (opt.portion_unit || unit).trim() || null,
+      })),
+    };
+  }
+
+  function handlePortionInputChange(group: ModifierGroup, raw: string) {
+    setPortionDrafts((prev) => ({ ...prev, [group.id]: raw }));
+    const parsed = Number(raw.trim());
+    if (raw.trim() !== "" && Number.isFinite(parsed) && parsed > 0) {
+      const nextGroup = applyPortionToGroup(group, parsed);
+      void onUpdateGroup?.(nextGroup, false);
+    }
+  }
+
+  async function commitPortionInput(group: ModifierGroup) {
+    const raw = portionDrafts[group.id];
+    setPortionDrafts((prev) => {
+      if (!(group.id in prev)) return prev;
+      const next = { ...prev };
+      delete next[group.id];
+      return next;
+    });
+    if (raw === undefined) return;
+    const parsed = Number(raw.trim());
+    if (!raw.trim() || !Number.isFinite(parsed) || parsed <= 0) {
+      return;
+    }
+    const nextGroup = applyPortionToGroup(group, parsed);
+    if (onUpdateGroup) {
+      await onUpdateGroup(nextGroup, true);
+      return;
+    }
+    try {
+      await saveModifierGroup(group.id, {
+        name: nextGroup.name,
+        min_select: nextGroup.min_select,
+        max_select: nextGroup.max_select,
+        is_extra: nextGroup.is_extra,
+        included: Boolean(nextGroup.included),
+        options: nextGroup.options.map((opt) => ({
+          ...modifierOptionInput(opt),
+          stock_qty: opt.stock_qty ?? parsed,
+          portion_unit: opt.portion_unit ?? groupPortionUnit(group, servingUnit),
+        })),
+      });
+    } catch (err) {
+      await showError("Could not update modifier portion", extractErrorMessage(err));
+    }
+  }
+
   return (
     <div className="pos-menu-modal__field">
       <div className="pos-menu-modal__label-row">
@@ -702,35 +986,72 @@ export function MenuOptionsField({
       </div>
       {attached.length ? (
         <ul className="tc-group__attached">
-          {attached.map((group, index) => (
-            <li key={group.id}>
-              <button type="button" className="tc-group__attached-body" onClick={() => onEditGroup(group)}>
-                <strong>{group.name}</strong>
-                <span className="tc-group__attached-rule">{modifierRuleLabel(group)}</span>
-                <span className="tc-group__attached-options">{modifierOptionsSummary(group, showMoney)}</span>
-              </button>
-              <span className="tc-group__option-tools">
-                <button type="button" aria-label="Move up" disabled={index === 0} onClick={() => move(group.id, -1)}>
-                  <i className="fa-solid fa-arrow-up" aria-hidden="true" />
+          {attached.map((group, index) => {
+            const unitLabel = groupPortionUnit(group, servingUnit);
+            const draftVal =
+              portionDrafts[group.id] !== undefined
+                ? portionDrafts[group.id]
+                : String(groupPortionQty(group));
+            return (
+              <li key={group.id}>
+                <button type="button" className="tc-group__attached-body" onClick={() => onEditGroup(group)}>
+                  <strong>{group.name}</strong>
+                  <span className="tc-group__attached-rule">{modifierRuleLabel(group)}</span>
+                  <span className="tc-group__attached-options">
+                    {modifierOptionsSummary(group, showMoney, servingUnit)}
+                  </span>
                 </button>
-                <button
-                  type="button"
-                  aria-label="Move down"
-                  disabled={index === attached.length - 1}
-                  onClick={() => move(group.id, 1)}
+                <label
+                  className="tc-group__attached-portion"
+                  onClick={(e) => e.stopPropagation()}
+                  title={`Portion per serving (${unitLabel})`}
                 >
-                  <i className="fa-solid fa-arrow-down" aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Detach ${group.name}`}
-                  onClick={() => onChange(attachedIds.filter((id) => id !== group.id))}
-                >
-                  <i className="fa-solid fa-xmark" aria-hidden="true" />
-                </button>
-              </span>
-            </li>
-          ))}
+                  <span className="tc-group__attached-portion-label">Portion per serving</span>
+                  <span className="tc-group__attached-portion-control">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0.01"
+                      max="100000"
+                      step="any"
+                      placeholder="1"
+                      aria-label={`Portion per serving for ${group.name}`}
+                      value={draftVal}
+                      onChange={(e) => handlePortionInputChange(group, e.target.value)}
+                      onBlur={() => void commitPortionInput(group)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          e.currentTarget.blur();
+                        }
+                      }}
+                    />
+                    <span className="tc-group__attached-portion-unit">{unitLabel}</span>
+                  </span>
+                </label>
+                <span className="tc-group__option-tools">
+                  <button type="button" aria-label="Move up" disabled={index === 0} onClick={() => move(group.id, -1)}>
+                    <i className="fa-solid fa-arrow-up" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Move down"
+                    disabled={index === attached.length - 1}
+                    onClick={() => move(group.id, 1)}
+                  >
+                    <i className="fa-solid fa-arrow-down" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Detach ${group.name}`}
+                    onClick={() => onChange(attachedIds.filter((id) => id !== group.id))}
+                  >
+                    <i className="fa-solid fa-xmark" aria-hidden="true" />
+                  </button>
+                </span>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
       <div className="tc-group__attach-row">

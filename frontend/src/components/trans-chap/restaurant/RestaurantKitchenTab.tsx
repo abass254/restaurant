@@ -8,6 +8,7 @@ import { apiFetch } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { isStoreAdmin } from "@/lib/merchant-permissions";
 import { orderHasSuccessfulMpesa, orderUsesPayment } from "@/lib/orders";
+import { itemDefinedUnits } from "@/lib/sell-units";
 import {
   MenuOptionsField,
   TransChapMenuGroupEditor,
@@ -38,7 +39,9 @@ import {
   isHotelMenuItem,
   isSaleableRole,
   isSupplyItem,
+  modifierOptionInput,
   saveItemModifierGroups,
+  saveModifierGroup,
   saveRecipe,
   supportsKitchenRecipe,
   updateInventoryActive,
@@ -1511,6 +1514,7 @@ function CurrentMenuSection({
   const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([]);
   const [selectedModifierGroupIds, setSelectedModifierGroupIds] = useState<string[]>([]);
   const [groupEditor, setGroupEditor] = useState<{ group: ModifierGroup | null; attach: boolean } | null>(null);
+  const dirtyGroupIdsRef = useRef<Set<string>>(new Set());
 
   const refreshCosting = useCallback(async () => {
     setCostingLoading(true);
@@ -1581,13 +1585,55 @@ function CurrentMenuSection({
     () => ({
       storeItems: supplies
         .filter((item) => isSaleableRole(inventoryRole(item)) && !isHotelMenuItem(item))
-        .map((item) => ({ id: item.product_id, name: inventoryProductName(item) })),
+        .map((item) => ({
+          id: item.product_id,
+          name: inventoryProductName(item),
+          units: itemDefinedUnits(item),
+          inKitchen: Number(item.kitchen_quantity ?? 0) > 0,
+          role: inventoryRole(item),
+        })),
+      rawMaterials: supplies
+        .filter((item) => inventoryRole(item) === "raw_material" && !isHotelMenuItem(item))
+        .map((item) => ({
+          id: item.product_id,
+          name: inventoryProductName(item),
+          units: itemDefinedUnits(item),
+          inKitchen: Number(item.kitchen_quantity ?? 0) > 0,
+          role: "raw_material",
+        })),
       menuItems: dishes
         .filter((item) => item.product?.product_type !== "addon")
-        .map((item) => ({ id: item.product_id, name: inventoryProductName(item) })),
+        .map((item) => {
+          const mealUnits = Array.from(
+            new Set(
+              [
+                item.product?.recipe_serving_unit,
+                ...(item.product?.serving_options ?? []),
+                ...(item.product?.recipe?.map((r) => r.serving_unit) ?? []),
+              ]
+                .filter((u): u is string => typeof u === "string" && Boolean(u.trim()))
+                .map((u) => u.trim()),
+            ),
+          );
+          return {
+            id: item.product_id,
+            name: inventoryProductName(item),
+            units: mealUnits.length ? mealUnits : ["servings"],
+            inKitchen: true,
+          };
+        }),
       extras: modifierGroups
         .filter((group) => group.is_extra)
-        .flatMap((group) => group.options.map((option) => ({ id: option.id, name: option.name }))),
+        .flatMap((group) =>
+          group.options.map((option) => ({
+            id: option.id,
+            name: option.name,
+            units: [
+              option.recipes?.[0]?.portion_unit || option.portion_unit || "portions",
+            ],
+            inKitchen: true,
+          })),
+        ),
     }),
     [dishes, modifierGroups, supplies],
   );
@@ -1668,6 +1714,7 @@ function CurrentMenuSection({
   }
 
   async function openRecipeEditor(dish: InventoryItem) {
+    dirtyGroupIdsRef.current.clear();
     setRecipeEditor(dish);
     setRecipeMealName(inventoryProductName(dish));
     const initialUnit =
@@ -1771,6 +1818,29 @@ function CurrentMenuSection({
         updatedProduct = response.data;
         savedParts.push("Meal name");
       }
+      const latestGroupsById = new Map(modifierGroups.map((g) => [g.id, g]));
+      if (dirtyGroupIdsRef.current.size > 0) {
+        for (const dirtyId of Array.from(dirtyGroupIdsRef.current)) {
+          const dirtyGroup = latestGroupsById.get(dirtyId);
+          if (!dirtyGroup) continue;
+          const savedGroup = await saveModifierGroup(dirtyGroup.id, {
+            name: dirtyGroup.name,
+            min_select: dirtyGroup.min_select,
+            max_select: dirtyGroup.max_select,
+            is_extra: dirtyGroup.is_extra,
+            included: Boolean(dirtyGroup.included),
+            options: dirtyGroup.options.map((opt) => ({
+              ...modifierOptionInput(opt),
+              stock_qty: opt.stock_qty ?? 1,
+              portion_unit: (opt.portion_unit || recipeServingUnit || "servings").trim() || null,
+            })),
+          });
+          latestGroupsById.set(savedGroup.id, { ...savedGroup, item_count: dirtyGroup.item_count });
+          dirtyGroupIdsRef.current.delete(dirtyId);
+        }
+        setModifierGroups(Array.from(latestGroupsById.values()));
+        savedParts.push("Modifier portions");
+      }
       const previousGroups = recipeEditor.product?.modifier_groups ?? [];
       const previousIds = previousGroups.map((group) => group.id);
       const groupsChanged =
@@ -1778,7 +1848,9 @@ function CurrentMenuSection({
         previousIds.some((id, index) => id !== selectedModifierGroupIds[index]);
       const attachedGroups = groupsChanged
         ? await saveItemModifierGroups(recipeEditor.product_id, selectedModifierGroupIds)
-        : previousGroups;
+        : selectedModifierGroupIds
+            .map((id) => latestGroupsById.get(id) ?? previousGroups.find((g) => g.id === id))
+            .filter((g): g is ModifierGroup => Boolean(g));
       if (groupsChanged) savedParts.push("Modifiers");
       const saved = await saveRecipe(
         recipeEditor.product_id,
@@ -1851,6 +1923,34 @@ function CurrentMenuSection({
       await showError("Could not delete meal", extractErrorMessage(err));
     } finally {
       setDeletingDishId(null);
+    }
+  }
+
+  async function handleInlineGroupUpdate(nextGroup: ModifierGroup, persist?: boolean) {
+    setModifierGroups((previous) =>
+      previous.map((group) => (group.id === nextGroup.id ? { ...nextGroup, item_count: group.item_count } : group)),
+    );
+    dirtyGroupIdsRef.current.add(nextGroup.id);
+    if (!persist) return;
+    try {
+      const saved = await saveModifierGroup(nextGroup.id, {
+        name: nextGroup.name,
+        min_select: nextGroup.min_select,
+        max_select: nextGroup.max_select,
+        is_extra: nextGroup.is_extra,
+        included: Boolean(nextGroup.included),
+        options: nextGroup.options.map((opt) => ({
+          ...modifierOptionInput(opt),
+          stock_qty: opt.stock_qty ?? 1,
+          portion_unit: (opt.portion_unit || recipeServingUnit || "servings").trim() || null,
+        })),
+      });
+      dirtyGroupIdsRef.current.delete(nextGroup.id);
+      setModifierGroups((previous) =>
+        previous.map((group) => (group.id === saved.id ? { ...saved, item_count: group.item_count } : group)),
+      );
+    } catch (err) {
+      await showError("Could not update modifier portion", extractErrorMessage(err));
     }
   }
 
@@ -2409,6 +2509,8 @@ function CurrentMenuSection({
                   onNewGroup={() => setGroupEditor({ group: null, attach: true })}
                   onEditGroup={(group) => setGroupEditor({ group, attach: false })}
                   showMoney={true}
+                  servingUnit={recipeServingUnit || "servings"}
+                  onUpdateGroup={handleInlineGroupUpdate}
                 />
               ) : null}
               <footer className="pos-menu-modal__footer tc-menu__footer tc-menu__recipe-footer">

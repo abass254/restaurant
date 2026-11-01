@@ -4,7 +4,7 @@ import { ChangeEvent, useMemo } from "react";
 import { TransChapSupplierField } from "@/components/trans-chap/TransChapSupplierField";
 import { showError } from "@/lib/alerts";
 
-export type PurchaseStatus = "received" | "pending" | "ordered";
+export type PurchaseStatus = "paid" | "pending" | "received" | "ordered";
 export type PayTermUnit = "days" | "months";
 
 export type PurchaseMeta = {
@@ -35,7 +35,7 @@ export function emptyPurchaseMeta(location = ""): PurchaseMeta {
     supplierAddress: "",
     referenceNo: "",
     purchaseDate: defaultPurchaseDateValue(),
-    purchaseStatus: "received",
+    purchaseStatus: "paid",
     businessLocation: location,
     payTerm: "",
     payTermUnit: "days",
@@ -140,16 +140,21 @@ export function TransChapPurchaseFields({ meta, onChange, disabled = false }: Pr
             required
             className="auth-split__input"
             disabled={disabled}
-            value={meta.purchaseStatus}
+            value={
+              meta.purchaseStatus === "received"
+                ? "paid"
+                : meta.purchaseStatus === "ordered"
+                ? "pending"
+                : meta.purchaseStatus
+            }
             onChange={(event) =>
               onChange({
                 purchaseStatus: event.target.value as PurchaseStatus,
               })
             }
           >
-            <option value="received">Received</option>
+            <option value="paid">Paid</option>
             <option value="pending">Pending</option>
-            <option value="ordered">Ordered</option>
           </select>
         </div>
       </div>

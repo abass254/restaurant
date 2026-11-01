@@ -70,6 +70,7 @@ import {
 } from "@/lib/onboarding";
 import {
   allowsFractionalSelling,
+  itemDefinedUnits,
   mergeFractionalIntoAttributes,
 } from "@/lib/sell-units";
 import type { InventoryItem, InventoryResponse, ModifierGroup, ModifierOption } from "@/lib/types";
@@ -281,13 +282,55 @@ export function TransChapMenuForm() {
     () => ({
       storeItems: supplies
         .filter((item) => isSaleableRole(inventoryRole(item)) && !isHotelMenuItem(item))
-        .map((item) => ({ id: item.product_id, name: inventoryProductName(item) })),
+        .map((item) => ({
+          id: item.product_id,
+          name: inventoryProductName(item),
+          units: itemDefinedUnits(item),
+          inKitchen: Number(item.kitchen_quantity ?? 0) > 0,
+          role: inventoryRole(item),
+        })),
+      rawMaterials: supplies
+        .filter((item) => inventoryRole(item) === "raw_material" && !isHotelMenuItem(item))
+        .map((item) => ({
+          id: item.product_id,
+          name: inventoryProductName(item),
+          units: itemDefinedUnits(item),
+          inKitchen: Number(item.kitchen_quantity ?? 0) > 0,
+          role: "raw_material",
+        })),
       menuItems: [...menuItems]
         .sort((a, b) => inventoryProductName(a).localeCompare(inventoryProductName(b)))
-        .map((item) => ({ id: item.product_id, name: inventoryProductName(item) })),
+        .map((item) => {
+          const mealUnits = Array.from(
+            new Set(
+              [
+                item.product?.recipe_serving_unit,
+                ...(item.product?.serving_options ?? []),
+                ...(item.product?.recipe?.map((r) => r.serving_unit) ?? []),
+              ]
+                .filter((u): u is string => typeof u === "string" && Boolean(u.trim()))
+                .map((u) => u.trim()),
+            ),
+          );
+          return {
+            id: item.product_id,
+            name: inventoryProductName(item),
+            units: mealUnits.length ? mealUnits : ["servings"],
+            inKitchen: true,
+          };
+        }),
       extras: groups
         .filter((group) => group.is_extra)
-        .flatMap((group) => group.options.map((option) => ({ id: option.id, name: option.name }))),
+        .flatMap((group) =>
+          group.options.map((option) => ({
+            id: option.id,
+            name: option.name,
+            units: [
+              option.recipes?.[0]?.portion_unit || option.portion_unit || "portions",
+            ],
+            inKitchen: true,
+          })),
+        ),
     }),
     [supplies, menuItems, groups],
   );
@@ -464,6 +507,32 @@ export function TransChapMenuForm() {
       );
     }
     setGroupEditor(null);
+  }
+
+  async function handleInlineGroupUpdate(nextGroup: ModifierGroup, persist?: boolean) {
+    setGroups((prev) =>
+      prev.map((group) => (group.id === nextGroup.id ? { ...nextGroup, item_count: group.item_count } : group)),
+    );
+    if (!persist) return;
+    try {
+      const saved = await saveModifierGroup(nextGroup.id, {
+        name: nextGroup.name,
+        min_select: nextGroup.min_select,
+        max_select: nextGroup.max_select,
+        is_extra: nextGroup.is_extra,
+        included: Boolean(nextGroup.included),
+        options: nextGroup.options.map((opt) => ({
+          ...modifierOptionInput(opt),
+          stock_qty: opt.stock_qty ?? 1,
+          portion_unit: (opt.portion_unit || "servings").trim() || null,
+        })),
+      });
+      setGroups((prev) =>
+        prev.map((group) => (group.id === saved.id ? { ...saved, item_count: group.item_count } : group)),
+      );
+    } catch (err) {
+      await showError("Could not update modifier portion", extractErrorMessage(err));
+    }
   }
 
   function handleGroupDeleted(groupId: string) {
@@ -1109,6 +1178,8 @@ export function TransChapMenuForm() {
                 }
                 onNewGroup={() => setGroupEditor({ group: null, attach: true })}
                 onEditGroup={(group) => setGroupEditor({ group, attach: false })}
+                servingUnit={editor.item?.product?.recipe_serving_unit || "servings"}
+                onUpdateGroup={handleInlineGroupUpdate}
               />
               <div className="pos-menu-modal__field tc-menu__extras-note">
                 <div className="pos-menu-modal__label-row">

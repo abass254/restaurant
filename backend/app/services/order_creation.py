@@ -212,7 +212,7 @@ def build_instagram_order(
         if restaurant:
             db.flush()
             consume_for_order(db, order, order_items)
-        elif deduct_stock(db, stock_lines, account_id=str(order.account_id)):
+        elif deduct_stock(db, stock_lines, account_id=str(order.account_id), allow_negative=True):
             order.stock_deducted = True
     except InsufficientStockError:
         db.rollback()

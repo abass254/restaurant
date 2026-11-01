@@ -2621,3 +2621,125 @@ export type ExpenseListResponse = {
   total_amount: number;
   count: number;
 };
+
+export type StatementItemLine = {
+  id: string;
+  name: string;
+  quantity: number;
+  unit?: string | null;
+  unit_price: number;
+  line_total: number;
+};
+
+export type StatementEntry = {
+  id: string;
+  date: string | null;
+  type: "sale" | "purchase" | "payment" | "return" | "opening_balance";
+  reference: string;
+  description: string;
+  payment_method: string | null;
+  status: string;
+  debit: number;
+  credit: number;
+  cash_flow: number;
+  running_balance: number;
+  items: StatementItemLine[];
+  maturity_date?: string | null;
+  is_pending_cheque?: boolean;
+};
+
+export type StatementSummary = {
+  opening_balance: number;
+  total_billed: number;
+  total_paid: number;
+  cash_inflow: number;
+  cash_outflow: number;
+  net_cash_flow: number;
+  paid_cash: number;
+  paid_mpesa: number;
+  paid_cheque?: number;
+  pending_cheques?: number;
+  pending_cheques_count?: number;
+  tab_collected?: number;
+  credit_extended?: number;
+  returns_total?: number;
+  closing_balance: number;
+  current_balance: number;
+  credit_limit: number;
+  available_credit: number;
+  transaction_count: number;
+};
+
+export type StatementParty = {
+  id: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  city?: string | null;
+  pin_number?: string | null;
+  credit_limit: number;
+  current_balance: number;
+  available_credit: number;
+  due_date?: string | null;
+};
+
+export type StatementResponse = {
+  data: {
+    party_type: "customer" | "supplier";
+    party: StatementParty;
+    period: {
+      start: string | null;
+      end: string | null;
+    };
+    summary: StatementSummary;
+    entries: StatementEntry[];
+  };
+};
+
+export type StatementsOverviewPartyRow = {
+  id: string;
+  name: string;
+  phone?: string | null;
+  city?: string | null;
+  pin_number?: string | null;
+  opening_balance: number;
+  total_billed: number;
+  total_paid: number;
+  cash_flow: number;
+  paid_cash: number;
+  paid_mpesa: number;
+  paid_cheque?: number;
+  pending_cheques?: number;
+  pending_cheques_count?: number;
+  closing_balance: number;
+  current_balance: number;
+  credit_limit: number;
+  due_date?: string | null;
+  transaction_count: number;
+};
+
+export type StatementsOverviewResponse = {
+  data: {
+    period: {
+      start: string | null;
+      end: string | null;
+    };
+    cash_flow_summary: {
+      customer_inflow: number;
+      supplier_outflow: number;
+      net_cash_flow: number;
+      total_receivables: number;
+      total_payables: number;
+      net_working_position: number;
+      customer_total_billed: number;
+      customer_total_paid: number;
+      supplier_total_billed: number;
+      supplier_total_paid: number;
+      pending_cheques: number;
+      pending_cheques_count: number;
+    };
+    customers: StatementsOverviewPartyRow[];
+    suppliers: StatementsOverviewPartyRow[];
+  };
+};

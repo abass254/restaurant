@@ -252,6 +252,14 @@ export const apiRoutes = {
   customer: (id: string) => `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}`,
   customerTab: (id: string) =>
     `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/tab`,
+  customerStatement: (id: string, start?: string, end?: string, format?: "json" | "csv") => {
+    const params = new URLSearchParams();
+    if (start) params.set("start", start);
+    if (end) params.set("end", end);
+    if (format) params.set("format", format);
+    const qs = params.toString();
+    return `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/statement${qs ? `?${qs}` : ""}`;
+  },
   customerManualCollect: (id: string) =>
     `${apiUrl}/api/v1/customers/${encodeURIComponent(id)}/manual-collect`,
   customerUpdate: (id: string) =>
@@ -273,6 +281,14 @@ export const apiRoutes = {
     `${apiUrl}/api/v1/suppliers/${encodeURIComponent(id)}/update`,
   supplierPayments: (id: string) =>
     `${apiUrl}/api/v1/suppliers/${encodeURIComponent(id)}/payments`,
+  supplierStatement: (id: string, start?: string, end?: string, format?: "json" | "csv") => {
+    const params = new URLSearchParams();
+    if (start) params.set("start", start);
+    if (end) params.set("end", end);
+    if (format) params.set("format", format);
+    const qs = params.toString();
+    return `${apiUrl}/api/v1/suppliers/${encodeURIComponent(id)}/statement${qs ? `?${qs}` : ""}`;
+  },
   purchaseOrders: `${apiUrl}/api/v1/purchase-orders`,
   purchaseOrderSupplyItems: `${apiUrl}/api/v1/purchase-orders/supply-items`,
   purchaseOrder: (id: string) => `${apiUrl}/api/v1/purchase-orders/${encodeURIComponent(id)}`,
@@ -299,6 +315,13 @@ export const apiRoutes = {
     if (end) params.set("end", end);
     const qs = params.toString();
     return `${apiUrl}/api/v1/reports/summary${qs ? `?${qs}` : ""}`;
+  },
+  reportsStatements: (start?: string, end?: string) => {
+    const params = new URLSearchParams();
+    if (start) params.set("start", start);
+    if (end) params.set("end", end);
+    const qs = params.toString();
+    return `${apiUrl}/api/v1/reports/statements${qs ? `?${qs}` : ""}`;
   },
   expenses: (start?: string, end?: string, category?: string) => {
     const params = new URLSearchParams();

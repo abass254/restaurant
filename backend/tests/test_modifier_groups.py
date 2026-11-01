@@ -545,10 +545,16 @@ def test_recipe_deducts_on_plain_sale_and_restores(db):
         "fries", RecipeReplace(lines=[RecipeLineIn(product_id="flour", quantity=0.1)]),
         request=None, db=db, session={},
     )
-    # Recipe amounts are estimates: running short must not block the sale.
-    _order(db, {"inventory_item_id": "inv-fries", "quantity": 3})
+    # Running short of recipe quantity blocks the sale:
+    with pytest.raises(HTTPException) as exc:
+        _order(db, {"inventory_item_id": "inv-fries", "quantity": 3})
+    assert exc.value.status_code == 422
+    assert "Flour" in str(exc.value.detail)
+
+    # When recipe quantity is available, sale deducts recipe stock:
+    _order(db, {"inventory_item_id": "inv-fries", "quantity": 2})
     db.expire_all()
-    assert float(db.get(InventoryItem, "inv-flour").stock_quantity) == pytest.approx(-0.05)
+    assert float(db.get(InventoryItem, "inv-flour").stock_quantity) == pytest.approx(0.05)
 
     order = db.query(OrderItem).one().order
     restore_stock_for_order(db, order)
@@ -810,3 +816,42 @@ def test_modifier_sources_drive_availability(db):
     assert current[by_name["Fries"]]["reason"] == "out_of_stock"
     assert current[by_name["Chicken"]]["reason"] == "out_of_stock"
     assert current[by_name["Spicy"]]["available"]
+
+
+def test_modifier_option_uses_item_defined_unit_conversions(db):
+    _add_supply(db, "beef", "Beef", "Kg", 2)
+    beef_inv = db.get(InventoryItem, "inv-beef")
+    beef_inv.attributes = {
+        "sell_units": [
+            {
+                "name": "stick",
+                "factor": round(1 / 22, 4),
+                "reverse": True,
+                "reference_unit": "Kg",
+                "conversion_amount": 22,
+            }
+        ]
+    }
+    db.commit()
+
+    group = _create_group(
+        db,
+        "Portion size",
+        1,
+        1,
+        ModifierOptionIn(
+            name="XL",
+            price_delta=300,
+            source_kind="store_item",
+            source_product_id="beef",
+            portion_unit="stick",
+            stock_qty=2,
+        ),
+    )
+    _attach(db, "big-mac", group.id)
+    burger = db.get(Catalogue, "big-mac")
+    xl = db.get(ModifierOption, group.options[0].id)
+
+    usage = line_stock_usage(db, ACCOUNT, burger, [xl])
+    assert usage == [{"stock_item_id": "inv-beef", "qty": pytest.approx(2 / 22, rel=1e-4)}]
+

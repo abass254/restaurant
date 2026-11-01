@@ -501,6 +501,44 @@ def get_customer_tab(
     }
 
 
+@router.get("/{customer_id}/statement")
+def get_customer_statement(
+    customer_id: str,
+    start: date | None = Query(default=None),
+    end: date | None = Query(default=None),
+    format: Literal["json", "csv"] = Query(default="json"),
+    tz_offset_minutes: int = Query(default=180, ge=-720, le=840),
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Full Statement of Account and Cash Flow for a customer."""
+    from app.services.statement_service import build_customer_statement, export_statement_csv
+
+    user = require_user(db, session)
+    assert_merchant_section_any_access(user, *TILL_CUSTOMER_SECTIONS)
+    account_id = require_merchant_account_id(user)
+    try:
+        statement = build_customer_statement(
+            db,
+            account_id,
+            customer_id,
+            start=start,
+            end=end,
+            tz_offset_minutes=tz_offset_minutes,
+        )
+    except CustomerServiceError as exc:
+        _raise_service_error(exc)
+
+    if format == "csv":
+        content, filename = export_statement_csv(statement)
+        return Response(
+            content=content,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    return {"data": statement}
+
+
 @router.post("/{customer_id}/update")
 def update_customer(
     customer_id: str,

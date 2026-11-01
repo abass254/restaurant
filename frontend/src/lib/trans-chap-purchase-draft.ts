@@ -66,7 +66,8 @@ function isPurchaseMeta(value: unknown): value is PurchaseMeta {
     typeof row.supplierAddress === "string" &&
     typeof row.referenceNo === "string" &&
     typeof row.purchaseDate === "string" &&
-    (row.purchaseStatus === "received" ||
+    (row.purchaseStatus === "paid" ||
+      row.purchaseStatus === "received" ||
       row.purchaseStatus === "pending" ||
       row.purchaseStatus === "ordered") &&
     typeof row.businessLocation === "string" &&

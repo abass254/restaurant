@@ -107,7 +107,7 @@ class SupplierService:
         account_id: str,
         *,
         name: str,
-        phone: str,
+        phone: str | None = None,
         notes: str | None = None,
         balance: Any = 0,
         credit_limit: Any = 0,
@@ -121,13 +121,13 @@ class SupplierService:
         commit: bool = True,
     ) -> ShopSupplier:
         clean_name = (name or "").strip()
-        clean_phone = normalize_phone(phone)
+        clean_phone = normalize_phone(phone) if phone else None
         if not clean_name:
             raise SupplierServiceError("Supplier name is required.")
-        if not clean_phone:
-            raise SupplierServiceError("Supplier phone is required.")
-        if self._find_duplicate_phone(account_id, clean_phone):
+        if clean_phone and self._find_duplicate_phone(account_id, clean_phone):
             raise SupplierServiceError("A supplier with this phone number already exists.")
+        if not clean_phone and self._find_phoneless_by_name(account_id, clean_name):
+            raise SupplierServiceError("A supplier with this name already exists.")
 
         now = utc_now()
         supplier = ShopSupplier(

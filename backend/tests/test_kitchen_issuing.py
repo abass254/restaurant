@@ -250,8 +250,8 @@ def test_kitchen_shortage_allowed_or_blocked_by_setting(rdb):
     _enable(rdb)
     _issue(rdb, flour="1", oil="1")
     _order(rdb, {"inventory_item_id": "inv-chapati", "quantity": 20})
-    # Kitchen used more than it was given; the store is untouched.
-    assert _qty(rdb, "inv-flour") == (pytest.approx(9.0), pytest.approx(-1.0))
+    # Kitchen deducted first (down to 0), and remaining quantity from the store.
+    assert _qty(rdb, "inv-flour") == (pytest.approx(8.0), pytest.approx(0.0))
 
     _account(rdb).block_sale_on_low_ingredients = True
     rdb.commit()

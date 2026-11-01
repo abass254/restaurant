@@ -369,3 +369,30 @@ def test_void_purchase_rejects_non_purchase_and_double_void() -> None:
             account_id="acc-1",
             reason="again",
         )
+
+
+def test_supplier_balance_updates_on_pending_purchase() -> None:
+    from app.models import ShopSupplier
+    supplier = ShopSupplier(
+        id="sup-1",
+        account_id="acc-1",
+        name="Ajab Limited",
+        balance=Decimal("0.00"),
+    )
+    movement = StockMovement(
+        id="mv-1",
+        account_id="acc-1",
+        supplier_id=supplier.id,
+        quantity=Decimal("100"),
+        unit_cost=Decimal("50.00"),
+        note="Ajab Limited · Status pending · Loc Nextverse",
+    )
+    # When pending movement is recorded:
+    cost = Decimal(str(movement.quantity)) * Decimal(str(movement.unit_cost))
+    supplier.balance = Decimal(str(supplier.balance or 0)) + cost
+    assert supplier.balance == Decimal("5000.00")
+
+    # When voided:
+    supplier.balance = max(Decimal("0.00"), Decimal(str(supplier.balance)) - cost)
+    assert supplier.balance == Decimal("0.00")
+

@@ -18,6 +18,7 @@ import {
   ContactImportResults,
 } from "@/components/trans-chap/TransChapContactImport";
 import { TransChapCustomerTab } from "@/components/trans-chap/TransChapCustomerTab";
+import { TransChapStatementModal } from "@/components/trans-chap/TransChapStatementModal";
 import { TransChapFab } from "@/components/trans-chap/TransChapFab";
 import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
@@ -171,6 +172,7 @@ export function TransChapCustomersList() {
   const [allowOutstandingAdjustment, setAllowOutstandingAdjustment] = useState(false);
   const [outstandingValues, setOutstandingValues] = useState<Record<string, string>>({});
   const [savingOutstandingId, setSavingOutstandingId] = useState<string | null>(null);
+  const [statementCustomer, setStatementCustomer] = useState<ShopCustomer | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -1128,6 +1130,17 @@ export function TransChapCustomersList() {
                             <button
                               type="button"
                               className="trans-chap-panel__link"
+                              title="View Statement of Account & Cash Flow"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setStatementCustomer(customer);
+                              }}
+                            >
+                              Statement
+                            </button>
+                            <button
+                              type="button"
+                              className="trans-chap-panel__link"
                               aria-expanded={open}
                               aria-controls={`${panelId}-edit`}
                               onClick={(event) => {
@@ -1336,6 +1349,15 @@ export function TransChapCustomersList() {
                           <span>Copy pay link</span>
                         </button>
                       ) : null}
+
+                      <button
+                        type="button"
+                        className="trans-chap-btn trans-chap-btn--secondary trans-chap-customer-actions__wide"
+                        onClick={() => setStatementCustomer(customer)}
+                      >
+                        <i className="fa-solid fa-file-invoice-dollar" aria-hidden="true" />
+                        <span>Statement of Account</span>
+                      </button>
 
                       <Link
                         href={`/trans-chap/pos?customer=${customer.id}`}
@@ -1632,6 +1654,14 @@ export function TransChapCustomersList() {
             onClick: openImport,
           },
         ]}
+      />
+
+      <TransChapStatementModal
+        open={statementCustomer !== null}
+        partyType="customer"
+        partyId={statementCustomer?.id ?? ""}
+        partyName={statementCustomer?.name ?? ""}
+        onClose={() => setStatementCustomer(null)}
       />
     </div>
   );

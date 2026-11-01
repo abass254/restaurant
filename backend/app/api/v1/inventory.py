@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Literal
@@ -16,7 +17,7 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel, Field
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.orm.attributes import flag_modified
@@ -513,6 +514,47 @@ def create_stock_movements(
             update_buying_price=not payload.record_only,
         )
 
+    if is_purchase and payload.note:
+        first_part = payload.note.split(" · ")[0].strip()
+        if first_part and not first_part.lower().startswith(("ref ", "status ", "date ", "pay ", "loc ", "doc ")):
+            matched_sup = (
+                db.query(ShopSupplier)
+                .filter(
+                    ShopSupplier.account_id == str(account_id),
+                    func.lower(ShopSupplier.name) == first_part.lower(),
+                )
+                .first()
+            )
+            if matched_sup is not None:
+                note_lower = payload.note.lower()
+                is_credit_or_pending = (
+                    "status pending" in note_lower
+                    or "status ordered" in note_lower
+                    or "pay " in note_lower
+                )
+                total_pending_cost = Decimal("0.00")
+                for m in movements:
+                    if m.supplier_id is None:
+                        m.supplier_id = matched_sup.id
+                    if m.unit_cost is not None and m.total_cost is None:
+                        m.total_cost = (Decimal(str(m.quantity or 0)) * Decimal(str(m.unit_cost))).quantize(Decimal("0.01"))
+                    if is_credit_or_pending and m.unit_cost is not None:
+                        total_pending_cost += Decimal(str(m.quantity or 0)) * Decimal(str(m.unit_cost))
+
+                if is_credit_or_pending and total_pending_cost > 0:
+                    current_bal = Decimal(str(matched_sup.balance or 0))
+                    matched_sup.balance = (current_bal + total_pending_cost).quantize(Decimal("0.01"))
+
+                    term_match = re.search(r"pay\s+(\d+)\s*(days?|months?|weeks?)", note_lower)
+                    if term_match:
+                        val = int(term_match.group(1))
+                        unit = term_match.group(2)
+                        days = val * 30 if "month" in unit else (val * 7 if "week" in unit else val)
+                        due_date = datetime.now(timezone.utc).date() + timedelta(days=days)
+                        if matched_sup.balance_due_date is None or due_date < matched_sup.balance_due_date:
+                            matched_sup.balance_due_date = due_date
+                    matched_sup.updated_at = datetime.now(timezone.utc)
+
     db.commit()
     for movement in movements:
         db.refresh(movement)
@@ -567,6 +609,23 @@ def void_stock_movement(
         ) from exc
     if movement is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Purchase not found.")
+
+    if movement.supplier_id is not None:
+        note_lower = (movement.note or "").lower()
+        if "status pending" in note_lower or "status ordered" in note_lower or "pay " in note_lower:
+            supplier = (
+                db.query(ShopSupplier)
+                .filter(
+                    ShopSupplier.account_id == str(account_id),
+                    ShopSupplier.id == movement.supplier_id,
+                )
+                .first()
+            )
+            if supplier is not None and movement.unit_cost is not None:
+                rev_cost = (Decimal(str(movement.quantity or 0)) * Decimal(str(movement.unit_cost))).quantize(Decimal("0.01"))
+                current_bal = Decimal(str(supplier.balance or 0))
+                supplier.balance = max(Decimal("0.00"), (current_bal - rev_cost).quantize(Decimal("0.01")))
+                supplier.updated_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(movement)

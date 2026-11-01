@@ -92,6 +92,21 @@ const nextConfig: NextConfig = {
         permanent: true,
       },
       {
+        source: "/trans-chap/supplier",
+        destination: "/trans-chap/suppliers",
+        permanent: false,
+      },
+      {
+        source: "/transchap/supplier",
+        destination: "/trans-chap/suppliers",
+        permanent: false,
+      },
+      {
+        source: "/transchap/suppliers",
+        destination: "/trans-chap/suppliers",
+        permanent: false,
+      },
+      {
         source: "/trans-chap/make-a-sale/:path*",
         destination: "/trans-chap/sales/:path*",
         permanent: true,

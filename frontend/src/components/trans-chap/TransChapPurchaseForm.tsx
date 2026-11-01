@@ -23,6 +23,7 @@ import {
   type PurchaseStatus,
 } from "@/components/trans-chap/TransChapPurchaseFields";
 import { TransChapSupplierField } from "@/components/trans-chap/TransChapSupplierField";
+import { createShopSupplier, fetchShopSuppliers } from "@/lib/trans-chap-suppliers";
 import { confirmAction, extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
 import { apiFetch, apiFetchCached } from "@/lib/api";
 import { findInventoryByBarcode } from "@/lib/barcode";
@@ -117,9 +118,8 @@ const ALL_ROLE_OPTIONS: { id: InventoryRole; label: string }[] = [
 ];
 
 const STATUS_OPTIONS: { id: PurchaseStatus; label: string; icon: string }[] = [
-  { id: "received", label: "Received", icon: "fa-solid fa-box-open" },
+  { id: "paid", label: "Paid", icon: "fa-solid fa-circle-check" },
   { id: "pending", label: "Pending", icon: "fa-solid fa-clock" },
-  { id: "ordered", label: "Ordered", icon: "fa-solid fa-clipboard-list" },
 ];
 
 const QUICK_ADD_QTY_STORAGE_KEY = "purchase:quick_add_qty";
@@ -891,7 +891,8 @@ export function TransChapPurchaseForm() {
       if (!proceed) return;
     }
 
-    if (!purchaseMeta.supplier.trim()) {
+    const cleanSupplier = purchaseMeta.supplier.trim();
+    if (!cleanSupplier) {
       await showError("Supplier", "Select or enter a supplier.");
       return;
     }
@@ -908,6 +909,20 @@ export function TransChapPurchaseForm() {
     }
 
     setSaving(true);
+    const existingSuppliers = await fetchShopSuppliers().catch(() => []);
+    const matchedSupplier = existingSuppliers.find(
+      (s) => s.name.trim().toLowerCase() === cleanSupplier.toLowerCase(),
+    );
+    if (!matchedSupplier) {
+      try {
+        await createShopSupplier({
+          name: cleanSupplier,
+          notes: purchaseMeta.supplierAddress.trim() || null,
+        });
+      } catch {
+        // If already exists or concurrent create, proceed
+      }
+    }
     let nextInventory = inventory;
     const savedKeys = new Set<string>();
     try {
@@ -1951,29 +1966,33 @@ export function TransChapPurchaseForm() {
             <footer className="pos-cart__footer">
               <div className="pos-cart__row pos-cart__row--pay pos-cart__row--pay-full">
                 <div
-                  className="pos-pickers pos-pickers--three"
+                  className="pos-pickers pos-pickers--two"
                   role="radiogroup"
                   aria-label="Purchase status"
                 >
-                  {STATUS_OPTIONS.map((option) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={purchaseMeta.purchaseStatus === option.id}
-                      className={`pos-picker pos-picker--wide${
-                        purchaseMeta.purchaseStatus === option.id
-                          ? " is-active"
-                          : ""
-                      }`}
-                      onClick={() =>
-                        patchPurchaseMeta({ purchaseStatus: option.id })
-                      }
-                    >
-                      <i className={option.icon} aria-hidden="true" />
-                      <span>{option.label}</span>
-                    </button>
-                  ))}
+                  {STATUS_OPTIONS.map((option) => {
+                    const isActive =
+                      purchaseMeta.purchaseStatus === option.id ||
+                      (option.id === "paid" && purchaseMeta.purchaseStatus === "received") ||
+                      (option.id === "pending" && purchaseMeta.purchaseStatus === "ordered");
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={isActive}
+                        className={`pos-picker pos-picker--wide${
+                          isActive ? " is-active" : ""
+                        }`}
+                        onClick={() =>
+                          patchPurchaseMeta({ purchaseStatus: option.id })
+                        }
+                      >
+                        <i className={option.icon} aria-hidden="true" />
+                        <span>{option.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

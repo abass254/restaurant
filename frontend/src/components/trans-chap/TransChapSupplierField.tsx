@@ -98,10 +98,6 @@ export function TransChapSupplierField({
       await showError("Supplier name", "Enter the supplier or contact name.");
       return;
     }
-    if (!cleanMobile) {
-      await showError("Mobile", "Mobile number is required.");
-      return;
-    }
     const extra = [
       contactType === "individual" ? "Type: Individual" : "Type: Business",
       contactId.trim() ? `Contact ID: ${contactId.trim()}` : null,
@@ -116,7 +112,7 @@ export function TransChapSupplierField({
     try {
       const created = await createShopSupplier({
         name: cleanName,
-        phone: cleanMobile,
+        phone: cleanMobile || null,
         notes: extra || null,
       });
       setSuppliers((prev) =>

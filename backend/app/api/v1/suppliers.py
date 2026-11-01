@@ -44,7 +44,7 @@ def _reject_outstanding_adjustment() -> None:
 
 class SupplierCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
-    phone: str = Field(min_length=7, max_length=32)
+    phone: str | None = Field(default=None, max_length=32)
     notes: str | None = Field(default=None, max_length=2000)
     balance: float | None = Field(default=0.0)
     credit_limit: float | None = Field(default=0.0, ge=0, le=99_999_999.99)
@@ -222,11 +222,12 @@ def create_supplier(
     if (payload.balance or 0) > 0 and not _outstanding_adjustment_allowed(db, account_id):
         _reject_outstanding_adjustment()
     p_code = payload.postal_code or payload.postalcode
+    clean_phone = (payload.phone or "").strip() or None
     try:
         supplier = SupplierService(db).create_supplier(
             account_id,
             name=payload.name,
-            phone=payload.phone,
+            phone=clean_phone,
             notes=payload.notes,
             balance=payload.balance,
             credit_limit=payload.credit_limit,
@@ -439,4 +440,42 @@ def record_supplier_payment(
             "payment": _payment_out(payment),
         },
     }
+
+
+@router.get("/{supplier_id}/statement")
+def get_supplier_statement(
+    supplier_id: str,
+    start: date | None = Query(default=None),
+    end: date | None = Query(default=None),
+    format: Literal["json", "csv"] = Query(default="json"),
+    tz_offset_minutes: int = Query(default=180, ge=-720, le=840),
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Full Statement of Account and Cash Flow for a supplier."""
+    from app.services.statement_service import build_supplier_statement, export_statement_csv
+
+    user = require_user(db, session)
+    assert_merchant_section_any_access(user, *TILL_SUPPLIER_SECTIONS)
+    account_id = require_merchant_account_id(user)
+    try:
+        statement = build_supplier_statement(
+            db,
+            account_id,
+            supplier_id,
+            start=start,
+            end=end,
+            tz_offset_minutes=tz_offset_minutes,
+        )
+    except SupplierServiceError as exc:
+        _raise_service_error(exc)
+
+    if format == "csv":
+        content, filename = export_statement_csv(statement)
+        return Response(
+            content=content,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    return {"data": statement}
 

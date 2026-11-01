@@ -18,6 +18,7 @@ import {
   ContactImportResults,
 } from "@/components/trans-chap/TransChapContactImport";
 import { TransChapFab } from "@/components/trans-chap/TransChapFab";
+import { TransChapStatementModal } from "@/components/trans-chap/TransChapStatementModal";
 import { TransChapPanel } from "@/components/trans-chap/TransChapPanel";
 import { TransChapListSkeleton } from "@/components/trans-chap/TransChapSkeleton";
 import { TransChapStatus } from "@/components/trans-chap/TransChapStatus";
@@ -251,7 +252,7 @@ export function TransChapSuppliersList() {
   );
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [owingOnly, setOwingOnly] = useState(true);
+  const [owingOnly, setOwingOnly] = useState(false);
   const [when, setWhen] = useState<WhenFilter>("all");
   const [selectedDate, setSelectedDate] = useState<string>(() => nairobiDateKey(new Date()));
   const [rangeFrom, setRangeFrom] = useState<string>(() => {
@@ -275,6 +276,7 @@ export function TransChapSuppliersList() {
   const [allowOutstandingAdjustment, setAllowOutstandingAdjustment] = useState(false);
   const [balanceDrafts, setBalanceDrafts] = useState<Record<string, string>>({});
   const [savingBalanceId, setSavingBalanceId] = useState<string | null>(null);
+  const [statementSupplier, setStatementSupplier] = useState<ShopSupplier | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -1335,6 +1337,14 @@ export function TransChapSuppliersList() {
                 <i className="fa-solid fa-box-open" aria-hidden />
                 <span>Receive goods</span>
               </Link>
+              <button
+                type="button"
+                className="trans-chap-btn trans-chap-btn--secondary trans-chap-customer-actions__wide"
+                onClick={() => setStatementSupplier(supplier)}
+              >
+                <i className="fa-solid fa-file-invoice-dollar" aria-hidden="true" />
+                <span>Statement of Account</span>
+              </button>
               {supplier.phone ? (
                 <>
                   {cleanPhone ? (
@@ -2107,6 +2117,17 @@ export function TransChapSuppliersList() {
                         </td>
                         <td className="trans-chap-stock-table__actions">
                           <div className="trans-chap-stock-table__actions-inner">
+                            <button
+                              type="button"
+                              className="trans-chap-panel__link"
+                              title="View Statement of Account & Cash Flow"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setStatementSupplier(supplier);
+                              }}
+                            >
+                              Statement
+                            </button>
                             <Link
                               href={`/trans-chap/purchases/new?supplier=${encodeURIComponent(supplier.name)}`}
                               className="trans-chap-panel__link"
@@ -2184,6 +2205,14 @@ export function TransChapSuppliersList() {
             onClick: openImport,
           },
         ]}
+      />
+
+      <TransChapStatementModal
+        open={statementSupplier !== null}
+        partyType="supplier"
+        partyId={statementSupplier?.id ?? ""}
+        partyName={statementSupplier?.name ?? ""}
+        onClose={() => setStatementSupplier(null)}
       />
     </div>
   );

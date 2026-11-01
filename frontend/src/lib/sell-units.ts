@@ -188,6 +188,28 @@ export function allSellUnits(item: InventoryItem): SellUnit[] {
   ];
 }
 
+/**
+ * Defined UoMs on an inventory item for recipes/modifiers:
+ * puts configured Unit conversions (e.g. "stick" where 1 Kg = 22 stick) first,
+ * followed by the base stock unit (e.g. "Kg") and any enabled fractional units.
+ */
+export function itemDefinedUnits(item: InventoryItem | null | undefined): string[] {
+  if (!item) return [];
+  const packs = packUnits(item).map((p) => p.name.trim()).filter(Boolean);
+  const base = baseUnitName(item).trim();
+  const fractional = fractionalSellUnits(item).map((f) => f.name.trim()).filter(Boolean);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const unit of [...packs, ...(base ? [base] : []), ...fractional]) {
+    const key = normalizeUnitName(unit);
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      out.push(unit);
+    }
+  }
+  return out;
+}
+
 export function resolveSellUnit(
   item: InventoryItem,
   sellUnitName?: string | null,

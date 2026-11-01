@@ -13,14 +13,14 @@ export async function fetchShopSuppliers(): Promise<ShopSupplier[]> {
 
 export async function createShopSupplier(payload: {
   name: string;
-  phone: string;
+  phone?: string | null;
   notes?: string | null;
 }): Promise<ShopSupplier> {
   const res = await apiFetch<ShopSupplierMutationResponse>(apiRoutes.suppliers, {
     method: "POST",
     body: JSON.stringify({
       name: payload.name.trim(),
-      phone: payload.phone.trim(),
+      phone: payload.phone?.trim() || null,
       notes: payload.notes?.trim() || null,
     }),
   });

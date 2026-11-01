@@ -1474,35 +1474,31 @@ def create_order(
             db.flush()  # order item ids for the ledger links
             consume_for_order(db, order, order_items, account=shop, user_id=user.id)
         else:
-            if deduct_stock(
-                db,
-                [
-                    (inv_item.id, line.quantity * unit_factor)
-                    for line, inv_item, _, _, _, _, unit_factor in resolved_lines
-                    if inv_item
-                ]
-                + [
-                    stock_line
-                    for (line, *_), usage in zip(resolved_lines, line_usage)
-                    for stock_line in stock_usage_lines(
-                        usage, Decimal(str(line.quantity)), recipe=False,
-                    )
-                ],
-                account_id=account_id,
-            ):
+            has_recipe_by_line = [
+                isinstance(usage, list) and any(isinstance(r, dict) and r.get("recipe") for r in usage)
+                for usage in line_usage
+            ]
+            direct_lines = [
+                (inv_item.id, line.quantity * unit_factor)
+                for (line, inv_item, _, _, _, _, unit_factor), has_rec in zip(resolved_lines, has_recipe_by_line)
+                if inv_item and not has_rec
+            ] + [
+                stock_line
+                for (line, *_), usage in zip(resolved_lines, line_usage)
+                for stock_line in stock_usage_lines(
+                    usage, Decimal(str(line.quantity)), recipe=False,
+                )
+            ]
+            if deduct_stock(db, direct_lines, account_id=account_id, allow_negative=True):
                 order.stock_deducted = True
-            if deduct_stock(
-                db,
-                [
-                    stock_line
-                    for (line, *_), usage in zip(resolved_lines, line_usage)
-                    for stock_line in stock_usage_lines(
-                        usage, Decimal(str(line.quantity)), recipe=True,
-                    )
-                ],
-                account_id=account_id,
-                allow_negative=True,
-            ):
+            recipe_lines = [
+                stock_line
+                for (line, *_), usage in zip(resolved_lines, line_usage)
+                for stock_line in stock_usage_lines(
+                    usage, Decimal(str(line.quantity)), recipe=True,
+                )
+            ]
+            if deduct_stock(db, recipe_lines, account_id=account_id, allow_negative=False):
                 order.stock_deducted = True
     except InsufficientStockError as exc:
         db.rollback()

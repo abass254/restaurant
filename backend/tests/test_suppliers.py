@@ -50,6 +50,29 @@ def test_create_supplier_persists_normalized_phone() -> None:
     db.commit.assert_called_once()
 
 
+def test_create_supplier_without_phone() -> None:
+    db = MagicMock()
+    db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+    captured = {}
+
+    def capture_add(obj) -> None:
+        captured["supplier"] = obj
+        obj.id = "sup-2"
+
+    db.add.side_effect = capture_add
+
+    service = SupplierService(db)
+    supplier = service.create_supplier(
+        "acct-1",
+        name="Phoneless Supplier",
+    )
+
+    assert supplier is captured["supplier"]
+    assert captured["supplier"].name == "Phoneless Supplier"
+    assert captured["supplier"].phone is None
+    db.commit.assert_called_once()
+
+
 def test_update_supplier_rejects_empty_name() -> None:
     db = MagicMock()
     existing = MagicMock()

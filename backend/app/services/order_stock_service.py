@@ -209,8 +209,10 @@ def consume_for_order(
         "order_id": order.id,
         "user_id": user_id,
     }
-    movements = record_stock_out(db, strict, allow_negative=False, **common)
-    movements += record_stock_out(db, flexible, allow_negative=not block_recipe, **common)
+    # Direct items adjust stock without blocking (allow negative)
+    movements = record_stock_out(db, strict, allow_negative=True, **common)
+    # Recipe ingredients check that the required recipe quantity is in stock
+    movements += record_stock_out(db, flexible, allow_negative=False, **common)
 
     costs: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
     for movement in movements:
@@ -237,8 +239,8 @@ def _sale_movements(db: Session, order: Order) -> list[StockMovement]:
 
 
 def _unreversed_sales(db: Session, order: Order, sales: list[StockMovement]) -> list[tuple[StockMovement, Decimal]]:
-    """Each (item, order line) still out of stock after earlier reversals, with its first sale row."""
-    reversed_qty: dict[tuple[str, str | None], Decimal] = defaultdict(lambda: Decimal("0"))
+    """Each (item, order line, location) still out of stock after earlier reversals, with its first sale row."""
+    reversed_qty: dict[tuple[str, str | None, str | None], Decimal] = defaultdict(lambda: Decimal("0"))
     for row in (
         db.query(StockMovement)
         .filter(
@@ -248,10 +250,10 @@ def _unreversed_sales(db: Session, order: Order, sales: list[StockMovement]) -> 
         )
         .all()
     ):
-        reversed_qty[(row.inventory_item_id, row.order_item_id)] += Decimal(str(row.quantity))
-    outstanding: dict[tuple[str, str | None], tuple[StockMovement, Decimal]] = {}
+        reversed_qty[(row.inventory_item_id, row.order_item_id, row.location)] += Decimal(str(row.quantity))
+    outstanding: dict[tuple[str, str | None, str | None], tuple[StockMovement, Decimal]] = {}
     for sale in sales:
-        key = (sale.inventory_item_id, sale.order_item_id)
+        key = (sale.inventory_item_id, sale.order_item_id, sale.location)
         first, qty = outstanding.get(key, (sale, Decimal("0")))
         outstanding[key] = (first, qty + Decimal(str(sale.quantity)))
     remaining = []
@@ -385,8 +387,8 @@ def adjust_line_quantity(
     if delta > 0:
         block_recipe = bool(getattr(account, "block_sale_on_low_ingredients", False))
         common = {"account_id": account_id, "reason": "sale", "order_id": order.id, "user_id": user_id}
-        movements = record_stock_out(db, strict, allow_negative=False, **common)
-        movements += record_stock_out(db, flexible, allow_negative=not block_recipe, **common)
+        movements = record_stock_out(db, strict, allow_negative=True, **common)
+        movements += record_stock_out(db, flexible, allow_negative=False, **common)
         for movement in movements:
             change += Decimal(str(movement.total_cost or 0))
         if movements:

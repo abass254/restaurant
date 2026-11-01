@@ -139,10 +139,9 @@ export default function SupplierPage() {
     const name = form.name.trim();
     const phone = form.phone.trim();
     if (!name) throw new Error("Enter the supplier's name.");
-    if (!phone) throw new Error("Enter a phone number.");
     return {
       name,
-      phone,
+      phone: phone || null,
       notes: form.notes.trim() || null,
     };
   }
@@ -349,7 +348,7 @@ export default function SupplierPage() {
                   <div className="customer-card__name">{supplier.name}</div>
                   <div className="customer-card__phone-row">
                     <i className="fa-solid fa-phone" aria-hidden="true" style={{ fontSize: "0.65rem", opacity: 0.5 }} />
-                    <span>{supplier.phone}</span>
+                    <span>{supplier.phone || "—"}</span>
                   </div>
                   {supplier.notes ? (
                     <div className="customer-card__address">

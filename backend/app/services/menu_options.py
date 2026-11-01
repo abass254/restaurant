@@ -20,6 +20,7 @@ from app.models import (
     RecipeLine,
 )
 
+from app.services.sell_units import sell_units_for_item
 from app.support.store_type import is_restaurant
 
 
@@ -213,6 +214,25 @@ def _extra_needs(option: ModifierOption, meal_ids: set[str]) -> list[tuple[str, 
     return []
 
 
+def _item_unit_factor(item: InventoryItem | None, portion_unit: str | None) -> Decimal:
+    """Factor converting 1 ``portion_unit`` into the item's base unit using defined Unit conversions."""
+    if item is None or not portion_unit or not portion_unit.strip():
+        return Decimal("1")
+    wanted = portion_unit.strip().lower()
+    units = sell_units_for_item(item)
+    base_name = (str(units[0].get("name") or "") if units else "").strip().lower()
+    if wanted == base_name:
+        return Decimal("1")
+    for unit in units[1:]:
+        if str(unit.get("name") or "").strip().lower() == wanted:
+            ref = str(unit.get("reference_unit") or "").strip().lower()
+            conv = unit.get("conversion_amount")
+            if unit.get("reverse") is True and conv and (not ref or ref == base_name):
+                return Decimal("1") / Decimal(str(conv))
+            return Decimal(str(unit.get("factor") or 1))
+    return Decimal("1")
+
+
 def _source_needs(
     db: Session,
     account_id: str,
@@ -223,8 +243,16 @@ def _source_needs(
 ) -> None:
     """Stock one pick of a modifier uses through its source: a store item, a menu item or an extra."""
     kind = option.source_kind
+    per_pick = Decimal(str(option.stock_qty or 1))
     if kind == "store_item" and option.source_product_id:
-        needs.append((str(option.source_product_id), Decimal("1"), "exact"))
+        inv = (
+            db.query(InventoryItem)
+            .options(joinedload(InventoryItem.product))
+            .filter(InventoryItem.account_id == account_id, InventoryItem.product_id == option.source_product_id)
+            .first()
+        )
+        factor = _item_unit_factor(inv, getattr(option, "portion_unit", None))
+        needs.append((str(option.source_product_id), per_pick * factor, "exact"))
     elif kind == "menu" and option.source_product_id:
         menu = option.source_product
         inv = (
@@ -233,22 +261,23 @@ def _source_needs(
             .first()
         )
         if inv is not None and inv.prepared_quantity is not None:
-            prepared[str(inv.id)] = prepared.get(str(inv.id), Decimal("0")) + 1
+            prepared[str(inv.id)] = prepared.get(str(inv.id), Decimal("0")) + per_pick
             return
         lines = account_recipe(menu, account_id)
         if lines:
             needs.extend(
-                (str(line.ingredient_product_id), _recipe_line_quantity(line), "option_recipe") for line in lines
+                (str(line.ingredient_product_id), _recipe_line_quantity(line) * per_pick, "option_recipe")
+                for line in lines
             )
         else:
-            needs.append((str(option.source_product_id), Decimal("1"), "exact"))
+            needs.append((str(option.source_product_id), per_pick, "exact"))
     elif kind == "extra" and option.source_option is not None:
         extra = option.source_option
         matched = _extra_needs(extra, meal_ids)
         if not matched and extra.recipes:
             first = extra.recipes[0]
             matched = [(str(first.product_id), Decimal(str(first.stock_qty or 1)), "exact")]
-        needs.extend(matched)
+        needs.extend((pid, qty * per_pick, k) for pid, qty, k in matched)
 
 
 def resolve_line_options(
@@ -396,6 +425,7 @@ def option_availability(db: Session, account: Account | None) -> list[dict]:
     def source_row(option: ModifierOption, extra_rows: dict[str, dict]) -> dict:
         """on_hand / location / unit / short for a modifier that uses a store item, menu item or extra."""
         kind = option.source_kind
+        per_pick = Decimal(str(option.stock_qty or 1))
         if kind == "extra":
             row = extra_rows.get(str(option.source_option_id))
             if row is None:
@@ -413,17 +443,19 @@ def option_availability(db: Session, account: Account | None) -> list[dict]:
             return {"short": True, "unit": unit}
         if kind == "menu" and item is not None and item.prepared_quantity is not None:
             have = Decimal(str(item.prepared_quantity or 0))
-            return {"short": have < 1, "on_hand": float(have), "location": "prepared", "unit": unit}
+            return {"short": have < per_pick, "on_hand": float(have), "location": "prepared", "unit": unit}
         if kind == "menu" and menu_recipes.get(product_id):
             short = False
             for line in menu_recipes[product_id]:
                 have, _ = on_hand_of(str(line.ingredient_product_id))
-                if have is not None and have < _recipe_line_quantity(line):
+                if have is not None and have < _recipe_line_quantity(line) * per_pick:
                     short = True
             return {"short": short}
         have, where = on_hand_of(product_id)
+        factor = _item_unit_factor(item, getattr(option, "portion_unit", None))
+        needed = per_pick * factor
         return {
-            "short": have is not None and have < 1,
+            "short": have is not None and have < needed,
             "on_hand": float(have) if have is not None else None,
             "location": where,
             "unit": unit,

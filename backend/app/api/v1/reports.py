@@ -57,3 +57,37 @@ def get_reports_summary(
         source=source,
     )
     return {"data": data}
+
+
+@router.get("/statements")
+def get_reports_statements_overview(
+    start: date | None = Query(default=None),
+    end: date | None = Query(default=None),
+    tz_offset_minutes: int = Query(default=DEFAULT_TZ_OFFSET_MINUTES, ge=-720, le=840),
+    db: Session = Depends(get_db),
+    session: dict = Depends(get_request_session),
+):
+    """Account-wide Statement of Account & Cash Flow summary for all customers and suppliers."""
+    from app.services.statement_service import build_statements_overview
+
+    user = require_user(db, session)
+    assert_merchant_section_any_access(
+        user, "dashboard", "orders", "pos", "inventory", "customer", "supplier"
+    )
+    account_id = active_account_id(user)
+    if not account_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="No active shop")
+
+    start_date = start
+    end_date = end
+    if start_date and end_date and start_date > end_date:
+        start_date, end_date = end_date, start_date
+
+    data = build_statements_overview(
+        db=db,
+        account_id=str(account_id),
+        start=start_date,
+        end=end_date,
+        tz_offset_minutes=tz_offset_minutes,
+    )
+    return {"data": data}

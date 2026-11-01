@@ -9,7 +9,7 @@ from typing import Any, Literal
 
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import InventoryItem, Order, PreparedMenuStock, StockMovement
+from app.models import Account, InventoryItem, Order, PreparedMenuStock, StockMovement
 
 
 class InsufficientStockError(ValueError):
@@ -76,7 +76,6 @@ lock_item = _locked_item
 def _product_name(item: InventoryItem) -> str:
     return (item.product.name if item.product else "Product").strip() or "Product"
 
-
 def deduct_stock(
     db: Session,
     lines: list[tuple[str, int | float | Decimal]],
@@ -86,9 +85,9 @@ def deduct_stock(
 ) -> bool:
     """Lock inventory rows and subtract quantities.
 
-    Items with ``stock_quantity = NULL`` (services / unlimited stock) are
-    skipped. Returns ``True`` when at least one tracked row was decremented.
-    ``allow_negative`` is for recipe estimates, which must not block a sale.
+    Items with ``stock_quantity = NULL`` and ``kitchen_quantity = NULL`` (services / unlimited stock)
+    are skipped. Returns ``True`` when at least one tracked row was decremented.
+    If there are items in the kitchen, always deducts them first before main inventory.
     """
     totals = _aggregate_lines(lines)
     if not totals:
@@ -98,17 +97,32 @@ def deduct_stock(
     adjusted = False
     for item_id, qty in totals.items():
         item = _locked_item(db, item_id, account_id=account_id)
-        if item is None or item.stock_quantity is None:
+        if item is None:
             continue
-        if qty > item.stock_quantity and not allow_negative:
-            raise InsufficientStockError(
-                _product_name(item),
-                qty,
-                item.stock_quantity,
-            )
-        item.stock_quantity -= qty
-        item.updated_at = now
-        adjusted = True
+        kitchen_val = getattr(item, "kitchen_quantity", None)
+        if getattr(item, "stock_quantity", None) is None and kitchen_val is None:
+            continue
+
+        kitchen_qty = max(_qty(kitchen_val), Decimal("0")) if kitchen_val is not None else Decimal("0")
+        store_qty = _qty(item.stock_quantity) if getattr(item, "stock_quantity", None) is not None else None
+
+        if not allow_negative and store_qty is not None:
+            total_avail = kitchen_qty + max(store_qty, Decimal("0"))
+            if qty > total_avail:
+                raise InsufficientStockError(_product_name(item), qty, total_avail)
+
+        from_kitchen = min(qty, kitchen_qty) if kitchen_qty > 0 else Decimal("0")
+        from_store = qty - from_kitchen
+
+        if from_kitchen > 0 and kitchen_val is not None:
+            item.kitchen_quantity -= from_kitchen
+            adjusted = True
+        if from_store > 0 and getattr(item, "stock_quantity", None) is not None:
+            item.stock_quantity -= from_store
+            adjusted = True
+
+        if adjusted:
+            item.updated_at = now
     return adjusted
 
 
@@ -659,10 +673,12 @@ def record_stock_out(
 ) -> list[StockMovement]:
     """Take stock out for several lines, one movement per item, location and order line.
 
-    Untracked rows (``stock_quantity`` NULL) are skipped. The shortage check
-    uses each item's total per location across all lines.
+    Untracked rows (``stock_quantity`` NULL and ``kitchen_quantity`` NULL) are skipped.
+    If there are items in the kitchen, always deducts them first before the main inventory.
     """
-    per_item: dict[tuple[str, StockLocation, str | None], dict[str | None, Decimal]] = {}
+    prepared_lines: dict[tuple[str, StockLocation, str | None], dict[str | None, Decimal]] = {}
+    standard_lines: dict[str, dict[str | None, Decimal]] = {}
+
     for line in lines:
         item_id = str(line.inventory_item_id or "").strip()
         try:
@@ -671,12 +687,18 @@ def record_stock_out(
             continue
         if not item_id or qty <= 0:
             continue
-        bucket = per_item.setdefault((item_id, line.location, line.serving_unit), {})
-        bucket[line.order_item_id] = bucket.get(line.order_item_id, Decimal("0")) + qty
+        if line.location == "prepared" or line.serving_unit is not None:
+            bucket = prepared_lines.setdefault((item_id, line.location, line.serving_unit), {})
+            bucket[line.order_item_id] = bucket.get(line.order_item_id, Decimal("0")) + qty
+        else:
+            bucket = standard_lines.setdefault(item_id, {})
+            bucket[line.order_item_id] = bucket.get(line.order_item_id, Decimal("0")) + qty
 
     now = datetime.utcnow()
     movements: list[StockMovement] = []
-    for (item_id, location, serving_unit), by_line in per_item.items():
+
+    # 1. Prepared stock lines
+    for (item_id, location, serving_unit), by_line in prepared_lines.items():
         item = _locked_item(db, item_id, account_id=account_id)
         if item is None or location_quantity(item, location, serving_unit, db=db) is None:
             continue
@@ -702,6 +724,76 @@ def record_stock_out(
                     serving_unit=serving_unit,
                 )
             )
+
+    # 2. Standard stock lines: kitchen first, then main inventory (store)
+    account = db.get(Account, account_id) if db is not None else None
+    kitchen_on = bool(getattr(account, "kitchen_issuing_enabled", False))
+    block_recipe = bool(getattr(account, "block_sale_on_low_ingredients", False))
+
+    for item_id, by_line in standard_lines.items():
+        item = _locked_item(db, item_id, account_id=account_id)
+        if item is None:
+            continue
+        kitchen_val = getattr(item, "kitchen_quantity", None)
+        store_val = getattr(item, "stock_quantity", None)
+        if store_val is None and kitchen_val is None:
+            continue
+
+        total = sum(by_line.values(), Decimal("0"))
+        kitchen_qty = max(_qty(kitchen_val), Decimal("0")) if kitchen_val is not None else Decimal("0")
+        store_qty = _qty(store_val) if store_val is not None else None
+
+        if not allow_negative:
+            if kitchen_on and block_recipe:
+                available = kitchen_qty
+            else:
+                available = kitchen_qty + (max(store_qty, Decimal("0")) if store_qty is not None else Decimal("0"))
+            if store_qty is not None and total > available:
+                raise InsufficientStockError(_product_name(item), total, available)
+
+        avail_kitchen = kitchen_qty
+        for order_item_id, qty in by_line.items():
+            from_kitchen = min(qty, avail_kitchen) if avail_kitchen > 0 else Decimal("0")
+            avail_kitchen -= from_kitchen
+            from_store = qty - from_kitchen
+
+            if from_kitchen > 0:
+                movements.append(
+                    record_movement(
+                        db,
+                        item,
+                        account_id=account_id,
+                        direction="out",
+                        quantity=from_kitchen,
+                        reason=reason,
+                        allow_negative=True,
+                        note=note,
+                        user_id=user_id,
+                        links={"order_id": order_id, "order_item_id": order_item_id},
+                        now=now,
+                        location="kitchen",
+                        serving_unit=None,
+                    )
+                )
+            if from_store > 0 and (item.stock_quantity is not None or avail_kitchen == 0):
+                movements.append(
+                    record_movement(
+                        db,
+                        item,
+                        account_id=account_id,
+                        direction="out",
+                        quantity=from_store,
+                        reason=reason,
+                        allow_negative=True,
+                        note=note,
+                        user_id=user_id,
+                        links={"order_id": order_id, "order_item_id": order_item_id},
+                        now=now,
+                        location="store",
+                        serving_unit=None,
+                    )
+                )
+
     return movements
 
 

@@ -24,9 +24,10 @@ import {
   type RangePreset,
 } from "@/lib/trans-chap-range";
 import { formatKesDigits, formatKsh } from "@/lib/trans-chap-receipt";
-import type { InventoryItem, InventoryResponse, Order } from "@/lib/types";
+import type { InventoryItem, InventoryResponse, Order, StatementsOverviewResponse } from "@/lib/types";
+import { TransChapStatementModal } from "@/components/trans-chap/TransChapStatementModal";
 
-type ReportView = "performance" | "worth";
+type ReportView = "performance" | "worth" | "statements";
 type ProductSort = "amount" | "qty";
 
 const PRESETS: RangePreset[] = ["today", "yesterday", "7d", "30d", "month", "all", "custom"];
@@ -69,6 +70,41 @@ export function TransChapReports() {
   const [productSort, setProductSort] = useState<ProductSort>("amount");
   const [showAllProducts, setShowAllProducts] = useState(false);
   const [showAllStock, setShowAllStock] = useState(false);
+
+  const [statementsData, setStatementsData] = useState<StatementsOverviewResponse["data"] | null>(null);
+  const [statementsLoading, setStatementsLoading] = useState(false);
+  const [statementsError, setStatementsError] = useState<string | null>(null);
+  const [statementsSearch, setStatementsSearch] = useState("");
+  const [statementsPartyFilter, setStatementsPartyFilter] = useState<"all" | "customers" | "suppliers">("all");
+  const [activeModalParty, setActiveModalParty] = useState<{
+    type: "customer" | "supplier";
+    id: string;
+    name: string;
+  } | null>(null);
+
+  const rangeFrom = range.preset === "all" ? undefined : range.from;
+  const rangeTo = range.preset === "all" ? undefined : range.to;
+
+  const fetchStatements = useCallback(async () => {
+    setStatementsLoading(true);
+    setStatementsError(null);
+    try {
+      const res = await apiFetch<StatementsOverviewResponse>(
+        apiRoutes.reportsStatements(rangeFrom, rangeTo),
+      );
+      setStatementsData(res.data);
+    } catch {
+      setStatementsError("Could not load statements and cash flow overview.");
+    } finally {
+      setStatementsLoading(false);
+    }
+  }, [rangeFrom, rangeTo]);
+
+  useEffect(() => {
+    if (view === "statements") {
+      void fetchStatements();
+    }
+  }, [view, fetchStatements]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -281,6 +317,32 @@ export function TransChapReports() {
     return parts.join(" · ");
   })();
 
+  const filteredCustomers = useMemo(() => {
+    if (!statementsData?.customers) return [];
+    const q = statementsSearch.trim().toLowerCase();
+    if (!q) return statementsData.customers;
+    return statementsData.customers.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.phone && c.phone.toLowerCase().includes(q)) ||
+        (c.city && c.city.toLowerCase().includes(q)) ||
+        (c.pin_number && c.pin_number.toLowerCase().includes(q)),
+    );
+  }, [statementsData?.customers, statementsSearch]);
+
+  const filteredSuppliers = useMemo(() => {
+    if (!statementsData?.suppliers) return [];
+    const q = statementsSearch.trim().toLowerCase();
+    if (!q) return statementsData.suppliers;
+    return statementsData.suppliers.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        (s.phone && s.phone.toLowerCase().includes(q)) ||
+        (s.city && s.city.toLowerCase().includes(q)) ||
+        (s.pin_number && s.pin_number.toLowerCase().includes(q)),
+    );
+  }, [statementsData?.suppliers, statementsSearch]);
+
   return (
     <div className="trans-chap-sales trans-chap-reports">
       <TransChapStoreProfile>
@@ -306,8 +368,18 @@ export function TransChapReports() {
               <i className="fa-solid fa-scale-balanced" aria-hidden />
               Business worth
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === "statements"}
+              className={view === "statements" ? "is-on" : undefined}
+              onClick={() => setView("statements")}
+            >
+              <i className="fa-solid fa-file-invoice-dollar" aria-hidden />
+              Statements &amp; Cash Flow
+            </button>
           </div>
-          {view === "performance" ? (
+          {view === "performance" || view === "statements" ? (
             <TransChapRangeFilter
               value={range}
               onChange={(next) => {
@@ -404,6 +476,304 @@ export function TransChapReports() {
                   </div>
                 </dl>
               </section>
+            </div>
+          ) : view === "statements" ? (
+            <div className="trans-chap-reports__body trans-chap-statements-overview">
+              {statementsLoading && !statementsData ? (
+                <TransChapTodaySkeleton />
+              ) : statementsError ? (
+                <TransChapStatus tone="error">{statementsError}</TransChapStatus>
+              ) : statementsData ? (
+                <>
+                  <section
+                    className={`trans-chap-reports__profit trans-chap-reports__wide${
+                      statementsData.cash_flow_summary.net_cash_flow < 0 ? " is-loss" : ""
+                    }`}
+                  >
+                    <div className="trans-chap-reports__profit-copy">
+                      <span>Net Cash Flow · {periodText}</span>
+                      <Money amount={statementsData.cash_flow_summary.net_cash_flow} />
+                      <p>
+                        Customer collections {formatKsh(statementsData.cash_flow_summary.customer_inflow)} − Supplier payments {formatKsh(statementsData.cash_flow_summary.supplier_outflow)}
+                      </p>
+                    </div>
+                    <i
+                      className={`fa-solid ${
+                        statementsData.cash_flow_summary.net_cash_flow < 0
+                          ? "fa-arrow-trend-down"
+                          : "fa-arrow-trend-up"
+                      }`}
+                      aria-hidden
+                    />
+                  </section>
+
+                  <section className="trans-chap-reports__kpis trans-chap-reports__wide">
+                    <article className="trans-chap-reports__kpi trans-chap-reports__kpi--sale">
+                      <span>Customer Inflow</span>
+                      <Money amount={statementsData.cash_flow_summary.customer_inflow} />
+                      <small>Cash &amp; M-PESA collected</small>
+                    </article>
+                    <article className="trans-chap-reports__kpi trans-chap-reports__kpi--purchase">
+                      <span>Supplier Outflow</span>
+                      <Money amount={statementsData.cash_flow_summary.supplier_outflow} />
+                      <small>Cash paid to suppliers</small>
+                    </article>
+                    <article className="trans-chap-reports__kpi trans-chap-reports__kpi--opening">
+                      <span>Receivables</span>
+                      <Money amount={statementsData.cash_flow_summary.total_receivables} />
+                      <small>Owed to you by customers</small>
+                    </article>
+                    <article className="trans-chap-reports__kpi trans-chap-reports__kpi--avg">
+                      <span>Payables</span>
+                      <Money amount={statementsData.cash_flow_summary.total_payables} />
+                      <small>Owed by you to suppliers</small>
+                    </article>
+                  </section>
+
+                  {statementsData.cash_flow_summary.pending_cheques > 0 ? (
+                    <div
+                      className="trans-chap-statements-overview__pending-cheque"
+                      style={{ alignSelf: "flex-start", padding: "0.5rem 0.85rem", fontSize: "0.82rem" }}
+                    >
+                      <i className="fa-solid fa-clock" aria-hidden />
+                      <strong>{formatKsh(statementsData.cash_flow_summary.pending_cheques)}</strong> in{" "}
+                      {statementsData.cash_flow_summary.pending_cheques_count} uncleared / post-dated supplier cheques
+                    </div>
+                  ) : null}
+
+                  <div className="trans-chap-statements-overview__subnav">
+                    <div className="trans-chap-statements-overview__search">
+                      <i className="fa-solid fa-magnifying-glass" aria-hidden />
+                      <input
+                        type="text"
+                        placeholder="Search by name, phone, city, PIN..."
+                        value={statementsSearch}
+                        onChange={(e) => setStatementsSearch(e.target.value)}
+                      />
+                    </div>
+                    <div className="trans-chap-statements-overview__filters" role="group" aria-label="Filter accounts">
+                      <button
+                        type="button"
+                        className={statementsPartyFilter === "all" ? "is-active" : undefined}
+                        onClick={() => setStatementsPartyFilter("all")}
+                      >
+                        All Accounts
+                      </button>
+                      <button
+                        type="button"
+                        className={statementsPartyFilter === "customers" ? "is-active" : undefined}
+                        onClick={() => setStatementsPartyFilter("customers")}
+                      >
+                        Customers ({filteredCustomers.length})
+                      </button>
+                      <button
+                        type="button"
+                        className={statementsPartyFilter === "suppliers" ? "is-active" : undefined}
+                        onClick={() => setStatementsPartyFilter("suppliers")}
+                      >
+                        Suppliers ({filteredSuppliers.length})
+                      </button>
+                    </div>
+                  </div>
+
+                  {statementsPartyFilter !== "suppliers" ? (
+                    <section className="trans-chap-reports__block trans-chap-reports__wide">
+                      <header className="trans-chap-reports__block-head">
+                        <div>
+                          <h2>Customers Statement &amp; Inflow</h2>
+                          <small style={{ color: "var(--app-text-secondary)", fontSize: "0.78rem" }}>
+                            {filteredCustomers.length} customer{filteredCustomers.length === 1 ? "" : "s"} · Total billed{" "}
+                            {formatKsh(statementsData.cash_flow_summary.customer_total_billed)} · Total paid{" "}
+                            {formatKsh(statementsData.cash_flow_summary.customer_total_paid)}
+                          </small>
+                        </div>
+                      </header>
+
+                      {filteredCustomers.length === 0 ? (
+                        <p className="trans-chap-reports__empty">No customer accounts match your search.</p>
+                      ) : (
+                        <div className="trans-chap-statements-overview__table-wrapper">
+                          <table className="trans-chap-statements-overview__table">
+                            <thead>
+                              <tr>
+                                <th>Customer</th>
+                                <th className="num">Billed in Period</th>
+                                <th className="num">Paid in Period</th>
+                                <th className="num">Cash Inflow</th>
+                                <th className="num">Balance Owed</th>
+                                <th style={{ textAlign: "right" }}>Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredCustomers.map((cust) => (
+                                <tr key={cust.id}>
+                                  <td>
+                                    <span className="trans-chap-statements-overview__party-name">{cust.name}</span>
+                                    <span className="trans-chap-statements-overview__party-sub">
+                                      {cust.phone || "No phone"} {cust.city ? `· ${cust.city}` : ""}
+                                    </span>
+                                  </td>
+                                  <td className="num">{formatKsh(cust.total_billed)}</td>
+                                  <td className="num">
+                                    {formatKsh(cust.total_paid)}
+                                    {cust.total_paid > 0 && (
+                                      <span className="trans-chap-statements-overview__party-sub">
+                                        Cash: {formatKsh(cust.paid_cash)} | M-PESA: {formatKsh(cust.paid_mpesa)}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="num trans-chap-statements-overview__inflow">
+                                    +{formatKsh(cust.cash_flow)}
+                                  </td>
+                                  <td className="num">
+                                    <strong style={{ color: cust.current_balance > 0 ? "#dc2626" : "inherit" }}>
+                                      {formatKsh(cust.current_balance)}
+                                    </strong>
+                                    {cust.credit_limit > 0 && (
+                                      <span className="trans-chap-statements-overview__party-sub">
+                                        Limit: {formatKsh(cust.credit_limit)}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td style={{ textAlign: "right" }}>
+                                    <div className="trans-chap-statements-overview__actions">
+                                      <button
+                                        type="button"
+                                        className="trans-chap-statements-overview__btn trans-chap-statements-overview__btn--primary"
+                                        onClick={() =>
+                                          setActiveModalParty({
+                                            type: "customer",
+                                            id: cust.id,
+                                            name: cust.name,
+                                          })
+                                        }
+                                      >
+                                        <i className="fa-solid fa-file-lines" aria-hidden /> Statement
+                                      </button>
+                                      <a
+                                        className="trans-chap-statements-overview__btn"
+                                        href={`${apiRoutes.customerStatement(
+                                          cust.id,
+                                          rangeFrom,
+                                          rangeTo,
+                                        )}&format=csv`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title="Download CSV"
+                                      >
+                                        <i className="fa-solid fa-download" aria-hidden /> CSV
+                                      </a>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </section>
+                  ) : null}
+
+                  {statementsPartyFilter !== "customers" ? (
+                    <section className="trans-chap-reports__block trans-chap-reports__wide">
+                      <header className="trans-chap-reports__block-head">
+                        <div>
+                          <h2>Suppliers Statement &amp; Outflow</h2>
+                          <small style={{ color: "var(--app-text-secondary)", fontSize: "0.78rem" }}>
+                            {filteredSuppliers.length} supplier{filteredSuppliers.length === 1 ? "" : "s"} · Total purchases{" "}
+                            {formatKsh(statementsData.cash_flow_summary.supplier_total_billed)} · Total paid{" "}
+                            {formatKsh(statementsData.cash_flow_summary.supplier_total_paid)}
+                          </small>
+                        </div>
+                      </header>
+
+                      {filteredSuppliers.length === 0 ? (
+                        <p className="trans-chap-reports__empty">No supplier accounts match your search.</p>
+                      ) : (
+                        <div className="trans-chap-statements-overview__table-wrapper">
+                          <table className="trans-chap-statements-overview__table">
+                            <thead>
+                              <tr>
+                                <th>Supplier</th>
+                                <th className="num">Purchases in Period</th>
+                                <th className="num">Paid in Period</th>
+                                <th className="num">Cash Outflow</th>
+                                <th className="num">Balance Owed</th>
+                                <th style={{ textAlign: "right" }}>Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredSuppliers.map((sup) => (
+                                <tr key={sup.id}>
+                                  <td>
+                                    <span className="trans-chap-statements-overview__party-name">{sup.name}</span>
+                                    <span className="trans-chap-statements-overview__party-sub">
+                                      {sup.phone || "No phone"} {sup.city ? `· ${sup.city}` : ""}
+                                    </span>
+                                  </td>
+                                  <td className="num">{formatKsh(sup.total_billed)}</td>
+                                  <td className="num">
+                                    {formatKsh(sup.total_paid)}
+                                    {Boolean(sup.pending_cheques && sup.pending_cheques > 0) && (
+                                      <span className="trans-chap-statements-overview__pending-cheque">
+                                        <i className="fa-solid fa-clock" aria-hidden /> Cheque:{" "}
+                                        {formatKsh(sup.pending_cheques!)}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="num trans-chap-statements-overview__outflow">
+                                    −{formatKsh(Math.abs(sup.cash_flow))}
+                                  </td>
+                                  <td className="num">
+                                    <strong style={{ color: sup.current_balance > 0 ? "#ea580c" : "inherit" }}>
+                                      {formatKsh(sup.current_balance)}
+                                    </strong>
+                                    {sup.credit_limit > 0 && (
+                                      <span className="trans-chap-statements-overview__party-sub">
+                                        Limit: {formatKsh(sup.credit_limit)}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td style={{ textAlign: "right" }}>
+                                    <div className="trans-chap-statements-overview__actions">
+                                      <button
+                                        type="button"
+                                        className="trans-chap-statements-overview__btn trans-chap-statements-overview__btn--primary"
+                                        onClick={() =>
+                                          setActiveModalParty({
+                                            type: "supplier",
+                                            id: sup.id,
+                                            name: sup.name,
+                                          })
+                                        }
+                                      >
+                                        <i className="fa-solid fa-file-lines" aria-hidden /> Statement
+                                      </button>
+                                      <a
+                                        className="trans-chap-statements-overview__btn"
+                                        href={`${apiRoutes.supplierStatement(
+                                          sup.id,
+                                          rangeFrom,
+                                          rangeTo,
+                                        )}&format=csv`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title="Download CSV"
+                                      >
+                                        <i className="fa-solid fa-download" aria-hidden /> CSV
+                                      </a>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </section>
+                  ) : null}
+                </>
+              ) : null}
             </div>
           ) : (
             <div className="trans-chap-reports__body">
@@ -627,6 +997,16 @@ export function TransChapReports() {
           )}
         </div>
       </TransChapStoreProfile>
+
+      {activeModalParty ? (
+        <TransChapStatementModal
+          open={Boolean(activeModalParty)}
+          partyType={activeModalParty.type}
+          partyId={activeModalParty.id}
+          partyName={activeModalParty.name}
+          onClose={() => setActiveModalParty(null)}
+        />
+      ) : null}
     </div>
   );
 }
