@@ -598,7 +598,7 @@ export function TransChapPurchasesList() {
                   borderRadius: 8,
                   cursor: "pointer",
                   background: groupMode === "batches" ? "var(--app-primary)" : "transparent",
-                  color: groupMode === "batches" ? "#ffffff" : "var(--app-text-secondary)",
+                  color: groupMode === "batches" ? "var(--app-primary-text)" : "var(--app-text-secondary)",
                 }}
                 onClick={() => setGroupMode("batches")}
               >
@@ -616,7 +616,7 @@ export function TransChapPurchasesList() {
                   borderRadius: 8,
                   cursor: "pointer",
                   background: groupMode === "items" ? "var(--app-primary)" : "transparent",
-                  color: groupMode === "items" ? "#ffffff" : "var(--app-text-secondary)",
+                  color: groupMode === "items" ? "var(--app-primary-text)" : "var(--app-text-secondary)",
                 }}
                 onClick={() => setGroupMode("items")}
               >

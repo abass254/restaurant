@@ -141,9 +141,19 @@ def retail_db(monkeypatch):
     session.close()
 
 
+def _start_preparing(db, order_id: str):
+    return orders.transition_order(
+        order_id, OrderTransition(to_status="being_prepared"), request=None, db=db, session={},
+    )
+
+
 def _order(db, *lines: dict):
+    """Place a walk-in sale and start preparing it, which is when restaurant stock is taken."""
     payload = OrderCreate(source="walkin", fulfillment_type="dine_in", items=list(lines))
-    return orders.create_order(payload, request=None, db=db, session={})["data"]
+    placed = orders.create_order(payload, request=None, db=db, session={})["data"]
+    if db.get(Account, ACCOUNT).store_type != "restaurant":
+        return placed
+    return _start_preparing(db, placed.id)["data"]
 
 
 def _stock(db, item_id: str) -> float:
@@ -819,7 +829,8 @@ def _credit_order(db, **extra):
         items=[{"inventory_item_id": "inv-chapati", "quantity": 10}],
         **extra,
     )
-    return orders.create_order(payload, request=None, db=db, session={})["data"]
+    placed = orders.create_order(payload, request=None, db=db, session={})["data"]
+    return _start_preparing(db, placed.id)["data"]
 
 
 def _owed(db) -> Decimal:
@@ -926,3 +937,120 @@ def test_kitchen_items_deducted_first_before_main_inventory(rdb):
     assert float(flour.kitchen_quantity) == pytest.approx(3.0)
     assert float(flour.stock_quantity) == pytest.approx(10.0)
 
+
+
+# --- Start preparing --------------------------------------------------------------
+
+
+def _batch_chapati(db):
+    """Chapati made in batches of 10 plates: 1kg flour and 0.1l oil per batch."""
+    menu.replace_recipe(
+        "chapati",
+        RecipeReplace(
+            lines=[
+                RecipeLineIn(product_id="flour", quantity=0.1, batch_quantity=1, batch_yield=10, serving_unit="plates"),
+                RecipeLineIn(product_id="oil", quantity=0.01, batch_quantity=0.1, batch_yield=10, serving_unit="plates"),
+            ],
+            serving_unit="plates",
+        ),
+        request=None,
+        db=db,
+        session={},
+    )
+    db.commit()
+
+
+def _place(db, *lines: dict):
+    payload = OrderCreate(source="walkin", fulfillment_type="dine_in", items=list(lines))
+    return orders.create_order(payload, request=None, db=db, session={})["data"]
+
+
+def test_placing_takes_nothing_until_the_kitchen_starts_preparing(rdb):
+    placed = _place(rdb, {"inventory_item_id": "inv-chapati", "quantity": 10},
+                    {"inventory_item_id": "inv-soda", "quantity": 2})
+    assert rdb.query(StockMovement).filter(StockMovement.order_id == placed.id).count() == 0
+    assert _stock(rdb, "inv-flour") == pytest.approx(10)
+    assert _stock(rdb, "inv-soda") == pytest.approx(24)
+
+    _start_preparing(rdb, placed.id)
+    assert _stock(rdb, "inv-flour") == pytest.approx(9)
+    assert _stock(rdb, "inv-soda") == pytest.approx(22)
+
+    _cancel(rdb, placed.id, waste=False)
+    assert _stock(rdb, "inv-flour") == pytest.approx(10)
+    assert _stock(rdb, "inv-soda") == pytest.approx(24)
+
+
+def test_start_preparing_cooks_missing_portions_kitchen_first_then_store(rdb):
+    _batch_chapati(rdb)
+    flour = rdb.get(InventoryItem, "inv-flour")
+    flour.kitchen_quantity = Decimal("0.1")
+    rdb.commit()
+
+    order = _order(rdb, {"inventory_item_id": "inv-chapati", "quantity": 3, "serving_unit": "plates"})
+    rdb.expire_all()
+    flour = rdb.get(InventoryItem, "inv-flour")
+    assert float(flour.kitchen_quantity) == pytest.approx(0)
+    assert float(flour.stock_quantity) == pytest.approx(9.8)
+    assert _stock(rdb, "inv-oil") == pytest.approx(4.97)
+    assert float(rdb.get(InventoryItem, "inv-chapati").prepared_quantity) == pytest.approx(0)
+    reasons = {
+        (m.reason, m.location)
+        for m in rdb.query(StockMovement).filter(StockMovement.order_id == order.id).all()
+    }
+    assert ("production", "kitchen") in reasons and ("production", "store") in reasons
+    assert ("sale", "prepared") in reasons
+
+
+def test_start_preparing_uses_ready_portions_before_cooking_more(rdb):
+    _batch_chapati(rdb)
+    prepare_recipe_batch(rdb, ACCOUNT, "inv-chapati", serving_unit="plates", user_id="u1")
+    rdb.commit()
+    assert _stock(rdb, "inv-flour") == pytest.approx(9)
+
+    _order(rdb, {"inventory_item_id": "inv-chapati", "quantity": 12, "serving_unit": "plates"})
+    rdb.expire_all()
+    assert float(rdb.get(InventoryItem, "inv-chapati").prepared_quantity) == pytest.approx(0)
+    assert _stock(rdb, "inv-flour") == pytest.approx(8.8)
+
+
+def test_start_preparing_blocks_when_ingredients_are_missing(rdb):
+    _batch_chapati(rdb)
+    rdb.get(InventoryItem, "inv-flour").stock_quantity = Decimal("0.1")
+    rdb.commit()
+    placed = _place(rdb, {"inventory_item_id": "inv-chapati", "quantity": 3, "serving_unit": "plates"})
+    with pytest.raises(HTTPException) as exc:
+        _start_preparing(rdb, placed.id)
+    assert exc.value.status_code == 422
+    rdb.expire_all()
+    assert rdb.get(Order, placed.id).status == "placed"
+    assert _stock(rdb, "inv-flour") == pytest.approx(0.1)
+    assert float(rdb.get(InventoryItem, "inv-chapati").prepared_quantity) == pytest.approx(0)
+
+
+def test_skipping_straight_to_ready_still_takes_stock_once(rdb):
+    placed = _place(rdb, {"inventory_item_id": "inv-chapati", "quantity": 10})
+    orders.transition_order(placed.id, OrderTransition(to_status="ready"), request=None, db=rdb, session={})
+    assert _stock(rdb, "inv-flour") == pytest.approx(9)
+    assert rdb.get(Order, placed.id).stock_deducted is True
+    assert rdb.query(StockMovement).filter(
+        StockMovement.order_id == placed.id, StockMovement.inventory_item_id == "inv-flour",
+    ).count() == 1
+
+
+def test_possible_servings_count_ready_portions_and_all_supplies(rdb):
+    _batch_chapati(rdb)
+    rdb.get(InventoryItem, "inv-flour").kitchen_quantity = Decimal("2")
+    rdb.commit()
+
+    def possible():
+        rdb.expire_all()
+        row = next(r for r in menu_costing(rdb, ACCOUNT) if r["inventory_item_id"] == "inv-chapati")
+        return row["portions_possible"], row["equivalences"][0]["batches_producible"]
+
+    # 10kg store + 2kg kitchen flour at 0.1kg a plate; oil allows 500.
+    assert possible()[0] == 120
+    prepare_recipe_batch(rdb, ACCOUNT, "inv-chapati", serving_unit="plates", user_id="u1")
+    rdb.commit()
+    assert possible()[0] == 120
+    assert possible()[1] is not None and possible()[1] > 0

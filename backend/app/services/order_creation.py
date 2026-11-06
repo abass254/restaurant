@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.models import Account, InventoryItem, Order, OrderItem, OrderStatusHistory
 from app.services.catalog.catalog_types import CatalogItem, platform_inventory_item_id
 from app.services.inventory_stock_service import InsufficientStockError, deduct_stock
-from app.services.order_stock_service import consume_for_order, restaurant_line_usage
+from app.services.order_stock_service import restaurant_line_usage
 from app.support.order_status import PAYMENT_MPESA, PLACED
 from app.support.store_type import is_restaurant_account
 from app.support.store_status import is_accepting_orders
@@ -209,10 +209,7 @@ def build_instagram_order(
         ),
     )
     try:
-        if restaurant:
-            db.flush()
-            consume_for_order(db, order, order_items)
-        elif deduct_stock(db, stock_lines, account_id=str(order.account_id), allow_negative=True):
+        if not restaurant and deduct_stock(db, stock_lines, account_id=str(order.account_id), allow_negative=True):
             order.stock_deducted = True
     except InsufficientStockError:
         db.rollback()
@@ -343,10 +340,7 @@ def build_catalog_order(
         ),
     )
     try:
-        if restaurant:
-            db.flush()
-            consume_for_order(db, order, order_items)
-        elif stock_lines and deduct_stock(db, stock_lines, account_id=str(order.account_id)):
+        if not restaurant and stock_lines and deduct_stock(db, stock_lines, account_id=str(order.account_id)):
             order.stock_deducted = True
     except InsufficientStockError:
         db.rollback()

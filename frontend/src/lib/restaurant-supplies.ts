@@ -214,6 +214,7 @@ export type MenuCosting = {
   gross_margin: number | null;
   missing_cost: string[];
   portions_available: number | null;
+  portions_possible: number | null;
   prepared_quantity: number | null;
   limiting_ingredient: string | null;
   /** With store and kitchen: portions if the store issued everything it has. */
@@ -224,6 +225,7 @@ export type MenuCosting = {
     portions_available: number | null;
     prepared_quantity: number | null;
     portions_producible: number | null;
+    portions_possible: number | null;
     batches_producible: number | null;
     limiting_ingredient: string | null;
   }>;

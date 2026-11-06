@@ -456,7 +456,7 @@
 .sf-picker.is-active {
   background: var(--app-surface);
   color: var(--app-text);
-  box-shadow: 0 1px 3px rgba(26, 16, 12, 0.08);
+  box-shadow: 0 1px 3px rgba(6, 26, 51, 0.08);
 }
 
 .sf-delivery-fields {
@@ -659,7 +659,7 @@
 }
 
 .ot-steps__step--done:not(:last-child)::after {
-  background: color-mix(in srgb, var(--brown-500, #a06b48) 45%, var(--app-border-light));
+  background: color-mix(in srgb, var(--brown-500, #25487a) 45%, var(--app-border-light));
 }
 
 .ot-steps__dot {
@@ -676,15 +676,15 @@
 }
 
 .ot-steps__step--done .ot-steps__dot {
-  background: color-mix(in srgb, var(--brown-500, #a06b48) 18%, var(--app-bg));
-  border-color: color-mix(in srgb, var(--brown-500, #a06b48) 55%, transparent);
-  color: var(--brown-600, #8a5938);
+  background: color-mix(in srgb, var(--brown-500, #25487a) 18%, var(--app-bg));
+  border-color: color-mix(in srgb, var(--brown-500, #25487a) 55%, transparent);
+  color: var(--brown-600, #25487a);
 }
 
 .ot-steps__step--current .ot-steps__dot {
-  background: color-mix(in srgb, var(--brown-500, #a06b48) 28%, var(--app-bg));
-  border-color: var(--brown-500, #a06b48);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--brown-500, #a06b48) 15%, transparent);
+  background: color-mix(in srgb, var(--brown-500, #25487a) 28%, var(--app-bg));
+  border-color: var(--brown-500, #25487a);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--brown-500, #25487a) 15%, transparent);
 }
 
 .ot-steps__step--current {
@@ -796,5 +796,5 @@
 .ot-delivery__note {
   margin: 0;
   font-size: 0.8125rem;
-  color: color-mix(in srgb, var(--brown-600, #8a5938) 85%, var(--app-text));
+  color: color-mix(in srgb, var(--brown-600, #25487a) 85%, var(--app-text));
 }

@@ -386,8 +386,8 @@ html:not([data-theme]) .journey-phone-screen {
 }
 
 @keyframes jpPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(82, 50, 32, 0.15); }
-  50% { box-shadow: 0 0 0 8px rgba(82, 50, 32, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(11, 37, 69, 0.15); }
+  50% { box-shadow: 0 0 0 8px rgba(11, 37, 69, 0); }
 }
 
 /* Panel: pay */

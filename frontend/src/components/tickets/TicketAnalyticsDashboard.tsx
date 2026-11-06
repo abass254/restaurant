@@ -291,8 +291,8 @@ export function TicketAnalyticsDashboard() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.25)" />
-                <XAxis dataKey="label" tick={{ fontSize: 12 }} stroke="#9a9180" />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke="#9a9180" />
+                <XAxis dataKey="label" tick={{ fontSize: 12 }} stroke="#8a93a8" />
+                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke="#8a93a8" />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend />
                 <Area
@@ -352,8 +352,8 @@ export function TicketAnalyticsDashboard() {
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={menuData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.25)" />
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="#9a9180" />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke="#9a9180" />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="#8a93a8" />
+                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke="#8a93a8" />
                 <Tooltip content={<ChartTooltip />} />
                 <Bar dataKey="count" name="Selections" fill="#e85d04" radius={[8, 8, 0, 0]} />
               </BarChart>
@@ -372,13 +372,13 @@ export function TicketAnalyticsDashboard() {
                 margin={{ top: 8, right: 16, left: 8, bottom: 0 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.25)" />
-                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12 }} stroke="#9a9180" />
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12 }} stroke="#8a93a8" />
                 <YAxis
                   type="category"
                   dataKey="label"
                   width={120}
                   tick={{ fontSize: 11 }}
-                  stroke="#9a9180"
+                  stroke="#8a93a8"
                 />
                 <Tooltip content={<ChartTooltip />} />
                 <Bar dataKey="count" name="Events" fill="#fb923c" radius={[0, 8, 8, 0]} />
@@ -398,8 +398,8 @@ export function TicketAnalyticsDashboard() {
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={hourlyData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.25)" />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="#9a9180" interval={1} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke="#9a9180" />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="#8a93a8" interval={1} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke="#8a93a8" />
                 <Tooltip content={<ChartTooltip />} />
                 <Bar dataKey="count" name="Tickets opened" fill="#8b5cf6" radius={[6, 6, 0, 0]} />
               </BarChart>

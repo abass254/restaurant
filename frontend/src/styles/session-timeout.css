@@ -16,7 +16,7 @@
   border: 1px solid rgba(15, 23, 42, 0.12);
   box-shadow: 0 28px 90px rgba(15, 23, 42, 0.28);
   padding: 1.1rem 1.1rem 1rem;
-  color: #1a100c;
+  color: #061a33;
 }
 
 .session-timeout-modal__title {
@@ -63,7 +63,7 @@
 
 .session-timeout-modal__button--secondary {
   background: #fff;
-  color: #1a100c;
+  color: #061a33;
   border-color: rgba(15, 23, 42, 0.22);
 }
 

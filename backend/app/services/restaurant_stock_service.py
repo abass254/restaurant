@@ -36,7 +36,7 @@ from app.services.inventory_stock_service import (
     total_on_hand,
 )
 from app.services.sell_units import sell_units_for_item
-from app.services.menu_options import account_recipe, line_stock_usage
+from app.services.menu_options import _recipe_line_quantity, account_recipe, line_stock_usage
 from app.services.kitchen_menu_service import MENU_CATEGORIES
 from app.services.order_stock_service import kitchen_issuing_on
 from app.support.order_status import CANCELLED, REFUNDED
@@ -66,6 +66,21 @@ def day_bounds(start: date, end: date, tz_offset_minutes: int) -> tuple[datetime
 
 
 # --- Menu costing ------------------------------------------------------------
+
+
+def _portions_possible(
+    ready: Decimal | None,
+    cookable: Decimal | None,
+    available: Decimal | None,
+) -> int | None:
+    """Servings an order could take now: ready portions plus what kitchen and store supplies can cook."""
+    if cookable is None:
+        total = ready if ready is not None else available
+    else:
+        total = max(ready or Decimal("0"), Decimal("0")) + cookable
+    if total is None:
+        return None
+    return int(max(total, Decimal("0")).to_integral_value(rounding=ROUND_FLOOR))
 
 
 def menu_costing(db: Session, account_id: str) -> list[dict[str, Any]]:
@@ -137,6 +152,13 @@ def menu_costing(db: Session, account_id: str) -> list[dict[str, Any]]:
             if stock_ids
             else []
         )
+    }
+
+    supplies_by_product = {
+        str(item.product_id): item
+        for item in db.query(InventoryItem)
+        .filter(InventoryItem.account_id == account_id, InventoryItem.product_id.isnot(None))
+        .all()
     }
 
     out: list[dict[str, Any]] = []
@@ -232,12 +254,22 @@ def menu_costing(db: Session, account_id: str) -> list[dict[str, Any]]:
             )
             recipe_lines = account_recipe(product, account_id, unit) if product else []
             batch_counts: list[int] = []
+            cookable: Decimal | None = None
             if recipe_lines:
                 for recipe_line in recipe_lines:
-                    item = stock.get(str(recipe_line.ingredient_product_id))
+                    item = supplies_by_product.get(str(recipe_line.ingredient_product_id))
                     if item is None:
                         batch_counts.append(0)
+                        cookable = Decimal("0")
                         continue
+                    per_portion = _recipe_line_quantity(recipe_line)
+                    if per_portion > 0:
+                        everywhere = max(Decimal(str(item.kitchen_quantity or 0)), Decimal("0")) + max(
+                            Decimal(str(item.stock_quantity or 0)), Decimal("0")
+                        )
+                        can_cook = everywhere / per_portion
+                        if cookable is None or can_cook < cookable:
+                            cookable = can_cook
                     from_kitchen = kitchen_on
                     on_hand = (
                         Decimal(str(item.kitchen_quantity or 0))
@@ -264,6 +296,11 @@ def menu_costing(db: Session, account_id: str) -> list[dict[str, Any]]:
                         else None
                     ),
                     "batches_producible": min(batch_counts) if batch_counts else None,
+                    "portions_possible": _portions_possible(
+                        prepared_balance if prepared_tracking else None,
+                        cookable,
+                        available,
+                    ),
                     "limiting_ingredient": unit_limiting,
                 }
             )
@@ -295,6 +332,11 @@ def menu_costing(db: Session, account_id: str) -> list[dict[str, Any]]:
                 "missing_cost": missing_cost,
                 "portions_available": (
                     default_equivalence["portions_available"]
+                    if default_equivalence
+                    else None
+                ),
+                "portions_possible": (
+                    default_equivalence["portions_possible"]
                     if default_equivalence
                     else None
                 ),

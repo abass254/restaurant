@@ -92,6 +92,13 @@ function fireDialog(options: SweetAlertOptions) {
   return TransChapSwal.fire(withDialogOptions(options));
 }
 
+/** Show feedback without holding up the caller: pages refresh while the alert is still open. */
+function showWithoutWaiting(alert: PromiseLike<unknown>): Promise<void> {
+  // SweetAlert instances expose then/finally but not catch.
+  void Promise.resolve(alert).catch(() => undefined);
+  return Promise.resolve();
+}
+
 const TOAST_ICON_HTML = {
   success: '<i class="fa-solid fa-check" aria-hidden="true"></i>',
   error: '<i class="fa-solid fa-xmark" aria-hidden="true"></i>',
@@ -186,35 +193,19 @@ export function extractErrorMessage(err: unknown, fallback = "Something went wro
 }
 
 export async function showError(title: string, text?: string) {
-  return fireDialog({
-    icon: "error",
-    title,
-    text,
-  });
+  return showWithoutWaiting(fireDialog({ icon: "error", title, text }));
 }
 
 export async function showSuccess(title: string, text?: string) {
-  return fireDialog({
-    icon: "success",
-    title,
-    text,
-  });
+  return showWithoutWaiting(fireDialog({ icon: "success", title, text }));
 }
 
 export async function showWarning(title: string, text?: string) {
-  return fireDialog({
-    icon: "warning",
-    title,
-    text,
-  });
+  return showWithoutWaiting(fireDialog({ icon: "warning", title, text }));
 }
 
 export async function showInfo(title: string, text?: string) {
-  return fireDialog({
-    icon: "info",
-    title,
-    text,
-  });
+  return showWithoutWaiting(fireDialog({ icon: "info", title, text }));
 }
 
 export async function confirmAction(
@@ -660,25 +651,31 @@ export async function promptMpesaTransactionEdit(
 }
 
 export async function toastSuccess(title: string, durationMs = 3200) {
-  return toastMixin({
-    timer: durationMs,
-    timerProgressBar: true,
-    showCloseButton: durationMs >= 10000,
-  }).fire({ icon: "success", iconHtml: TOAST_ICON_HTML.success, title });
+  return showWithoutWaiting(
+    toastMixin({
+      timer: durationMs,
+      timerProgressBar: true,
+      showCloseButton: durationMs >= 10000,
+    }).fire({ icon: "success", iconHtml: TOAST_ICON_HTML.success, title }),
+  );
 }
 
 export async function toastError(title: string) {
-  return toastMixin({
-    timer: 4000,
-    timerProgressBar: true,
-  }).fire({ icon: "error", iconHtml: TOAST_ICON_HTML.error, title });
+  return showWithoutWaiting(
+    toastMixin({
+      timer: 4000,
+      timerProgressBar: true,
+    }).fire({ icon: "error", iconHtml: TOAST_ICON_HTML.error, title }),
+  );
 }
 
 export async function toastInfo(title: string, text?: string, durationMs = 4200) {
-  return toastMixin({
-    timer: durationMs,
-    timerProgressBar: true,
-  }).fire({ icon: "info", iconHtml: TOAST_ICON_HTML.info, title, text });
+  return showWithoutWaiting(
+    toastMixin({
+      timer: durationMs,
+      timerProgressBar: true,
+    }).fire({ icon: "info", iconHtml: TOAST_ICON_HTML.info, title, text }),
+  );
 }
 
 export async function toastNotification({

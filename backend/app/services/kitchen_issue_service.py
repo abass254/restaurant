@@ -76,6 +76,13 @@ def _require_enabled(account: Account | None) -> None:
         raise KitchenIssueError("Turn on store and kitchen in Settings first.")
 
 
+def _ensure_enabled(db: Session, account: Account, *, user_id: str | None) -> None:
+    """Releasing to the kitchen switches store and kitchen on, with an empty kitchen."""
+    if is_restaurant(account) and not kitchen_issuing_on(account):
+        enable_kitchen_issuing(db, account, {}, user_id=user_id)
+    _require_enabled(account)
+
+
 # --- Kitchen supplies ------------------------------------------------------------
 
 
@@ -235,7 +242,7 @@ def create_issue(
     issue_now: bool = False,
 ) -> KitchenIssue:
     """Record a kitchen request; with ``issue_now`` the store releases it straight away."""
-    _require_enabled(account)
+    _ensure_enabled(db, account, user_id=user_id)
     wanted: dict[str, Decimal] = {}
     for item_id, qty in lines:
         q = _qty(qty)

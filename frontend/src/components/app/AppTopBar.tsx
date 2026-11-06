@@ -120,7 +120,7 @@ export function AppTopBar({
         ) : null}
 
         <Link href="/dashboard" className="fb-topbar__logo" aria-label="TransChap home">
-          <TransChapLogoMark size={32} color="#20154c" accentColor="#77f665" />
+          <TransChapLogoMark size={32} color="currentColor" accentColor="#be9b58" />
           <span className="fb-topbar__logo-text">TransChap</span>
         </Link>
 

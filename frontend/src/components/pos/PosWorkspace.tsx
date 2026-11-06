@@ -2298,7 +2298,7 @@ export function PosWorkspace({
     }
     if (submitting) {
       if (isTransChapSale) {
-        if (isRestaurant && paymentMethod === "") return "Sending to kitchen…";
+        if (isRestaurant && !usesMpesa) return "Sending to kitchen…";
         if (usesMpesa) {
           return isStkActive ? "Sending M-Pesa…" : "Recording M-Pesa…";
         }
@@ -2321,7 +2321,7 @@ export function PosWorkspace({
         : "Price below buying price";
     }
     if (isTransChapSale) {
-      if (isRestaurant && paymentMethod === "") {
+      if (isRestaurant && !usesMpesa) {
         return tableNumber.trim()
           ? `Send to kitchen (${tableNumber.trim()})`
           : "Send to kitchen (Table order)";
@@ -2493,8 +2493,31 @@ export function PosWorkspace({
       let order = data.data;
       const willCompleteNow =
         completeInPlace &&
+        !isRestaurant &&
         (orderFulfillment === "pickup" || orderFulfillment === "dine_in") &&
         completesImmediately;
+
+      // Restaurant orders go through the kitchen; paid ones are closed when served.
+      if (isRestaurant && completesImmediately && !usesCredit) {
+        try {
+          const paid = await apiFetch<OrderMutationResponse>(
+            apiRoutes.orderTransition(order.id),
+            {
+              method: "POST",
+              body: JSON.stringify({
+                to_status: "payment_received",
+                note: "Paid at counter; sent to kitchen.",
+              }),
+            },
+          );
+          order = paid.data;
+        } catch (paidErr) {
+          await showError(
+            `Order ${data.data.order_number} sent to kitchen, but could not mark it paid`,
+            extractErrorMessage(paidErr),
+          );
+        }
+      }
 
       if (willCompleteNow) {
         try {
@@ -2512,10 +2535,10 @@ export function PosWorkspace({
       // is always saved, even if the push failed. Trans Chap POS keeps a
       // waiting panel so they can send the prompt again without leaving.
       const push = data.mpesa_push ?? null;
+      suppressMerchantOrderNotification(order.id);
+      clearCart();
+      void reload({ silent: true });
       if (isTransChapSale && usesMpesa) {
-        suppressMerchantOrderNotification(order.id);
-        clearCart();
-        void reload({ silent: true });
         if (push?.status === "confirmed" || !isStk) {
           setReceiptOrder(order);
           printAfterSaleRef.current = autoPrintReceipt;
@@ -2545,16 +2568,18 @@ export function PosWorkspace({
         );
       } else if (willCompleteNow && order.status === "picked_up") {
         await toastSuccess(`Order ${order.order_number} completed`);
-      } else if (isTransChapSale && isRestaurant && !paymentMethod) {
+      } else if (isTransChapSale && isRestaurant) {
         await toastSuccess(
-          `Order #${order.order_number} (${order.table_number || "Table"}) sent to kitchen (Unpaid)`,
+          `Order #${order.order_number} (${order.table_number || "Table"}) sent to kitchen` +
+            (order.status === "payment_received"
+              ? " (Paid)"
+              : paymentMethod === "credit"
+                ? " (On credit)"
+                : " (Unpaid)"),
         );
       } else {
         await toastSuccess(`Order ${order.order_number} placed`);
       }
-      suppressMerchantOrderNotification(order.id);
-      clearCart();
-      void reload({ silent: true });
 
       if (completeInPlace) {
         setReceiptOrder(order);

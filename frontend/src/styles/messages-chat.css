@@ -861,7 +861,7 @@ html[data-theme="dark"] .chat-app {
 
 .chat-product-card__amount {
   font-weight: 700;
-  color: var(--brown-500, #a06b48);
+  color: var(--brown-500, #25487a);
 }
 
 .chat-bubble-row--out .chat-product-card__amount {

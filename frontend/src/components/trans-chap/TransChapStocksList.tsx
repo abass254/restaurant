@@ -240,6 +240,24 @@ export function TransChapStocksList() {
   }, [reload]);
 
   useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") void reload();
+    };
+    const timer = window.setInterval(refresh, 20000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("trans-chap:refresh-counts", refresh);
+    window.addEventListener("TransChap:notification", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("trans-chap:refresh-counts", refresh);
+      window.removeEventListener("TransChap:notification", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [reload]);
+
+  useEffect(() => {
     if (!restaurant) {
       if (roleFilter === "raw_material") setRoleFilter("all");
     }

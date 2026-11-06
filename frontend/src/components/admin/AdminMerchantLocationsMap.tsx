@@ -247,12 +247,12 @@ export function AdminMerchantLocationsMap({
             info.setContent(
               `<div style="font-family:system-ui,sans-serif;line-height:1.4;max-width:240px;padding:2px 0">` +
                 `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">` +
-                `<span style="width:28px;height:28px;border-radius:9px;background:linear-gradient(145deg,#855538,#6b2e14);` +
+                `<span style="width:28px;height:28px;border-radius:9px;background:linear-gradient(145deg,#1f4a7f,#0b2545);` +
                 `color:#fff;display:grid;place-items:center;font-size:13px;flex-shrink:0">` +
                 `<i class="fas fa-store" aria-hidden="true"></i></span>` +
-                `<strong style="display:block;font-size:14px;color:#1a100c">${merchant.name}</strong>` +
+                `<strong style="display:block;font-size:14px;color:#061a33">${merchant.name}</strong>` +
                 `</div>` +
-                `<span style="color:#5e5749;font-size:13px;display:block;padding-left:36px">` +
+                `<span style="color:#5b6478;font-size:13px;display:block;padding-left:36px">` +
                 `${merchant.location}</span>` +
                 `</div>`,
             );

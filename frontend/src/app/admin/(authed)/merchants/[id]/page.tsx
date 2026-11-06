@@ -1273,7 +1273,7 @@ export default function AdminMerchantDetailPage() {
                   borderRadius: "16px",
                   padding: "1.5rem",
                   background: "var(--color-surface, #fff)",
-                  boxShadow: "0 4px 16px rgba(26, 16, 12, 0.04)",
+                  boxShadow: "0 4px 16px rgba(6, 26, 51, 0.04)",
                 }}
                 onSubmit={(e) => void inviteTeamMember(e)}
               >
@@ -1416,7 +1416,7 @@ export default function AdminMerchantDetailPage() {
                               background: "none",
                               border: "none",
                               cursor: "pointer",
-                              color: "var(--color-text-subtle, #7a7262)",
+                              color: "var(--color-text-subtle, #7d869a)",
                               fontSize: "0.9rem",
                             }}
                             title={
@@ -1585,7 +1585,7 @@ export default function AdminMerchantDetailPage() {
                               <div>
                                 <strong
                                   style={{
-                                    color: "var(--color-text, #1a100c)",
+                                    color: "var(--color-text, #061a33)",
                                   }}
                                 >
                                   {u.name}
@@ -1601,7 +1601,7 @@ export default function AdminMerchantDetailPage() {
                           <td>
                             <span
                               style={{
-                                color: "var(--color-text, #1a100c)",
+                                color: "var(--color-text, #061a33)",
                                 fontWeight: 500,
                               }}
                             >
@@ -1756,7 +1756,7 @@ export default function AdminMerchantDetailPage() {
                               border:
                                 "1.5px solid var(--color-border-strong, #d4ccc0)",
                               background: "var(--color-surface, #fff)",
-                              boxShadow: "0 4px 16px rgba(26, 16, 12, 0.06)",
+                              boxShadow: "0 4px 16px rgba(6, 26, 51, 0.06)",
                             }}
                           >
                             <div className="admin-inline-editor__header">
@@ -1844,7 +1844,7 @@ export default function AdminMerchantDetailPage() {
                                     background: "none",
                                     border: "none",
                                     cursor: "pointer",
-                                    color: "var(--color-text-subtle, #7a7262)",
+                                    color: "var(--color-text-subtle, #7d869a)",
                                     fontSize: "0.9rem",
                                   }}
                                   title={

@@ -96,7 +96,11 @@ function SignInStatusAlert({
   return (
     <div
       role={ok ? "status" : "alert"}
-      className={`trans-chap-signin__alert ${ok ? "trans-chap-signin__alert--ok" : "trans-chap-signin__alert--error"
+      className={`trans-chap-signin__alert ${ok
+        ? "trans-chap-signin__alert--ok"
+        : title
+          ? "trans-chap-signin__alert--notice"
+          : "trans-chap-signin__alert--error"
         }`}
     >
       <span className="trans-chap-signin__alert-icon" aria-hidden="true">

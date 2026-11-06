@@ -16,7 +16,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 20% 80%, rgba(107, 46, 20, 0.06), transparent 50%),
+  background: radial-gradient(circle at 20% 80%, rgba(11, 37, 69, 0.06), transparent 50%),
     radial-gradient(circle at 80% 20%, rgba(200, 184, 152, 0.25), transparent 45%);
   pointer-events: none;
 }
@@ -72,7 +72,7 @@
 .landing-ufanisi .process-step.is-active {
   background: var(--uf-card-bg);
   border-color: var(--uf-card-border);
-  box-shadow: 0 8px 24px rgba(107, 46, 20, 0.1);
+  box-shadow: 0 8px 24px rgba(11, 37, 69, 0.1);
   transform: translateX(4px);
 }
 
@@ -100,7 +100,7 @@
 
 .landing-ufanisi .process-progress {
   height: 4px;
-  background: rgba(107, 46, 20, 0.12);
+  background: rgba(11, 37, 69, 0.12);
   border-radius: 4px;
   margin-top: 1rem;
   overflow: hidden;
@@ -127,7 +127,7 @@
   position: absolute;
   width: 280px;
   height: 280px;
-  background: radial-gradient(circle, rgba(107, 46, 20, 0.15), transparent 70%);
+  background: radial-gradient(circle, rgba(11, 37, 69, 0.15), transparent 70%);
   top: 10%;
   left: 50%;
   transform: translateX(-50%);
@@ -152,7 +152,7 @@
   background: var(--uf-brand-dark);
   border-radius: 32px;
   padding: 10px;
-  box-shadow: 0 32px 64px rgba(44, 24, 16, 0.25);
+  box-shadow: 0 32px 64px rgba(6, 26, 51, 0.25);
   position: relative;
   z-index: 2;
 }
@@ -352,7 +352,7 @@
   font-weight: 600;
   color: var(--uf-primary);
   padding: 0.5rem;
-  background: rgba(107, 46, 20, 0.08);
+  background: rgba(11, 37, 69, 0.08);
   border-radius: 10px;
 }
 
@@ -408,7 +408,7 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  background: rgba(107, 46, 20, 0.1);
+  background: rgba(11, 37, 69, 0.1);
   color: var(--uf-primary);
   font-weight: 600;
   font-size: 0.85rem;
@@ -448,7 +448,7 @@
   border-radius: 14px;
   padding: 1rem;
   margin-bottom: 1rem;
-  box-shadow: 0 8px 20px rgba(107, 46, 20, 0.08);
+  box-shadow: 0 8px 20px rgba(11, 37, 69, 0.08);
 }
 
 .landing-ufanisi .scene-notif__badge {
@@ -506,11 +506,11 @@
   0%,
   100% {
     transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(107, 46, 20, 0.4);
+    box-shadow: 0 0 0 0 rgba(11, 37, 69, 0.4);
   }
   50% {
     transform: scale(1.03);
-    box-shadow: 0 0 0 8px rgba(107, 46, 20, 0);
+    box-shadow: 0 0 0 8px rgba(11, 37, 69, 0);
   }
 }
 
@@ -718,7 +718,7 @@
 
   .landing-ufanisi .process-step.is-active {
     transform: none;
-    border-color: rgba(107, 46, 20, 0.25);
+    border-color: rgba(11, 37, 69, 0.25);
   }
 
   .landing-ufanisi .process-step__title {

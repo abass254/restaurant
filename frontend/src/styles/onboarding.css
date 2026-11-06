@@ -3,7 +3,7 @@
   min-height: 100dvh;
   background:
     radial-gradient(ellipse 80% 50% at 10% -10%, rgba(140, 62, 26, 0.12), transparent),
-    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(26, 20, 16, 0.06), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(6, 26, 51, 0.06), transparent),
     var(--uf-bg-light, #f7f3ee);
 }
 
@@ -24,7 +24,7 @@
 
 .ob-page .btn-primary,
 .book-page .btn-primary {
-  background: var(--uf-primary, #6b3a1f);
+  background: var(--uf-primary, #0b2545);
   color: #fff;
 }
 
@@ -36,8 +36,8 @@
 
 .ob-page .btn-secondary {
   background: #fff;
-  border-color: rgba(26, 20, 16, 0.14);
-  color: #1a1410;
+  border-color: rgba(6, 26, 51, 0.14);
+  color: #061a33;
 }
 
 .auth-split--setup .settings-location-form {
@@ -52,11 +52,11 @@
   padding: 0.9rem 1rem;
   border-radius: 12px;
   background: rgba(232, 93, 4, 0.08);
-  color: var(--auth-ink, #1a100c);
+  color: var(--auth-ink, #061a33);
 }
 
 .auth-split--setup .settings-muted {
-  color: var(--auth-muted, #5e5749);
+  color: var(--auth-muted, #5b6478);
   font-size: 0.92rem;
 }
 
@@ -98,7 +98,7 @@
   letter-spacing: 0.02em;
   padding: 0.55rem 0.85rem;
   border-radius: 999px;
-  background: rgba(26, 20, 16, 0.06);
+  background: rgba(6, 26, 51, 0.06);
   color: #6b5e54;
   border: 1px solid transparent;
   text-align: left;
@@ -115,7 +115,7 @@
   justify-content: center;
   border-radius: 999px;
   font-size: 0.72rem;
-  background: rgba(26, 20, 16, 0.08);
+  background: rgba(6, 26, 51, 0.08);
 }
 
 .ob-progress__label {
@@ -133,7 +133,7 @@
 }
 
 .ob-progress__pill.is-active {
-  background: var(--uf-primary, #6b3a1f);
+  background: var(--uf-primary, #0b2545);
   color: #fff;
 }
 
@@ -168,14 +168,14 @@
   background: #fff;
   border-radius: 20px;
   padding: clamp(1.5rem, 3.5vw, 2.35rem);
-  box-shadow: 0 12px 40px rgba(26, 20, 16, 0.08);
-  border: 1px solid rgba(26, 20, 16, 0.06);
+  box-shadow: 0 12px 40px rgba(6, 26, 51, 0.08);
+  border: 1px solid rgba(6, 26, 51, 0.06);
 }
 
 .ob-card h1 {
   font-size: clamp(1.5rem, 3vw, 1.95rem);
   margin: 0 0 0.55rem;
-  color: #1a1410;
+  color: #061a33;
   letter-spacing: -0.02em;
   line-height: 1.2;
 }
@@ -203,7 +203,7 @@
 .ob-field input,
 .ob-field select,
 .ob-field textarea {
-  border: 1px solid rgba(26, 20, 16, 0.14);
+  border: 1px solid rgba(6, 26, 51, 0.14);
   border-radius: 12px;
   padding: 0.85rem 1rem;
   font: inherit;
@@ -234,7 +234,7 @@
   justify-content: space-between;
   margin-top: 2rem;
   padding-top: 1.35rem;
-  border-top: 1px solid rgba(26, 20, 16, 0.08);
+  border-top: 1px solid rgba(6, 26, 51, 0.08);
 }
 
 .ob-actions .btn {
@@ -258,7 +258,7 @@
   padding: 1rem 1.15rem;
   border-radius: 14px;
   background: #faf8f5;
-  border: 1px solid rgba(26, 20, 16, 0.06);
+  border: 1px solid rgba(6, 26, 51, 0.06);
 }
 
 .ob-muted {
@@ -298,11 +298,11 @@
   padding: 0.85rem 1rem;
   border-radius: 12px;
   background: #faf8f5;
-  border: 1px solid rgba(26, 20, 16, 0.06);
+  border: 1px solid rgba(6, 26, 51, 0.06);
 }
 
 .ob-hours-row input[type="time"] {
-  border: 1px solid rgba(26, 20, 16, 0.14);
+  border: 1px solid rgba(6, 26, 51, 0.14);
   border-radius: 10px;
   padding: 0.65rem 0.75rem;
   font: inherit;
@@ -337,7 +337,7 @@
   align-items: center;
   gap: 0.5rem;
   font-weight: 600;
-  color: var(--uf-primary, #6b3a1f);
+  color: var(--uf-primary, #0b2545);
   word-break: break-all;
   margin: 0 0 1.35rem;
   line-height: 1.5;
@@ -351,7 +351,7 @@
 }
 
 .ob-chip {
-  border: 1px solid rgba(26, 20, 16, 0.14);
+  border: 1px solid rgba(6, 26, 51, 0.14);
   background: #fff;
   border-radius: 999px;
   padding: 0.55rem 1rem;
@@ -360,7 +360,7 @@
 }
 
 .ob-chip.is-selected {
-  background: var(--uf-primary, #6b3a1f);
+  background: var(--uf-primary, #0b2545);
   border-color: transparent;
   color: #fff;
 }
@@ -379,21 +379,21 @@
   text-align: left;
   padding: 1.1rem 1.15rem;
   border-radius: 16px;
-  border: 1.5px solid rgba(26, 20, 16, 0.12);
+  border: 1.5px solid rgba(6, 26, 51, 0.12);
   background: #fff;
   cursor: pointer;
-  color: #1a1410;
+  color: #061a33;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .ob-mode-card:hover {
-  border-color: rgba(107, 58, 31, 0.45);
+  border-color: rgba(11, 37, 69, 0.45);
 }
 
 .ob-mode-card.is-selected {
-  border-color: var(--uf-primary, #6b3a1f);
-  background: rgba(107, 58, 31, 0.06);
-  box-shadow: 0 0 0 1px var(--uf-primary, #6b3a1f);
+  border-color: var(--uf-primary, #0b2545);
+  background: rgba(11, 37, 69, 0.06);
+  box-shadow: 0 0 0 1px var(--uf-primary, #0b2545);
 }
 
 .ob-mode-card__icon {
@@ -403,13 +403,13 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: rgba(26, 20, 16, 0.06);
-  color: var(--uf-primary, #6b3a1f);
+  background: rgba(6, 26, 51, 0.06);
+  color: var(--uf-primary, #0b2545);
   margin-bottom: 0.15rem;
 }
 
 .ob-mode-card.is-selected .ob-mode-card__icon {
-  background: var(--uf-primary, #6b3a1f);
+  background: var(--uf-primary, #0b2545);
   color: #fff;
 }
 
@@ -458,7 +458,7 @@
   border-radius: 16px;
   padding: 1.35rem;
   margin-bottom: 1.1rem;
-  border: 1px solid rgba(26, 20, 16, 0.06);
+  border: 1px solid rgba(6, 26, 51, 0.06);
 }
 
 .book-slots {
@@ -468,7 +468,7 @@
 }
 
 .book-slots button {
-  border: 1px solid rgba(26, 20, 16, 0.14);
+  border: 1px solid rgba(6, 26, 51, 0.14);
   background: #faf8f5;
   border-radius: 10px;
   padding: 0.6rem 0.85rem;
@@ -477,7 +477,7 @@
 }
 
 .book-slots button.is-selected {
-  background: #1a1410;
+  background: #061a33;
   color: #fff;
   border-color: transparent;
 }

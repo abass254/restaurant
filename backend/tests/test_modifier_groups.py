@@ -21,7 +21,7 @@ from app.api.v1.menu import (
     RecipeLineIn,
     RecipeReplace,
 )
-from app.api.v1.orders import OrderCreate
+from app.api.v1.orders import OrderCreate, OrderTransition
 from app.services.inventory_stock_service import restore_stock_for_order
 from app.database import Base
 from app.models import (
@@ -33,6 +33,7 @@ from app.models import (
     ModifierOption,
     OrderItem,
 )
+from app.services import order_stock_service
 from app.services.menu_options import line_stock_usage, option_availability
 from app.services.restaurant_stock_service import prepare_recipe_batch
 from app.schemas import InventoryItemOut
@@ -118,7 +119,10 @@ def _order(db, *lines: dict):
         table_number="7",
         items=list(lines),
     )
-    return orders.create_order(payload, request=None, db=db, session={})
+    placed = orders.create_order(payload, request=None, db=db, session={})
+    return orders.transition_order(
+        placed["data"].id, OrderTransition(to_status="being_prepared"), request=None, db=db, session={},
+    )
 
 
 @pytest.fixture()
@@ -500,6 +504,7 @@ def test_recipe_lines_can_reuse_supply_for_different_equivalences(db):
 def test_order_uses_menu_recipe_equivalence_not_inventory_sell_unit(db, monkeypatch):
     _add_supply(db, "flour", "Flour", "kg", 20)
     monkeypatch.setattr(orders, "is_restaurant", lambda _shop: True)
+    monkeypatch.setattr(order_stock_service, "is_restaurant", lambda _shop: True)
     recipe = menu.replace_recipe(
         "fries",
         RecipeReplace(
@@ -753,6 +758,7 @@ def test_modifier_sources_reuse_store_menu_and_extra_stock(db):
 
 def test_modifier_sources_deduct_on_a_restaurant_sale(db, monkeypatch):
     monkeypatch.setattr(orders, "is_restaurant", lambda _shop: True)
+    monkeypatch.setattr(order_stock_service, "is_restaurant", lambda _shop: True)
     _sourced_modifiers(db)
     menu.replace_recipe(
         "big-mac",

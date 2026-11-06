@@ -227,6 +227,32 @@ async function apiFetchInternal<T>(
   }
 }
 
+/** Fired on this tab (and relayed to other tabs) after any successful write. */
+export const DATA_CHANGED_EVENT = "app:data-changed";
+
+let dataChangedChannel: BroadcastChannel | null | undefined;
+
+function getDataChangedChannel(): BroadcastChannel | null {
+  if (dataChangedChannel !== undefined) return dataChangedChannel;
+  dataChangedChannel =
+    typeof window !== "undefined" && typeof BroadcastChannel !== "undefined"
+      ? new BroadcastChannel(DATA_CHANGED_EVENT)
+      : null;
+  dataChangedChannel?.addEventListener("message", () => {
+    clearPageCache();
+    window.dispatchEvent(new CustomEvent(DATA_CHANGED_EVENT));
+  });
+  return dataChangedChannel;
+}
+
+if (typeof window !== "undefined") getDataChangedChannel();
+
+function notifyDataChanged(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(DATA_CHANGED_EVENT));
+  getDataChangedChannel()?.postMessage(Date.now());
+}
+
 export function apiFetch<T>(
   url: string,
   init: RequestInit = {},
@@ -234,7 +260,13 @@ export function apiFetch<T>(
   const p = apiFetchInternal<T>(url, init);
   const method = (init.method ?? "GET").toUpperCase();
   if (method !== "GET" && method !== "HEAD") {
-    p.then(clearPageCache, clearPageCache);
+    p.then(
+      () => {
+        clearPageCache();
+        notifyDataChanged();
+      },
+      clearPageCache,
+    );
   }
   if (typeof window !== "undefined" && isNavigationLoading()) {
     trackNavigationPromise(p);

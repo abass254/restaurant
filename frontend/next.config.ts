@@ -77,19 +77,9 @@ const nextConfig: NextConfig = {
         permanent: true,
       },
       {
-        source: "/customers",
-        destination: "/customer",
-        permanent: true,
-      },
-      {
         source: "/customersd",
-        destination: "/customer",
+        destination: "/customers",
         permanent: false,
-      },
-      {
-        source: "/suppliers",
-        destination: "/supplier",
-        permanent: true,
       },
       {
         source: "/trans-chap/supplier",

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models import InventoryItem, Order, OrderItem, OrderStatusHistory
 from app.services.inventory_stock_service import InsufficientStockError, deduct_stock
-from app.services.order_stock_service import consume_for_order, restaurant_line_usage
+from app.services.order_stock_service import restaurant_line_usage
 from app.support.store_type import is_restaurant_account
 from app.services.order_creation import insert_order, next_order_number
 from app.support.order_status import (
@@ -232,10 +232,7 @@ class IntegrationOrderService:
         )
 
         try:
-            if restaurant:
-                self.db.flush()
-                consume_for_order(self.db, order, order_items)
-            elif deduct_stock(
+            if not restaurant and deduct_stock(
                 self.db,
                 [
                     (inv_item.id, int(line.get("quantity") or 0))

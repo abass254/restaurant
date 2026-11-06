@@ -3,6 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { TransChapHomePies } from "@/components/trans-chap/TransChapHomePies";
+import { RestaurantHomeBoard } from "@/components/trans-chap/restaurant/RestaurantHomeBoard";
 import { userCanAccessSection } from "@/lib/merchant-permissions";
 
 import { isRestaurantStore } from "@/lib/onboarding";
@@ -136,9 +137,14 @@ export function TransChapHome() {
         </div>
       </section>
 
+      {restaurant && (canPos || canInventory) ? (
+        <RestaurantHomeBoard canKitchen={canInventory} />
+      ) : null}
+
       <TransChapHomePies
         expenseModalOpen={expenseModalOpen}
         setExpenseModalOpen={setExpenseModalOpen}
+        restaurant={restaurant}
       />
     </div>
   );

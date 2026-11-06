@@ -10,7 +10,7 @@ export function TransChapLogoMark({
   size = 52,
   className,
   color = "currentColor",
-  accentColor = "#77f665",
+  accentColor = "#be9b58",
 }: TransChapLogoMarkProps) {
   return (
     <svg

@@ -38,8 +38,8 @@
   --station-alert-meta-bg: rgba(255, 255, 255, 0.85);
   --station-alert-meta-border: color-mix(in srgb, var(--app-primary, #e85d04) 28%, transparent);
   --station-reject-text: #9b2c22;
-  --station-logo-bg: #e85d04;
-  --station-logo-fg: #ffffff;
+  --station-logo-bg: var(--app-primary);
+  --station-logo-fg: var(--app-primary-text);
   min-height: 100dvh;
   background:
     radial-gradient(1200px 600px at 10% -10%, var(--station-glow-a), transparent 60%),
@@ -87,8 +87,8 @@ html[data-theme="dark"] .mobile-root {
   --station-alert-meta-bg: rgba(0, 0, 0, 0.28);
   --station-alert-meta-border: color-mix(in srgb, var(--app-primary, #f97316) 35%, transparent);
   --station-reject-text: #ffc9c9;
-  --station-logo-bg: var(--app-primary, #f97316);
-  --station-logo-fg: #ffffff;
+  --station-logo-bg: var(--app-primary);
+  --station-logo-fg: var(--app-primary-text);
   color-scheme: dark;
 }
 
@@ -407,7 +407,7 @@ html[data-theme="dark"] .mobile-root {
 }
 
 .station-btn--primary:hover:not(:disabled) {
-  background: var(--app-primary-hover, #1f6f35);
+  background: var(--app-primary-hover);
 }
 
 .station-btn--danger {
@@ -1105,8 +1105,8 @@ html[data-theme="dark"] .mobile-root {
   padding: 0.85rem 1.35rem;
   font: inherit;
   font-weight: 700;
-  color: #fff;
-  background: #238636;
+  color: var(--app-primary-text);
+  background: var(--app-primary);
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
@@ -1151,8 +1151,8 @@ html[data-theme="dark"] .mobile-root {
   padding: 0.85rem 1.35rem;
   font: inherit;
   font-weight: 700;
-  color: #fff;
-  background: #238636;
+  color: var(--app-primary-text);
+  background: var(--app-primary);
   cursor: pointer;
 }
 

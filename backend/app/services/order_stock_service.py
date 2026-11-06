@@ -26,7 +26,7 @@ from app.services.inventory_stock_service import (
     restore_stock_for_order,
     stock_usage_lines,
 )
-from app.services.menu_options import line_stock_usage
+from app.services.menu_options import _recipe_line_quantity, account_recipe, line_stock_usage
 from app.support.order_payments import payment_portion
 from app.support.order_status import PAYMENT_CREDIT
 from app.support.store_type import is_restaurant
@@ -184,6 +184,88 @@ def _strict_and_flexible_lines(
     return strict, flexible
 
 
+def _prepared_portions_needed(items: list[OrderItem]) -> dict[tuple[str, str], Decimal]:
+    """Ready portions an order takes, per (menu item, serving unit)."""
+    needed: dict[tuple[str, str], Decimal] = defaultdict(lambda: Decimal("0"))
+    for item in items:
+        quantity = Decimal(str(item.quantity or 0)) * Decimal(str(getattr(item, "unit_factor", None) or 1))
+        usage = getattr(item, "stock_usage", None)
+        if quantity <= 0 or not isinstance(usage, list):
+            continue
+        for row in usage:
+            if isinstance(row, dict) and row.get("prepared") and row.get("stock_item_id"):
+                key = (str(row["stock_item_id"]), str(row.get("serving_unit") or "servings"))
+                needed[key] += quantity * Decimal(str(row.get("qty") or 1))
+    return needed
+
+
+def _cook_shortfall(
+    db: Session,
+    order: Order,
+    items: list[OrderItem],
+    *,
+    user_id: str | None = None,
+) -> None:
+    """Cook to order the portions ready stock can't cover.
+
+    Each missing portion uses its recipe ingredients (kitchen first, then the
+    store) and is added to ready stock, so the sale never drives ready
+    portions below zero. Raises ``InsufficientStockError`` when the
+    ingredients aren't there.
+    """
+    account_id = str(order.account_id)
+    now = datetime.utcnow()
+    for (dish_id, serving_unit), wanted in _prepared_portions_needed(items).items():
+        dish = lock_item(db, dish_id, account_id=account_id)
+        if dish is None or dish.product is None:
+            continue
+        ready = location_quantity(dish, "prepared", serving_unit, db=db)
+        if ready is None:
+            continue
+        shortfall = wanted - max(ready, Decimal("0"))
+        recipe = account_recipe(dish.product, account_id, serving_unit)
+        if shortfall <= 0 or not recipe:
+            continue
+        supplies = {
+            row.product_id: row
+            for row in db.query(InventoryItem)
+            .filter(
+                InventoryItem.account_id == account_id,
+                InventoryItem.product_id.in_({str(line.ingredient_product_id) for line in recipe}),
+            )
+            .all()
+        }
+        ingredients = [
+            LedgerLine(supplies[str(line.ingredient_product_id)].id, _recipe_line_quantity(line) * shortfall)
+            for line in recipe
+            if str(line.ingredient_product_id) in supplies
+        ]
+        note = f"Cooked {shortfall.normalize():f} {serving_unit} of {dish.product.name} for order {order.order_number}"
+        record_stock_out(
+            db,
+            ingredients,
+            account_id=account_id,
+            reason="production",
+            order_id=order.id,
+            user_id=user_id,
+            note=note,
+        )
+        record_movement(
+            db,
+            dish,
+            account_id=account_id,
+            direction="in",
+            quantity=shortfall,
+            reason="production",
+            note=note,
+            user_id=user_id,
+            links={"order_id": order.id},
+            now=now,
+            location="prepared",
+            serving_unit=serving_unit,
+        )
+
+
 def consume_for_order(
     db: Session,
     order: Order,
@@ -194,14 +276,14 @@ def consume_for_order(
 ) -> bool:
     """Write ``sale`` movements for a restaurant order and snapshot each line's cost.
 
-    Exact items (the item itself, meal parts, option supplies) block the sale
-    when short. Recipe estimates may go negative unless the shop turned on
-    ``block_sale_on_low_ingredients``. With kitchen issuing, ingredients come
-    from the kitchen and sold-as-is supplies from the store.
+    Runs when the kitchen starts preparing the order. Ready portions are used
+    first and any shortfall is cooked from its recipe. Supplies come from the
+    kitchen first, then the store. Exact items (the item itself, meal parts,
+    option supplies) may go negative; recipe ingredients must be in stock.
     Raises ``InsufficientStockError``.
     """
     account = account or db.get(Account, str(order.account_id))
-    block_recipe = bool(getattr(account, "block_sale_on_low_ingredients", False))
+    _cook_shortfall(db, order, items, user_id=user_id)
     strict, flexible = _strict_and_flexible_lines(db, account, items)
     common = {
         "account_id": str(order.account_id),
@@ -224,6 +306,16 @@ def consume_for_order(
     if movements:
         order.stock_deducted = True
     return bool(movements)
+
+
+def consume_if_pending(db: Session, order: Order, *, user_id: str | None = None) -> bool:
+    """Take a restaurant order's stock once, the first time the kitchen moves it on."""
+    if order.stock_deducted:
+        return False
+    account = db.get(Account, str(order.account_id))
+    if not is_restaurant(account):
+        return False
+    return consume_for_order(db, order, list(order.items or []), account=account, user_id=user_id)
 
 
 def _sale_movements(db: Session, order: Order) -> list[StockMovement]:

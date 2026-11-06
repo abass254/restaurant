@@ -22,7 +22,7 @@ export function StationShell({ children }: { children: React.ReactNode }) {
     <div className="station-root station-root--pos">
       <nav className="station-rail" aria-label="Station navigation">
         <div className="station-rail__logo" title="TransChap">
-          <TransChapLogoMark size={28} color="#20154c" accentColor="#77f665" />
+          <TransChapLogoMark size={28} color="currentColor" accentColor="#be9b58" />
         </div>
         <Link href="/station" className="is-active" title="Point of sale">
           <i className="fa-solid fa-cash-register" aria-hidden />

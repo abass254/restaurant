@@ -127,7 +127,7 @@ html:has(.station-root) {
   gap: 0;
   text-decoration: none;
   flex-shrink: 0;
-  color: #1a100c;
+  color: #0b2545;
   background: #fff;
   border-radius: 999px;
   padding: 0.18rem 0.85rem 0.18rem 0.65rem;
@@ -140,13 +140,13 @@ html:has(.station-root) {
 }
 
 html[data-theme="dark"] .fb-topbar__logo {
-  color: #1a100c;
+  color: #0b2545;
   background: #fff;
 }
 
 @media (prefers-color-scheme: dark) {
   html:not([data-theme="light"]) .fb-topbar__logo {
-    color: #1a100c;
+    color: #0b2545;
     background: #fff;
   }
 }
@@ -167,7 +167,7 @@ html[data-theme="dark"] .fb-topbar__logo {
 .fb-topbar__logo-text {
   font-size: 1.35rem;
   font-weight: 700;
-  color: #1a100c;
+  color: #061a33;
   letter-spacing: -0.04em;
   line-height: 1;
   font-family: var(--font-body), sans-serif;
@@ -667,7 +667,7 @@ html[data-theme="dark"] .fb-icon-btn:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1a100c, #e85d04);
+  background: linear-gradient(135deg, #061a33, #e85d04);
   color: #fff;
   font-size: 0.9rem;
   font-weight: 600;
@@ -3274,7 +3274,7 @@ html[data-theme="dark"] .fb-app .btn-danger {
   height: 52px;
   border-radius: 14px;
   background: linear-gradient(135deg, var(--app-primary, #e85d04), #f59e0b);
-  color: #fff;
+  color: var(--app-primary-text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3710,7 +3710,7 @@ html[data-theme="dark"] .fb-app .btn-danger {
   height: 40px;
   border-radius: 10px;
   background: var(--app-primary);
-  color: #fff;
+  color: var(--app-primary-text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4422,7 +4422,7 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
 
 .fb-app .inventory-status-pill.is-off {
   background: rgba(148, 163, 184, 0.18);
-  color: #5e5749;
+  color: #5b6478;
 }
 
 .fb-app .inventory-low {
@@ -4602,7 +4602,7 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
 
 .fb-app .customer-stat-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 24px rgba(26, 16, 12, 0.08);
+  box-shadow: 0 6px 24px rgba(6, 26, 51, 0.08);
 }
 
 .fb-app .customer-stat-card::before {
@@ -4611,7 +4611,7 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
   inset: 0;
   border-radius: inherit;
   padding: 1.5px;
-  background: linear-gradient(135deg, var(--brown-300, #c4926e) 0%, var(--brown-100, #edd9c4) 50%, var(--cream-200, #e8e2d8) 100%);
+  background: linear-gradient(135deg, var(--brown-300, #8a9abd) 0%, var(--brown-100, #f0ddcf) 50%, var(--cream-200, #e8e2d8) 100%);
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -4632,8 +4632,8 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
   place-items: center;
   flex-shrink: 0;
   font-size: 1rem;
-  color: var(--app-primary, var(--color-primary, #6b2e14));
-  background: color-mix(in srgb, var(--app-primary, var(--color-primary, #6b2e14)) 10%, transparent);
+  color: var(--app-primary, var(--color-primary, #0b2545));
+  background: color-mix(in srgb, var(--app-primary, var(--color-primary, #0b2545)) 10%, transparent);
 }
 
 .fb-app .customer-stat-card__icon--success {
@@ -4660,14 +4660,14 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  color: var(--app-text-secondary, var(--color-text-muted, #5b6478));
   margin: 0 0 4px;
 }
 
 .fb-app .customer-stat-card__value {
   font-size: 1.35rem;
   font-weight: 800;
-  color: var(--app-text, var(--color-text, #1a100c));
+  color: var(--app-text, var(--color-text, #061a33));
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
@@ -4705,8 +4705,8 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
 
 .fb-app .customer-card:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(26, 16, 12, 0.06);
-  border-color: var(--brown-200, #ddb896);
+  box-shadow: 0 4px 16px rgba(6, 26, 51, 0.06);
+  border-color: var(--brown-200, #e6ccba);
 }
 
 /* Customer card: identity block */
@@ -4727,10 +4727,10 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
   font-size: 0.8rem;
   font-weight: 800;
   letter-spacing: 0.02em;
-  color: var(--app-primary, var(--color-primary, #6b2e14));
+  color: var(--app-primary, var(--color-primary, #0b2545));
   background: linear-gradient(135deg,
-    color-mix(in srgb, var(--app-primary, var(--color-primary, #6b2e14)) 12%, transparent),
-    color-mix(in srgb, var(--app-primary, var(--color-primary, #6b2e14)) 6%, transparent)
+    color-mix(in srgb, var(--app-primary, var(--color-primary, #0b2545)) 12%, transparent),
+    color-mix(in srgb, var(--app-primary, var(--color-primary, #0b2545)) 6%, transparent)
   );
 }
 
@@ -4744,7 +4744,7 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
 .fb-app .customer-card__name {
   font-size: 0.9375rem;
   font-weight: 700;
-  color: var(--app-text, var(--color-text, #1a100c));
+  color: var(--app-text, var(--color-text, #061a33));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4755,12 +4755,12 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
   align-items: center;
   gap: 6px;
   font-size: 0.8125rem;
-  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  color: var(--app-text-secondary, var(--color-text-muted, #5b6478));
 }
 
 .fb-app .customer-card__email {
   font-size: 0.75rem;
-  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  color: var(--app-text-secondary, var(--color-text-muted, #5b6478));
   opacity: 0.7;
   white-space: nowrap;
   overflow: hidden;
@@ -4769,7 +4769,7 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
 
 .fb-app .customer-card__address {
   font-size: 0.75rem;
-  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  color: var(--app-text-secondary, var(--color-text-muted, #5b6478));
   opacity: 0.6;
 }
 
@@ -4787,7 +4787,7 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  color: var(--app-text-secondary, var(--color-text-muted, #5b6478));
 }
 
 .fb-app .customer-card__credit-amounts {
@@ -4800,7 +4800,7 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
 .fb-app .customer-card__credit-limit {
   font-size: 0.9375rem;
   font-weight: 700;
-  color: var(--app-text, var(--color-text, #1a100c));
+  color: var(--app-text, var(--color-text, #061a33));
 }
 
 .fb-app .customer-card__credit-available {
@@ -4817,7 +4817,7 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
 }
 
 .fb-app .customer-card__credit-available--off {
-  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  color: var(--app-text-secondary, var(--color-text-muted, #5b6478));
   opacity: 0.6;
 }
 
@@ -4864,7 +4864,7 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
   place-items: center;
   border: none;
   background: transparent;
-  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  color: var(--app-text-secondary, var(--color-text-muted, #5b6478));
   cursor: pointer;
   font-size: 0.875rem;
   transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
@@ -4872,7 +4872,7 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
 
 .fb-app .customer-card__action-btn:hover {
   background: var(--app-surface-hover, var(--color-surface-hover, #f3efe8));
-  color: var(--app-text, var(--color-text, #1a100c));
+  color: var(--app-text, var(--color-text, #061a33));
   transform: scale(1.08);
 }
 
@@ -5022,7 +5022,7 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
 
 .fb-app .phone-checker-row--idle {
   background: rgba(0, 0, 0, 0.03);
-  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  color: var(--app-text-secondary, var(--color-text-muted, #5b6478));
 }
 
 .fb-app .phone-carrier-tag {
@@ -5068,12 +5068,12 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
 }
 
 .fb-app .customer-search-input:focus-within {
-  border-color: var(--app-primary, var(--color-primary, #6b2e14));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-primary, var(--color-primary, #6b2e14)) 10%, transparent);
+  border-color: var(--app-primary, var(--color-primary, #0b2545));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-primary, var(--color-primary, #0b2545)) 10%, transparent);
 }
 
 .fb-app .customer-search-input i {
-  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  color: var(--app-text-secondary, var(--color-text-muted, #5b6478));
   opacity: 0.6;
   font-size: 0.875rem;
 }
@@ -5084,19 +5084,19 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
   background: transparent;
   outline: none;
   font-size: 0.9375rem;
-  color: var(--app-text, var(--color-text, #1a100c));
+  color: var(--app-text, var(--color-text, #061a33));
   font-family: inherit;
 }
 
 .fb-app .customer-search-input input::placeholder {
-  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  color: var(--app-text-secondary, var(--color-text-muted, #5b6478));
   opacity: 0.5;
 }
 
 .fb-app .customer-search-count {
   font-size: 0.8125rem;
   font-weight: 600;
-  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  color: var(--app-text-secondary, var(--color-text-muted, #5b6478));
   white-space: nowrap;
 }
 
@@ -5121,21 +5121,21 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
   display: grid;
   place-items: center;
   font-size: 1.5rem;
-  color: var(--app-primary, var(--color-primary, #6b2e14));
-  background: color-mix(in srgb, var(--app-primary, var(--color-primary, #6b2e14)) 10%, transparent);
+  color: var(--app-primary, var(--color-primary, #0b2545));
+  background: color-mix(in srgb, var(--app-primary, var(--color-primary, #0b2545)) 10%, transparent);
   margin-bottom: 16px;
 }
 
 .fb-app .customer-empty-state h2 {
   font-size: 1.1rem;
   font-weight: 750;
-  color: var(--app-text, var(--color-text, #1a100c));
+  color: var(--app-text, var(--color-text, #061a33));
   margin: 0 0 6px;
 }
 
 .fb-app .customer-empty-state p {
   font-size: 0.875rem;
-  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  color: var(--app-text-secondary, var(--color-text-muted, #5b6478));
   margin: 0 0 18px;
   max-width: 320px;
 }
@@ -5219,13 +5219,13 @@ html[data-theme="dark"] .fb-app .online-riders-badge--live {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--app-text-secondary, var(--color-text-muted, #5e5749));
+  color: var(--app-text-secondary, var(--color-text-muted, #5b6478));
 }
 
 .fb-app .supplier-card__meta-value {
   font-size: 0.8125rem;
   font-weight: 600;
-  color: var(--app-text, var(--color-text, #1a100c));
+  color: var(--app-text, var(--color-text, #061a33));
   font-variant-numeric: tabular-nums;
 }
 
@@ -7427,7 +7427,7 @@ html[data-theme="dark"] .fb-app .dashboard-tile--rose .dashboard-tile__icon {
 }
 .fb-app .dashboard-breakdown--slate .dashboard-breakdown__icon {
   background: rgba(94, 87, 73, 0.15);
-  color: #5e5749;
+  color: #5b6478;
 }
 
 html[data-theme="dark"] .fb-app .dashboard-breakdown--indigo .dashboard-breakdown__icon {
@@ -7577,7 +7577,7 @@ html[data-theme="dark"] .fb-app .dashboard-breakdown--slate .dashboard-breakdown
 
 .fb-app .payment-status-pill.is-cancelled {
   background: rgba(148, 163, 184, 0.18);
-  color: #5e5749;
+  color: #5b6478;
 }
 
 .fb-app .payment-status-pill.is-pending {
@@ -9383,7 +9383,7 @@ html[data-theme="dark"] .fb-app .cs-row.is-active .cs-row__chip {
 .fb-app .feeds-tab.is-active {
   background: var(--app-primary);
   border-color: var(--app-primary);
-  color: #fff;
+  color: var(--app-primary-text);
 }
 
 .fb-app .feeds-grid {
@@ -10904,8 +10904,8 @@ html[data-theme="dark"] .fb-app .cs-row.is-active .cs-row__chip {
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: var(--app-primary, #6b2e14);
-  background: rgba(107, 46, 20, 0.1);
+  color: var(--app-primary, #0b2545);
+  background: rgba(11, 37, 69, 0.1);
   flex-shrink: 0;
 }
 
@@ -11047,7 +11047,7 @@ html[data-theme="dark"] .fb-app .cs-row.is-active .cs-row__chip {
   border: 1px solid var(--app-border, #e5e7eb);
   background: linear-gradient(
     180deg,
-    rgba(107, 46, 20, 0.04),
+    rgba(11, 37, 69, 0.04),
     transparent 40%
   );
 }
@@ -11862,8 +11862,8 @@ html[data-theme="dark"] .fb-app .cs-row.is-active .cs-row__chip {
   padding: 0.85rem 1.35rem;
   font: inherit;
   font-weight: 700;
-  color: #fff;
-  background: var(--app-primary, #238636);
+  color: var(--app-primary-text);
+  background: var(--app-primary);
   cursor: pointer;
 }
 
@@ -11906,8 +11906,8 @@ html[data-theme="dark"] .fb-app .cs-row.is-active .cs-row__chip {
   padding: 0.85rem 1.35rem;
   font: inherit;
   font-weight: 700;
-  color: #fff;
-  background: var(--app-primary, #238636);
+  color: var(--app-primary-text);
+  background: var(--app-primary);
   cursor: pointer;
 }
 
@@ -11984,7 +11984,7 @@ html[data-theme="dark"] .fb-app .cs-row.is-active .cs-row__chip {
 .fb-app .tools-delivery .ride-preview__map-stage {
   position: relative;
   min-height: 360px;
-  background: var(--brown-50, #f8f0e8);
+  background: var(--brown-50, #f8ede5);
 }
 
 .fb-app .tools-delivery .ride-preview__map.motorbike-route-map {
@@ -11998,7 +11998,7 @@ html[data-theme="dark"] .fb-app .cs-row.is-active .cs-row__chip {
 .fb-app .tools-delivery .motorbike-route-map {
   position: relative;
   overflow: hidden;
-  background: var(--brown-50, #f8f0e8);
+  background: var(--brown-50, #f8ede5);
 }
 
 .fb-app .tools-delivery .motorbike-route-map__canvas {
@@ -12362,7 +12362,7 @@ html[data-theme="dark"] .fb-app .cs-row.is-active .cs-row__chip {
 .fb-app .ride-request__map {
   position: relative;
   height: 200px;
-  background: var(--brown-50, #f8f0e8);
+  background: var(--brown-50, #f8ede5);
 }
 
 .fb-app .ride-request__map .motorbike-route-map,
@@ -12409,7 +12409,7 @@ html[data-theme="dark"] .fb-app .cs-row.is-active .cs-row__chip {
   border-radius: 999px;
   background: color-mix(in srgb, var(--app-surface) 94%, transparent);
   color: var(--app-text);
-  box-shadow: 0 4px 14px rgba(26, 16, 12, 0.16);
+  box-shadow: 0 4px 14px rgba(6, 26, 51, 0.16);
   cursor: pointer;
 }
 
@@ -12436,7 +12436,7 @@ html[data-theme="dark"] .fb-app .cs-row.is-active .cs-row__chip {
 }
 
 .fb-app .ride-request-modal .ride-preview__stops-card {
-  box-shadow: 0 10px 28px rgba(26, 16, 12, 0.12);
+  box-shadow: 0 10px 28px rgba(6, 26, 51, 0.12);
 }
 
 .fb-app .ride-request__quote {

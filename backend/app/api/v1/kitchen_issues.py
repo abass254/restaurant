@@ -179,8 +179,6 @@ def get_suggestion(
     session: dict = Depends(get_request_session),
 ):
     _, account = _shop(db, session)
-    if not kitchen_issuing_on(account):
-        raise _error(KitchenIssueError("Turn on store and kitchen in Settings first."))
     return {"data": suggest_issue(db, account.id, days=days)}
 
 

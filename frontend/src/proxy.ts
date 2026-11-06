@@ -16,6 +16,10 @@ const BACKEND_PATHS = [
   "/uploads",
   "/webhooks",
 ];
+const PATH_ALIASES: Record<string, string> = {
+  "/customer": "/customers",
+  "/supplier": "/suppliers",
+};
 
 function isWithinPath(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
@@ -27,6 +31,14 @@ export function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = pathname.slice(TRANS_CHAP_PATH.length) || "/";
     return NextResponse.redirect(url);
+  }
+
+  // Rewrite rather than redirect: browsers cached an old permanent /customers -> /customer redirect.
+  const alias = Object.keys(PATH_ALIASES).find((path) => isWithinPath(pathname, path));
+  if (alias) {
+    const url = request.nextUrl.clone();
+    url.pathname = `${TRANS_CHAP_PATH}${PATH_ALIASES[alias]}${pathname.slice(alias.length)}`;
+    return NextResponse.rewrite(url);
   }
 
   if (

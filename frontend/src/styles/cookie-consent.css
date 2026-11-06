@@ -16,7 +16,7 @@
   border: 1px solid var(--color-border);
   border-radius: 1rem;
   background: var(--color-surface);
-  box-shadow: 0 18px 45px rgba(26, 16, 12, 0.16);
+  box-shadow: 0 18px 45px rgba(6, 26, 51, 0.16);
 }
 
 .cookie-consent__title {
@@ -61,9 +61,9 @@
 }
 
 .cookie-consent__btn--primary {
-  background: linear-gradient(135deg, #6b2e14, #8c3e1a);
+  background: linear-gradient(135deg, #0b2545, #14345f);
   color: #fff;
-  box-shadow: 0 4px 16px rgba(107, 46, 20, 0.28);
+  box-shadow: 0 4px 16px rgba(11, 37, 69, 0.28);
 }
 
 .cookie-consent__btn--secondary {

@@ -121,8 +121,13 @@ def test_off_by_default_everything_stays_in_store(rdb):
     _order(rdb, {"inventory_item_id": "inv-chapati", "quantity": 10})
     assert _qty(rdb, "inv-flour") == (pytest.approx(9.0), None)
     assert {m.location for m in rdb.query(StockMovement).all()} == {"store"}
-    with pytest.raises(KitchenIssueError):
-        create_issue(rdb, _account(rdb), [("inv-flour", Decimal("1"))], user_id="u1")
+
+
+def test_first_release_to_kitchen_turns_issuing_on_and_moves_stock(rdb):
+    assert not _account(rdb).kitchen_issuing_enabled
+    _issue(rdb, flour="2")
+    assert _account(rdb).kitchen_issuing_enabled
+    assert _qty(rdb, "inv-flour") == (pytest.approx(8), pytest.approx(2))
 
 
 def test_daily_menu_reset_pauses_only_active_restaurant_menu_items(rdb, retail_db):
@@ -580,7 +585,7 @@ def test_purchase_new_inventory_issue_prepare_and_record_sale(rdb, monkeypatch):
     monkeypatch.setattr(orders, "require_user", lambda *_args, **_kwargs: user)
     sales_response = orders.list_orders(
         q=None,
-        status_filter="placed",
+        status_filter="being_prepared",
         source="walkin",
         fulfillment_type=None,
         since=None,
@@ -592,7 +597,7 @@ def test_purchase_new_inventory_issue_prepare_and_record_sale(rdb, monkeypatch):
     )
     kitchen_response = orders.list_orders(
         q=None,
-        status_filter="placed",
+        status_filter="being_prepared",
         source=None,
         fulfillment_type=None,
         since=None,

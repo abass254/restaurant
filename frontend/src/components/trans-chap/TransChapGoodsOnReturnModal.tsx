@@ -219,7 +219,7 @@ export function TransChapGoodsOnReturnModal({
       <header className="inventory-modal__head">
         <div className="trans-chap-purchase-modal__heading">
           <h2 id={`${baseId}-title`}>
-            <i className="fa-solid fa-arrow-rotate-left" style={{ marginRight: 8, color: "var(--app-primary, #238636)" }} aria-hidden />
+            <i className="fa-solid fa-arrow-rotate-left" style={{ marginRight: 8, color: "var(--app-primary)" }} aria-hidden />
             Record Goods on Return
           </h2>
           <p>
@@ -285,7 +285,7 @@ export function TransChapGoodsOnReturnModal({
                     style={{
                       border: "none",
                       background: "none",
-                      color: "var(--app-primary, #238636)",
+                      color: "var(--app-primary)",
                       fontSize: "0.8rem",
                       fontWeight: 600,
                       cursor: "pointer",
@@ -314,7 +314,7 @@ export function TransChapGoodsOnReturnModal({
                         style={{
                           border: `1.5px solid ${
                             line.selected && !lineDisabled
-                              ? "var(--app-primary, #238636)"
+                              ? "var(--app-primary)"
                               : "var(--app-border, #e5e7eb)"
                           }`,
                           borderRadius: "10px",
@@ -322,7 +322,7 @@ export function TransChapGoodsOnReturnModal({
                           background: lineDisabled
                             ? "var(--app-surface-muted, #f9fafb)"
                             : line.selected
-                              ? "var(--app-primary-soft, rgba(35, 134, 54, 0.04))"
+                              ? "color-mix(in srgb, var(--app-primary) 6%, transparent)"
                               : "var(--app-surface, #ffffff)",
                           opacity: lineDisabled ? 0.6 : 1,
                           transition: "all 0.15s ease",
@@ -351,7 +351,7 @@ export function TransChapGoodsOnReturnModal({
                               checked={line.selected && !lineDisabled}
                               disabled={lineDisabled}
                               onChange={() => toggleLine(idx)}
-                              style={{ width: "18px", height: "18px", accentColor: "var(--app-primary, #238636)" }}
+                              style={{ width: "18px", height: "18px", accentColor: "var(--app-primary)" }}
                             />
                             <div style={{ minWidth: 0 }}>
                               <strong
@@ -666,7 +666,7 @@ export function TransChapGoodsOnReturnModal({
                     style={{
                       display: "block",
                       fontSize: "1.15rem",
-                      color: "var(--app-primary, #238636)",
+                      color: "var(--app-primary)",
                       fontWeight: 800,
                     }}
                   >
@@ -720,8 +720,8 @@ export function TransChapGoodsOnReturnModal({
                 border: "none",
                 background: !selectedLines.length
                   ? "#fdba74"
-                  : "linear-gradient(135deg, #238636 0%, #1f6f35 100%)",
-                color: "#ffffff",
+                  : "linear-gradient(135deg, var(--app-primary) 0%, var(--app-primary-hover) 100%)",
+                color: !selectedLines.length ? "#ffffff" : "var(--app-primary-text)",
                 fontSize: "0.95rem",
                 fontWeight: 750,
                 cursor: submitting || !selectedLines.length ? "not-allowed" : "pointer",

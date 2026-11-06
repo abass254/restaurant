@@ -722,7 +722,7 @@ html.landing-motion .reveal.is-visible {
   align-items: center;
   justify-content: center;
   border: 3px solid var(--cream-50);
-  box-shadow: 0 4px 16px rgba(44, 16, 8, 0.15);
+  box-shadow: 0 4px 16px rgba(6, 26, 51, 0.15);
   transition: background 0.35s, color 0.35s, transform 0.35s var(--ease-out);
 }
 
@@ -1145,7 +1145,7 @@ html[data-theme="dark"] .dash-topbar {
   border: 1px solid var(--cream-200);
   border-radius: 20px;
   padding: 32px;
-  box-shadow: 0 16px 48px rgba(44, 16, 8, 0.08);
+  box-shadow: 0 16px 48px rgba(6, 26, 51, 0.08);
 }
 
 .auth-back {

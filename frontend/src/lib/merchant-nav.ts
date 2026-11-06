@@ -51,14 +51,14 @@ export const merchantNavLinks: MerchantNavLink[] = [
     topTab: true,
   },
   {
-    href: "/customer",
+    href: "/customers",
     icon: "fa-address-book",
     label: "Customers",
     section: "customer",
     group: "work",
   },
   {
-    href: "/supplier",
+    href: "/suppliers",
     icon: "fa-truck-field",
     label: "Suppliers",
     section: "supplier",

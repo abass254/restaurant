@@ -4,9 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuthUser } from "@/components/app/AuthProvider";
 import { confirmAction, extractErrorMessage, showError, toastSuccess } from "@/lib/alerts";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, DATA_CHANGED_EVENT } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
-import { isStoreAdmin } from "@/lib/merchant-permissions";
 import { orderHasSuccessfulMpesa, orderUsesPayment } from "@/lib/orders";
 import { itemDefinedUnits } from "@/lib/sell-units";
 import {
@@ -15,20 +14,15 @@ import {
   type ModifierSources,
 } from "@/components/trans-chap/TransChapMenuGroupEditor";
 import {
-  enableKitchenIssuing,
   fetchKitchenEquivalenceUnits,
   fetchKitchenStock,
-  fetchSupplyItems,
   formatQty,
-  roundQty,
   saveKitchenEquivalenceUnits,
   fetchMenuCosting,
-  prepareMenuRecipeBatch,
   type MenuCosting,
   type KitchenIssue,
   type KitchenStock,
   type KitchenItem,
-  type SupplyItem,
 } from "@/lib/restaurant-supplies";
 import {
   createKitchenMeal,
@@ -65,13 +59,6 @@ import type {
   OrdersListResponse,
 } from "@/lib/types";
 import { fetchAllPages } from "@/lib/paged-fetch";
-
-function parseQty(value: string): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) && parsed >= 0 ? roundQty(parsed) : null;
-}
 
 function recipeDraftFor(dish: InventoryItem): RecipeDraft[] {
   return (dish.product?.recipe ?? []).map((line) => {
@@ -110,13 +97,9 @@ export function RestaurantKitchenTab() {
     void load();
   }, [load]);
 
-  async function onEnabled(next: KitchenStock) {
-    setStock(next);
-  }
-
   if (loading) return <p className="rs-empty">Loading kitchen…</p>;
   if (!stock) return null;
-  if (!stock.enabled) return <KitchenSetup onEnabled={(next) => void onEnabled(next)} />;
+  if (!stock.enabled) return <KitchenSetup />;
 
   return (
     <KitchenBoard
@@ -126,19 +109,12 @@ export function RestaurantKitchenTab() {
   );
 }
 
-export function KitchenSetup({ onEnabled }: { onEnabled: (stock: KitchenStock) => void }) {
-  const user = useAuthUser();
-  const canEnable = isStoreAdmin(user);
-  const [items, setItems] = useState<SupplyItem[]>([]);
+export function KitchenSetup() {
   const [menuDishes, setMenuDishes] = useState<InventoryItem[]>([]);
   const [menuSupplies, setMenuSupplies] = useState<InventoryItem[]>([]);
   const [menuLoading, setMenuLoading] = useState(true);
-  const [counts, setCounts] = useState<Record<string, string>>({});
-  const [countUnits, setCountUnits] = useState<Record<string, string>>({});
-  const [setup, setSetup] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const loadMenu = useCallback(async (): Promise<InventoryItem[] | null> => {
+  const [orderStageFilter, setOrderStageFilter] = useState<"all" | "new" | "preparing" | "ready">("all");
+  const loadMenu = useCallback(async (silent = false): Promise<InventoryItem[] | null> => {
     try {
       const res = await apiFetch<{ data: InventoryItem[] }>(apiRoutes.inventory);
       const inventory = res.data || [];
@@ -146,132 +122,55 @@ export function KitchenSetup({ onEnabled }: { onEnabled: (stock: KitchenStock) =
       setMenuSupplies(inventory.filter((item) => isSupplyItem(item)));
       return inventory;
     } catch (err) {
-      await showError("Could not load current menu", extractErrorMessage(err));
+      if (!silent) await showError("Could not load current menu", extractErrorMessage(err));
       return null;
     } finally {
       setMenuLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    void Promise.resolve().then(loadMenu);
+  const refreshMenuSilently = useCallback(async () => {
+    await loadMenu(true);
   }, [loadMenu]);
 
-  useEffect(() => {
-    if (!setup) return;
-    fetchSupplyItems()
-      .then((rows) =>
-        setItems(rows.filter((row) => row.stock_quantity != null && row.inventory_role !== "for_sale")),
-      )
-      .catch((err) => void showError("Could not load supplies", extractErrorMessage(err)));
-  }, [setup]);
-
-  async function enable() {
-    const opening = items
-      .map((item) => {
-        const unit = item.buy_units.find((candidate) => candidate.name === countUnits[item.id]) ?? item.buy_units[0];
-        return { inventory_item_id: item.id, quantity: (parseQty(counts[item.id] ?? "") ?? 0) * (unit?.factor || 1) };
-      })
-      .filter((row) => row.quantity > 0);
-    const ok = await confirmAction(
-      "Turn on store and kitchen?",
-      opening.length
-        ? `${opening.length} ${opening.length === 1 ? "supply" : "supplies"} will move from the store to the kitchen. From now on, sales use kitchen stock for ingredients.`
-        : "The kitchen starts empty. Order supplies from inventory before cooking, or sales will show the kitchen running short.",
-      "Turn on",
-    );
-    if (!ok) return;
-    setSaving(true);
-    try {
-      const next = await enableKitchenIssuing(opening);
-      await toastSuccess("Store and kitchen turned on");
-      onEnabled(next);
-    } catch (err) {
-      await showError("Could not turn on store and kitchen", extractErrorMessage(err));
-      setSaving(false);
-    }
-  }
+  const {
+    orders,
+    ordersLoading,
+    ordersError,
+    startingOrderId,
+    loadOrders,
+    startPreparing,
+    markReady,
+    confirmHandoff,
+  } = useKitchenOrders(refreshMenuSilently);
 
   return (
-    <>
-      <div className="rs-card">
-        <p className="rs-card__title">Run the store and the kitchen separately</p>
-        <p className="rs-card__meta">
-          Deliveries go into the store. Each day the store issues what the kitchen needs, and the kitchen counts
-          what is left at closing. You will see whether a loss happened in the store or in the kitchen, day by day.
-        </p>
-        {!canEnable ? (
-          <p className="rs-card__meta">Ask the shop owner to turn this on.</p>
-        ) : !setup ? (
-          <div className="rs-row">
-            <button type="button" className="rs-btn rs-btn--primary" onClick={() => setSetup(true)}>
-              Set up store and kitchen
-            </button>
-          </div>
-        ) : (
-          <>
-            <h3 className="rs-section-title">What is in the kitchen right now?</h3>
-            <p className="rs-card__meta">
-              Enter what is already in the kitchen. It moves out of the store figure so nothing is counted twice.
-              Leave blank for zero.
-            </p>
-            <div className="rs-table-wrap">
-              <table className="rs-table">
-                <thead>
-                  <tr>
-                    <th>Supply</th>
-                    <th className="rs-num">In stock</th>
-                    <th className="rs-num">In kitchen now</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => (
-                    <tr key={item.id}>
-                      <td>{item.name}</td>
-                      <td className="rs-num">{formatQty(item.stock_quantity, item.base_unit)}</td>
-                      <td className="rs-num">
-                        <div className="rs-count-input">
-                          <input
-                            className="rs-input rs-input--qty"
-                            inputMode="decimal"
-                            placeholder="0"
-                            value={counts[item.id] ?? ""}
-                            aria-label={`${item.name} in kitchen`}
-                            onChange={(e) => setCounts((prev) => ({ ...prev, [item.id]: e.target.value }))}
-                          />
-                          {item.buy_units.length > 1 ? (
-                            <select
-                              aria-label={`Unit for ${item.name}`}
-                              value={countUnits[item.id] || item.base_unit}
-                              onChange={(e) => {
-                                const oldUnit = item.buy_units.find((unit) => unit.name === (countUnits[item.id] || item.base_unit)) ?? item.buy_units[0];
-                                const nextUnit = item.buy_units.find((unit) => unit.name === e.target.value) ?? item.buy_units[0];
-                                const baseAmount = (parseQty(counts[item.id] ?? "") ?? 0) * (oldUnit?.factor || 1);
-                                setCountUnits((prev) => ({ ...prev, [item.id]: e.target.value }));
-                                setCounts((prev) => ({ ...prev, [item.id]: baseAmount ? String(Math.round((baseAmount / (nextUnit?.factor || 1)) * 1000) / 1000) : prev[item.id] ?? "" }));
-                              }}
-                            >
-                              {item.buy_units.map((unit) => <option key={unit.name} value={unit.name}>{unit.name}</option>)}
-                            </select>
-                          ) : <small>{item.base_unit}</small>}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="rs-row">
-              <button type="button" className="rs-btn" disabled={saving} onClick={() => setSetup(false)}>
-                Back
-              </button>
-              <button type="button" className="rs-btn rs-btn--primary" disabled={saving} onClick={() => void enable()}>
-                {saving ? "Turning on…" : "Turn on store and kitchen"}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+    <div className="tc-kitchen-page">
+      <KitchenStageSummaryBar
+        orders={orders}
+        loading={ordersLoading}
+        activeStage={orderStageFilter}
+        onSelectStage={setOrderStageFilter}
+        onRefresh={() => void loadOrders()}
+        onStartPreparing={(order) => void startPreparing(order)}
+        onMarkReady={(order) => void markReady(order)}
+        onConfirmHandoff={(order) => void confirmHandoff(order)}
+        canStartPreparing={canStartPreparing}
+        startingOrderId={startingOrderId}
+      />
+      <KitchenOrderQueue
+        orders={orders}
+        loading={ordersLoading}
+        error={ordersError}
+        startingOrderId={startingOrderId}
+        activeFilter={orderStageFilter}
+        onFilterChange={setOrderStageFilter}
+        onRefresh={() => void loadOrders()}
+        onStartPreparing={(order) => void startPreparing(order)}
+        onMarkReady={(order) => void markReady(order)}
+        onConfirmHandoff={(order) => void confirmHandoff(order)}
+        canStartPreparing={canStartPreparing}
+      />
       <section className="tc-kitchen-section" aria-label="Menu recipes">
         <CurrentMenuSection
           dishes={menuDishes}
@@ -282,55 +181,34 @@ export function KitchenSetup({ onEnabled }: { onEnabled: (stock: KitchenStock) =
           enableKitchenMeasures={false}
         />
       </section>
-    </>
+    </div>
   );
 }
 
-function KitchenBoard({
-  stock,
-  onStock,
-}: {
-  stock: KitchenStock;
-  onStock: (stock: KitchenStock) => void;
-}) {
-  const [activeView, setActiveView] = useState<"menu" | "orders" | "measures">("menu");
-  const [orderStageFilter, setOrderStageFilter] = useState<"all" | "new" | "preparing" | "ready">("all");
-  const [inventoryQuery, setInventoryQuery] = useState("");
-  const [measureQuery, setMeasureQuery] = useState("");
-  const [measureUnitFilter, setMeasureUnitFilter] = useState("all");
+const KITCHEN_ORDER_STATUSES = ["placed", "awaiting_payment", "payment_received", "being_prepared", "ready"];
+
+function canStartPreparing(order: Order): boolean {
+  if (!order.allowed_next_statuses?.includes("being_prepared")) return false;
+  if (order.status === "payment_received") return true;
+  if (order.status !== "placed") return false;
+  return !orderUsesPayment(order, "mpesa") || orderHasSuccessfulMpesa(order);
+}
+
+function useKitchenOrders(onRefresh?: () => Promise<void>) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [startingOrderId, setStartingOrderId] = useState<string | null>(null);
-
-  const [dishes, setDishes] = useState<InventoryItem[]>([]);
-  const [supplies, setSupplies] = useState<InventoryItem[]>([]);
-  const [dishesLoading, setDishesLoading] = useState(true);
-
-  const loadDishes = useCallback(async (): Promise<InventoryItem[] | null> => {
-    try {
-      const res = await apiFetch<{ data: InventoryItem[] }>(apiRoutes.inventory);
-      const hotelItems = (res.data || []).filter((item) => isHotelMenuItem(item));
-      setSupplies((res.data || []).filter((item) => isSupplyItem(item)));
-      setDishes(hotelItems);
-      return res.data;
-    } catch (err) {
-      await showError("Could not load current menu", extractErrorMessage(err));
-      return null;
-    } finally {
-      setDishesLoading(false);
-    }
-  }, []);
+  const onRefreshRef = useRef(onRefresh);
 
   useEffect(() => {
-    void loadDishes();
-  }, [loadDishes]);
+    onRefreshRef.current = onRefresh;
+  }, [onRefresh]);
 
   const loadOrders = useCallback(async () => {
     try {
-      const statuses = ["placed", "awaiting_payment", "payment_received", "being_prepared", "ready"];
       const results = await Promise.all(
-        statuses.map((status) =>
+        KITCHEN_ORDER_STATUSES.map((status) =>
           fetchAllPages<OrdersListResponse["data"][number]>(
             (page) => `${apiRoutes.orders}?status=${status}&per_page=100&page=${page}`,
             20,
@@ -357,28 +235,14 @@ function KitchenBoard({
     }
   }, []);
 
-  const refreshKitchenSupplies = useCallback(async () => {
-    try {
-      const next = await fetchKitchenStock();
-      onStock(next);
-    } catch {
-      // ignore silent refresh errors
-    }
-  }, [onStock]);
+  const refreshAll = useCallback(async () => {
+    await Promise.all([loadOrders(), onRefreshRef.current?.()]);
+  }, [loadOrders]);
 
   useEffect(() => {
-    const initialLoad = window.setTimeout(() => {
-      void loadOrders();
-      void refreshKitchenSupplies();
-    }, 0);
-    const timer = window.setInterval(() => {
-      void loadOrders();
-      void refreshKitchenSupplies();
-    }, 10_000);
-    const onEvent = () => {
-      void loadOrders();
-      void refreshKitchenSupplies();
-    };
+    const initialLoad = window.setTimeout(() => void refreshAll(), 0);
+    const timer = window.setInterval(() => void refreshAll(), 10_000);
+    const onEvent = () => void refreshAll();
     window.addEventListener("trans-chap:refresh-counts", onEvent);
     window.addEventListener("TransChap:notification", onEvent);
     return () => {
@@ -387,83 +251,144 @@ function KitchenBoard({
       window.removeEventListener("trans-chap:refresh-counts", onEvent);
       window.removeEventListener("TransChap:notification", onEvent);
     };
-  }, [loadOrders, refreshKitchenSupplies]);
+  }, [refreshAll]);
 
-  async function startPreparing(order: Order) {
-    if (!canStartPreparing(order) || startingOrderId) return;
-    setStartingOrderId(order.id);
-    try {
-      const response = await apiFetch<OrderMutationResponse>(apiRoutes.orderTransition(order.id), {
-        method: "POST",
-        body: JSON.stringify({ to_status: "being_prepared" }),
-      });
-      setOrders((previous) =>
-        previous.map((row) => row.id === response.data.id ? response.data : row),
-      );
-      await toastSuccess(`Started preparing order #${order.order_number}`);
-      await Promise.all([loadOrders(), refreshKitchenSupplies()]);
-    } catch (err) {
-      await showError("Could not start preparing this order", extractErrorMessage(err));
-      await Promise.all([loadOrders(), refreshKitchenSupplies()]);
-    } finally {
-      setStartingOrderId(null);
-    }
-  }
-
-  async function markReady(order: Order) {
+  async function runTransition(
+    order: Order,
+    request: () => Promise<OrderMutationResponse>,
+    success: string,
+    failure: string,
+    closedMeansDone = false,
+  ) {
     if (startingOrderId) return;
     setStartingOrderId(order.id);
     try {
-      const response = await apiFetch<OrderMutationResponse>(apiRoutes.orderTransition(order.id), {
-        method: "POST",
-        body: JSON.stringify({ to_status: "ready" }),
-      });
+      const response = await request();
       setOrders((previous) =>
         previous.map((row) => (row.id === response.data.id ? response.data : row)),
       );
-      await toastSuccess(`Order #${order.order_number} marked ready for serving`);
-      await Promise.all([loadOrders(), refreshKitchenSupplies()]);
-    } catch (err) {
-      await showError("Could not mark order ready", extractErrorMessage(err));
-      await Promise.all([loadOrders(), refreshKitchenSupplies()]);
-    } finally {
-      setStartingOrderId(null);
-    }
-  }
-
-  async function confirmHandoff(order: Order) {
-    if (startingOrderId) return;
-    setStartingOrderId(order.id);
-    try {
-      const response = await apiFetch<OrderMutationResponse>(apiRoutes.orderConfirmHandoff(order.id), {
-        method: "POST",
-        body: "{}",
-      });
-      setOrders((previous) =>
-        previous.map((row) => (row.id === response.data.id ? response.data : row)),
-      );
-      await toastSuccess(`Order #${order.order_number} served to table`);
-      await Promise.all([loadOrders(), refreshKitchenSupplies()]);
+      await toastSuccess(success);
     } catch (err: unknown) {
       const msg = extractErrorMessage(err);
-      if (msg.toLowerCase().includes("already closed")) {
-        await toastSuccess(`Order #${order.order_number} served to table`);
-        await Promise.all([loadOrders(), refreshKitchenSupplies()]);
-        return;
+      if (closedMeansDone && msg.toLowerCase().includes("already closed")) {
+        await toastSuccess(success);
+      } else {
+        await showError(failure, msg);
       }
-      await showError("Could not confirm handover", msg);
-      await Promise.all([loadOrders(), refreshKitchenSupplies()]);
     } finally {
+      await refreshAll();
       setStartingOrderId(null);
     }
   }
 
-  function canStartPreparing(order: Order): boolean {
-    if (!order.allowed_next_statuses?.includes("being_prepared")) return false;
-    if (order.status === "payment_received") return true;
-    if (order.status !== "placed") return false;
-    return !orderUsesPayment(order, "mpesa") || orderHasSuccessfulMpesa(order);
+  function startPreparing(order: Order) {
+    if (!canStartPreparing(order)) return Promise.resolve();
+    return runTransition(
+      order,
+      () =>
+        apiFetch<OrderMutationResponse>(apiRoutes.orderTransition(order.id), {
+          method: "POST",
+          body: JSON.stringify({ to_status: "being_prepared" }),
+        }),
+      `Started preparing order #${order.order_number}`,
+      "Could not start preparing this order",
+    );
   }
+
+  function markReady(order: Order) {
+    return runTransition(
+      order,
+      () =>
+        apiFetch<OrderMutationResponse>(apiRoutes.orderTransition(order.id), {
+          method: "POST",
+          body: JSON.stringify({ to_status: "ready" }),
+        }),
+      `Order #${order.order_number} marked ready for serving`,
+      "Could not mark order ready",
+    );
+  }
+
+  function confirmHandoff(order: Order) {
+    return runTransition(
+      order,
+      () =>
+        apiFetch<OrderMutationResponse>(apiRoutes.orderConfirmHandoff(order.id), {
+          method: "POST",
+          body: "{}",
+        }),
+      `Order #${order.order_number} served to table`,
+      "Could not confirm handover",
+      true,
+    );
+  }
+
+  return {
+    orders,
+    ordersLoading,
+    ordersError,
+    startingOrderId,
+    loadOrders,
+    startPreparing,
+    markReady,
+    confirmHandoff,
+  };
+}
+
+function KitchenBoard({
+  stock,
+  onStock,
+}: {
+  stock: KitchenStock;
+  onStock: (stock: KitchenStock) => void;
+}) {
+  const [activeView, setActiveView] = useState<"menu" | "orders" | "measures">("menu");
+  const [orderStageFilter, setOrderStageFilter] = useState<"all" | "new" | "preparing" | "ready">("all");
+  const [inventoryQuery, setInventoryQuery] = useState("");
+  const [measureQuery, setMeasureQuery] = useState("");
+  const [measureUnitFilter, setMeasureUnitFilter] = useState("all");
+
+  const [dishes, setDishes] = useState<InventoryItem[]>([]);
+  const [supplies, setSupplies] = useState<InventoryItem[]>([]);
+  const [dishesLoading, setDishesLoading] = useState(true);
+
+  const loadDishes = useCallback(async (silent = false): Promise<InventoryItem[] | null> => {
+    try {
+      const res = await apiFetch<{ data: InventoryItem[] }>(apiRoutes.inventory);
+      const hotelItems = (res.data || []).filter((item) => isHotelMenuItem(item));
+      setSupplies((res.data || []).filter((item) => isSupplyItem(item)));
+      setDishes(hotelItems);
+      return res.data;
+    } catch (err) {
+      if (!silent) await showError("Could not load current menu", extractErrorMessage(err));
+      return null;
+    } finally {
+      setDishesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDishes();
+  }, [loadDishes]);
+
+  const refreshKitchenSupplies = useCallback(async () => {
+    try {
+      const [next] = await Promise.all([fetchKitchenStock(), loadDishes(true)]);
+      onStock(next);
+    } catch {
+      // ignore silent refresh errors
+    }
+  }, [onStock, loadDishes]);
+
+  const {
+    orders,
+    ordersLoading,
+    ordersError,
+    startingOrderId,
+    loadOrders,
+    startPreparing,
+    markReady,
+    confirmHandoff,
+  } = useKitchenOrders(refreshKitchenSupplies);
 
   // Only items issued/sent to the kitchen from inventory (kitchen_quantity > 0)
   const kitchenSupplies = useMemo(
@@ -720,9 +645,6 @@ function KitchenBoard({
             setDishes={setDishes}
             supplies={supplies}
             reloadDishes={loadDishes}
-            reloadKitchen={async () => {
-              onStock(await fetchKitchenStock());
-            }}
             loading={dishesLoading}
           />
         </section>
@@ -1471,12 +1393,24 @@ function KitchenOrderQueue({
 
 
 
+function servingsChanged(previous: Map<string, MenuCosting>, next: Map<string, MenuCosting>): boolean {
+  if (previous.size === 0) return false;
+  const servings = (meal: MenuCosting | undefined) =>
+    JSON.stringify([
+      meal?.portions_possible ?? null,
+      (meal?.equivalences ?? []).map((entry) => [entry.serving_unit, entry.portions_possible]),
+    ]);
+  for (const [id, meal] of next) {
+    if (previous.has(id) && servings(previous.get(id)) !== servings(meal)) return true;
+  }
+  return false;
+}
+
 function CurrentMenuSection({
   dishes,
   setDishes,
   supplies,
   reloadDishes,
-  reloadKitchen,
   loading,
   enableKitchenMeasures = true,
 }: {
@@ -1484,7 +1418,6 @@ function CurrentMenuSection({
   setDishes: React.Dispatch<React.SetStateAction<InventoryItem[]>>;
   supplies: InventoryItem[];
   reloadDishes: () => Promise<InventoryItem[] | null>;
-  reloadKitchen?: () => Promise<void>;
   loading: boolean;
   enableKitchenMeasures?: boolean;
 }) {
@@ -1493,10 +1426,8 @@ function CurrentMenuSection({
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [preparingId, setPreparingId] = useState<string | null>(null);
   const [deletingDishId, setDeletingDishId] = useState<string | null>(null);
   const [selectedServingUnitByDish, setSelectedServingUnitByDish] = useState<Record<string, string>>({});
-  const [batchCountByDish, setBatchCountByDish] = useState<Record<string, string>>({});
   const [recipeEditor, setRecipeEditor] = useState<InventoryItem | null>(null);
   const [recipeDraft, setRecipeDraft] = useState<RecipeDraft[]>([]);
   const [recipeMealName, setRecipeMealName] = useState("");
@@ -1515,6 +1446,11 @@ function CurrentMenuSection({
   const [selectedModifierGroupIds, setSelectedModifierGroupIds] = useState<string[]>([]);
   const [groupEditor, setGroupEditor] = useState<{ group: ModifierGroup | null; attach: boolean } | null>(null);
   const dirtyGroupIdsRef = useRef<Set<string>>(new Set());
+
+  const costingRef = useRef(costing);
+  useEffect(() => {
+    costingRef.current = costing;
+  }, [costing]);
 
   const refreshCosting = useCallback(async () => {
     setCostingLoading(true);
@@ -1548,8 +1484,41 @@ function CurrentMenuSection({
       .finally(() => {
         if (active) setCostingLoading(false);
       });
+    const refreshSilently = () => {
+      fetchMenuCosting()
+        .then((rows) => {
+          if (!active) return;
+          const next = new Map(rows.map((row) => [row.inventory_item_id, row]));
+          const changed = servingsChanged(costingRef.current, next);
+          setCosting(next);
+          setCostingLoadFailed(false);
+          if (changed) void toastSuccess("Possible servings updated");
+        })
+        .catch(() => undefined);
+    };
+    let debounce: number | undefined;
+    const refreshSoon = () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(refreshSilently, 400);
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshSoon();
+    };
+    const timer = window.setInterval(refreshSilently, 10_000);
+    window.addEventListener("trans-chap:refresh-counts", refreshSoon);
+    window.addEventListener("TransChap:notification", refreshSoon);
+    window.addEventListener(DATA_CHANGED_EVENT, refreshSoon);
+    window.addEventListener("focus", refreshSoon);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       active = false;
+      window.clearInterval(timer);
+      window.clearTimeout(debounce);
+      window.removeEventListener("trans-chap:refresh-counts", refreshSoon);
+      window.removeEventListener("TransChap:notification", refreshSoon);
+      window.removeEventListener(DATA_CHANGED_EVENT, refreshSoon);
+      window.removeEventListener("focus", refreshSoon);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
@@ -1667,49 +1636,6 @@ function CurrentMenuSection({
       await showError("Could not update menu dish availability", extractErrorMessage(err));
     } finally {
       setTogglingId(null);
-    }
-  }
-
-  async function handlePrepareBatch(dish: InventoryItem) {
-    const meal = costing.get(dish.id);
-    const requestedServingUnit = selectedServingUnitByDish[dish.id];
-    const servingUnit =
-      meal?.equivalences?.some((entry) => entry.serving_unit === requestedServingUnit)
-        ? requestedServingUnit
-        : meal?.serving_unit || "servings";
-    const equivalence = meal?.equivalences?.find((entry) => entry.serving_unit === servingUnit);
-    const batchCount = Number(batchCountByDish[dish.id] || "1");
-    if (
-      !meal ||
-      equivalence?.prepared_quantity == null ||
-      !Number.isInteger(batchCount) ||
-      batchCount < 1 ||
-      equivalence.batches_producible == null ||
-      batchCount > equivalence.batches_producible ||
-      preparingId
-    ) return;
-    setPreparingId(dish.id);
-    try {
-      const result = await prepareMenuRecipeBatch(dish.id, servingUnit, batchCount);
-      const portionCount = Number.isInteger(result.portions_added)
-        ? String(result.portions_added)
-        : result.portions_added.toFixed(3).replace(/\.?0+$/, "");
-      await toastSuccess(
-        `Prepared ${portionCount} ${servingUnit} of ${dish.product?.name ?? "this meal"}`,
-      );
-      await reloadDishes();
-      await refreshCosting();
-      if (reloadKitchen) {
-        try {
-          await reloadKitchen();
-        } catch (err) {
-          await showError("Batch prepared, but kitchen stock did not refresh", extractErrorMessage(err));
-        }
-      }
-    } catch (err) {
-      await showError("Could not prepare recipe batch", extractErrorMessage(err));
-    } finally {
-      setPreparingId(null);
     }
   }
 
@@ -2001,8 +1927,7 @@ function CurrentMenuSection({
             <span className="rs-badge" style={{ fontSize: "0.75rem" }}>{dishes.length}</span>
           </h3>
           <p className="tc-kitchen-section__subtitle">
-            Define each recipe batch, then prepare it to deduct supplies from kitchen stock and add ready menu portions.
-            Sales deduct prepared portions.
+            Define each meal&apos;s recipe. Possible servings update automatically as supplies change.
           </p>
         </div>
         <div className="tc-kitchen-section__actions">
@@ -2097,9 +2022,8 @@ function CurrentMenuSection({
             const equivalence = meal?.equivalences?.find(
               (entry) => entry.serving_unit === servingUnit,
             );
-            const batchCount = Number(batchCountByDish[dish.id] || "1");
             const batchLimit = equivalence?.batches_producible ?? 0;
-            const portionsReady = equivalence?.portions_available ?? meal?.portions_available;
+            const portionsPossible = equivalence?.portions_possible ?? meal?.portions_possible;
             const recipeLines = dish.product?.recipe ?? [];
             const recipeYield = recipeLines[0]?.batch_yield || 1;
             const recipeServingUnit =
@@ -2146,19 +2070,21 @@ function CurrentMenuSection({
                           <span className="tc-kitchen-meal__portions-stat is-none">
                             <i className="fa-solid fa-circle-exclamation" aria-hidden="true" /> Recipe not set
                           </span>
-                        ) : portionsReady == null ? (
+                        ) : portionsPossible == null ? (
                           <span className="tc-kitchen-meal__portions-stat is-untracked">Stock untracked</span>
                         ) : (
-                          <span className={`tc-kitchen-meal__portions-stat${portionsReady <= 0 ? " is-out" : ""}`}>
-                            <strong>{portionsReady}</strong> {servingUnit} ready
+                          <span
+                            className={`tc-kitchen-meal__portions-stat${portionsPossible <= 0 ? " is-out" : ""}`}
+                            title="Ready portions plus what kitchen and store supplies can make"
+                          >
+                            <strong>{portionsPossible}</strong> possible {servingUnit}
                           </span>
                         )}
                       </span>
                     </span>
 
-                    {/* Batch preparation info & controls if batching is enabled */}
                     {equivalence?.prepared_quantity != null ? (
-                      <div className="tc-kitchen-meal__batch-row" onClick={(e) => e.stopPropagation()}>
+                      <div className="tc-kitchen-meal__batch-row">
                         <span className="tc-kitchen-meal__batch-limit">
                           {batchLimit > 0
                             ? `${batchLimit} batch${batchLimit === 1 ? "" : "es"} can be made${
@@ -2168,39 +2094,6 @@ function CurrentMenuSection({
                               }`
                             : `Limited by ${equivalence.limiting_ingredient || "available supplies"}`}
                         </span>
-                        <div className="tc-kitchen-meal__batch-actions">
-                          <input
-                            type="number"
-                            min={1}
-                            max={batchLimit || undefined}
-                            step={1}
-                            value={batchCountByDish[dish.id] ?? "1"}
-                            onChange={(event) =>
-                              setBatchCountByDish((prev) => ({
-                                ...prev,
-                                [dish.id]: event.target.value,
-                              }))
-                            }
-                            className="tc-kitchen-meal__batch-input"
-                            aria-label={`Batches to prepare for ${dish.product?.name ?? "meal"}`}
-                          />
-                          <button
-                            type="button"
-                            className="rs-btn rs-btn--small rs-btn--primary"
-                            disabled={
-                              preparingId != null ||
-                              batchLimit < 1 ||
-                              !Number.isInteger(batchCount) ||
-                              batchCount < 1 ||
-                              batchCount > batchLimit
-                            }
-                            onClick={() => void handlePrepareBatch(dish)}
-                          >
-                            {preparingId === dish.id
-                              ? "Preparing…"
-                              : `Prepare ${batchCount} batch${batchCount === 1 ? "" : "es"}`}
-                          </button>
-                        </div>
                       </div>
                     ) : meal?.limiting_ingredient ? (
                       <span className="tc-kitchen-meal__limiting">
@@ -2392,16 +2285,18 @@ function CurrentMenuSection({
             <div className="pos-menu-modal__body">
               <div className="pos-menu-modal__field">
                 <label htmlFor="kitchen-new-meal-name">Meal name</label>
-                <input
-                  id="kitchen-new-meal-name"
-                  autoFocus
-                  type="text"
-                  maxLength={255}
-                  value={newMealName}
-                  onChange={(event) => setNewMealName(event.target.value)}
-                  placeholder="e.g. Boneless chicken"
-                  className="pos-menu-modal__text-input"
-                />
+                <div className="pos-menu-modal__input-wrap">
+                  <input
+                    id="kitchen-new-meal-name"
+                    autoFocus
+                    type="text"
+                    maxLength={255}
+                    value={newMealName}
+                    onChange={(event) => setNewMealName(event.target.value)}
+                    placeholder="e.g. Boneless chicken"
+                    className="pos-menu-modal__text-input"
+                  />
+                </div>
               </div>
               <p className="rs-card__meta">
                 Set the recipe batch and portion sizes in Kitchen.
@@ -2470,15 +2365,17 @@ function CurrentMenuSection({
                 <>
                   <div className="pos-menu-modal__field">
                     <label htmlFor="kitchen-meal-name">Meal name</label>
-                    <input
-                      id="kitchen-meal-name"
-                      type="text"
-                      maxLength={255}
-                      value={recipeMealName}
-                      readOnly={recipeEditor.product?.created_by_account_id !== accountId}
-                      onChange={(event) => setRecipeMealName(event.target.value)}
-                      className="pos-menu-modal__text-input"
-                    />
+                    <div className="pos-menu-modal__input-wrap">
+                      <input
+                        id="kitchen-meal-name"
+                        type="text"
+                        maxLength={255}
+                        value={recipeMealName}
+                        readOnly={recipeEditor.product?.created_by_account_id !== accountId}
+                        onChange={(event) => setRecipeMealName(event.target.value)}
+                        className="pos-menu-modal__text-input"
+                      />
+                    </div>
                     {recipeEditor.product?.created_by_account_id !== accountId ? (
                       <span className="pos-menu-modal__label-hint">
                         This shared meal name can only be changed by its owner.

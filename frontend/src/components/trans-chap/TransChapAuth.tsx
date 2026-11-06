@@ -8,7 +8,7 @@ export function TransChapBrandHeader() {
     <div className="auth-split__brand trans-chap-auth__brand">
       <Link href="/sign-in" className="trans-chap-auth__logo-link">
         <div className="trans-chap-auth__brand-icon">
-          <TransChapLogoMark size={52} color="#ffffff" accentColor="#77f665" />
+          <TransChapLogoMark size={52} color="#f0ddcf" accentColor="#cfae6c" />
         </div>
         <div className="trans-chap-auth__brand-text">
           <span className="trans-chap-auth__wordmark">TransChap</span>

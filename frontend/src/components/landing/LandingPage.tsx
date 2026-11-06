@@ -508,8 +508,8 @@ export function LandingPage() {
 
 function ProductMockup() {
   const rows = [
-    { patient: "Jane W.", time: "09:12", status: "✓ Paid", color: "#6b2e14" },
-    { patient: "Kevin O.", time: "10:45", status: "● In transit", color: "#8c3e1a" },
+    { patient: "Jane W.", time: "09:12", status: "✓ Paid", color: "#0b2545" },
+    { patient: "Kevin O.", time: "10:45", status: "● In transit", color: "#14345f" },
     { patient: "Aisha K.", time: "11:30", status: "○ Pending", color: "#c8b898" },
   ];
 

@@ -66,7 +66,7 @@ from app.services.menu_options import (
     LineOptionsError,
     resolve_line_options,
 )
-from app.services.order_stock_service import consume_for_order, order_line_usage, release_order_holds
+from app.services.order_stock_service import consume_if_pending, order_line_usage, release_order_holds
 from app.services.kitchen_menu_service import supports_recipe
 from app.services.sell_units import base_unit_name, resolve_sell_unit
 from app.support.datetime_utils import naive_utc
@@ -1470,10 +1470,8 @@ def create_order(
 
     shop = db.get(Account, account_id)
     try:
-        if is_restaurant(shop):
-            db.flush()  # order item ids for the ledger links
-            consume_for_order(db, order, order_items, account=shop, user_id=user.id)
-        else:
+        # Restaurant stock is taken when the kitchen starts preparing (see transition_order).
+        if not is_restaurant(shop):
             has_recipe_by_line = [
                 isinstance(usage, list) and any(isinstance(r, dict) and r.get("recipe") for r in usage)
                 for usage in line_usage
@@ -1940,16 +1938,20 @@ def transition_order(
         order.paid_at = now
     if target == BEING_PREPARED and not order.prepared_at:
         order.prepared_at = now
-    if target == READY:
-        if not order.ready_at:
-            order.ready_at = now
-        if not order.stock_deducted:
-            shop = db.get(Account, account_id)
-            if is_restaurant(shop):
-                try:
-                    consume_for_order(db, order, order.items or [], account=shop, user_id=user.id)
-                except Exception:
-                    logger.exception("Failed to deduct restaurant stock on ready transition order_id=%s", order.id)
+    if target == BEING_PREPARED:
+        try:
+            consume_if_pending(db, order, user_id=user.id)
+        except InsufficientStockError as exc:
+            db.rollback()
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    if target == READY and not order.ready_at:
+        order.ready_at = now
+    if target in (READY, OUT_FOR_DELIVERY) and not order.stock_deducted:
+        try:
+            with db.begin_nested():
+                consume_if_pending(db, order, user_id=user.id)
+        except Exception:
+            logger.exception("Failed to deduct restaurant stock order_id=%s target=%s", order.id, target)
     if target == OUT_FOR_DELIVERY and not order.dispatched_at:
         order.dispatched_at = now
     if target in (DELIVERED, PICKED_UP) and not order.completed_at:

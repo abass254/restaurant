@@ -10,7 +10,6 @@ import {
   cancelKitchenIssue,
   createKitchenIssue,
   fetchKitchenIssue,
-  fetchKitchenStock,
   fetchKitchenSuggestion,
   formatQty,
   isKitchenIssuableRole,
@@ -20,7 +19,7 @@ import {
   type KitchenSuggestion,
 } from "@/lib/restaurant-supplies";
 import { formatKsh } from "@/lib/trans-chap-receipt";
-import { KitchenSetup, issueStatusTone } from "./RestaurantKitchenTab";
+import { issueStatusTone } from "./RestaurantKitchenTab";
 
 function parseQty(value: string): number | null {
   const trimmed = value.trim();
@@ -40,7 +39,6 @@ type Filter = "needed" | "selected" | "all";
 
 function NewIssue() {
   const router = useRouter();
-  const [enabled, setEnabled] = useState<boolean | null>(null);
   const [rows, setRows] = useState<KitchenSuggestion[]>([]);
   const [qty, setQty] = useState<Record<string, string>>({});
   const [units, setUnits] = useState<Record<string, string>>({});
@@ -49,8 +47,6 @@ function NewIssue() {
   const [query, setQuery] = useState("");
   const [notes, setNotes] = useState("");
   const [filter, setFilter] = useState<Filter>("needed");
-  const [reloadKey, setReloadKey] = useState(0);
-
   const params = useSearchParams();
   const preselected = [params.get("items"), params.get("item")]
     .filter(Boolean)
@@ -66,12 +62,8 @@ function NewIssue() {
   useEffect(() => {
     let alive = true;
     const isPicked = (row: KitchenSuggestion) => picks.has(row.inventory_item_id) || picks.has(row.name);
-    fetchKitchenStock()
-      .then(async (stock) => {
-        if (!alive) return;
-        setEnabled(stock.enabled);
-        if (!stock.enabled) return;
-        const data = await fetchKitchenSuggestion();
+    fetchKitchenSuggestion()
+      .then((data) => {
         if (!alive) return;
         setRows(data);
         setUnits(Object.fromEntries(data.map((row) => [row.inventory_item_id, row.unit])));
@@ -99,7 +91,7 @@ function NewIssue() {
     return () => {
       alive = false;
     };
-  }, [picks, reloadKey]);
+  }, [picks]);
 
   const issuable = useMemo(() => rows.filter((row) => isKitchenIssuableRole(row.inventory_role)), [rows]);
   const selectedUnit = (row: KitchenSuggestion) => row.units.find((unit) => unit.name === units[row.inventory_item_id]) ?? row.units[0] ?? { name: row.unit, factor: 1 };
@@ -181,18 +173,6 @@ function NewIssue() {
   }
 
   if (loading) return <div className="rs"><p className="rs-empty">Loading kitchen supplies…</p></div>;
-  if (enabled === false) {
-    return (
-      <div className="rs">
-        <KitchenSetup
-          onEnabled={() => {
-            setLoading(true);
-            setReloadKey((key) => key + 1);
-          }}
-        />
-      </div>
-    );
-  }
 
   const title =
     from === "kitchen"

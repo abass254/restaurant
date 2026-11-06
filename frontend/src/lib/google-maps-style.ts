@@ -8,15 +8,15 @@ export type GoogleMapTypeStyle = {
 
 /** Matches design tokens in `styles/tokens.css`. */
 export const TRANSCHAP_MAP_COLORS = {
-  brown950: "#1a100c",
-  brown800: "#3d2418",
-  brown700: "#523220",
-  brown600: "#6b422c",
-  brown500: "#855538",
-  brown300: "#c4926e",
-  brown200: "#ddb896",
-  brown100: "#edd9c4",
-  brown50: "#f8f0e8",
+  brown950: "#061a33",
+  brown800: "#0b2545",
+  brown700: "#071c38",
+  brown600: "#14345f",
+  brown500: "#1f4a7f",
+  brown300: "#8a9abd",
+  brown200: "#e6ccba",
+  brown100: "#f0ddcf",
+  brown50: "#f8ede5",
   cream200: "#e8e2d8",
   cream100: "#f3efe8",
   cream50: "#faf8f4",
@@ -25,9 +25,9 @@ export const TRANSCHAP_MAP_COLORS = {
   park: "#e8f0e0",
   road: "#ffffff",
   roadAlt: "#faf8f4",
-  text: "#5e5749",
-  textMuted: "#7a7262",
-  primary: "#6b2e14",
+  text: "#5b6478",
+  textMuted: "#7d869a",
+  primary: "#0b2545",
 } as const;
 
 export const TRANSCHAP_MAP_STYLES: GoogleMapTypeStyle[] = [
@@ -142,16 +142,16 @@ export function isStoreMarkerIcon(icon: unknown): boolean {
 const STORE_MARKER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="52" viewBox="0 0 44 52" fill="none">
   <defs>
     <linearGradient id="TransChap-store-pin" x1="22" y1="2" x2="22" y2="50" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#855538"/>
-      <stop offset="1" stop-color="#6b2e14"/>
+      <stop stop-color="#1f4a7f"/>
+      <stop offset="1" stop-color="#0b2545"/>
     </linearGradient>
     <filter id="TransChap-store-shadow" x="-10%" y="-6%" width="120%" height="130%">
-      <feDropShadow dx="0" dy="2" stdDeviation="2.2" flood-color="#1a100c" flood-opacity="0.24"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="2.2" flood-color="#061a33" flood-opacity="0.24"/>
     </filter>
   </defs>
-  <path filter="url(#TransChap-store-shadow)" d="M22 2C13.16 2 6 9.16 6 18c0 11.4 16 30 16 30s16-18.6 16-30C38 9.16 30.84 2 22 2Z" fill="url(#TransChap-store-pin)" stroke="#3d2418" stroke-width="1.4"/>
+  <path filter="url(#TransChap-store-shadow)" d="M22 2C13.16 2 6 9.16 6 18c0 11.4 16 30 16 30s16-18.6 16-30C38 9.16 30.84 2 22 2Z" fill="url(#TransChap-store-pin)" stroke="#0b2545" stroke-width="1.4"/>
   <circle cx="22" cy="18" r="10.5" fill="#faf8f4" fill-opacity="0.98"/>
-  <path fill="#6b2e14" d="M16.2 16.8h11.6v1.6H16.2v-1.6Zm.9-4.2h9.8l.9 3.4H16.2l.9-3.4Zm0 5.8v5.4h3.4v-2.7h3.2v2.7h3.4V18.4H17.1Z"/>
+  <path fill="#0b2545" d="M16.2 16.8h11.6v1.6H16.2v-1.6Zm.9-4.2h9.8l.9 3.4H16.2l.9-3.4Zm0 5.8v5.4h3.4v-2.7h3.2v2.7h3.4V18.4H17.1Z"/>
 </svg>`;
 
 /** Advanced marker DOM node for merchant store pins. */
@@ -159,14 +159,14 @@ export function createStoreMarkerElement(): HTMLElement {
   const root = document.createElement("div");
   root.style.cssText =
     "display:flex;flex-direction:column;align-items:center;width:44px;" +
-    "cursor:pointer;filter:drop-shadow(0 3px 8px rgba(26,16,12,0.22));" +
+    "cursor:pointer;filter:drop-shadow(0 3px 8px rgba(6, 26, 51,0.22));" +
     "transform:translateY(-8px);";
 
   const bubble = document.createElement("div");
   bubble.style.cssText =
     "width:40px;height:40px;border-radius:14px;" +
-    "background:linear-gradient(145deg,#855538 0%,#6b2e14 100%);" +
-    "border:2px solid #3d2418;display:grid;place-items:center;color:#faf8f4;" +
+    "background:linear-gradient(145deg,#1f4a7f 0%,#0b2545 100%);" +
+    "border:2px solid #0b2545;display:grid;place-items:center;color:#faf8f4;" +
     "font-size:17px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.28);";
   bubble.innerHTML = '<i class="fas fa-store" aria-hidden="true"></i>';
 
@@ -174,7 +174,7 @@ export function createStoreMarkerElement(): HTMLElement {
   point.style.cssText =
     "width:0;height:0;margin-top:-2px;" +
     "border-left:7px solid transparent;border-right:7px solid transparent;" +
-    "border-top:10px solid #6b2e14;";
+    "border-top:10px solid #0b2545;";
 
   root.append(bubble, point);
   return root;
@@ -194,14 +194,14 @@ function clusterMarkerSvg(count: number): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" fill="none">
   <defs>
     <linearGradient id="TransChap-cluster-pin" x1="${center}" y1="2" x2="${center}" y2="${size - 2}" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#855538"/>
-      <stop offset="1" stop-color="#6b2e14"/>
+      <stop stop-color="#1f4a7f"/>
+      <stop offset="1" stop-color="#0b2545"/>
     </linearGradient>
     <filter id="TransChap-cluster-shadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="2" stdDeviation="2.2" flood-color="#1a100c" flood-opacity="0.24"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="2.2" flood-color="#061a33" flood-opacity="0.24"/>
     </filter>
   </defs>
-  <circle filter="url(#TransChap-cluster-shadow)" cx="${center}" cy="${center}" r="${radius}" fill="url(#TransChap-cluster-pin)" stroke="#3d2418" stroke-width="1.6"/>
+  <circle filter="url(#TransChap-cluster-shadow)" cx="${center}" cy="${center}" r="${radius}" fill="url(#TransChap-cluster-pin)" stroke="#0b2545" stroke-width="1.6"/>
   <text x="${center}" y="${center + fontSize * 0.35}" text-anchor="middle" fill="#faf8f4" font-family="system-ui,sans-serif" font-size="${fontSize}" font-weight="700">${count}</text>
 </svg>`;
 }
@@ -231,10 +231,10 @@ export function createStoreClusterMarkerElement(count: number): HTMLElement {
   const root = document.createElement("div");
   root.style.cssText =
     `width:${size}px;height:${size}px;border-radius:999px;` +
-    "background:linear-gradient(145deg,#855538 0%,#6b2e14 100%);" +
-    "border:2px solid #3d2418;color:#faf8f4;display:grid;place-items:center;" +
+    "background:linear-gradient(145deg,#1f4a7f 0%,#0b2545 100%);" +
+    "border:2px solid #0b2545;color:#faf8f4;display:grid;place-items:center;" +
     `font:700 ${size < 52 ? 15 : 13}px/1 system-ui,sans-serif;` +
-    "box-shadow:0 3px 8px rgba(26,16,12,0.22);cursor:pointer;";
+    "box-shadow:0 3px 8px rgba(6, 26, 51,0.22);cursor:pointer;";
   root.textContent = String(count);
   root.setAttribute("aria-label", `${count} merchant locations`);
   return root;

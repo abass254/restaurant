@@ -208,7 +208,7 @@ export const TransChapReceiptSlip = forwardRef<HTMLElement, { receipt: TransChap
               value={transChapReceiptMessage(receipt)}
               size={72}
               bgColor="#f6eee3"
-              fgColor="#1c1410"
+              fgColor="#061a33"
               level="M"
             />
           </span>

@@ -130,9 +130,11 @@ function Money({ amount }: { amount: number }) {
 export function TransChapHomePies({
   expenseModalOpen: externalModalOpen,
   setExpenseModalOpen: setExternalModalOpen,
+  restaurant = false,
 }: {
   expenseModalOpen?: boolean;
   setExpenseModalOpen?: (open: boolean) => void;
+  restaurant?: boolean;
 } = {}) {
   const user = useAuthUser();
   const accountId = user.active_account?.id || user.account?.id;
@@ -405,6 +407,12 @@ export function TransChapHomePies({
   );
   const payMax = Math.max(salesTotal, 1);
   const hasPayments = paySlices.some((slice) => slice.value > 0);
+  const topDishes = useMemo(
+    () => [...productsSold].sort((a, b) => b.qty - a.qty).slice(0, 5),
+    [productsSold],
+  );
+  const topDishMax = Math.max(topDishes[0]?.qty ?? 0, 1);
+  const saleNoun = restaurant ? "order" : "sale";
   if (!data && !summary) {
     return error ? <TransChapStatus tone="error">{error}</TransChapStatus> : <TransChapTodaySkeleton />;
   }
@@ -416,7 +424,7 @@ export function TransChapHomePies({
   return (
     <MotionFade
       as="div"
-      className={`trans-chap-dash__analytics${refreshing ? " is-refreshing" : ""}`}
+      className={`trans-chap-dash__analytics${restaurant ? " is-restaurant" : ""}${refreshing ? " is-refreshing" : ""}`}
       aria-label="Sales analytics"
       aria-busy={refreshing || undefined}
     >
@@ -448,14 +456,18 @@ export function TransChapHomePies({
 
         <div className="trans-chap-dash__totals">
           <div className="trans-chap-dash__total is-sale">
-            <span>
-              <i aria-hidden /> Sales
+            <span className="trans-chap-dash__total-head">
+              <span className="trans-chap-dash__total-label">
+                <i aria-hidden /> Sales
+              </span>
             </span>
             <Money amount={salesTotal} />
             <em>
               {salesCount === 0
-                ? "No sales"
-                : `${salesCount} sale${salesCount === 1 ? "" : "s"}`}
+                ? `No ${saleNoun}s`
+                : restaurant
+                  ? `${salesCount} ${saleNoun}${salesCount === 1 ? "" : "s"} · avg ${formatKsh(salesTotal / salesCount)}`
+                  : `${salesCount} ${saleNoun}${salesCount === 1 ? "" : "s"}`}
             </em>
           </div>
           <div
@@ -472,13 +484,13 @@ export function TransChapHomePies({
               }
             }}
           >
-            <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span>
-                <i aria-hidden /> Mark up
+            <span className="trans-chap-dash__total-head">
+              <span className="trans-chap-dash__total-label">
+                <i aria-hidden /> Markup
               </span>
-              <span style={{ fontSize: "0.68rem", color: "var(--trans-chap-markup, #10b981)", fontWeight: 700 }}>
-                View list
-              </span>
+              <b className="trans-chap-dash__total-action" aria-hidden>
+                <i className="fa-solid fa-list" />
+              </b>
             </span>
             <Money amount={grossProfit} />
             <em>
@@ -503,13 +515,13 @@ export function TransChapHomePies({
               }
             }}
           >
-            <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span>
+            <span className="trans-chap-dash__total-head">
+              <span className="trans-chap-dash__total-label">
                 <i aria-hidden /> Expenses
               </span>
-              <span style={{ fontSize: "0.68rem", color: "var(--trans-chap-expense, #f59e0b)", fontWeight: 700 }}>
-                + Record
-              </span>
+              <b className="trans-chap-dash__total-action" aria-hidden>
+                <i className="fa-solid fa-plus" />
+              </b>
             </span>
             <Money amount={expenseTotal} />
             <em>
@@ -563,6 +575,44 @@ export function TransChapHomePies({
           </p>
         )}
       </section>
+
+      {restaurant ? (
+        <section
+          className="trans-chap-dash__panel trans-chap-dash__dishes"
+          aria-labelledby="trans-chap-dishes-heading"
+        >
+          <header className="trans-chap-dash__panel-head">
+            <h3 id="trans-chap-dishes-heading">Top dishes</h3>
+            <span>{period}</span>
+          </header>
+          {topDishes.length > 0 ? (
+            <ol className="trans-chap-dash__mix">
+              {topDishes.map((dish) => (
+                <li key={dish.name}>
+                  <div className="trans-chap-dash__mix-meta">
+                    <span>{dish.name}</span>
+                    <strong>
+                      {dish.qty} · {formatKsh(dish.selling_amount)}
+                    </strong>
+                  </div>
+                  <div className="trans-chap-dash__mix-track" role="presentation" aria-hidden>
+                    <b
+                      style={{
+                        width: `${Math.max(6, Math.round((dish.qty / topDishMax) * 100))}%`,
+                        background: "var(--trans-chap-sale)",
+                      }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="trans-chap-dash__empty">
+              No dishes sold {period}. Your best sellers will rank here.
+            </p>
+          )}
+        </section>
+      ) : null}
 
       {canCustomers ? (
         owingTotal > 0 ? (

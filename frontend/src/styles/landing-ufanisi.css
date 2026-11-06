@@ -1,45 +1,45 @@
 /* Ufanisi.net layout system — scoped to landing page (light + dark) */
 .landing-ufanisi {
   /* Brand palette (does not change between themes) */
-  --uf-brand: #6b2e14;
-  --uf-brand-hover: #8c3e1a;
-  --uf-brand-dark: #4a1e0e;
+  --uf-brand: #0b2545;
+  --uf-brand-hover: #14345f;
+  --uf-brand-dark: #0b2545;
   --uf-secondary-base: #c8b898;
   --uf-accent: #d06848;
   --uf-accent-light: #e08b6e;
-  --uf-gradient-1: linear-gradient(135deg, #6b2e14, #8c3e1a);
-  --uf-gradient-2: linear-gradient(135deg, #2c1810, #4a1e0e);
-  --uf-gradient-3: linear-gradient(135deg, #c8b898, #edd9c4);
+  --uf-gradient-1: linear-gradient(135deg, #0b2545, #14345f);
+  --uf-gradient-2: linear-gradient(135deg, #08203f, #0b2545);
+  --uf-gradient-3: linear-gradient(135deg, #c8b898, #f0ddcf);
 
   /* Theme-aware tokens (light defaults) */
-  --uf-primary: #6b2e14;
-  --uf-primary-dark: #4a1e0e;
-  --uf-primary-light: #8c3e1a;
+  --uf-primary: #0b2545;
+  --uf-primary-dark: #0b2545;
+  --uf-primary-light: #14345f;
   --uf-secondary: #c8b898;
   --uf-secondary-light: #e8dcc8;
   --uf-secondary-dark: #a89578;
   --uf-bg-light: #faf8f4;
-  --uf-bg-dark: #2c1810;
-  --uf-text-dark: #1a100c;
-  --uf-text-light: #5e5749;
+  --uf-bg-dark: #08203f;
+  --uf-text-dark: #061a33;
+  --uf-text-light: #5b6478;
   --uf-white: #fff;
 
   /* Section / surface tokens */
   --uf-page-bg: #faf8f4;
   --uf-section-bg: #fff;
   --uf-section-alt-bg: linear-gradient(180deg, #faf8f4 0%, #fff 100%);
-  --uf-section-dark-bg: #2c1810;
+  --uf-section-dark-bg: #08203f;
   --uf-stats-bg: #c8b898;
   --uf-footer-bg: #c8b898;
   --uf-hero-bg: linear-gradient(135deg, #faf8f4, #e8dcc8);
-  --uf-hero-mesh: rgba(107, 46, 20, 0.1);
+  --uf-hero-mesh: rgba(11, 37, 69, 0.1);
 
   /* Cards / panels */
   --uf-card-bg: #fff;
   --uf-card-bg-muted: #faf8f4;
   --uf-card-border: rgba(200, 184, 152, 0.4);
   --uf-card-border-soft: #e2e8f0;
-  --uf-card-shadow: 0 25px 50px rgba(107, 46, 20, 0.12);
+  --uf-card-shadow: 0 25px 50px rgba(11, 37, 69, 0.12);
   --uf-card-shadow-hover: 0 20px 40px rgba(0, 0, 0, 0.08);
 
   /* Nav */
@@ -69,16 +69,16 @@
 
 /* ── Dark theme overrides ──────────────────────────────────────── */
 html[data-theme="dark"] .landing-ufanisi {
-  --uf-primary: #c4926e;
+  --uf-primary: #8a9abd;
   --uf-primary-dark: #f3efe8;
-  --uf-primary-light: #ddb896;
-  --uf-secondary: #5e5749;
-  --uf-secondary-light: #7a7262;
-  --uf-secondary-dark: #454035;
+  --uf-primary-light: #e6ccba;
+  --uf-secondary: #5b6478;
+  --uf-secondary-light: #7d869a;
+  --uf-secondary-dark: #2b3a55;
   --uf-bg-light: #0a0a0a;
   --uf-bg-dark: #000000;
   --uf-text-dark: #faf8f4;
-  --uf-text-light: #b8aea0;
+  --uf-text-light: #a9b2c7;
 
   --uf-page-bg: #000000;
   --uf-section-bg: #0a0a0a;
@@ -87,7 +87,7 @@ html[data-theme="dark"] .landing-ufanisi {
   --uf-stats-bg: #1a1816;
   --uf-footer-bg: #050505;
   --uf-hero-bg:
-    radial-gradient(ellipse 60% 40% at 80% 20%, rgba(160, 107, 72, 0.15), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 20%, rgba(240, 221, 207, 0.15), transparent 60%),
     radial-gradient(ellipse 50% 35% at 10% 90%, rgba(196, 146, 110, 0.08), transparent 60%),
     #000000;
   --uf-hero-mesh: rgba(196, 146, 110, 0.16);
@@ -109,16 +109,16 @@ html[data-theme="dark"] .landing-ufanisi {
 
 @media (prefers-color-scheme: dark) {
   html:not([data-theme="light"]) .landing-ufanisi {
-    --uf-primary: #c4926e;
+    --uf-primary: #8a9abd;
     --uf-primary-dark: #f3efe8;
-    --uf-primary-light: #ddb896;
-    --uf-secondary: #5e5749;
-    --uf-secondary-light: #7a7262;
-    --uf-secondary-dark: #454035;
+    --uf-primary-light: #e6ccba;
+    --uf-secondary: #5b6478;
+    --uf-secondary-light: #7d869a;
+    --uf-secondary-dark: #2b3a55;
     --uf-bg-light: #0a0a0a;
     --uf-bg-dark: #000000;
     --uf-text-dark: #faf8f4;
-    --uf-text-light: #b8aea0;
+    --uf-text-light: #a9b2c7;
 
     --uf-page-bg: #000000;
     --uf-section-bg: #0a0a0a;
@@ -127,7 +127,7 @@ html[data-theme="dark"] .landing-ufanisi {
     --uf-stats-bg: #1a1816;
     --uf-footer-bg: #050505;
     --uf-hero-bg:
-      radial-gradient(ellipse 60% 40% at 80% 20%, rgba(160, 107, 72, 0.15), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 20%, rgba(240, 221, 207, 0.15), transparent 60%),
       radial-gradient(ellipse 50% 35% at 10% 90%, rgba(196, 146, 110, 0.08), transparent 60%),
       #000000;
     --uf-hero-mesh: rgba(196, 146, 110, 0.16);
@@ -286,13 +286,13 @@ html[data-theme="dark"] .landing-ufanisi .ufanisi-nav {
   border: none;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 15px rgba(107, 46, 20, 0.35);
+  box-shadow: 0 4px 15px rgba(11, 37, 69, 0.35);
   font-family: inherit;
 }
 
 .landing-ufanisi .cta-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 25px rgba(107, 46, 20, 0.45);
+  box-shadow: 0 6px 25px rgba(11, 37, 69, 0.45);
 }
 
 .landing-ufanisi .cta-btn.secondary {
@@ -366,8 +366,8 @@ html[data-theme="dark"] .landing-ufanisi .ufanisi-nav {
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  background: rgba(107, 46, 20, 0.08);
-  border: 1px solid rgba(107, 46, 20, 0.18);
+  background: rgba(11, 37, 69, 0.08);
+  border: 1px solid rgba(11, 37, 69, 0.18);
   border-radius: 50px;
   font-size: 0.85rem;
   font-weight: 600;
@@ -527,7 +527,7 @@ html[data-theme="dark"] .landing-ufanisi .ufanisi-nav {
 }
 
 .landing-ufanisi .schedule-status.confirmed {
-  background: rgba(107, 46, 20, 0.12);
+  background: rgba(11, 37, 69, 0.12);
   color: var(--uf-primary);
 }
 
@@ -580,7 +580,7 @@ html[data-theme="dark"] .landing-ufanisi .ufanisi-nav {
 .landing-ufanisi .section-tag {
   display: inline-block;
   padding: 0.5rem 1rem;
-  background: rgba(107, 46, 20, 0.1);
+  background: rgba(11, 37, 69, 0.1);
   color: var(--uf-primary);
   font-weight: 600;
   font-size: 0.85rem;
@@ -927,10 +927,10 @@ html[data-theme="dark"] .landing-ufanisi .ufanisi-nav {
 }
 
 .landing-ufanisi .package-card.is-featured {
-  border-color: rgba(107, 46, 20, 0.35);
+  border-color: rgba(11, 37, 69, 0.35);
   background: linear-gradient(
     180deg,
-    rgba(107, 46, 20, 0.08),
+    rgba(11, 37, 69, 0.08),
     var(--uf-card-bg)
   );
 }
@@ -944,7 +944,7 @@ html[data-theme="dark"] .landing-ufanisi .ufanisi-nav {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  background: rgba(107, 46, 20, 0.12);
+  background: rgba(11, 37, 69, 0.12);
   color: var(--uf-primary);
 }
 

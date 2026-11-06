@@ -12,7 +12,7 @@ export function StorefrontHeader({ tag }: StorefrontHeaderProps) {
           size={44}
           className="sf-brand-lockup__mark"
           color="var(--app-text)"
-          accentColor="var(--brown-500, #a06b48)"
+          accentColor="var(--brown-500, #25487a)"
         />
       </div>
       <span className="sf-header__tag">{tag}</span>
