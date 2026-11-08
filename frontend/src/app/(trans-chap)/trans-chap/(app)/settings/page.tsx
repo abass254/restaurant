@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthRefresh, useAuthUser } from "@/components/app/AuthProvider";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
@@ -51,6 +51,28 @@ type SettingsPane =
   | "receipt"
   | "team"
   | "operations-reset";
+
+type SettingsSectionId =
+  | "getting-started"
+  | "menu"
+  | "tables"
+  | "kitchen"
+  | "inventory"
+  | "purchases"
+  | "suppliers"
+  | "messaging"
+  | "team"
+  | "app"
+  | "data";
+
+type SettingsSection = {
+  id: SettingsSectionId;
+  label: string;
+  hint: string;
+  icon: string;
+  keywords: string;
+  visible: boolean;
+};
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -104,6 +126,32 @@ export default function TransChapSettingsPage() {
   const [receiptLines, setReceiptLines] = useState<string[]>([]);
   const [receiptDraft, setReceiptDraft] = useState("");
   const [receiptSaving, setReceiptSaving] = useState(false);
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>("getting-started");
+  const settingsListRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (pane !== "list") return;
+    const root = settingsListRef.current;
+    if (!root) return;
+    const update = () => {
+      const sections = Array.from(
+        root.querySelectorAll<HTMLElement>(".ios-settings__groups > .ios-settings__group[id]"),
+      );
+      if (!sections.length) return;
+      const top = Math.max(root.getBoundingClientRect().top, 0);
+      let current = sections[0];
+      for (const section of sections) {
+        if (section.getBoundingClientRect().top - top <= 140) current = section;
+      }
+      const atBottom =
+        root.scrollTop > 0 && root.scrollTop + root.clientHeight >= root.scrollHeight - 4;
+      if (atBottom) current = sections[sections.length - 1];
+      setActiveSection(current.id.replace("settings-", "") as SettingsSectionId);
+    };
+    update();
+    document.addEventListener("scroll", update, { capture: true, passive: true });
+    return () => document.removeEventListener("scroll", update, { capture: true });
+  }, [pane, settingsQuery]);
 
   const restaurant = isRestaurantStore(user.active_account ?? user.account);
   const router = useRouter();
@@ -323,6 +371,112 @@ export default function TransChapSettingsPage() {
   function groupMatches(...keywords: string[]) {
     const needle = settingsQuery.trim().toLowerCase();
     return !needle || keywords.some((keyword) => keyword.includes(needle));
+  }
+
+  const settingsSections: SettingsSection[] = [
+    {
+      id: "getting-started",
+      label: "Cash & payments",
+      hint: "Opening cash, M-PESA, receipts",
+      icon: "fa-wallet",
+      keywords: "getting started cash payments opening investment till setup mpesa mobile money receipt header description",
+      visible: true,
+    },
+    {
+      id: "menu",
+      label: "Menu",
+      hint: "Sections for your dishes",
+      icon: "fa-utensils",
+      keywords: "menu sections categories dishes restaurant hotel",
+      visible: restaurant,
+    },
+    {
+      id: "tables",
+      label: "Tables & stations",
+      hint: "Seating and prep areas",
+      icon: "fa-chair",
+      keywords: "tables stations floor seating dining kitchen restaurant",
+      visible: restaurant,
+    },
+    {
+      id: "kitchen",
+      label: "Kitchen & supplies",
+      hint: "Store issuing and ingredients",
+      icon: "fa-kitchen-set",
+      keywords: "kitchen supplies store issue ingredients stock recipe",
+      visible: restaurant,
+    },
+    {
+      id: "inventory",
+      label: "Inventory",
+      hint: "Stock and price edits",
+      icon: "fa-boxes-stacked",
+      keywords: "inventory stock item quantity adjustment price purchases",
+      visible: true,
+    },
+    {
+      id: "purchases",
+      label: "Purchases",
+      hint: "Buying and selling prices",
+      icon: "fa-cart-shopping",
+      keywords: "purchases buying selling price adjust pricing",
+      visible: true,
+    },
+    {
+      id: "suppliers",
+      label: "Suppliers & customers",
+      hint: "Outstanding balances",
+      icon: "fa-handshake",
+      keywords: "suppliers customers outstanding balance amount adjust",
+      visible: true,
+    },
+    {
+      id: "messaging",
+      label: "Messaging",
+      hint: "Instagram and AI replies",
+      icon: "fa-comments",
+      keywords: "messaging instagram chats feeds ai auto reply dm",
+      visible: true,
+    },
+    {
+      id: "team",
+      label: "Team",
+      hint: "Staff and access",
+      icon: "fa-users",
+      keywords: "team staff members invite login permissions access",
+      visible: owner,
+    },
+    {
+      id: "app",
+      label: "App & device",
+      hint: "Camera, install, dark mode",
+      icon: "fa-mobile-screen",
+      keywords: "app device camera download home screen install dark mode theme appearance",
+      visible: true,
+    },
+    {
+      id: "data",
+      label: "Data & reset",
+      hint: "Reset with 30-day reclaim",
+      icon: "fa-database",
+      keywords: "data reset zero delete reclaim operations clear account transactions sales",
+      visible: owner,
+    },
+  ];
+  const visibleSections = settingsSections.filter(
+    (section) => section.visible && groupMatches(section.keywords),
+  );
+  const showLogout = groupMatches("account logout log out sign out");
+
+  function showSection(id: SettingsSectionId) {
+    return visibleSections.some((section) => section.id === id);
+  }
+
+  function jumpToSection(id: SettingsSectionId) {
+    setActiveSection(id);
+    document
+      .getElementById(`settings-${id}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function handleAutoRepliesToggle(enabled: boolean) {
@@ -814,593 +968,637 @@ export default function TransChapSettingsPage() {
   }
 
   return (
-    <div className="ios-settings">
-      <section className="ios-settings__profile" aria-label="Account">
-        <span className="ios-settings__avatar" aria-hidden>
-          {initials(user.name || shopName)}
-        </span>
-        <div className="ios-settings__profile-copy">
-          <strong>{user.name || "Merchant"}</strong>
-          <span>{shopName}</span>
-        </div>
-      </section>
-
-      <label className="ios-settings__search">
-        <i className="fa-solid fa-magnifying-glass" aria-hidden />
-        <input
-          type="search"
-          value={settingsQuery}
-          placeholder="Search settings…"
-          aria-label="Search settings"
-          onChange={(event) => setSettingsQuery(event.target.value)}
-        />
-      </label>
-
-      {groupMatches("getting started opening investment cash till setup payments mpesa mobile money receipt header description") ? (
-        <section className="ios-settings__group" aria-label="Getting started">
-          <h3 className="ios-settings__caption">Getting Started</h3>
-          <div className="ios-settings__card">
-            {canSetOpeningAmount ? (
-              <button
-                type="button"
-                className="ios-settings__row"
-                onClick={() => setPane("opening-amount")}
-              >
-                <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
-                  <i className="fa-solid fa-wallet" />
+    <div ref={settingsListRef} className="ios-settings ios-settings--home">
+      <div className="ios-settings__header">
+        <section className="ios-settings__profile" aria-label="Account">
+          <span className="ios-settings__avatar" aria-hidden>
+            {initials(user.name || shopName)}
+          </span>
+          <div className="ios-settings__profile-copy">
+            <strong>{user.name || "Merchant"}</strong>
+            <span>
+              {shopName}
+              {restaurant ? (
+                <span className="ios-settings__badge">
+                  <i className="fa-solid fa-utensils" aria-hidden />
+                  Restaurant
                 </span>
-                <span className="ios-settings__label">Opening amount</span>
-                <span className="ios-settings__value">
-                  {openingAmount == null ? "Not Set" : formatMoney(Number(openingAmount))}
-                </span>
-                <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
-              </button>
-            ) : (
-              <div className="ios-settings__row ios-settings__row--static">
-                <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
-                  <i className="fa-solid fa-wallet" />
-                </span>
-                <span className="ios-settings__label">Opening amount</span>
-                <span className="ios-settings__value">
-                  {openingAmount == null ? "Owner only" : formatMoney(Number(openingAmount))}
-                </span>
-              </div>
-            )}
-            {canSetOpeningInvestment ? (
-              <button
-                type="button"
-                className="ios-settings__row"
-                onClick={() => setPane("opening-investment")}
-              >
-                <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
-                  <i className="fa-solid fa-sack-dollar" />
-                </span>
-                <span className="ios-settings__label">Opening investment</span>
-                <span className="ios-settings__value">
-                  {openingInvestment == null ? "Not Set" : formatMoney(Number(openingInvestment))}
-                </span>
-                <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
-              </button>
-            ) : (
-              <div className="ios-settings__row ios-settings__row--static">
-                <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
-                  <i className="fa-solid fa-sack-dollar" />
-                </span>
-                <span className="ios-settings__label">Opening investment</span>
-                <span className="ios-settings__value">
-                  {openingInvestment == null ? "Owner only" : formatMoney(Number(openingInvestment))}
-                </span>
-              </div>
-            )}
-            {canSetOpeningStock ? (
-              <button
-                type="button"
-                className="ios-settings__row"
-                onClick={() => setPane("opening-stock")}
-              >
-                <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
-                  <i className="fa-solid fa-boxes-stacked" />
-                </span>
-                <span className="ios-settings__label">Opening stock</span>
-                <span className="ios-settings__value">
-                  {openingStock == null ? "Not Set" : formatMoney(Number(openingStock))}
-                </span>
-                <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
-              </button>
-            ) : (
-              <div className="ios-settings__row ios-settings__row--static">
-                <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
-                  <i className="fa-solid fa-boxes-stacked" />
-                </span>
-                <span className="ios-settings__label">Opening stock</span>
-                <span className="ios-settings__value">
-                  {openingStock == null ? "Owner only" : formatMoney(Number(openingStock))}
-                </span>
-              </div>
-            )}
-            {owner ? (
-              <button
-                type="button"
-                className="ios-settings__row"
-                onClick={() => setPane("receipt")}
-              >
-                <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
-                  <i className="fa-solid fa-receipt" />
-                </span>
-                <span className="ios-settings__label">Receipt header</span>
-                <span className="ios-settings__value">
-                  {receiptLines.length ? `${receiptLines.length} line${receiptLines.length === 1 ? "" : "s"}` : "Not set"}
-                </span>
-                <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
-              </button>
-            ) : (
-              <div className="ios-settings__row ios-settings__row--static">
-                <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
-                  <i className="fa-solid fa-receipt" />
-                </span>
-                <span className="ios-settings__label">Receipt header</span>
-                <span className="ios-settings__value">Owner only</span>
-              </div>
-            )}
-            <button
-              type="button"
-              className="ios-settings__row"
-              onClick={() => setPane("mpesa")}
-            >
-              <span className="ios-settings__icon ios-settings__icon--mpesa" aria-hidden>
-                <i className="fa-solid fa-mobile-screen" />
-              </span>
-              <span className="ios-settings__label">M-PESA Till Settings</span>
-              <span className="ios-settings__value">
-                {mpesaReady == null ? "" : mpesaReady ? "Set" : "Not Set"}
-              </span>
-              <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
-            </button>
-            <div className="ios-settings__row ios-settings__row--static">
-              <span className="ios-settings__icon ios-settings__icon--mpesa" aria-hidden>
-                <i className="fa-solid fa-bell" />
-              </span>
-              <span className="ios-settings__label">Force STK Prompts</span>
-              <span className="ios-settings__value">
-                {owner ? (
-                  <button
-                    type="button"
-                    role="switch"
-                    className={`theme-switch${forceMpesaPrompt ? " is-on" : ""}`}
-                    aria-checked={forceMpesaPrompt}
-                    aria-label="Force M-PESA STK Prompts"
-                    disabled={operationsSaving}
-                    onClick={() => void handleForceMpesaToggle(!forceMpesaPrompt)}
-                  >
-                    <span className="theme-switch__thumb" aria-hidden />
-                  </button>
-                ) : (
-                  <span className="ios-settings__value">Owner only</span>
-                )}
-              </span>
-            </div>
+              ) : null}
+            </span>
           </div>
-          <p className="ios-settings__footer">
-            Configure till numbers and choose whether to send push prompts to customer phones.
-          </p>
         </section>
+
+        <label className="ios-settings__search">
+          <i className="fa-solid fa-magnifying-glass" aria-hidden />
+          <input
+            type="search"
+            value={settingsQuery}
+            placeholder={restaurant ? "Search settings, e.g. tables, M-PESA, kitchen…" : "Search settings…"}
+            aria-label="Search settings"
+            onChange={(event) => setSettingsQuery(event.target.value)}
+          />
+        </label>
+      </div>
+
+      {visibleSections.length ? (
+        <nav className="ios-settings__nav" aria-label="Settings sections">
+          {visibleSections.map((section) => (
+            <button
+              key={section.id}
+              type="button"
+              className={`ios-settings__nav-item${activeSection === section.id ? " is-active" : ""}`}
+              aria-current={activeSection === section.id ? "true" : undefined}
+              onClick={() => jumpToSection(section.id)}
+            >
+              <span className="ios-settings__nav-icon" aria-hidden>
+                <i className={`fa-solid ${section.icon}`} />
+              </span>
+              <span className="ios-settings__nav-copy">
+                <strong>{section.label}</strong>
+                <small>{section.hint}</small>
+              </span>
+            </button>
+          ))}
+        </nav>
       ) : null}
 
+      {!visibleSections.length && !showLogout ? (
+        <div className="ios-settings__empty">
+          <i className="fa-solid fa-magnifying-glass" aria-hidden />
+          <strong>No settings match “{settingsQuery.trim()}”</strong>
+          <span>Try a word like menu, tables, M-PESA, or staff.</span>
+          <button type="button" className="ios-settings__text-btn" onClick={() => setSettingsQuery("")}>
+            Clear search
+          </button>
+        </div>
+      ) : null}
 
-      {groupMatches("messaging instagram chats feeds ai auto reply dm") ? (
-        <section className="ios-settings__group" aria-label="Messaging">
-          <h3 className="ios-settings__caption">Messaging</h3>
-          <div className="ios-settings__card">
-            {!hasInstagram ? (
-              canManageInstagram ? (
-                <a
-                  href={resolveSameOriginUrl(
-                    `${instagramAuthPath}?next=${encodeURIComponent("/trans-chap/settings")}`,
-                  )}
+      <div className="ios-settings__groups">
+        {showSection("getting-started") ? (
+          <section id="settings-getting-started" className="ios-settings__group" aria-label="Getting started">
+            <h3 className="ios-settings__caption">Cash & payments</h3>
+            <div className="ios-settings__card">
+              {canSetOpeningAmount ? (
+                <button
+                  type="button"
                   className="ios-settings__row"
+                  onClick={() => setPane("opening-amount")}
                 >
-                  <span className="ios-settings__icon ios-settings__icon--ai" aria-hidden>
-                    <i className="fa-brands fa-instagram" />
+                  <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
+                    <i className="fa-solid fa-wallet" />
                   </span>
-                  <span className="ios-settings__label">Connect Instagram</span>
+                  <span className="ios-settings__label">Opening amount</span>
+                  <span className="ios-settings__value">
+                    {openingAmount == null ? "Not Set" : formatMoney(Number(openingAmount))}
+                  </span>
                   <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
-                </a>
+                </button>
               ) : (
-                <div className="ios-settings__row ios-settings__row--static is-disabled">
-                  <span className="ios-settings__icon ios-settings__icon--ai" aria-hidden>
-                    <i className="fa-brands fa-instagram" />
+                <div className="ios-settings__row ios-settings__row--static">
+                  <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
+                    <i className="fa-solid fa-wallet" />
                   </span>
-                  <span className="ios-settings__label">Instagram</span>
-                  <span className="ios-settings__value">Admin only</span>
+                  <span className="ios-settings__label">Opening amount</span>
+                  <span className="ios-settings__value">
+                    {openingAmount == null ? "Owner only" : formatMoney(Number(openingAmount))}
+                  </span>
                 </div>
-              )
-            ) : (
-              <div
-                className={`ios-settings__row ios-settings__row--static${!canManageInstagram ? " is-disabled" : ""
-                  }`}
+              )}
+              {canSetOpeningInvestment ? (
+                <button
+                  type="button"
+                  className="ios-settings__row"
+                  onClick={() => setPane("opening-investment")}
+                >
+                  <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
+                    <i className="fa-solid fa-sack-dollar" />
+                  </span>
+                  <span className="ios-settings__label">Opening investment</span>
+                  <span className="ios-settings__value">
+                    {openingInvestment == null ? "Not Set" : formatMoney(Number(openingInvestment))}
+                  </span>
+                  <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+                </button>
+              ) : (
+                <div className="ios-settings__row ios-settings__row--static">
+                  <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
+                    <i className="fa-solid fa-sack-dollar" />
+                  </span>
+                  <span className="ios-settings__label">Opening investment</span>
+                  <span className="ios-settings__value">
+                    {openingInvestment == null ? "Owner only" : formatMoney(Number(openingInvestment))}
+                  </span>
+                </div>
+              )}
+              {canSetOpeningStock ? (
+                <button
+                  type="button"
+                  className="ios-settings__row"
+                  onClick={() => setPane("opening-stock")}
+                >
+                  <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
+                    <i className="fa-solid fa-boxes-stacked" />
+                  </span>
+                  <span className="ios-settings__label">Opening stock</span>
+                  <span className="ios-settings__value">
+                    {openingStock == null ? "Not Set" : formatMoney(Number(openingStock))}
+                  </span>
+                  <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+                </button>
+              ) : (
+                <div className="ios-settings__row ios-settings__row--static">
+                  <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
+                    <i className="fa-solid fa-boxes-stacked" />
+                  </span>
+                  <span className="ios-settings__label">Opening stock</span>
+                  <span className="ios-settings__value">
+                    {openingStock == null ? "Owner only" : formatMoney(Number(openingStock))}
+                  </span>
+                </div>
+              )}
+              {owner ? (
+                <button
+                  type="button"
+                  className="ios-settings__row"
+                  onClick={() => setPane("receipt")}
+                >
+                  <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
+                    <i className="fa-solid fa-receipt" />
+                  </span>
+                  <span className="ios-settings__label">Receipt header</span>
+                  <span className="ios-settings__value">
+                    {receiptLines.length ? `${receiptLines.length} line${receiptLines.length === 1 ? "" : "s"}` : "Not set"}
+                  </span>
+                  <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+                </button>
+              ) : (
+                <div className="ios-settings__row ios-settings__row--static">
+                  <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
+                    <i className="fa-solid fa-receipt" />
+                  </span>
+                  <span className="ios-settings__label">Receipt header</span>
+                  <span className="ios-settings__value">Owner only</span>
+                </div>
+              )}
+              <button
+                type="button"
+                className="ios-settings__row"
+                onClick={() => setPane("mpesa")}
               >
-                <span className="ios-settings__icon ios-settings__icon--ai" aria-hidden>
-                  <i className="fa-solid fa-robot" />
+                <span className="ios-settings__icon ios-settings__icon--mpesa" aria-hidden>
+                  <i className="fa-solid fa-mobile-screen" />
                 </span>
-                <span className="ios-settings__label">AI Auto-Reply</span>
-                <span className="ios-settings__trailing">
-                  {canManageInstagram ? (
+                <span className="ios-settings__label">M-PESA Till Settings</span>
+                <span className="ios-settings__value">
+                  {mpesaReady == null ? "" : mpesaReady ? "Set" : "Not Set"}
+                </span>
+                <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+              </button>
+              <div className="ios-settings__row ios-settings__row--static">
+                <span className="ios-settings__icon ios-settings__icon--mpesa" aria-hidden>
+                  <i className="fa-solid fa-bell" />
+                </span>
+                <span className="ios-settings__label">Force STK Prompts</span>
+                <span className="ios-settings__value">
+                  {owner ? (
                     <button
                       type="button"
                       role="switch"
-                      className={`theme-switch${autoRepliesEnabled ? " is-on" : ""}`}
-                      aria-checked={autoRepliesEnabled}
-                      aria-label="AI auto-reply"
-                      disabled={autoRepliesSaving}
-                      onClick={() => void handleAutoRepliesToggle(!autoRepliesEnabled)}
+                      className={`theme-switch${forceMpesaPrompt ? " is-on" : ""}`}
+                      aria-checked={forceMpesaPrompt}
+                      aria-label="Force M-PESA STK Prompts"
+                      disabled={operationsSaving}
+                      onClick={() => void handleForceMpesaToggle(!forceMpesaPrompt)}
                     >
                       <span className="theme-switch__thumb" aria-hidden />
                     </button>
                   ) : (
-                    <span className="ios-settings__value">Admin only</span>
+                    <span className="ios-settings__value">Owner only</span>
                   )}
                 </span>
               </div>
-            )}
-          </div>
-          <p className="ios-settings__footer">
-            {!hasInstagram
-              ? canManageInstagram
-                ? "Connect Instagram to enable chats, feeds, and AI auto-reply."
-                : "Ask a shop admin to connect Instagram for chats and feeds."
-              : autoRepliesEnabled
-                ? "TransChap replies to matching customer DMs automatically."
-                : "Automatic replies are off. Customers won’t get AI responses."}
-          </p>
-        </section>
-      ) : null}
+            </div>
+            <p className="ios-settings__footer">
+              Configure till numbers and choose whether to send push prompts to customer phones.
+            </p>
+          </section>
+        ) : null}
 
-      {groupMatches("supplier customer outstanding balance amount adjust") ? (
-        <section className="ios-settings__group" aria-label="Suppliers and customers">
-          <h3 className="ios-settings__caption">Suppliers and customers</h3>
-          <div className="ios-settings__card">
-            <div className="ios-settings__row ios-settings__row--static">
-              <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
-                <i className="fa-solid fa-scale-balanced" />
-              </span>
-              <span className="ios-settings__label">Adjust Supplier/Customer Outstanding amounts</span>
-              <span className="ios-settings__trailing">
-                {owner ? (
-                  <button
-                    type="button"
-                    role="switch"
-                    className={`theme-switch${allowOutstandingAdjustment ? " is-on" : ""}`}
-                    aria-checked={allowOutstandingAdjustment}
-                    aria-label="Adjust Supplier/Customer Outstanding amounts"
-                    disabled={operationsSaving}
-                    onClick={() =>
-                      void handleAllowOutstandingAdjustmentToggle(!allowOutstandingAdjustment)
-                    }
+        {showSection("menu") ? (
+          <section id="settings-menu" className="ios-settings__group" aria-label="Menu">
+            <h3 className="ios-settings__caption">Menu</h3>
+            <div className="ios-settings__card">
+              <button
+                type="button"
+                className="ios-settings__row"
+                onClick={() => setPane("menu-sections")}
+              >
+                <span className="ios-settings__icon ios-settings__icon--inventory" aria-hidden>
+                  <i className="fa-solid fa-utensils" />
+                </span>
+                <span className="ios-settings__label">Menu sections</span>
+                <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+              </button>
+            </div>
+            <p className="ios-settings__footer">
+              Choose the sections your dishes are grouped under, e.g. Burgers, Breakfast, Drinks.
+            </p>
+          </section>
+        ) : null}
+
+        {showSection("tables") ? (
+          <section id="settings-tables" className="ios-settings__group" aria-label="Tables and stations">
+            <h3 className="ios-settings__caption">Tables & stations</h3>
+            <div className="ios-settings__card">
+              <button
+                type="button"
+                className="ios-settings__row"
+                onClick={() => setPane("tables")}
+              >
+                <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
+                  <i className="fa-solid fa-table-cells-large" />
+                </span>
+                <span className="ios-settings__label">Tables & seating</span>
+                <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+              </button>
+              <button
+                type="button"
+                className="ios-settings__row"
+                onClick={() => setPane("stations")}
+              >
+                <span className="ios-settings__icon ios-settings__icon--inventory" aria-hidden>
+                  <i className="fa-solid fa-fire-burner" />
+                </span>
+                <span className="ios-settings__label">Prep stations</span>
+                <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+              </button>
+            </div>
+            <p className="ios-settings__footer">
+              Define seating tables for dine-in orders and prep stations like Kitchen, Bar, or Grill.
+            </p>
+          </section>
+        ) : null}
+
+        {showSection("kitchen") ? (
+          <section id="settings-kitchen" className="ios-settings__group" aria-label="Supplies and kitchen">
+            <h3 className="ios-settings__caption">Kitchen & supplies</h3>
+            <div className="ios-settings__card">
+              <div className="ios-settings__row ios-settings__row--static">
+                <span className="ios-settings__icon ios-settings__icon--inventory" aria-hidden>
+                  <i className="fa-solid fa-warehouse" />
+                </span>
+                <span className="ios-settings__label">Store and kitchen</span>
+                <span className="ios-settings__trailing">
+                  {owner ? (
+                    <button
+                      type="button"
+                      role="switch"
+                      className={`theme-switch${kitchenIssuing ? " is-on" : ""}`}
+                      aria-checked={kitchenIssuing}
+                      aria-label="Store and kitchen"
+                      disabled={operationsSaving}
+                      onClick={() => void handleKitchenIssuingToggle(!kitchenIssuing)}
+                    >
+                      <span className="theme-switch__thumb" aria-hidden />
+                    </button>
+                  ) : (
+                    <span className="ios-settings__value">{kitchenIssuing ? "On" : "Off"}</span>
+                  )}
+                </span>
+              </div>
+              <div className="ios-settings__row ios-settings__row--static">
+                <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
+                  <i className="fa-solid fa-ban" />
+                </span>
+                <span className="ios-settings__label">Block sales when ingredients run out</span>
+                <span className="ios-settings__trailing">
+                  {owner ? (
+                    <button
+                      type="button"
+                      role="switch"
+                      className={`theme-switch${blockLowIngredients ? " is-on" : ""}`}
+                      aria-checked={blockLowIngredients}
+                      aria-label="Block sales when ingredients run out"
+                      disabled={operationsSaving}
+                      onClick={() => void handleBlockLowIngredientsToggle(!blockLowIngredients)}
+                    >
+                      <span className="theme-switch__thumb" aria-hidden />
+                    </button>
+                  ) : (
+                    <span className="ios-settings__value">Owner only</span>
+                  )}
+                </span>
+              </div>
+            </div>
+            <p className="ios-settings__footer">
+              {kitchenIssuing
+                ? "Supplies are issued from the store to the kitchen each day; sales use up kitchen stock. "
+                : "Sales use up supplies straight from stock. "}
+              {blockLowIngredients
+                ? "Dishes can't be sold once an ingredient runs out."
+                : "Dishes can still be sold when ingredients run low; stock goes negative until counted."}
+            </p>
+          </section>
+        ) : null}
+
+        {showSection("inventory") ? (
+          <section id="settings-inventory" className="ios-settings__group" aria-label="Inventory">
+            <h3 className="ios-settings__caption">Inventory</h3>
+            <div className="ios-settings__card">
+              <div className="ios-settings__row ios-settings__row--static">
+                <span className="ios-settings__icon ios-settings__icon--inventory" aria-hidden>
+                  <i className="fa-solid fa-boxes-stacked" />
+                </span>
+                <span className="ios-settings__label">Allow item quantity adjustment</span>
+                <span className="ios-settings__trailing">
+                  {owner ? (
+                    <button
+                      type="button"
+                      role="switch"
+                      className={`theme-switch${allowQuantityAdjustment ? " is-on" : ""}`}
+                      aria-checked={allowQuantityAdjustment}
+                      aria-label="Allow item quantity adjustment"
+                      disabled={operationsSaving}
+                      onClick={() =>
+                        void handleQuantityAdjustmentToggle(!allowQuantityAdjustment)
+                      }
+                    >
+                      <span className="theme-switch__thumb" aria-hidden />
+                    </button>
+                  ) : (
+                    <span className="ios-settings__value">Owner only</span>
+                  )}
+                </span>
+              </div>
+              <div className="ios-settings__row ios-settings__row--static">
+                <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
+                  <i className="fa-solid fa-money-bill-transfer" />
+                </span>
+                <span className="ios-settings__label">Allow price adjustment</span>
+                <span className="ios-settings__trailing">
+                  {owner ? (
+                    <button
+                      type="button"
+                      role="switch"
+                      className={`theme-switch${allowPriceAdjustment ? " is-on" : ""}`}
+                      aria-checked={allowPriceAdjustment}
+                      aria-label="Allow price adjustment"
+                      disabled={operationsSaving}
+                      onClick={() =>
+                        void handleAllowPriceAdjustmentToggle(!allowPriceAdjustment)
+                      }
+                    >
+                      <span className="theme-switch__thumb" aria-hidden />
+                    </button>
+                  ) : (
+                    <span className="ios-settings__value">Owner only</span>
+                  )}
+                </span>
+              </div>
+            </div>
+            <p className="ios-settings__footer">
+              {allowQuantityAdjustment
+                ? "Owners and staff can edit stock quantities. "
+                : "Quantities are read-only for staff. "}
+              {allowPriceAdjustment
+                ? "Prices can be modified on the stocks list and during checkout."
+                : "Prices are fixed on the stocks list and during checkout."}
+            </p>
+          </section>
+        ) : null}
+
+        {showSection("purchases") ? (
+          <section id="settings-purchases" className="ios-settings__group" aria-label="Purchases">
+            <h3 className="ios-settings__caption">Purchases</h3>
+            <div className="ios-settings__card">
+              <div className="ios-settings__row ios-settings__row--static">
+                <span className="ios-settings__icon ios-settings__icon--purchase" aria-hidden>
+                  <i className="fa-solid fa-tags" />
+                </span>
+                <span className="ios-settings__label">Adjust selling price</span>
+                <span className="ios-settings__trailing">
+                  {owner ? (
+                    <button
+                      type="button"
+                      role="switch"
+                      className={`theme-switch${adjustSellingPrice ? " is-on" : ""}`}
+                      aria-checked={adjustSellingPrice}
+                      aria-label="Adjust selling price on purchases"
+                      disabled={operationsSaving}
+                      onClick={() => void handleAdjustSellingPriceToggle(!adjustSellingPrice)}
+                    >
+                      <span className="theme-switch__thumb" aria-hidden />
+                    </button>
+                  ) : (
+                    <span className="ios-settings__value">Owner only</span>
+                  )}
+                </span>
+              </div>
+            </div>
+            <p className="ios-settings__footer">
+              {adjustSellingPrice
+                ? "Set selling and buying prices on purchases."
+                : "Purchases ask for buying price only."}
+            </p>
+          </section>
+        ) : null}
+
+        {showSection("suppliers") ? (
+          <section id="settings-suppliers" className="ios-settings__group" aria-label="Suppliers and customers">
+            <h3 className="ios-settings__caption">Suppliers & customers</h3>
+            <div className="ios-settings__card">
+              <div className="ios-settings__row ios-settings__row--static">
+                <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
+                  <i className="fa-solid fa-scale-balanced" />
+                </span>
+                <span className="ios-settings__label">Adjust Supplier/Customer Outstanding amounts</span>
+                <span className="ios-settings__trailing">
+                  {owner ? (
+                    <button
+                      type="button"
+                      role="switch"
+                      className={`theme-switch${allowOutstandingAdjustment ? " is-on" : ""}`}
+                      aria-checked={allowOutstandingAdjustment}
+                      aria-label="Adjust Supplier/Customer Outstanding amounts"
+                      disabled={operationsSaving}
+                      onClick={() =>
+                        void handleAllowOutstandingAdjustmentToggle(!allowOutstandingAdjustment)
+                      }
+                    >
+                      <span className="theme-switch__thumb" aria-hidden />
+                    </button>
+                  ) : (
+                    <span className="ios-settings__value">Owner only</span>
+                  )}
+                </span>
+              </div>
+            </div>
+            <p className="ios-settings__footer">
+              {allowOutstandingAdjustment
+                ? "Opening and outstanding balances can be edited on the Suppliers and Customers pages."
+                : "Outstanding balances stay as recorded from purchases, sales, and payments."}
+            </p>
+          </section>
+        ) : null}
+
+        {showSection("messaging") ? (
+          <section id="settings-messaging" className="ios-settings__group" aria-label="Messaging">
+            <h3 className="ios-settings__caption">Messaging</h3>
+            <div className="ios-settings__card">
+              {!hasInstagram ? (
+                canManageInstagram ? (
+                  <a
+                    href={resolveSameOriginUrl(
+                      `${instagramAuthPath}?next=${encodeURIComponent("/trans-chap/settings")}`,
+                    )}
+                    className="ios-settings__row"
                   >
-                    <span className="theme-switch__thumb" aria-hidden />
-                  </button>
+                    <span className="ios-settings__icon ios-settings__icon--ai" aria-hidden>
+                      <i className="fa-brands fa-instagram" />
+                    </span>
+                    <span className="ios-settings__label">Connect Instagram</span>
+                    <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+                  </a>
                 ) : (
-                  <span className="ios-settings__value">Owner only</span>
-                )}
-              </span>
+                  <div className="ios-settings__row ios-settings__row--static is-disabled">
+                    <span className="ios-settings__icon ios-settings__icon--ai" aria-hidden>
+                      <i className="fa-brands fa-instagram" />
+                    </span>
+                    <span className="ios-settings__label">Instagram</span>
+                    <span className="ios-settings__value">Admin only</span>
+                  </div>
+                )
+              ) : (
+                <div
+                  className={`ios-settings__row ios-settings__row--static${!canManageInstagram ? " is-disabled" : ""
+                    }`}
+                >
+                  <span className="ios-settings__icon ios-settings__icon--ai" aria-hidden>
+                    <i className="fa-solid fa-robot" />
+                  </span>
+                  <span className="ios-settings__label">AI Auto-Reply</span>
+                  <span className="ios-settings__trailing">
+                    {canManageInstagram ? (
+                      <button
+                        type="button"
+                        role="switch"
+                        className={`theme-switch${autoRepliesEnabled ? " is-on" : ""}`}
+                        aria-checked={autoRepliesEnabled}
+                        aria-label="AI auto-reply"
+                        disabled={autoRepliesSaving}
+                        onClick={() => void handleAutoRepliesToggle(!autoRepliesEnabled)}
+                      >
+                        <span className="theme-switch__thumb" aria-hidden />
+                      </button>
+                    ) : (
+                      <span className="ios-settings__value">Admin only</span>
+                    )}
+                  </span>
+                </div>
+              )}
             </div>
-          </div>
-          <p className="ios-settings__footer">
-            {allowOutstandingAdjustment
-              ? "Opening and outstanding balances can be edited on the Suppliers and Customers pages."
-              : "Outstanding balances stay as recorded from purchases, sales, and payments."}
-          </p>
-        </section>
-      ) : null}
+            <p className="ios-settings__footer">
+              {!hasInstagram
+                ? canManageInstagram
+                  ? "Connect Instagram to enable chats, feeds, and AI auto-reply."
+                  : "Ask a shop admin to connect Instagram for chats and feeds."
+                : autoRepliesEnabled
+                  ? "TransChap replies to matching customer DMs automatically."
+                  : "Automatic replies are off. Customers won’t get AI responses."}
+            </p>
+          </section>
+        ) : null}
 
-      {groupMatches("inventory stock item quantity adjustment purchases") ? (
-        <section className="ios-settings__group" aria-label="Inventory">
-          <h3 className="ios-settings__caption">Inventory</h3>
-          <div className="ios-settings__card">
-            <div className="ios-settings__row ios-settings__row--static">
-              <span className="ios-settings__icon ios-settings__icon--inventory" aria-hidden>
-                <i className="fa-solid fa-boxes-stacked" />
-              </span>
-              <span className="ios-settings__label">Allow item quantity adjustment</span>
-              <span className="ios-settings__trailing">
-                {owner ? (
-                  <button
-                    type="button"
-                    role="switch"
-                    className={`theme-switch${allowQuantityAdjustment ? " is-on" : ""}`}
-                    aria-checked={allowQuantityAdjustment}
-                    aria-label="Allow item quantity adjustment"
-                    disabled={operationsSaving}
-                    onClick={() =>
-                      void handleQuantityAdjustmentToggle(!allowQuantityAdjustment)
-                    }
-                  >
-                    <span className="theme-switch__thumb" aria-hidden />
-                  </button>
-                ) : (
-                  <span className="ios-settings__value">Owner only</span>
-                )}
-              </span>
+        {showSection("team") ? (
+          <section id="settings-team" className="ios-settings__group" aria-label="Team">
+            <h3 className="ios-settings__caption">Team</h3>
+            <div className="ios-settings__card">
+              <button
+                type="button"
+                className="ios-settings__row"
+                onClick={() => setPane("team")}
+              >
+                <span className="ios-settings__icon ios-settings__icon--team" aria-hidden>
+                  <i className="fa-solid fa-users" />
+                </span>
+                <span className="ios-settings__label">Team members</span>
+                <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+              </button>
             </div>
-            <div className="ios-settings__row ios-settings__row--static">
-              <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
-                <i className="fa-solid fa-money-bill-transfer" />
-              </span>
-              <span className="ios-settings__label">Allow price adjustment</span>
-              <span className="ios-settings__trailing">
-                {owner ? (
-                  <button
-                    type="button"
-                    role="switch"
-                    className={`theme-switch${allowPriceAdjustment ? " is-on" : ""}`}
-                    aria-checked={allowPriceAdjustment}
-                    aria-label="Allow price adjustment"
-                    disabled={operationsSaving}
-                    onClick={() =>
-                      void handleAllowPriceAdjustmentToggle(!allowPriceAdjustment)
-                    }
-                  >
-                    <span className="theme-switch__thumb" aria-hidden />
-                  </button>
-                ) : (
-                  <span className="ios-settings__value">Owner only</span>
-                )}
-              </span>
+            <p className="ios-settings__footer">Invite staff and manage access.</p>
+          </section>
+        ) : null}
+
+        {showSection("app") ? (
+          <section id="settings-app" className="ios-settings__group" aria-label="App">
+            <h3 className="ios-settings__caption">App & device</h3>
+            <div className="ios-settings__card">
+              <button
+                type="button"
+                className="ios-settings__row"
+                onClick={() => setPane("camera")}
+              >
+                <span className="ios-settings__icon ios-settings__icon--camera" aria-hidden>
+                  <i className="fa-solid fa-camera" />
+                </span>
+                <span className="ios-settings__label">Camera</span>
+                <span className="ios-settings__value">
+                  {cameraReady == null ? "" : cameraReady ? "Ready" : "Off"}
+                </span>
+                <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+              </button>
+              <button
+                type="button"
+                className="ios-settings__row"
+                onClick={() => setPane("download")}
+              >
+                <span className="ios-settings__icon ios-settings__icon--download" aria-hidden>
+                  <i className="fa-solid fa-download" />
+                </span>
+                <span className="ios-settings__label">Add to Home Screen</span>
+                <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+              </button>
+              <div className="ios-settings__row ios-settings__row--static">
+                <span className="ios-settings__icon ios-settings__icon--theme" aria-hidden>
+                  <i className="fa-solid fa-moon" />
+                </span>
+                <span className="ios-settings__label">Dark Mode</span>
+                <span className="ios-settings__trailing">
+                  <ThemeToggle variant="switch" />
+                </span>
+              </div>
             </div>
-          </div>
-          <p className="ios-settings__footer">
-            {allowQuantityAdjustment
-              ? "Owners and staff can edit stock quantities. "
-              : "Quantities are read-only for staff. "}
-            {allowPriceAdjustment
-              ? "Prices can be modified on the stocks list and during checkout."
-              : "Prices are fixed on the stocks list and during checkout."}
-          </p>
-        </section>
-      ) : null}
+          </section>
+        ) : null}
 
-      {restaurant && groupMatches("menu sections categories dishes restaurant hotel") ? (
-        <section className="ios-settings__group" aria-label="Menu">
-          <h3 className="ios-settings__caption">Menu</h3>
-          <div className="ios-settings__card">
-            <button
-              type="button"
-              className="ios-settings__row"
-              onClick={() => setPane("menu-sections")}
-            >
-              <span className="ios-settings__icon ios-settings__icon--inventory" aria-hidden>
-                <i className="fa-solid fa-utensils" />
-              </span>
-              <span className="ios-settings__label">Menu sections</span>
-              <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
-            </button>
-          </div>
-          <p className="ios-settings__footer">
-            Choose the sections your dishes are grouped under, e.g. Burgers, Breakfast, Drinks.
-          </p>
-        </section>
-      ) : null}
-
-      {restaurant && groupMatches("tables stations floor seating dining kitchen restaurant") ? (
-        <section className="ios-settings__group" aria-label="Tables and stations">
-          <h3 className="ios-settings__caption">Tables & Stations</h3>
-          <div className="ios-settings__card">
-            <button
-              type="button"
-              className="ios-settings__row"
-              onClick={() => setPane("tables")}
-            >
-              <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
-                <i className="fa-solid fa-table-cells-large" />
-              </span>
-              <span className="ios-settings__label">Tables & seating</span>
-              <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
-            </button>
-            <button
-              type="button"
-              className="ios-settings__row"
-              onClick={() => setPane("stations")}
-            >
-              <span className="ios-settings__icon ios-settings__icon--inventory" aria-hidden>
-                <i className="fa-solid fa-fire-burner" />
-              </span>
-              <span className="ios-settings__label">Prep stations</span>
-              <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
-            </button>
-          </div>
-          <p className="ios-settings__footer">
-            Define seating tables for dine-in orders and prep stations like Kitchen, Bar, or Grill.
-          </p>
-        </section>
-      ) : null}
-
-      {restaurant && groupMatches("supplies kitchen store issue ingredients stock recipe") ? (
-        <section className="ios-settings__group" aria-label="Supplies and kitchen">
-          <h3 className="ios-settings__caption">Supplies and kitchen</h3>
-          <div className="ios-settings__card">
-            <div className="ios-settings__row ios-settings__row--static">
-              <span className="ios-settings__icon ios-settings__icon--inventory" aria-hidden>
-                <i className="fa-solid fa-warehouse" />
-              </span>
-              <span className="ios-settings__label">Store and kitchen</span>
-              <span className="ios-settings__trailing">
-                {owner ? (
-                  <button
-                    type="button"
-                    role="switch"
-                    className={`theme-switch${kitchenIssuing ? " is-on" : ""}`}
-                    aria-checked={kitchenIssuing}
-                    aria-label="Store and kitchen"
-                    disabled={operationsSaving}
-                    onClick={() => void handleKitchenIssuingToggle(!kitchenIssuing)}
-                  >
-                    <span className="theme-switch__thumb" aria-hidden />
-                  </button>
-                ) : (
-                  <span className="ios-settings__value">{kitchenIssuing ? "On" : "Off"}</span>
-                )}
-              </span>
+        {showSection("data") ? (
+          <section id="settings-data" className="ios-settings__group" aria-label="Operations Data">
+            <h3 className="ios-settings__caption">Data & reset</h3>
+            <div className="ios-settings__card">
+              <button
+                type="button"
+                className="ios-settings__row"
+                onClick={() => setPane("operations-reset")}
+              >
+                <span className="ios-settings__icon ios-settings__icon--reset" aria-hidden>
+                  <i className="fa-solid fa-rotate-left" />
+                </span>
+                <span className="ios-settings__label">Reset data to zero</span>
+                <span className="ios-settings__value" style={{ color: "#d97706", fontWeight: 500 }}>
+                  30-day reclaim
+                </span>
+                <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
+              </button>
             </div>
-            <div className="ios-settings__row ios-settings__row--static">
-              <span className="ios-settings__icon ios-settings__icon--cash" aria-hidden>
-                <i className="fa-solid fa-ban" />
-              </span>
-              <span className="ios-settings__label">Block sales when ingredients run out</span>
-              <span className="ios-settings__trailing">
-                {owner ? (
-                  <button
-                    type="button"
-                    role="switch"
-                    className={`theme-switch${blockLowIngredients ? " is-on" : ""}`}
-                    aria-checked={blockLowIngredients}
-                    aria-label="Block sales when ingredients run out"
-                    disabled={operationsSaving}
-                    onClick={() => void handleBlockLowIngredientsToggle(!blockLowIngredients)}
-                  >
-                    <span className="theme-switch__thumb" aria-hidden />
-                  </button>
-                ) : (
-                  <span className="ios-settings__value">Owner only</span>
-                )}
-              </span>
-            </div>
-          </div>
-          <p className="ios-settings__footer">
-            {kitchenIssuing
-              ? "Supplies are issued from the store to the kitchen each day; sales use up kitchen stock. "
-              : "Sales use up supplies straight from stock. "}
-            {blockLowIngredients
-              ? "Dishes can't be sold once an ingredient runs out."
-              : "Dishes can still be sold when ingredients run low; stock goes negative until counted."}
-          </p>
-        </section>
-      ) : null}
+            <p className="ios-settings__footer">
+              Zero out sales, expenses, inventory, and menu. Backups are kept for 30 days to reclaim if needed.
+            </p>
+          </section>
+        ) : null}
+      </div>
 
-      {groupMatches("purchases buying selling price adjust pricing") ? (
-        <section className="ios-settings__group" aria-label="Purchases">
-          <h3 className="ios-settings__caption">Purchases</h3>
-          <div className="ios-settings__card">
-            <div className="ios-settings__row ios-settings__row--static">
-              <span className="ios-settings__icon ios-settings__icon--purchase" aria-hidden>
-                <i className="fa-solid fa-tags" />
-              </span>
-              <span className="ios-settings__label">Adjust selling price</span>
-              <span className="ios-settings__trailing">
-                {owner ? (
-                  <button
-                    type="button"
-                    role="switch"
-                    className={`theme-switch${adjustSellingPrice ? " is-on" : ""}`}
-                    aria-checked={adjustSellingPrice}
-                    aria-label="Adjust selling price on purchases"
-                    disabled={operationsSaving}
-                    onClick={() => void handleAdjustSellingPriceToggle(!adjustSellingPrice)}
-                  >
-                    <span className="theme-switch__thumb" aria-hidden />
-                  </button>
-                ) : (
-                  <span className="ios-settings__value">Owner only</span>
-                )}
-              </span>
-            </div>
-          </div>
-          <p className="ios-settings__footer">
-            {adjustSellingPrice
-              ? "Set selling and buying prices on purchases."
-              : "Purchases ask for buying price only."}
-          </p>
-        </section>
-      ) : null}
-
-      {owner && groupMatches("team staff members invite login permissions access") ? (
-        <section className="ios-settings__group" aria-label="Team">
-          <h3 className="ios-settings__caption">Team</h3>
-          <div className="ios-settings__card">
-            <button
-              type="button"
-              className="ios-settings__row"
-              onClick={() => setPane("team")}
-            >
-              <span className="ios-settings__icon ios-settings__icon--team" aria-hidden>
-                <i className="fa-solid fa-users" />
-              </span>
-              <span className="ios-settings__label">Team members</span>
-              <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
-            </button>
-          </div>
-          <p className="ios-settings__footer">Invite staff and manage access.</p>
-        </section>
-      ) : null}
-
-      {groupMatches("app camera download home screen install dark mode theme appearance") ? (
-        <section className="ios-settings__group" aria-label="App">
-          <h3 className="ios-settings__caption">App</h3>
-          <div className="ios-settings__card">
-            <button
-              type="button"
-              className="ios-settings__row"
-              onClick={() => setPane("camera")}
-            >
-              <span className="ios-settings__icon ios-settings__icon--camera" aria-hidden>
-                <i className="fa-solid fa-camera" />
-              </span>
-              <span className="ios-settings__label">Camera</span>
-              <span className="ios-settings__value">
-                {cameraReady == null ? "" : cameraReady ? "Ready" : "Off"}
-              </span>
-              <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
-            </button>
-            <button
-              type="button"
-              className="ios-settings__row"
-              onClick={() => setPane("download")}
-            >
-              <span className="ios-settings__icon ios-settings__icon--download" aria-hidden>
-                <i className="fa-solid fa-download" />
-              </span>
-              <span className="ios-settings__label">Add to Home Screen</span>
-              <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
-            </button>
-            <div className="ios-settings__row ios-settings__row--static">
-              <span className="ios-settings__icon ios-settings__icon--theme" aria-hidden>
-                <i className="fa-solid fa-moon" />
-              </span>
-              <span className="ios-settings__label">Dark Mode</span>
-              <span className="ios-settings__trailing">
-                <ThemeToggle variant="switch" />
-              </span>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {owner && groupMatches("reset zero delete reclaim operations clear data account transactions sales") ? (
-        <section className="ios-settings__group" aria-label="Operations Data">
-          <h3 className="ios-settings__caption">Operations Data</h3>
-          <div className="ios-settings__card">
-            <button
-              type="button"
-              className="ios-settings__row"
-              onClick={() => setPane("operations-reset")}
-            >
-              <span className="ios-settings__icon ios-settings__icon--reset" aria-hidden>
-                <i className="fa-solid fa-rotate-left" />
-              </span>
-              <span className="ios-settings__label">Reset data to zero</span>
-              <span className="ios-settings__value" style={{ color: "#d97706", fontWeight: 500 }}>
-                30-day reclaim
-              </span>
-              <i className="fa-solid fa-chevron-right ios-settings__chevron" aria-hidden />
-            </button>
-          </div>
-          <p className="ios-settings__footer">
-            Zero out sales, expenses, inventory, and menu. Backups are kept for 30 days to reclaim if needed.
-          </p>
-        </section>
-      ) : null}
-
-      {groupMatches("account logout log out sign out") ? (
-        <section className="ios-settings__group" aria-label="Account">
+      {showLogout ? (
+        <section className="ios-settings__group ios-settings__group--logout" aria-label="Account">
           <div className="ios-settings__card">
             <button
               type="button"

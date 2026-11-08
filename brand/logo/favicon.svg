@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 5.6 47.8 47.8" width="512" height="512" role="img" aria-label="TransChap">
+  <title>TransChap</title>
+  <style>
+    .tc-hat { fill: #0b2545; }
+    .tc-pleat { stroke: #f8e9dc; }
+    @media (prefers-color-scheme: dark) {
+      .tc-hat { fill: #f8e9dc; }
+      .tc-pleat { stroke: #0b2545; }
+    }
+  </style>
+  <defs>
+    <linearGradient id="tc-bolt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6d58a"/>
+      <stop offset="1" stop-color="#dea23c"/>
+    </linearGradient>
+  </defs>
+  <g transform="rotate(-6 32 32)">
+    <g class="tc-hat">
+        <circle cx="21.5" cy="31" r="8"/>
+        <circle cx="31" cy="22" r="9.5"/>
+        <circle cx="41" cy="29" r="8.5"/>
+        <path d="M22 27h20v16H22z"/>
+        <rect x="21" y="45.5" width="22" height="6.5" rx="1.8"/>
+    </g>
+    <path class="tc-pleat" d="M27 33.5v8M31.5 32.5v9" fill="none" stroke-width="1.7" stroke-linecap="round"/>
+  </g>
+  <path d="M49 6.8 35.4 25.2l6 .7-7.4 16.8 19.6-23.4-6.6-.2z" fill="url(#tc-bolt)" stroke="#0b2545" stroke-width="1.4" stroke-linejoin="round"/>
+</svg>

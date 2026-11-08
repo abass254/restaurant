@@ -5,10 +5,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { ThemeToggle } from "@/components/app/ThemeToggle";
 import { TransChapLogoMark } from "@/components/trans-chap/TransChapLogoMark";
-import {
-  TransChapBrandHeader,
-  TransChapHeroContent,
-} from "@/components/trans-chap/TransChapAuth";
+import { TransChapBrandHeader } from "@/components/trans-chap/TransChapAuth";
 import { apiFetch, ApiError, resetCsrfCookie } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import { firstAllowedPath } from "@/lib/merchant-permissions";
@@ -117,18 +114,19 @@ function SignInStatusAlert({
 function LoginFrame({
   embedded,
   isTransChap,
+  singleField = false,
   children,
 }: {
   embedded?: boolean;
   isTransChap?: boolean;
+  singleField?: boolean;
   children: React.ReactNode;
 }) {
   if (isTransChap) {
     return (
       <AuthShell
-        className="auth-split--trans-chap"
+        className={`auth-split--trans-chap${singleField ? " auth-split--single-field" : ""}`}
         heroLabel="KITCHEN"
-        heroContent={<TransChapHeroContent />}
         brandHeader={<TransChapBrandHeader />}
         panelAction={<ThemeToggle />}
       >
@@ -543,7 +541,7 @@ export default function LoginForm({
   }
 
   return (
-    <LoginFrame embedded={embedded} isTransChap={isTransChap}>
+    <LoginFrame embedded={embedded} isTransChap={isTransChap} singleField>
       {!embedded || isTransChap ? (
         <>
           <h1 className="auth-split__title">

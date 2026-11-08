@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { AuthShell } from "@/components/auth/AuthShell";
+import { ThemeToggle } from "@/components/app/ThemeToggle";
+import { TransChapBrandHeader } from "@/components/trans-chap/TransChapAuth";
 import { apiFetch, ApiError } from "@/lib/api";
 import { apiRoutes } from "@/lib/config";
 import type { ForgotPasswordResponse } from "@/lib/types";
@@ -39,9 +41,16 @@ export default function ForgotPasswordPage() {
     }
   }
 
+  const shellProps = {
+    className: "auth-split--trans-chap",
+    heroLabel: "KITCHEN",
+    brandHeader: <TransChapBrandHeader />,
+    panelAction: <ThemeToggle />,
+  };
+
   if (submitted) {
     return (
-      <AuthShell>
+      <AuthShell {...shellProps}>
         <div className="auth-split__success-icon" aria-hidden="true">
           <i className="fas fa-check" />
         </div>
@@ -64,7 +73,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <AuthShell backHref={signInHref} backLabel="Back to login">
+    <AuthShell {...shellProps} backHref={signInHref} backLabel="Back to login">
       <h1 className="auth-split__title">Forgot Password</h1>
       <p className="auth-split__subtitle">
         Enter your email address and we&apos;ll send you a link to reset your password

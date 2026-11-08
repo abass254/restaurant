@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AuthShell } from "@/components/auth/AuthShell";
-import { TransChapBrandHeader, TransChapHeroContent } from "@/components/trans-chap/TransChapAuth";
+import { TransChapBrandHeader } from "@/components/trans-chap/TransChapAuth";
 import { apiFetch } from "@/lib/api";
 import { extractErrorMessage } from "@/lib/alerts";
 import { apiRoutes } from "@/lib/config";
@@ -62,7 +62,6 @@ export default function RestaurantRegistrationPage() {
       <AuthShell
         className="auth-split--trans-chap"
         heroLabel="KITCHEN"
-        heroContent={<TransChapHeroContent />}
         brandHeader={<TransChapBrandHeader />}
       >
         <div className="auth-split__success-icon" aria-hidden="true">
@@ -84,7 +83,6 @@ export default function RestaurantRegistrationPage() {
     <AuthShell
       className="auth-split--trans-chap auth-split--restaurant-register"
       heroLabel="KITCHEN"
-      heroContent={<TransChapHeroContent />}
       brandHeader={<TransChapBrandHeader />}
     >
       <h1 className="auth-split__title">Register your restaurant</h1>

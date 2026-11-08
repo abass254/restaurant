@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
   },
   icons: {
-    icon: [{ url: "/icons/trans-chap-icon.svg", type: "image/svg+xml" }],
+    icon: [{ url: "/icons/favicon.svg", type: "image/svg+xml" }],
     apple: [
       { url: "/icons/trans-chap-180.png", sizes: "180x180", type: "image/png" },
     ],

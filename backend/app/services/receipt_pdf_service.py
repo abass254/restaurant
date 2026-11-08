@@ -39,10 +39,17 @@ CREDIT = (194, 65, 12)
 WAIT = (180, 83, 9)
 FAIL = (190, 18, 60)
 
-TRANSCHAP_LOGO_SVG = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <path d="M15 11h24a4 4 0 0 1 4 4v34a4 4 0 0 1-4 4H15a4 4 0 0 1-4-4V15a4 4 0 0 1 4-4z" fill="none" stroke="#20154c" stroke-width="3" stroke-linejoin="round"/>
-  <path d="M20 22h14M20 30h14M20 38h8" fill="none" stroke="#20154c" stroke-width="3" stroke-linecap="round"/>
-  <path fill="#77f665" d="M46 6 34 30h9L36 58l18-30h-9L54 6z"/>
+TRANSCHAP_LOGO_SVG = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="6 1.5 56 56" width="64" height="64">
+  <g transform="rotate(-6 32 32)" fill="#20154c">
+    <circle cx="21.5" cy="31" r="8"/>
+    <circle cx="31" cy="22" r="9.5"/>
+    <circle cx="41" cy="29" r="8.5"/>
+    <path d="M22 27h20v16H22z"/>
+    <path d="M22.8 45.5h18.4a1.8 1.8 0 0 1 1.8 1.8v2.9a1.8 1.8 0 0 1-1.8 1.8H22.8a1.8 1.8 0 0 1-1.8-1.8v-2.9a1.8 1.8 0 0 1 1.8-1.8z"/>
+    <path d="M27 33.5v8M31.5 32.5v9" fill="none" stroke="#f6eee3" stroke-width="1.7" stroke-linecap="round"/>
+  </g>
+  <path fill="#f6eee3" stroke="#f6eee3" stroke-width="3" stroke-linejoin="round" d="M49 6.8 35.4 25.2l6 .7-7.4 16.8 19.6-23.4-6.6-.2z"/>
+  <path fill="#77f665" d="M49 6.8 35.4 25.2l6 .7-7.4 16.8 19.6-23.4-6.6-.2z"/>
 </svg>"""
 
 

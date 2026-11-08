@@ -1,44 +1,39 @@
-<svg
-  xmlns="http://www.w3.org/2000/svg"
-  viewBox="0 0 64 64"
-  role="img"
-  aria-label="TransChap"
->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="TransChap">
   <title>TransChap</title>
-
-  <path
-    d="M24 28 L24 24 A3 3 0 0 1 30 24 L30 28"
-    fill="none"
-    stroke="#C19A7C"
-    stroke-width="3"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
-  <path
-    d="M34 28 L34 24 A3 3 0 0 1 40 24 L40 28"
-    fill="none"
-    stroke="#C19A7C"
-    stroke-width="3"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
-
-  <path
-    d="M16 34 A6 6 0 0 1 22 28 L42 28 A6 6 0 0 1 48 34 L48 48 A6 6 0 0 1 42 54 L24 54 L12 62 L16 50 Z"
-    fill="none"
-    stroke="#C19A7C"
-    stroke-width="3"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
-
-  <path
-    fill="#C19A7C"
-    d="M32 34 C32.7 38.9 34.1 40.3 39 41 C34.1 41.7 32.7 43.1 32 48 C31.3 43.1 29.9 41.7 25 41 C29.9 40.3 31.3 38.9 32 34 Z"
-  />
-
-  <path
-    fill="#A86B55"
-    d="M42 32 C42.3 34.1 42.9 34.7 45 35 C42.9 35.3 42.3 35.9 42 38 C41.7 35.9 41.1 35.3 39 35 C41.1 34.7 41.7 34.1 42 32 Z"
-  />
+  <defs>
+    <linearGradient id="tc-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fcf3e8"/>
+      <stop offset="1" stop-color="#f1dcc4"/>
+    </linearGradient>
+    <radialGradient id="tc-glow" cx="376" cy="190" r="190" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f6d58a" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#f6d58a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="tc-bolt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6d58a"/>
+      <stop offset="1" stop-color="#dea23c"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#tc-bg)"/>
+  <rect width="512" height="512" rx="112" fill="url(#tc-glow)"/>
+  <g transform="scale(8)">
+    <path fill="#d99a2b" d="M14 11.2Q14.6 14 17.4 14.6Q14.6 15.2 14 18Q13.4 15.2 10.6 14.6Q13.4 14 14 11.2z"/>
+    <g transform="rotate(-6 32 32)">
+      <g fill="#0b2545">
+        <circle cx="21.5" cy="31" r="8"/>
+        <circle cx="31" cy="22" r="9.5"/>
+        <circle cx="41" cy="29" r="8.5"/>
+        <path d="M22 27h20v16H22z"/>
+        <rect x="21" y="45.5" width="22" height="6.5" rx="1.8"/>
+      </g>
+      <path d="M27 33.5v8M31.5 32.5v9" fill="none" stroke="#f8e9dc" stroke-width="1.7" stroke-linecap="round"/>
+    </g>
+    <path
+      d="M49 6.8 35.4 25.2l6 .7-7.4 16.8 19.6-23.4-6.6-.2z"
+      fill="url(#tc-bolt)"
+      stroke="#0b2545"
+      stroke-width="1.4"
+      stroke-linejoin="round"
+    />
+  </g>
 </svg>

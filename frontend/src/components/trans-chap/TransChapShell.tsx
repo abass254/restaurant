@@ -24,6 +24,7 @@ import { migrateLegacyTransChapPurchases } from "@/lib/trans-chap-purchases";
 import { detectTransChapMachine, syncTransChapMachine } from "@/lib/trans-chap-machine";
 
 import { isRestaurantStore } from "@/lib/onboarding";
+import { resolveAssetUrl } from "@/lib/config";
 
 const NAV_COLLAPSED_KEY = "trans-chap-nav-collapsed";
 const PHONE_HIDDEN_NAV_HREFS = new Set([
@@ -318,7 +319,10 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const user = useOptionalAuthUser();
-  const restaurant = isRestaurantStore(user?.active_account ?? user?.account);
+  const shop = user?.active_account ?? user?.account;
+  const restaurant = isRestaurantStore(shop);
+  const shopName = shop?.business_name?.trim() || "";
+  const shopLogoUrl = shop?.logo_url ? resolveAssetUrl(shop.logo_url) : null;
   const { title, backHref } = headerMeta(
     pathname,
     searchParams.get("mode"),
@@ -497,8 +501,12 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
             <header className="trans-chap-header">
               <div className="trans-chap-header__side">
                 {isHome ? (
-                  <span className="trans-chap-header__brand-logo" aria-label="TransChap">
-                    <TransChapLogoMark size={28} />
+                  <span className="trans-chap-header__merchant" title={shopName || undefined}>
+                    {shopLogoUrl ? (
+                      <img src={shopLogoUrl} alt={`${shopName || "Shop"} logo`} />
+                    ) : (
+                      <strong>{shopName || "TransChap"}</strong>
+                    )}
                   </span>
                 ) : backHref ? (
                   <Link href={backHref} className="trans-chap-header__icon" aria-label="Back">
@@ -547,17 +555,12 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
                 }
                 aria-label="TransChap navigation"
               >
-                <div className="mobile-nav__brand">
+                <div className="mobile-nav__brand" aria-label="TransChap">
                   <span className="mobile-nav__brand-icon" aria-hidden>
-                    <TransChapLogoMark size={30} />
+                    <TransChapLogoMark size={36} color="currentColor" accentColor="#cfae6c" />
                   </span>
-                  <div className="mobile-nav__brand-meta">
-                    <strong className="mobile-nav__brand-title">TransChap</strong>
-                    {user?.active_account?.business_name || user?.account?.business_name ? (
-                      <span className="mobile-nav__brand-shop">
-                        {user.active_account?.business_name || user.account?.business_name}
-                      </span>
-                    ) : null}
+                  <div className="mobile-nav__brand-meta" aria-hidden>
+                    <strong className="mobile-nav__brand-wordmark">transchap</strong>
                   </div>
                 </div>
                 <button

@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "/icons/trans-chap-icon.svg", type: "image/svg+xml" },
+      { url: "/icons/favicon.svg", type: "image/svg+xml" },
       { url: "/icons/trans-chap-192.png", sizes: "192x192", type: "image/png" },
       { url: "/icons/trans-chap-512.png", sizes: "512x512", type: "image/png" },
     ],

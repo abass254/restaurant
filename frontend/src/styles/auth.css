@@ -48,33 +48,24 @@
   min-height: 100dvh;
 }
 
-.auth-split__hero-glow {
+.auth-split__hero:has(.auth-split__photo) {
+  background: #061a33;
+}
+
+.auth-split__photo {
+  object-fit: cover;
+  object-position: center top;
+  z-index: 0;
+}
+
+.auth-split__photo-shade {
   position: absolute;
   inset: 0;
   z-index: 1;
-  background:
-    radial-gradient(circle at 18% 18%, rgba(232, 93, 4, 0.22), transparent 40%),
-    radial-gradient(circle at 82% 72%, rgba(255, 255, 255, 0.1), transparent 42%);
   pointer-events: none;
-}
-
-.auth-split__art {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.auth-split__art-motion {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: auth-art-drift 12s ease-in-out infinite;
-}
-
-@keyframes auth-art-drift {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
+  background:
+    linear-gradient(90deg, transparent 55%, rgba(6, 26, 51, 0.7) 85%, #061a33 100%),
+    linear-gradient(180deg, rgba(6, 26, 51, 0.55) 0%, transparent 22%, transparent 52%, rgba(6, 26, 51, 0.85) 78%, #061a33 100%);
 }
 
 .auth-split__panel {
@@ -1119,12 +1110,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .auth-split__art-motion {
-    animation: none !important;
-  }
-}
-
 /* Login — matches landing-ufanisi brown + cream brand */
 .landing-ufanisi.auth-page {
   min-height: 100vh;
@@ -1757,6 +1742,20 @@
   max-width: 480px;
 }
 
+.auth-split--trans-chap:not(.auth-split--restaurant-register) .auth-split__panel {
+  align-items: flex-start;
+}
+
+.auth-split--trans-chap:not(.auth-split--restaurant-register) .auth-split__content {
+  --auth-signin-offset: clamp(1rem, 10vh, 6rem);
+  margin-top: var(--auth-signin-offset);
+}
+
+/* Matches one input (72px) plus the form gap so Sign In lines up with the two-field password form. */
+.auth-split--trans-chap.auth-split--single-field .auth-split__content {
+  margin-top: calc(var(--auth-signin-offset) + 72px + 1.05rem);
+}
+
 .auth-split--trans-chap,
 .auth-split--trans-chap .auth-split__panel {
   background: #fbf6f3;
@@ -1764,12 +1763,6 @@
 
 .auth-split--trans-chap .auth-split__btn {
   color: var(--auth-btn-text);
-}
-
-.auth-split--trans-chap .auth-split__hero-glow {
-  background:
-    radial-gradient(circle at 18% 18%, rgba(240, 221, 207, 0.16), transparent 40%),
-    radial-gradient(circle at 82% 72%, rgba(255, 255, 255, 0.08), transparent 42%);
 }
 
 .auth-split--trans-chap .auth-split__input:focus,
@@ -1807,15 +1800,13 @@
   margin-bottom: 1.1rem;
 }
 
-.auth-split--restaurant-register .trans-chap-auth__brand-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
+.auth-split--restaurant-register .trans-chap-auth__logo svg {
+  width: 48px;
+  height: 48px;
 }
 
-.auth-split--restaurant-register .trans-chap-auth__brand-icon svg {
-  width: 42px;
-  height: 42px;
+.auth-split--restaurant-register .trans-chap-auth__wordmark {
+  font-size: clamp(1.8rem, 3vw, 2.2rem);
 }
 
 .auth-split--restaurant-register .auth-split__subtitle {
@@ -1873,213 +1864,19 @@
   margin-bottom: 2rem;
 }
 
-.trans-chap-auth__logo-link {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-decoration: none;
-  color: inherit;
-  gap: 0.5rem;
-}
-
-.trans-chap-auth__brand-icon {
-  width: 72px;
-  height: 72px;
-  border-radius: 20px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(135deg, #25487a 0%, #0b2545 100%);
-  box-shadow:
-    0 8px 24px var(--auth-brand-glow, rgba(11, 37, 69, 0.32)),
-    0 2px 6px rgba(0, 0, 0, 0.12);
-  transition: transform 0.22s ease, box-shadow 0.22s ease;
-}
-
-.trans-chap-auth__logo-link:hover .trans-chap-auth__brand-icon {
-  transform: translateY(-2px) scale(1.03);
-  box-shadow:
-    0 12px 28px var(--auth-brand-glow, rgba(11, 37, 69, 0.42)),
-    0 4px 10px rgba(0, 0, 0, 0.16);
-}
-
-.trans-chap-auth__brand-text {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-top: 0.25rem;
+.trans-chap-auth__logo {
+  color: var(--auth-ink);
 }
 
 .trans-chap-auth__wordmark {
-  font-size: clamp(2rem, 3.5vw, 2.5rem);
   font-weight: 800;
   letter-spacing: -0.035em;
-  color: var(--auth-ink);
-  line-height: 1;
-  margin: 0;
-}
-
-.trans-chap-auth__badge {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.78rem;
-  font-weight: 750;
-  color: var(--auth-accent);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  background: color-mix(in srgb, var(--auth-accent) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--auth-accent) 20%, transparent);
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
 }
 
 .trans-chap-auth__tagline {
   margin: 0.5rem 0 0;
   font-size: 1rem;
   color: var(--auth-muted);
-}
-
-/* Trans Chap Hero Overlay */
-.trans-chap-hero__content {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: clamp(1rem, 3vh, 2rem);
-  padding: clamp(1.25rem, 3.2vw, 3rem);
-  pointer-events: none;
-}
-
-.trans-chap-hero__pill-wrap {
-  display: flex;
-}
-
-.trans-chap-hero__pill {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  max-width: 100%;
-  padding: 0.5rem 1.05rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: #faf8f4;
-  font-size: clamp(0.65rem, 1.1vw, 0.8rem);
-  font-weight: 750;
-  letter-spacing: 0.045em;
-  line-height: 1.35;
-  text-transform: uppercase;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-}
-
-.trans-chap-hero__pill-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #f0ddcf;
-  box-shadow: 0 0 10px #f0ddcf;
-}
-
-.trans-chap-hero__card {
-  box-sizing: border-box;
-  width: min(100%, 400px);
-  max-width: 400px;
-  max-height: calc(100dvh - clamp(8rem, 14vh, 12rem));
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  background: rgba(10, 18, 38, 0.86);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 22px;
-  padding: 1.35rem 1.5rem;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
-  color: #fff;
-  pointer-events: auto;
-}
-
-.trans-chap-hero__card-header {
-  margin-bottom: 1.1rem;
-  padding-bottom: 0.85rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
-}
-
-.trans-chap-hero__card-title {
-  font-size: 1.15rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: #faf8f4;
-}
-
-.trans-chap-hero__card-sub {
-  font-size: 0.82rem;
-  color: rgba(250, 248, 244, 0.68);
-  margin-top: 0.2rem;
-}
-
-.trans-chap-hero__feature-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.95rem;
-}
-
-.trans-chap-hero__feature-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.9rem;
-}
-
-.trans-chap-hero__feature-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 11px;
-  background: rgba(240, 221, 207, 0.12);
-  border: 1px solid rgba(240, 221, 207, 0.3);
-  color: #f0ddcf;
-  display: grid;
-  place-items: center;
-  font-size: 0.9rem;
-  flex-shrink: 0;
-}
-
-.trans-chap-hero__feature-text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  font-size: 0.84rem;
-  line-height: 1.35;
-}
-
-.trans-chap-hero__feature-text strong {
-  color: #faf8f4;
-  font-weight: 700;
-}
-
-.trans-chap-hero__feature-text span {
-  color: rgba(250, 248, 244, 0.65);
-}
-
-@media (max-height: 720px) and (min-width: 901px) {
-  .trans-chap-hero__content {
-    padding-block: 1.25rem;
-  }
-
-  .trans-chap-hero__card {
-    padding: 1rem 1.1rem;
-  }
-
-  .trans-chap-hero__card-header {
-    margin-bottom: 0.75rem;
-    padding-bottom: 0.65rem;
-  }
-
-  .trans-chap-hero__feature-list {
-    gap: 0.65rem;
-  }
 }
 
 /* Dark mode support for Trans Chap Auth */
@@ -2145,9 +1942,4 @@ html[data-theme="dark"] .auth-split--trans-chap .auth-split__google {
   background: #0e2a4f;
   border-color: #25487a;
   color: #f7ece4;
-}
-
-html[data-theme="dark"] .auth-split--trans-chap .trans-chap-auth__brand-icon {
-  background: linear-gradient(135deg, #14345f 0%, #0e2a4f 100%);
-  border: 1px solid rgba(240, 221, 207, 0.25);
 }
