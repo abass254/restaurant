@@ -10,7 +10,7 @@ const merchantPages = [
   ["Home", "/trans-chap"],
   ["Menu", "/trans-chap/menus"],
   ["Inventory", "/trans-chap/stocks"],
-  ["Kitchen", "/trans-chap/kitchen"],
+  ["Stations", "/trans-chap/kitchen"],
   ["Orders or Sales", "/trans-chap/sales"],
   ["POS", "/trans-chap/pos"],
   ["Customers", "/trans-chap/customers"],

@@ -184,7 +184,7 @@ export function RestaurantHomeBoard({ canKitchen }: { canKitchen: boolean }) {
         </div>
         {canKitchen ? (
           <Link href="/trans-chap/kitchen" className="rs-home__link">
-            Kitchen
+            Stations
             <i className="fa-solid fa-chevron-right" aria-hidden />
           </Link>
         ) : null}
@@ -204,7 +204,11 @@ export function RestaurantHomeBoard({ canKitchen }: { canKitchen: boolean }) {
           );
           const className = `rs-home__stage is-${tile.id}${count > 0 ? " has-items" : ""}`;
           return canKitchen ? (
-            <Link key={tile.id} href="/trans-chap/kitchen" className={className}>
+            <Link
+              key={tile.id}
+              href="/trans-chap/kitchen?station=kitchen"
+              className={className}
+            >
               {body}
             </Link>
           ) : (

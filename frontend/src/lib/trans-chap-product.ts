@@ -334,6 +334,67 @@ export const DEFAULT_RESTAURANT_STATIONS: RestaurantStationDef[] = [
   { id: "grill", label: "Grill" },
 ];
 
+export function isKitchenStation(station: { id?: string; label: string }): boolean {
+  const label = station.label.trim().toLowerCase();
+  return station.id === "kitchen" || label === "kitchen" || label.includes("kitchen");
+}
+
+/** Font Awesome solid icon name for a prep station. */
+export function stationIcon(station: { id?: string; label: string }): string {
+  const id = (station.id || "").toLowerCase();
+  const label = station.label.trim().toLowerCase();
+  if (isKitchenStation(station)) return "fa-kitchen-set";
+  if (id === "bar" || label.includes("bar") || label.includes("drink")) {
+    return "fa-martini-glass-citrus";
+  }
+  if (id === "grill" || label.includes("grill") || label.includes("choma")) {
+    return "fa-fire-burner";
+  }
+  if (
+    id === "pastry" ||
+    id === "bakery" ||
+    label.includes("pastry") ||
+    label.includes("bakery") ||
+    label.includes("dessert")
+  ) {
+    return "fa-bread-slice";
+  }
+  return "fa-fire-burner";
+}
+
+/** Short subtitle for a prep station row. */
+export function stationHint(station: { id?: string; label: string }): string {
+  const id = (station.id || "").toLowerCase();
+  const label = station.label.trim().toLowerCase();
+  if (isKitchenStation(station)) return "Mains, recipes & hot prep";
+  if (id === "bar" || label.includes("bar") || label.includes("drink")) {
+    return "Drinks, juices & cocktails";
+  }
+  if (id === "grill" || label.includes("grill") || label.includes("choma")) {
+    return "Nyama choma & charcoal";
+  }
+  if (
+    id === "pastry" ||
+    id === "bakery" ||
+    label.includes("pastry") ||
+    label.includes("bakery") ||
+    label.includes("dessert")
+  ) {
+    return "Bread, cakes & desserts";
+  }
+  return "Orders routed to this station";
+}
+
+/** Header title when only the station id is known from the URL. */
+export function stationTitleFromId(stationId: string): string {
+  const known = DEFAULT_RESTAURANT_STATIONS.find((s) => s.id === stationId);
+  if (known) return known.label;
+  return stationId
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim() || "Station";
+}
+
 export async function fetchRestaurantTables(): Promise<RestaurantTableDef[]> {
   const res = await apiFetch<{ tables: RestaurantTableDef[] }>(apiRoutes.settingsTables);
   return res.tables.length ? res.tables : DEFAULT_RESTAURANT_TABLES;

@@ -25,6 +25,7 @@ import { detectTransChapMachine, syncTransChapMachine } from "@/lib/trans-chap-m
 
 import { isRestaurantStore } from "@/lib/onboarding";
 import { resolveAssetUrl } from "@/lib/config";
+import { stationTitleFromId } from "@/lib/trans-chap-product";
 
 const NAV_COLLAPSED_KEY = "trans-chap-nav-collapsed";
 const PHONE_HIDDEN_NAV_HREFS = new Set([
@@ -71,8 +72,8 @@ function getNavItems(restaurant: boolean): NavDef[] {
         },
         {
           href: "/trans-chap/kitchen",
-          label: "Kitchen",
-          title: "Kitchen",
+          label: "Stations",
+          title: "Stations",
           icon: "fa-fire-burner",
           section: "inventory" as MerchantSection,
         },
@@ -153,6 +154,7 @@ function headerMeta(
   mode: string | null,
   restaurant = false,
   from: string | null = null,
+  station: string | null = null,
 ): { title: string; backHref: string | null } {
   if (pathname.startsWith("/trans-chap/sales/receipt")) {
     return { title: "Receipt", backHref: "/trans-chap/sales" };
@@ -213,7 +215,10 @@ function headerMeta(
     return { title: "Kitchen day", backHref: "/trans-chap/kitchen" };
   }
   if (pathname.startsWith("/trans-chap/kitchen")) {
-    return { title: "Kitchen", backHref: "/trans-chap" };
+    if (station) {
+      return { title: stationTitleFromId(station), backHref: "/trans-chap/kitchen" };
+    }
+    return { title: "Stations", backHref: "/trans-chap" };
   }
   if (pathname.startsWith("/trans-chap/menus")) {
     return { title: "Menu", backHref: "/trans-chap" };
@@ -328,6 +333,7 @@ export function TransChapShell({ children }: { children: React.ReactNode }) {
     searchParams.get("mode"),
     restaurant,
     searchParams.get("from"),
+    searchParams.get("station"),
   );
   const isSignIn = pathname.startsWith("/trans-chap/sign-in");
   const isNewPost = pathname.startsWith("/trans-chap/feeds/new");

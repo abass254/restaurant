@@ -56,7 +56,7 @@ function expectOk(result: { status: number; payload: unknown }, label: string) {
 
 test("restaurant pilot: purchase, issue, prepare, sell, close count and report", async ({ page }) => {
   const pilot = config!;
-  await page.goto("/trans-chap/kitchen");
+  await page.goto("/trans-chap/kitchen?station=kitchen");
   await expect(page).not.toHaveURL(/\/sign-in(?:\?|$)/);
   await api(page, "/sanctum/csrf-cookie");
 
@@ -121,6 +121,6 @@ test("restaurant pilot: purchase, issue, prepare, sell, close count and report",
 
   await page.goto("/trans-chap/sales");
   await expect(page.locator("body")).not.toContainText("Application error");
-  await page.goto("/trans-chap/kitchen");
+  await page.goto("/trans-chap/kitchen?station=kitchen");
   await expect(page.getByRole("tab", { name: /Orders/ })).toBeVisible();
 });

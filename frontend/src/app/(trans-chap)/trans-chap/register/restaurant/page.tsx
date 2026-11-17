@@ -60,7 +60,7 @@ export default function RestaurantRegistrationPage() {
   if (created) {
     return (
       <AuthShell
-        className="auth-split--trans-chap"
+        className="auth-split--trans-chap auth-split--restaurant-register"
         heroLabel="KITCHEN"
         brandHeader={<TransChapBrandHeader />}
       >

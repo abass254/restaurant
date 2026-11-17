@@ -8,6 +8,9 @@ test.skip(
 
 test("signed-in merchant can open the Kitchen workspace", async ({ page }) => {
   await page.goto("/trans-chap/kitchen");
+  await expect(page.getByRole("heading", { name: /Prep stations/i })).toBeVisible();
+  await page.getByRole("link", { name: /Kitchen/i }).first().click();
+  await expect(page).toHaveURL(/station=kitchen/);
   await expect(page.getByRole("tab", { name: /Orders/ })).toBeVisible();
   await expect(page.getByRole("tab", { name: /Menu/ })).toBeVisible();
 });

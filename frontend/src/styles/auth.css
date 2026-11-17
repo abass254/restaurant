@@ -68,6 +68,42 @@
     linear-gradient(180deg, rgba(6, 26, 51, 0.55) 0%, transparent 22%, transparent 52%, rgba(6, 26, 51, 0.85) 78%, #061a33 100%);
 }
 
+/* Dish table hero: keep plates vivid, soft edge into the form. */
+.auth-split__hero--dishes {
+  background: #1a120e;
+}
+
+.auth-split__hero--dishes .auth-split__photo {
+  object-fit: cover;
+  object-position: center 40%;
+  transform: scale(1.02);
+  filter: saturate(1.08) contrast(1.04) brightness(1.02);
+}
+
+.auth-split__hero--dishes .auth-split__photo-shade {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(10, 18, 32, 0.08) 0%,
+      transparent 14%,
+      transparent 62%,
+      rgba(6, 26, 51, 0.35) 86%,
+      #061a33 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(10, 18, 32, 0.18) 0%,
+      transparent 14%,
+      transparent 78%,
+      rgba(10, 18, 32, 0.28) 100%
+    ),
+    radial-gradient(
+      115% 85% at 45% 48%,
+      transparent 48%,
+      rgba(6, 26, 51, 0.16) 100%
+    );
+}
+
 .auth-split__panel {
   position: relative;
   display: flex;
@@ -1775,9 +1811,19 @@
 }
 
 .auth-split--restaurant-register {
+  grid-template-columns: minmax(340px, 48%) 1fr;
   height: 100dvh;
   min-height: 0;
   overflow: hidden;
+}
+
+.auth-split--restaurant-register .auth-split__hero {
+  height: 100dvh;
+  min-height: 0;
+}
+
+.auth-split--restaurant-register .auth-split__hero--dishes .auth-split__photo {
+  object-position: center 38%;
 }
 
 .auth-split--restaurant-register .auth-split__panel {

@@ -5,7 +5,9 @@ import { confirmAction, extractErrorMessage, showError, toastSuccess } from "@/l
 import {
   DEFAULT_RESTAURANT_STATIONS,
   fetchRestaurantStations,
+  isKitchenStation,
   saveRestaurantStations,
+  stationIcon,
 } from "@/lib/trans-chap-product";
 import type { RestaurantStationDef } from "@/lib/types";
 
@@ -14,14 +16,6 @@ type Draft = { key: string; id?: string; label: string };
 let draftSeq = 0;
 function toDrafts(stations: RestaurantStationDef[]): Draft[] {
   return stations.map((s) => ({ key: `stn_${draftSeq++}`, id: s.id, label: s.label }));
-}
-
-function isKitchenStation(draft: Draft): boolean {
-  return (
-    draft.id === "kitchen" ||
-    draft.label.trim().toLowerCase() === "kitchen" ||
-    draft.label.trim().toLowerCase().includes("kitchen")
-  );
 }
 
 export function TransChapStationsSettings() {
@@ -149,7 +143,7 @@ export function TransChapStationsSettings() {
                 }}
               >
                 <i
-                  className={isKitchen ? "fa-solid fa-kitchen-set" : "fa-solid fa-fire-burner"}
+                  className={`fa-solid ${stationIcon(draft)}`}
                   aria-hidden
                   style={{ fontSize: "0.95rem" }}
                 />
